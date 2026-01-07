@@ -1,0 +1,88 @@
+{
+  "version": "1.0",
+  "spaceName": "Untitled Space",
+  "exportedAt": "2026-01-07T20:13:35.531Z",
+  "nodes": [
+    {
+      "id": "node_1767816797816_90kq7ud",
+      "type": "imageGenerator",
+      "position": {
+        "x": 1580,
+        "y": 203.5
+      },
+      "data": {
+        "prompt": "",
+        "model": "flux-schnell",
+        "aspectRatio": "1:1",
+        "isGenerating": false
+      },
+      "measured": {
+        "width": 340,
+        "height": 284
+      },
+      "selected": false
+    },
+    {
+      "id": "node_1767816801792_smxu6qr",
+      "type": "imageGenerator",
+      "position": {
+        "x": 244.89175235397465,
+        "y": 169.29575520101312
+      },
+      "data": {
+        "prompt": "",
+        "model": "flux-schnell",
+        "aspectRatio": "1:1",
+        "isGenerating": false
+      },
+      "measured": {
+        "width": 340,
+        "height": 284
+      },
+      "selected": true
+    },
+    {
+      "id": "node_1767816802541_1n4drte",
+      "type": "text",
+      "position": {
+        "x": -580,
+        "y": 220
+      },
+      "data": {
+        "content": ""
+      },
+      "measured": {
+        "width": 280,
+        "height": 146
+      },
+      "selected": false,
+      "dragging": false
+    }
+  ],
+  "edges": [
+    {
+      "style": {
+        "stroke": "#6366f1",
+        "strokeWidth": 2
+      },
+      "type": "default",
+      "source": "node_1767816802541_1n4drte",
+      "sourceHandle": "output",
+      "target": "node_1767816801792_smxu6qr",
+      "targetHandle": "reference",
+      "id": "xy-edge__node_1767816802541_1n4drteoutput-node_1767816801792_smxu6qrreference"
+    },
+    {
+      "style": {
+        "stroke": "#6366f1",
+        "strokeWidth": 2
+      },
+      "type": "default",
+      "source": "node_1767816802541_1n4drte",
+      "sourceHandle": "output",
+      "target": "node_1767816801792_smxu6qr",
+      "targetHandle": "text",
+      "id": "xy-edge__node_1767816802541_1n4drteoutput-node_1767816801792_smxu6qrtext"
+    }
+  ]
+}
