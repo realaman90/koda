@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useCallback, useState, useRef, useEffect } from 'react';
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import { Handle, Position, useUpdateNodeInternals, type NodeProps } from '@xyflow/react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useCanvasStore, createMediaNode } from '@/stores/canvas-store';
 import type { ImageGeneratorNode as ImageGeneratorNodeType, RecraftStyle, IdeogramStyle } from '@/lib/types';
 import { MODEL_CAPABILITIES, getApproxDimensions, FLUX_IMAGE_SIZES, RECRAFT_STYLE_LABELS, IDEOGRAM_STYLE_LABELS, type FluxImageSize, type NanoBananaResolution } from '@/lib/types';
@@ -35,9 +36,31 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
   const openSettingsPanel = useCanvasStore((state) => state.openSettingsPanel);
   const getConnectedInputs = useCanvasStore((state) => state.getConnectedInputs);
   const addNode = useCanvasStore((state) => state.addNode);
+  const updateNodeInternals = useUpdateNodeInternals();
   const [isEditingName, setIsEditingName] = useState(false);
   const [nodeName, setNodeName] = useState(data.name || 'Image Generator');
   const nameInputRef = useRef<HTMLInputElement>(null);
+
+  const modelCapabilities = MODEL_CAPABILITIES[data.model];
+  const maxRefs = modelCapabilities.maxReferences || 1;
+  const refHandleCount = data.refHandleCount || 1;
+
+  // Update node internals when ref handle count changes
+  useEffect(() => {
+    updateNodeInternals(id);
+  }, [id, refHandleCount, updateNodeInternals]);
+
+  const handleAddRefHandle = useCallback(() => {
+    if (refHandleCount < maxRefs) {
+      updateNodeData(id, { refHandleCount: refHandleCount + 1 });
+    }
+  }, [id, refHandleCount, maxRefs, updateNodeData]);
+
+  const handleRemoveRefHandle = useCallback(() => {
+    if (refHandleCount > 1) {
+      updateNodeData(id, { refHandleCount: refHandleCount - 1 });
+    }
+  }, [id, refHandleCount, updateNodeData]);
 
   useEffect(() => {
     if (isEditingName && nameInputRef.current) {
@@ -207,9 +230,6 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
     }
   }, [data.outputUrl]);
 
-  // Get model capabilities
-  const modelCapabilities = MODEL_CAPABILITIES[data.model];
-
   // Get dimensions for badge
   const dimensions = getApproxDimensions(data.aspectRatio, data.model, data.resolution);
 
@@ -294,7 +314,10 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
             : 'ring-1 ring-zinc-800 hover:ring-zinc-700'
           }
         `}
-        style={{ backgroundColor: '#1a1a1c' }}
+        style={{
+          backgroundColor: '#1a1a1c',
+          minHeight: refHandleCount > 1 ? `${280 + (refHandleCount - 1) * 45}px` : undefined,
+        }}
       >
         {/* Content Area */}
         <div className="relative">
@@ -350,16 +373,18 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
         {/* Bottom Toolbar */}
         <div className="flex items-center flex-wrap gap-1.5 px-3 py-2.5 bg-zinc-900/50">
           {/* Model Selector */}
-          <Select value={data.model} onValueChange={handleModelChange}>
-            <SelectTrigger className="h-7 max-w-[120px] bg-zinc-800/80 border-0 text-xs text-zinc-300 gap-1 px-2 rounded-md hover:bg-zinc-700/80 [&>span]:truncate">
-              <SelectValue>{modelCapabilities.label}</SelectValue>
-            </SelectTrigger>
-            <SelectContent className="bg-zinc-800 border-zinc-700">
-              {Object.entries(MODEL_CAPABILITIES).map(([key, cap]) => (
-                <SelectItem key={key} value={key} className="text-xs">{cap.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            value={data.model}
+            onValueChange={handleModelChange}
+            options={Object.entries(MODEL_CAPABILITIES).map(([key, cap]) => ({
+              value: key,
+              label: cap.label,
+              description: cap.description,
+            }))}
+            placeholder="Select model"
+            searchPlaceholder="Search models..."
+            triggerClassName="max-w-[120px]"
+          />
 
           {/* Aspect Ratio - only show supported ratios */}
           <Select value={data.aspectRatio} onValueChange={handleAspectRatioChange}>
@@ -499,7 +524,7 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
 
       {/* Input Handles - Left side */}
       {/* Text Input */}
-      <div className="absolute -left-3 group" style={{ top: modelCapabilities.inputType !== 'text-only' ? '35%' : '50%', transform: 'translateY(-50%)' }}>
+      <div className="absolute -left-3 group" style={{ top: modelCapabilities.inputType !== 'text-only' ? '110px' : '50%', transform: modelCapabilities.inputType === 'text-only' ? 'translateY(-50%)' : undefined }}>
         <div className="relative">
           <Handle
             type="target"
@@ -513,22 +538,55 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
           Text
         </span>
       </div>
-      {/* Reference Image Input - only shown for models that support image input */}
+      {/* Reference Image Inputs - only shown for models that support image input */}
       {modelCapabilities.inputType !== 'text-only' && (
-        <div className="absolute -left-3 group" style={{ top: '65%', transform: 'translateY(-50%)' }}>
-          <div className="relative">
-            <Handle
-              type="target"
-              position={Position.Left}
-              id="reference"
-              className="!relative !transform-none !w-6 !h-6 !bg-zinc-800 !border-2 !border-zinc-600 !rounded-md hover:!border-blue-500 hover:!bg-zinc-700"
-            />
-            <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 text-zinc-500 pointer-events-none" />
-          </div>
-          <span className="absolute left-8 top-1/2 -translate-y-1/2 px-2 py-1 bg-zinc-800 text-zinc-300 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border border-zinc-700">
-            Reference
-          </span>
-        </div>
+        <>
+          {/* Dynamic reference handles */}
+          {Array.from({ length: refHandleCount }).map((_, index) => {
+            const baseTop = 160; // Start at 160px from top
+            const spacing = 40; // 40px spacing between handles
+            const top = baseTop + index * spacing;
+            return (
+              <div key={`ref-${index}`} className="absolute -left-3 group" style={{ top: `${top}px` }}>
+                <div className="relative">
+                  <Handle
+                    type="target"
+                    position={Position.Left}
+                    id={index === 0 ? 'reference' : `ref${index + 1}`}
+                    className="!relative !transform-none !w-6 !h-6 !bg-zinc-800 !border-2 !border-zinc-600 !rounded-md hover:!border-blue-500 hover:!bg-zinc-700"
+                  />
+                  <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 text-zinc-500 pointer-events-none" />
+                </div>
+                <span className="absolute left-8 top-1/2 -translate-y-1/2 px-2 py-1 bg-zinc-800 text-zinc-300 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border border-zinc-700">
+                  {refHandleCount > 1 ? `Ref ${index + 1}` : 'Reference'}
+                </span>
+              </div>
+            );
+          })}
+          {/* Add/Remove ref buttons - only for multi-ref models */}
+          {maxRefs > 1 && (
+            <div className="absolute -left-3 flex flex-col gap-0.5" style={{ top: `${160 + refHandleCount * 40 + 10}px` }}>
+              {refHandleCount < maxRefs && (
+                <button
+                  onClick={handleAddRefHandle}
+                  className="w-6 h-5 bg-zinc-800 border border-zinc-600 rounded text-zinc-400 hover:text-white hover:bg-zinc-700 hover:border-blue-500 flex items-center justify-center transition-colors"
+                  title={`Add reference (${refHandleCount}/${maxRefs})`}
+                >
+                  <Plus className="h-3 w-3" />
+                </button>
+              )}
+              {refHandleCount > 1 && (
+                <button
+                  onClick={handleRemoveRefHandle}
+                  className="w-6 h-5 bg-zinc-800 border border-zinc-600 rounded text-zinc-400 hover:text-white hover:bg-zinc-700 hover:border-red-500 flex items-center justify-center transition-colors"
+                  title="Remove reference"
+                >
+                  <Minus className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          )}
+        </>
       )}
 
       {/* Output Handle - Right side */}

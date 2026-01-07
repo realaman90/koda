@@ -55,6 +55,7 @@ export interface ImageGeneratorNodeData extends Record<string, unknown> {
   resolution?: NanoBananaResolution;
   imageCount?: number; // 1-4
   references?: ImageReference[]; // Style/character references
+  refHandleCount?: number; // Number of reference handles to show (for multi-ref models)
   // New model-specific parameters
   style?: RecraftStyle | IdeogramStyle; // For Recraft and Ideogram
   magicPrompt?: boolean; // For Ideogram
@@ -181,6 +182,7 @@ export interface ModelCapabilities {
   maxImages: number;
   inputType: ModelInputType; // Whether model accepts images
   supportsReferences: boolean;
+  maxReferences?: number; // Max reference images (default 1)
   aspectRatios: readonly AspectRatio[];
   // Flux uses image size presets, Nano Banana uses resolution tiers
   imageSizes?: readonly FluxImageSize[];
@@ -213,13 +215,14 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
     description: 'High quality',
   },
   'nanobanana-pro': {
-    label: 'Nano Banana',
+    label: 'Nano Banana Pro',
     maxImages: 4,
     inputType: 'text-and-image',
     supportsReferences: true,
+    maxReferences: 8,
     aspectRatios: ['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9', '5:4', '4:5'],
     resolutions: ['1K', '2K', '4K'],
-    description: '1K/2K/4K with style transfer',
+    description: 'Up to 8 style refs',
   },
   'recraft-v3': {
     label: 'Recraft V3',

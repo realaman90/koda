@@ -95,9 +95,11 @@ export function Canvas() {
       // Check if source provides images (media nodes or imageGenerator output)
       const isImageSource = sourceNode.type === 'media' || sourceNode.type === 'imageGenerator';
 
-      // Image input handles - reference, firstFrame, lastFrame, ref1/ref2/ref3
-      const imageHandles = ['reference', 'firstFrame', 'lastFrame', 'ref1', 'ref2', 'ref3'];
-      if (imageHandles.includes(connection.targetHandle || '')) {
+      // Image input handles - reference, firstFrame, lastFrame, ref2-ref8 (for multi-ref models)
+      const targetHandle = connection.targetHandle || '';
+      const isImageHandle = ['reference', 'firstFrame', 'lastFrame'].includes(targetHandle) ||
+        /^ref[2-8]$/.test(targetHandle);
+      if (isImageHandle) {
         if (!isImageSource) return false;
 
         // For image generator nodes

@@ -580,8 +580,8 @@ export const useCanvasStore = create<CanvasState>()(
         const firstFrameEdge = incomingEdges.find((e) => e.targetHandle === 'firstFrame');
         const lastFrameEdge = incomingEdges.find((e) => e.targetHandle === 'lastFrame');
 
-        // Multi-reference handles (ref1, ref2, ref3)
-        const refEdges = ['ref1', 'ref2', 'ref3']
+        // Multi-reference handles (ref2-ref8 for ImageGenerator, ref1-ref3 for VideoGenerator)
+        const refEdges = ['ref1', 'ref2', 'ref3', 'ref4', 'ref5', 'ref6', 'ref7', 'ref8']
           .map((handle) => incomingEdges.find((e) => e.targetHandle === handle))
           .filter(Boolean);
 

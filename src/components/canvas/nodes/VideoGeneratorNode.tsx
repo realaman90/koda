@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useCanvasStore } from '@/stores/canvas-store';
 import type { VideoGeneratorNode as VideoGeneratorNodeType } from '@/lib/types';
 import { VIDEO_MODEL_CAPABILITIES, type VideoModelType, type VideoAspectRatio, type VideoDuration } from '@/lib/types';
@@ -345,16 +346,18 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
         {/* Bottom Toolbar */}
         <div className="flex items-center flex-wrap gap-1.5 px-3 py-2.5 bg-zinc-900/50">
           {/* Model Selector */}
-          <Select value={data.model} onValueChange={handleModelChange}>
-            <SelectTrigger className="h-7 max-w-[110px] bg-zinc-800/80 border-0 text-xs text-zinc-300 gap-1 px-2 rounded-md hover:bg-zinc-700/80 [&>span]:truncate">
-              <SelectValue>{modelCapabilities.label}</SelectValue>
-            </SelectTrigger>
-            <SelectContent className="bg-zinc-800 border-zinc-700">
-              {Object.entries(VIDEO_MODEL_CAPABILITIES).map(([key, cap]) => (
-                <SelectItem key={key} value={key} className="text-xs">{cap.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            value={data.model}
+            onValueChange={handleModelChange}
+            options={Object.entries(VIDEO_MODEL_CAPABILITIES).map(([key, cap]) => ({
+              value: key,
+              label: cap.label,
+              description: cap.description,
+            }))}
+            placeholder="Select model"
+            searchPlaceholder="Search models..."
+            triggerClassName="max-w-[110px]"
+          />
 
           {/* Aspect Ratio */}
           <Select value={data.aspectRatio} onValueChange={handleAspectRatioChange}>
