@@ -209,38 +209,37 @@ export function PresetPopover({
                     : 'border-zinc-700 hover:border-zinc-600'
                 )}
               >
-                {/* Actual image (shown on hover) */}
+                {/* Actual image (base layer, always visible) */}
                 <img
                   src={actualImagePath}
                   alt={preset.label}
-                  className="absolute inset-0 w-full h-full object-cover opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                  className="absolute inset-0 w-full h-full object-cover z-[1]"
                   onError={(e) => {
                     // Hide if actual image doesn't exist
                     const target = e.target as HTMLImageElement;
                     target.style.display = 'none';
                   }}
                 />
-                {/* SVG overlay (fades on hover when actual image exists) */}
+                {/* SVG overlay (on top with low opacity, fades more on hover) */}
                 <img
                   src={preset.preview}
                   alt={preset.label}
-                  className="w-full h-full object-cover group-hover:opacity-0 transition-opacity duration-200"
+                  className="absolute inset-0 w-full h-full object-cover z-[2] opacity-40 group-hover:opacity-0 transition-opacity duration-200"
                   onError={(e) => {
-                    // Show placeholder background on error
+                    // Hide SVG on error
                     const target = e.target as HTMLImageElement;
                     target.style.display = 'none';
-                    target.parentElement!.classList.add('bg-zinc-800');
                   }}
                 />
                 {/* Label overlay */}
-                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-1 py-1">
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-1 py-1 z-[3]">
                   <span className="text-[9px] text-white font-medium truncate block">
                     {preset.label}
                   </span>
                 </div>
                 {/* Check mark */}
                 {selected?.id === preset.id && (
-                  <div className="absolute top-1 right-1 bg-teal-500 rounded-full p-0.5">
+                  <div className="absolute top-1 right-1 bg-teal-500 rounded-full p-0.5 z-[4]">
                     <Check className="h-2.5 w-2.5 text-white" />
                   </div>
                 )}
@@ -288,21 +287,21 @@ export function PresetPopover({
             />
           ) : selected ? (
             <>
-              {/* Actual image (shown on hover) */}
+              {/* Actual image (base layer, always visible) */}
               <img
                 src={selectedActualImage}
                 alt={selected.label}
-                className="absolute inset-0 w-full h-full object-cover opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                className="absolute inset-0 w-full h-full object-cover z-[1]"
                 onError={(e) => {
                   const target = e.target as HTMLImageElement;
                   target.style.display = 'none';
                 }}
               />
-              {/* SVG overlay */}
+              {/* SVG overlay (on top with low opacity, fades on hover) */}
               <img
                 src={selected.preview}
                 alt={selected.label}
-                className="w-full h-full object-cover group-hover:opacity-0 transition-opacity duration-200"
+                className="absolute inset-0 w-full h-full object-cover z-[2] opacity-40 group-hover:opacity-0 transition-opacity duration-200"
                 onError={(e) => {
                   const target = e.target as HTMLImageElement;
                   target.style.display = 'none';

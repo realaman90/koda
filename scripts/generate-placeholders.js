@@ -63,51 +63,51 @@ const colors = {
   ]
 };
 
-// Preset configurations
+// Preset configurations with named characters
 const presets = {
   characters: [
-    'man-business',
-    'woman-casual',
-    'woman-elegant',
-    'man-creative',
-    'child-playful',
-    'elderly-wise',
-    'athlete',
-    'scientist',
+    { id: 'marcus', label: 'Marcus' },
+    { id: 'sofia', label: 'Sofia' },
+    { id: 'victoria', label: 'Victoria' },
+    { id: 'kai', label: 'Kai' },
+    { id: 'luna', label: 'Luna' },
+    { id: 'eleanor', label: 'Eleanor' },
+    { id: 'jordan', label: 'Jordan' },
+    { id: 'dr-chen', label: 'Dr. Chen' },
   ],
   styles: [
-    'cinematic',
-    'anime',
-    'watercolor',
-    'oil-painting',
-    'pencil-sketch',
-    'cyberpunk',
-    'vintage',
-    'minimalist',
-    'fantasy',
-    'photorealistic',
-    'comic-book',
-    'impressionist',
+    { id: 'cinematic', label: 'Cinematic' },
+    { id: 'anime', label: 'Anime' },
+    { id: 'watercolor', label: 'Watercolor' },
+    { id: 'oil-painting', label: 'Oil Painting' },
+    { id: 'pencil-sketch', label: 'Pencil' },
+    { id: 'cyberpunk', label: 'Cyberpunk' },
+    { id: 'vintage', label: 'Vintage' },
+    { id: 'minimalist', label: 'Minimalist' },
+    { id: 'fantasy', label: 'Fantasy' },
+    { id: 'photorealistic', label: 'Photo' },
+    { id: 'comic-book', label: 'Comic' },
+    { id: 'impressionist', label: 'Impressionist' },
   ],
   'camera-angles': [
-    'front',
-    'three-quarter',
-    'side-profile',
-    'overhead',
-    'low-angle',
-    'dutch-angle',
-    'birds-eye',
-    'worms-eye',
+    { id: 'front', label: 'Front' },
+    { id: 'three-quarter', label: '3/4 View' },
+    { id: 'side-profile', label: 'Side' },
+    { id: 'overhead', label: 'Overhead' },
+    { id: 'low-angle', label: 'Low Angle' },
+    { id: 'dutch-angle', label: 'Dutch' },
+    { id: 'birds-eye', label: "Bird's Eye" },
+    { id: 'worms-eye', label: "Worm's Eye" },
   ],
   'camera-lens': [
-    'wide-angle',
-    'standard',
-    'telephoto',
-    'macro',
-    'fisheye',
-    'tilt-shift',
-    'portrait',
-    'anamorphic',
+    { id: 'wide-angle', label: 'Wide' },
+    { id: 'standard', label: '50mm' },
+    { id: 'telephoto', label: 'Telephoto' },
+    { id: 'macro', label: 'Macro' },
+    { id: 'fisheye', label: 'Fisheye' },
+    { id: 'tilt-shift', label: 'Tilt-Shift' },
+    { id: 'portrait', label: '85mm' },
+    { id: 'anamorphic', label: 'Anamorphic' },
   ],
 };
 
@@ -125,15 +125,13 @@ for (const [category, items] of Object.entries(presets)) {
 
   items.forEach((item, index) => {
     const [color1, color2] = categoryColors[index % categoryColors.length];
-    const label = item.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-    const svg = generatePlaceholder(label, color1, color2);
+    const svg = generatePlaceholder(item.label, color1, color2);
 
-    // Save as SVG (browsers can display SVG as images)
-    const filePath = path.join(categoryPath, `${item}.svg`);
+    // Save as SVG
+    const filePath = path.join(categoryPath, `${item.id}.svg`);
     fs.writeFileSync(filePath, svg);
     console.log(`Created: ${filePath}`);
   });
 }
 
 console.log('\nPlaceholder images generated successfully!');
-console.log('Note: For production, replace these with AI-generated images.');
