@@ -10,8 +10,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useCanvasStore } from '@/stores/canvas-store';
-import type { ImageGeneratorNodeData, ImageReference, FluxImageSize, NanoBananaResolution, RecraftStyle, IdeogramStyle } from '@/lib/types';
+import type { ImageGeneratorNodeData, ImageReference, FluxImageSize, NanoBananaResolution, RecraftStyle, IdeogramStyle, CharacterPreset, StylePreset, CameraAnglePreset, CameraLensPreset, PresetOption, CharacterSelection } from '@/lib/types';
 import { MODEL_CAPABILITIES, FLUX_IMAGE_SIZES, NANO_BANANA_RESOLUTIONS, RECRAFT_STYLE_LABELS, IDEOGRAM_STYLE_LABELS, getApproxDimensions } from '@/lib/types';
+import { CHARACTER_PRESETS, STYLE_PRESETS, CAMERA_ANGLE_PRESETS, CAMERA_LENS_PRESETS } from '@/lib/presets';
+import { PresetPopover } from './PresetPopover';
 import { Slider } from '@/components/ui/slider';
 import {
   X,
@@ -24,6 +26,9 @@ import {
   Image as ImageIcon,
   Loader2,
   Wand2,
+  Palette,
+  Aperture,
+  Camera,
 } from 'lucide-react';
 
 export function SettingsPanel() {
@@ -202,17 +207,121 @@ export function SettingsPanel() {
     [settingsPanelNodeId, updateNodeData]
   );
 
+  // Preset selection handlers
+  const handleCharacterSelect = useCallback(
+    (preset: PresetOption | null) => {
+      if (settingsPanelNodeId) {
+        if (preset) {
+          updateNodeData(settingsPanelNodeId, {
+            selectedCharacter: { ...preset, type: 'preset' } as CharacterPreset,
+          });
+        } else {
+          updateNodeData(settingsPanelNodeId, { selectedCharacter: null });
+        }
+      }
+    },
+    [settingsPanelNodeId, updateNodeData]
+  );
+
+  const handleCharacterUpload = useCallback(
+    (file: File) => {
+      if (!settingsPanelNodeId) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const url = e.target?.result as string;
+        updateNodeData(settingsPanelNodeId, {
+          selectedCharacter: {
+            id: `custom_${Date.now()}`,
+            type: 'custom',
+            imageUrl: url,
+          },
+        });
+      };
+      reader.readAsDataURL(file);
+    },
+    [settingsPanelNodeId, updateNodeData]
+  );
+
+  const handleClearCustomCharacter = useCallback(() => {
+    if (settingsPanelNodeId) {
+      updateNodeData(settingsPanelNodeId, { selectedCharacter: null });
+    }
+  }, [settingsPanelNodeId, updateNodeData]);
+
+  const handleStylePresetSelect = useCallback(
+    (preset: PresetOption | null) => {
+      if (settingsPanelNodeId) {
+        updateNodeData(settingsPanelNodeId, {
+          selectedStyle: preset as StylePreset | null,
+        });
+      }
+    },
+    [settingsPanelNodeId, updateNodeData]
+  );
+
+  const handleCameraAngleSelect = useCallback(
+    (preset: PresetOption | null) => {
+      if (settingsPanelNodeId) {
+        updateNodeData(settingsPanelNodeId, {
+          selectedCameraAngle: preset as CameraAnglePreset | null,
+        });
+      }
+    },
+    [settingsPanelNodeId, updateNodeData]
+  );
+
+  const handleCameraLensSelect = useCallback(
+    (preset: PresetOption | null) => {
+      if (settingsPanelNodeId) {
+        updateNodeData(settingsPanelNodeId, {
+          selectedCameraLens: preset as CameraLensPreset | null,
+        });
+      }
+    },
+    [settingsPanelNodeId, updateNodeData]
+  );
+
   const handleGenerate = useCallback(async () => {
     if (!settingsPanelNodeId || !data) return;
 
     // Get connected inputs
     const connectedInputs = getConnectedInputs(settingsPanelNodeId);
 
-    // Merge connected text with prompt
-    let finalPrompt = data.prompt || '';
-    if (connectedInputs.textContent) {
-      finalPrompt = connectedInputs.textContent + (data.prompt ? `\n${data.prompt}` : '');
+    // Build final prompt with preset modifiers
+    const promptParts: string[] = [];
+
+    // Add character modifier
+    if (data.selectedCharacter?.type === 'preset') {
+      promptParts.push(data.selectedCharacter.promptModifier);
     }
+
+    // Add style preset modifier
+    if (data.selectedStyle) {
+      promptParts.push(data.selectedStyle.promptModifier);
+    }
+
+    // Add camera angle modifier
+    if (data.selectedCameraAngle) {
+      promptParts.push(data.selectedCameraAngle.promptModifier);
+    }
+
+    // Add camera lens modifier
+    if (data.selectedCameraLens) {
+      promptParts.push(data.selectedCameraLens.promptModifier);
+    }
+
+    // Add connected text content
+    if (connectedInputs.textContent) {
+      promptParts.push(connectedInputs.textContent);
+    }
+
+    // Add user prompt
+    if (data.prompt) {
+      promptParts.push(data.prompt);
+    }
+
+    const finalPrompt = promptParts.join(', ');
 
     if (!finalPrompt) return;
 
@@ -261,9 +370,15 @@ export function SettingsPanel() {
 
   if (!settingsPanelNodeId || !data) return null;
 
-  // Check if we have a valid prompt (direct or connected)
+  // Check if we have a valid prompt (direct, connected, or from presets)
   const connectedInputs = getConnectedInputs(settingsPanelNodeId);
-  const hasValidPrompt = !!(data.prompt || connectedInputs.textContent);
+  const hasPresetSelected = !!(
+    data.selectedCharacter ||
+    data.selectedStyle ||
+    data.selectedCameraAngle ||
+    data.selectedCameraLens
+  );
+  const hasValidPrompt = !!(data.prompt || connectedInputs.textContent || hasPresetSelected);
 
   // Get model capabilities
   const modelCapabilities = MODEL_CAPABILITIES[data.model];
@@ -352,6 +467,54 @@ export function SettingsPanel() {
               </SelectContent>
             </Select>
             <p className="text-xs text-zinc-500 mt-1.5">{modelCapabilities.description}</p>
+          </div>
+
+          {/* Presets Section */}
+          <div>
+            <label className="text-xs text-zinc-500 uppercase tracking-wider mb-3 block">
+              Presets
+            </label>
+            <div className="grid grid-cols-4 gap-2">
+              {/* Character Popover */}
+              <PresetPopover
+                title="Character"
+                icon={<User className="h-4 w-4" />}
+                presets={CHARACTER_PRESETS}
+                selected={data.selectedCharacter?.type === 'preset' ? data.selectedCharacter : null}
+                onSelect={handleCharacterSelect}
+                allowCustomUpload
+                customImage={data.selectedCharacter?.type === 'custom' ? data.selectedCharacter.imageUrl : undefined}
+                onCustomUpload={handleCharacterUpload}
+                onClearCustom={handleClearCustomCharacter}
+              />
+
+              {/* Style Popover */}
+              <PresetPopover
+                title="Style"
+                icon={<Palette className="h-4 w-4" />}
+                presets={STYLE_PRESETS}
+                selected={data.selectedStyle || null}
+                onSelect={handleStylePresetSelect}
+              />
+
+              {/* Camera Angle Popover */}
+              <PresetPopover
+                title="Angle"
+                icon={<Aperture className="h-4 w-4" />}
+                presets={CAMERA_ANGLE_PRESETS}
+                selected={data.selectedCameraAngle || null}
+                onSelect={handleCameraAngleSelect}
+              />
+
+              {/* Camera Lens Popover */}
+              <PresetPopover
+                title="Lens"
+                icon={<Camera className="h-4 w-4" />}
+                presets={CAMERA_LENS_PRESETS}
+                selected={data.selectedCameraLens || null}
+                onSelect={handleCameraLensSelect}
+              />
+            </div>
           </div>
 
           {/* Style Selector - for Recraft and Ideogram */}

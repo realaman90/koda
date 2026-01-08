@@ -3,6 +3,41 @@ import type { Node, Edge } from '@xyflow/react';
 // Node Types
 export type NodeType = 'imageGenerator' | 'videoGenerator' | 'text' | 'media';
 
+// ============================================
+// PRESET TYPES (for Settings Panel)
+// ============================================
+
+// Base preset option with preview
+export interface PresetOption {
+  id: string;
+  label: string;
+  preview: string; // Path to preview image
+  promptModifier: string; // Text to append to prompt
+}
+
+// Character preset (can also be custom uploaded)
+export interface CharacterPreset extends PresetOption {
+  type: 'preset';
+}
+
+export interface CharacterCustom {
+  id: string;
+  type: 'custom';
+  imageUrl: string; // User uploaded image
+  label?: string;
+}
+
+export type CharacterSelection = CharacterPreset | CharacterCustom | null;
+
+// Style preset
+export interface StylePreset extends PresetOption {}
+
+// Camera angle preset
+export interface CameraAnglePreset extends PresetOption {}
+
+// Camera lens preset
+export interface CameraLensPreset extends PresetOption {}
+
 // Reference type for style/character references
 export interface ImageReference {
   id: string;
@@ -62,6 +97,12 @@ export interface ImageGeneratorNodeData extends Record<string, unknown> {
   cfgScale?: number; // For SD 3.5 (1-20, default 7)
   steps?: number; // For SD 3.5 (10-50, default 30)
   strength?: number; // For SD 3.5 img2img (0-1, default 0.75)
+  // Preset selections (stored separately)
+  selectedCharacter?: CharacterSelection;
+  selectedStyle?: StylePreset | null;
+  selectedCameraAngle?: CameraAnglePreset | null;
+  selectedCameraLens?: CameraLensPreset | null;
+  // Output
   outputUrl?: string;
   outputUrls?: string[]; // Array for multiple outputs
   isGenerating?: boolean;

@@ -471,14 +471,51 @@ export const useCanvasStore = create<CanvasState>()(
           const data = gen.data as ImageGeneratorNodeData;
           const connectedInputs = getConnectedInputs(gen.id);
 
-          // Merge connected text with prompt
-          let finalPrompt = data.prompt || '';
-          if (connectedInputs.textContent) {
-            finalPrompt = connectedInputs.textContent + (data.prompt ? `\n${data.prompt}` : '');
+          // Build final prompt with preset modifiers
+          const promptParts: string[] = [];
+
+          // Add character modifier
+          if (data.selectedCharacter?.type === 'preset') {
+            promptParts.push(data.selectedCharacter.promptModifier);
           }
 
-          // Skip if no prompt
-          if (!finalPrompt) continue;
+          // Add style preset modifier
+          if (data.selectedStyle) {
+            promptParts.push(data.selectedStyle.promptModifier);
+          }
+
+          // Add camera angle modifier
+          if (data.selectedCameraAngle) {
+            promptParts.push(data.selectedCameraAngle.promptModifier);
+          }
+
+          // Add camera lens modifier
+          if (data.selectedCameraLens) {
+            promptParts.push(data.selectedCameraLens.promptModifier);
+          }
+
+          // Add connected text content
+          if (connectedInputs.textContent) {
+            promptParts.push(connectedInputs.textContent);
+          }
+
+          // Add user prompt
+          if (data.prompt) {
+            promptParts.push(data.prompt);
+          }
+
+          const finalPrompt = promptParts.join(', ');
+
+          // Check if we have any input (presets count as valid input)
+          const hasPresets = !!(
+            data.selectedCharacter ||
+            data.selectedStyle ||
+            data.selectedCameraAngle ||
+            data.selectedCameraLens
+          );
+
+          // Skip if no prompt and no presets
+          if (!finalPrompt && !hasPresets) continue;
 
           updateNodeData(gen.id, { isGenerating: true, error: undefined });
 
