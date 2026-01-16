@@ -26,12 +26,16 @@ import {
   ArrowRightFromLine,
   ArrowLeftFromLine,
   Images,
+  Settings,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 
 function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGeneratorNodeType>) {
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
   const deleteNode = useCanvasStore((state) => state.deleteNode);
   const getConnectedInputs = useCanvasStore((state) => state.getConnectedInputs);
+  const openVideoSettingsPanel = useCanvasStore((state) => state.openVideoSettingsPanel);
   const updateNodeInternals = useUpdateNodeInternals();
   const [isEditingName, setIsEditingName] = useState(false);
   const [nodeName, setNodeName] = useState(data.name || 'Video Generator');
@@ -68,9 +72,31 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
 
   const handleModelChange = useCallback(
     (value: string) => {
-      updateNodeData(id, { model: value as VideoModelType });
+      const newModel = value as VideoModelType;
+      const newCaps = VIDEO_MODEL_CAPABILITIES[newModel];
+
+      // Check if current duration is supported by new model
+      const currentDuration = data.duration;
+      const updates: Partial<typeof data> = { model: newModel };
+
+      // If current duration not supported, use model's default
+      if (!newCaps.durations.includes(currentDuration)) {
+        updates.duration = newCaps.defaultDuration;
+      }
+
+      // If current aspect ratio not supported, use first available
+      if (!newCaps.aspectRatios.includes(data.aspectRatio)) {
+        updates.aspectRatio = newCaps.aspectRatios[0];
+      }
+
+      // Set resolution if model supports it and not already set
+      if (newCaps.resolutions && !data.resolution) {
+        updates.resolution = '720p';
+      }
+
+      updateNodeData(id, updates);
     },
-    [id, updateNodeData]
+    [id, data.duration, data.aspectRatio, data.resolution, updateNodeData]
   );
 
   const handleAspectRatioChange = useCallback(
@@ -87,6 +113,24 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
     [id, updateNodeData]
   );
 
+  const handleResolutionChange = useCallback(
+    (value: string) => {
+      updateNodeData(id, { resolution: value as '540p' | '720p' | '1080p' });
+    },
+    [id, updateNodeData]
+  );
+
+  const handleAudioToggle = useCallback(() => {
+    updateNodeData(id, { generateAudio: !data.generateAudio });
+  }, [id, data.generateAudio, updateNodeData]);
+
+  const handleOpenSettings = useCallback((e: React.MouseEvent) => {
+    const rect = (e.currentTarget as HTMLElement).closest('.react-flow__node')?.getBoundingClientRect();
+    if (rect) {
+      openVideoSettingsPanel(id, { x: rect.right + 10, y: rect.top });
+    }
+  }, [id, openVideoSettingsPanel]);
+
   const handleGenerate = useCallback(async () => {
     const connectedInputs = getConnectedInputs(id);
     const modelCaps = VIDEO_MODEL_CAPABILITIES[data.model];
@@ -98,7 +142,12 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
 
     // Validate based on input mode
     if (modelCaps.inputMode === 'first-last-frame') {
-      if (!connectedInputs.firstFrameUrl || !connectedInputs.lastFrameUrl) {
+      // First frame always required, last frame depends on lastFrameOptional
+      if (!connectedInputs.firstFrameUrl) {
+        toast.error('Connect a start frame image');
+        return;
+      }
+      if (!modelCaps.lastFrameOptional && !connectedInputs.lastFrameUrl) {
         toast.error('Connect both first and last frame images');
         return;
       }
@@ -202,7 +251,9 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
       case 'single-image':
         return hasPrompt || !!connectedInputs.referenceUrl;
       case 'first-last-frame':
-        return !!connectedInputs.firstFrameUrl && !!connectedInputs.lastFrameUrl;
+        // First frame required, last frame depends on lastFrameOptional
+        if (!connectedInputs.firstFrameUrl) return false;
+        return modelCapabilities.lastFrameOptional || !!connectedInputs.lastFrameUrl;
       case 'multi-reference':
         return hasPrompt && (!!connectedInputs.referenceUrls?.length || !!connectedInputs.referenceUrl);
       default:
@@ -279,9 +330,11 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
         className={`
           w-[420px] rounded-2xl overflow-hidden
           transition-all duration-150
-          ${selected
-            ? 'ring-[2.5px] ring-purple-500 shadow-lg shadow-purple-500/10'
-            : 'ring-1 ring-zinc-800 hover:ring-zinc-700'
+          ${data.isGenerating
+            ? 'ring-[2.5px] ring-purple-500 shadow-lg shadow-purple-500/20 animate-pulse-glow'
+            : selected
+              ? 'ring-[2.5px] ring-purple-500 shadow-lg shadow-purple-500/10'
+              : 'ring-1 ring-zinc-800 hover:ring-zinc-700'
           }
         `}
         style={{ backgroundColor: '#1a1a1c' }}
@@ -385,6 +438,51 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
               ))}
             </SelectContent>
           </Select>
+
+          {/* Resolution - for models that support it */}
+          {modelCapabilities.resolutions && (
+            <Select value={data.resolution || '720p'} onValueChange={handleResolutionChange}>
+              <SelectTrigger className="h-7 w-auto bg-zinc-800/80 border-0 text-xs text-zinc-300 gap-1 px-2 rounded-md hover:bg-zinc-700/80">
+                <SelectValue>{data.resolution || '720p'}</SelectValue>
+              </SelectTrigger>
+              <SelectContent className="bg-zinc-800 border-zinc-700">
+                {modelCapabilities.resolutions.map((res) => (
+                  <SelectItem key={res} value={res} className="text-xs">{res}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+
+          {/* Audio Toggle - for models that support audio */}
+          {modelCapabilities.supportsAudio && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={handleAudioToggle}
+              className={`h-7 w-7 shrink-0 ${
+                data.generateAudio !== false
+                  ? 'text-purple-400 bg-purple-500/20 hover:bg-purple-500/30'
+                  : 'text-zinc-500 hover:text-white hover:bg-zinc-700/50'
+              }`}
+              title={data.generateAudio !== false ? 'Audio ON' : 'Audio OFF'}
+            >
+              {data.generateAudio !== false ? (
+                <Volume2 className="h-3.5 w-3.5" />
+              ) : (
+                <VolumeX className="h-3.5 w-3.5" />
+              )}
+            </Button>
+          )}
+
+          {/* Settings */}
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={handleOpenSettings}
+            className="h-7 w-7 text-zinc-500 hover:text-white hover:bg-zinc-700/50 shrink-0 cursor-pointer"
+          >
+            <Settings className="h-3.5 w-3.5" />
+          </Button>
 
           {/* Spacer */}
           <div className="flex-1 min-w-0" />

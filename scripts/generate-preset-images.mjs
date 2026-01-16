@@ -44,16 +44,18 @@ async function downloadImage(url, filepath) {
   });
 }
 
-// Generate image using Fal API
-async function generateImage(prompt, size = 'square') {
+// Generate image using NanoBanana Pro
+async function generateImage(prompt) {
   console.log(`  Generating: "${prompt.substring(0, 60)}..."`);
 
   try {
-    const result = await fal.subscribe('fal-ai/flux/schnell', {
+    const result = await fal.subscribe('fal-ai/nano-banana-pro', {
       input: {
         prompt,
-        image_size: size,
+        aspect_ratio: '1:1',
+        resolution: '1K',
         num_images: 1,
+        output_format: 'png',
       },
       logs: false,
     });
@@ -70,161 +72,198 @@ async function generateImage(prompt, size = 'square') {
   }
 }
 
-// All preset definitions with prompts
+// All preset definitions with prompts optimized for NanoBanana Pro
 const presets = {
   characters: [
     {
       id: 'marcus',
-      prompt: 'Professional portrait photograph of Marcus, a confident businessman in his 40s wearing a tailored navy suit and subtle tie, warm studio lighting, neutral gray background, professional headshot, sharp focus on face, friendly confident expression',
+      prompt: 'Professional portrait photograph of Marcus, a confident businessman in his 40s wearing a tailored navy suit and subtle tie, warm studio lighting, neutral gray background, professional headshot, sharp focus on face, friendly confident expression, high quality, detailed',
     },
     {
       id: 'sofia',
-      prompt: 'Portrait photograph of Sofia, a young woman in her mid-20s with casual style, wearing a cozy cream sweater, relaxed genuine smile, soft natural window lighting, neutral background, warm tones, friendly approachable expression',
+      prompt: 'Portrait photograph of Sofia, a young woman in her mid-20s with casual style, wearing a cozy cream sweater, relaxed genuine smile, soft natural window lighting, neutral background, warm tones, friendly approachable expression, high quality, detailed',
     },
     {
       id: 'victoria',
-      prompt: 'Elegant portrait of Victoria, a sophisticated woman in her 30s wearing a formal black evening dress with pearl earrings, refined graceful pose, professional studio lighting, dark background, elegant and confident',
+      prompt: 'Elegant portrait of Victoria, a sophisticated woman in her 30s wearing a formal black evening dress with pearl earrings, refined graceful pose, professional studio lighting, dark background, elegant and confident, high quality, detailed',
     },
     {
       id: 'kai',
-      prompt: 'Portrait of Kai, a creative male artist in his 30s, wearing modern streetwear with a graphic jacket, expressive confident pose, colorful urban background with graffiti hints, artistic dynamic lighting',
+      prompt: 'Portrait of Kai, a creative male artist in his 30s, wearing modern streetwear with a graphic jacket, expressive confident pose, colorful urban background with graffiti hints, artistic dynamic lighting, high quality, detailed',
     },
     {
       id: 'luna',
-      prompt: 'Portrait of Luna, a cheerful 8-year-old girl with bright genuine smile, playful expression, wearing a colorful outfit, warm soft lighting, light pastel background, innocent joyful energy',
+      prompt: 'Portrait of Luna, a cheerful 8-year-old girl with bright genuine smile, playful expression, wearing a colorful outfit, warm soft lighting, light pastel background, innocent joyful energy, high quality, detailed',
     },
     {
       id: 'eleanor',
-      prompt: 'Portrait of Eleanor, a wise elderly woman in her 70s with beautiful silver gray hair, warm gentle smile, wearing elegant comfortable clothing, soft diffused lighting, distinguished and kind appearance',
+      prompt: 'Portrait of Eleanor, a wise elderly woman in her 70s with beautiful silver gray hair, warm gentle smile, wearing elegant comfortable clothing, soft diffused lighting, distinguished and kind appearance, high quality, detailed',
     },
     {
       id: 'jordan',
-      prompt: 'Portrait of Jordan, an athletic person in modern sportswear, confident powerful stance, fit physique, dynamic dramatic lighting, gym or outdoor sports background hints, energetic and determined expression',
+      prompt: 'Portrait of Jordan, an athletic person in modern sportswear, confident powerful stance, fit physique, dynamic dramatic lighting, gym or outdoor sports background hints, energetic and determined expression, high quality, detailed',
     },
     {
       id: 'dr-chen',
-      prompt: 'Portrait of Dr. Chen, a scientist wearing a clean white lab coat over professional attire, wearing glasses, intelligent thoughtful expression, soft laboratory lighting, intellectual and approachable appearance',
+      prompt: 'Portrait of Dr. Chen, a scientist wearing a clean white lab coat over professional attire, wearing glasses, intelligent thoughtful expression, soft laboratory lighting, intellectual and approachable appearance, high quality, detailed',
     },
   ],
 
   styles: [
     {
       id: 'cinematic',
-      prompt: 'A cozy coffee shop corner with a steaming cup of coffee, scattered books, and warm morning light streaming through a large window, cinematic lighting, movie still, dramatic shadows, 35mm film grain, shallow depth of field',
+      prompt: 'A cozy coffee shop corner with a steaming cup of coffee, scattered books, and warm morning light streaming through a large window, cinematic lighting, movie still, dramatic shadows, 35mm film grain, shallow depth of field, high quality',
     },
     {
       id: 'anime',
-      prompt: 'A cozy coffee shop corner with a steaming cup of coffee, scattered books, and warm morning light through window, anime style, vibrant saturated colors, clean bold lines, Studio Ghibli inspired, Japanese animation aesthetic',
+      prompt: 'A cozy coffee shop corner with a steaming cup of coffee, scattered books, and warm morning light through window, anime style, vibrant saturated colors, clean bold lines, Studio Ghibli inspired, Japanese animation aesthetic, high quality',
     },
     {
       id: 'watercolor',
-      prompt: 'A cozy coffee shop corner with a steaming cup of coffee, scattered books, and morning light, watercolor painting style, soft flowing edges, artistic washes of color, wet on wet technique, delicate brushwork',
+      prompt: 'A cozy coffee shop corner with a steaming cup of coffee, scattered books, and morning light, watercolor painting style, soft flowing edges, artistic washes of color, wet on wet technique, delicate brushwork, high quality',
     },
     {
       id: 'oil-painting',
-      prompt: 'A cozy coffee shop corner with a steaming cup of coffee, scattered books, and warm light, oil painting style, visible textured brushstrokes, classical art technique, renaissance inspired, rich deep colors',
+      prompt: 'A cozy coffee shop corner with a steaming cup of coffee, scattered books, and warm light, oil painting style, visible textured brushstrokes, classical art technique, renaissance inspired, rich deep colors, high quality',
     },
     {
       id: 'pencil-sketch',
-      prompt: 'A cozy coffee shop corner with a steaming cup of coffee, scattered books, and light through window, detailed pencil sketch, graphite drawing, hand-drawn artistic style, cross-hatching shading technique',
+      prompt: 'A cozy coffee shop corner with a steaming cup of coffee, scattered books, and light through window, detailed pencil sketch, graphite drawing, hand-drawn artistic style, cross-hatching shading technique, high quality',
     },
     {
       id: 'cyberpunk',
-      prompt: 'A futuristic coffee shop corner with a steaming cup, holographic books, and neon light through window, cyberpunk aesthetic, vibrant neon pink and cyan lights, high-tech futuristic, rain-slicked surfaces',
+      prompt: 'A futuristic coffee shop corner with a steaming cup, holographic books, and neon light through window, cyberpunk aesthetic, vibrant neon pink and cyan lights, high-tech futuristic, rain-slicked surfaces, high quality',
     },
     {
       id: 'vintage',
-      prompt: 'A cozy coffee shop corner with a steaming cup of coffee, scattered books, and morning light, vintage 1970s photograph style, faded warm colors, film grain texture, nostalgic retro aesthetic',
+      prompt: 'A cozy coffee shop corner with a steaming cup of coffee, scattered books, and morning light, vintage 1970s photograph style, faded warm colors, film grain texture, nostalgic retro aesthetic, high quality',
     },
     {
       id: 'minimalist',
-      prompt: 'A coffee cup and single book on a clean white surface with soft light, minimalist design, extremely clean simple composition, lots of negative space, modern elegant aesthetic, muted neutral colors',
+      prompt: 'A coffee cup and single book on a clean white surface with soft light, minimalist design, extremely clean simple composition, lots of negative space, modern elegant aesthetic, muted neutral colors, high quality',
     },
     {
       id: 'fantasy',
-      prompt: 'A magical coffee shop corner with an enchanted glowing cup, floating books, and ethereal light through stained glass window, fantasy art style, magical sparkles, dreamlike atmosphere, mystical lighting',
+      prompt: 'A magical coffee shop corner with an enchanted glowing cup, floating books, and ethereal light through stained glass window, fantasy art style, magical sparkles, dreamlike atmosphere, mystical lighting, high quality',
     },
     {
       id: 'photorealistic',
-      prompt: 'A cozy coffee shop corner with a steaming cup of coffee, scattered books, and morning light through window, photorealistic, ultra-detailed 8K photography, professional DSLR shot, perfect focus',
+      prompt: 'A cozy coffee shop corner with a steaming cup of coffee, scattered books, and morning light through window, photorealistic, ultra-detailed 8K photography, professional DSLR shot, perfect focus, high quality',
     },
     {
       id: 'comic-book',
-      prompt: 'A coffee shop corner with a steaming cup and books, comic book style, bold black outlines, halftone dot pattern, pop art vibrant colors, dynamic composition, graphic novel aesthetic',
+      prompt: 'A coffee shop corner with a steaming cup and books, comic book style, bold black outlines, halftone dot pattern, pop art vibrant colors, dynamic composition, graphic novel aesthetic, high quality',
     },
     {
       id: 'impressionist',
-      prompt: 'A cozy coffee shop corner with a steaming cup of coffee and books, impressionist painting style like Monet, visible expressive brushstrokes, play of light and color, soft dreamy atmosphere',
+      prompt: 'A cozy coffee shop corner with a steaming cup of coffee and books, impressionist painting style like Monet, visible expressive brushstrokes, play of light and color, soft dreamy atmosphere, high quality',
     },
   ],
 
   'camera-angles': [
     {
       id: 'front',
-      prompt: 'A red sports car on an empty desert road, front view, straight on symmetrical composition, car facing directly at camera, dramatic sky background, professional automotive photography',
+      prompt: 'A red sports car on an empty desert road, front view, straight on symmetrical composition, car facing directly at camera, dramatic sky background, professional automotive photography, high quality, detailed',
     },
     {
       id: 'three-quarter',
-      prompt: 'A red sports car on an empty desert road, three-quarter view at 45 degree angle, showing front and side, dynamic composition, dramatic sky, professional automotive photography',
+      prompt: 'A red sports car on an empty desert road, three-quarter view at 45 degree angle, showing front and side, dynamic composition, dramatic sky, professional automotive photography, high quality, detailed',
     },
     {
       id: 'side-profile',
-      prompt: 'A red sports car on an empty desert road, perfect side profile view, 90 degree angle showing full length of car, dramatic sky background, professional automotive photography',
+      prompt: 'A red sports car on an empty desert road, perfect side profile view, 90 degree angle showing full length of car, dramatic sky background, professional automotive photography, high quality, detailed',
     },
     {
       id: 'overhead',
-      prompt: 'A red sports car on an empty desert road, overhead shot looking down at 60 degrees, showing roof and hood, dramatic shadows, aerial perspective, professional automotive photography',
+      prompt: 'A red sports car on an empty desert road, overhead shot looking down at 60 degrees, showing roof and hood, dramatic shadows, aerial perspective, professional automotive photography, high quality, detailed',
     },
     {
       id: 'low-angle',
-      prompt: 'A red sports car on an empty desert road, dramatic low angle shot looking up at the car, making it appear powerful and imposing, heroic perspective, dramatic sky, professional automotive photography',
+      prompt: 'A red sports car on an empty desert road, dramatic low angle shot looking up at the car, making it appear powerful and imposing, heroic perspective, dramatic sky, professional automotive photography, high quality, detailed',
     },
     {
       id: 'dutch-angle',
-      prompt: 'A red sports car on an empty desert road, dutch angle with frame tilted 20 degrees, dynamic tension, dramatic composition, sense of motion, professional automotive photography',
+      prompt: 'A red sports car on an empty desert road, dutch angle with frame tilted 20 degrees, dynamic tension, dramatic composition, sense of motion, professional automotive photography, high quality, detailed',
     },
     {
       id: 'birds-eye',
-      prompt: 'A red sports car on an empty desert road, extreme birds eye view directly from above, car seen from top, geometric composition, dramatic shadow, aerial drone shot style',
+      prompt: 'A red sports car on an empty desert road, extreme birds eye view directly from above, car seen from top, geometric composition, dramatic shadow, aerial drone shot style, high quality, detailed',
     },
     {
       id: 'worms-eye',
-      prompt: 'A red sports car on an empty desert road, extreme worms eye view from ground level looking up, car looming large overhead, dramatic perspective distortion, powerful imposing shot',
+      prompt: 'A red sports car on an empty desert road, extreme worms eye view from ground level looking up, car looming large overhead, dramatic perspective distortion, powerful imposing shot, high quality, detailed',
     },
   ],
 
+  // Physical camera lens products
   'camera-lens': [
     {
       id: 'wide-angle',
-      prompt: 'Portrait of a person standing in a city street with tall buildings, shot with wide angle 24mm lens, expansive view showing full environment, visible barrel distortion at edges, dramatic perspective',
+      prompt: 'Professional product photography of a Canon EF 16-35mm f/2.8L wide angle zoom lens, isolated on clean white background, studio lighting, sharp detail, commercial product shot, high quality',
     },
     {
       id: 'standard',
-      prompt: 'Portrait of a person standing in a city street with buildings, shot with standard 50mm lens, natural perspective matching human eye, no distortion, balanced composition, classic street photography',
+      prompt: 'Professional product photography of a Canon EF 50mm f/1.8 STM prime lens, isolated on clean white background, studio lighting, sharp detail, commercial product shot, high quality',
     },
     {
       id: 'telephoto',
-      prompt: 'Portrait of a person standing in a city street, shot with telephoto 200mm lens, heavily compressed background, buildings appear stacked, very shallow depth of field, subject isolated from background',
+      prompt: 'Professional product photography of a Canon EF 70-200mm f/2.8L IS telephoto zoom lens, isolated on clean white background, studio lighting, sharp detail, commercial product shot, high quality',
     },
     {
       id: 'macro',
-      prompt: 'Extreme close-up macro shot of a persons eye and partial face, macro lens photography, incredible fine detail visible, very shallow depth of field, artistic portrait detail shot',
+      prompt: 'Professional product photography of a Canon EF 100mm f/2.8L Macro IS USM lens, isolated on clean white background, studio lighting, sharp detail, commercial product shot, high quality',
     },
     {
       id: 'fisheye',
-      prompt: 'Portrait of a person in a city street, shot with fisheye lens, extreme 180 degree barrel distortion, curved horizon line, circular vignette effect, dramatic ultra-wide perspective',
+      prompt: 'Professional product photography of a Sigma 8mm f/3.5 EX DG Circular Fisheye lens, isolated on clean white background, studio lighting, sharp detail, commercial product shot, high quality',
     },
     {
       id: 'tilt-shift',
-      prompt: 'Person standing in a city street with buildings, shot with tilt-shift lens, miniature model effect, selective focus band across middle, blurred top and bottom, toy-like appearance',
+      prompt: 'Professional product photography of a Canon TS-E 24mm f/3.5L II tilt-shift lens, isolated on clean white background, studio lighting, sharp detail, commercial product shot, high quality',
     },
     {
       id: 'portrait',
-      prompt: 'Beautiful portrait of a person with city background, shot with 85mm portrait lens, creamy smooth bokeh in background, subject perfectly sharp and isolated, flattering compression, professional portrait',
+      prompt: 'Professional product photography of a Canon EF 85mm f/1.4L IS USM portrait lens, front view showing glass element, isolated on clean white background, studio lighting, sharp detail, commercial product shot, high quality',
     },
     {
       id: 'anamorphic',
-      prompt: 'Cinematic portrait of a person in city street, shot with anamorphic lens, horizontal blue lens flares, oval shaped bokeh lights, 2.39:1 widescreen aspect feel, movie-like quality',
+      prompt: 'Professional product photography of a Sirui 50mm f/1.8 1.33x Anamorphic cinema lens, isolated on clean white background, studio lighting, sharp detail, commercial product shot, high quality',
+    },
+  ],
+
+  // Camera bodies - mixed types
+  cameras: [
+    {
+      id: 'dslr',
+      prompt: 'Professional product photography of a Canon EOS 5D Mark IV DSLR camera body, isolated on clean white background, studio lighting, sharp detail, commercial product shot, high quality',
+    },
+    {
+      id: 'mirrorless',
+      prompt: 'Professional product photography of a Sony Alpha A7 IV mirrorless camera body, isolated on clean white background, studio lighting, sharp detail, commercial product shot, high quality',
+    },
+    {
+      id: 'film-slr',
+      prompt: 'Professional product photography of a Canon AE-1 Program 35mm film SLR camera, vintage classic, isolated on clean white background, studio lighting, sharp detail, commercial product shot, high quality',
+    },
+    {
+      id: 'rangefinder',
+      prompt: 'Professional product photography of a Leica M6 rangefinder film camera, classic silver chrome body, isolated on clean white background, studio lighting, sharp detail, commercial product shot, high quality',
+    },
+    {
+      id: 'medium-format',
+      prompt: 'Professional product photography of a Hasselblad 500C medium format film camera, classic silver body, isolated on clean white background, studio lighting, sharp detail, commercial product shot, high quality',
+    },
+    {
+      id: 'cinema',
+      prompt: 'Professional product photography of a RED Komodo 6K digital cinema camera, isolated on clean white background, studio lighting, sharp detail, commercial product shot, high quality',
+    },
+    {
+      id: 'instant',
+      prompt: 'Professional product photography of a Polaroid SX-70 instant camera, classic folding design, isolated on clean white background, studio lighting, sharp detail, commercial product shot, high quality',
+    },
+    {
+      id: 'compact',
+      prompt: 'Professional product photography of a Fujifilm X100V compact digital camera, silver body, isolated on clean white background, studio lighting, sharp detail, commercial product shot, high quality',
     },
   ],
 };
@@ -234,10 +273,11 @@ async function main() {
   const basePath = path.join(__dirname, '..', 'public', 'assets', 'presets');
 
   console.log('Starting preset image generation...\n');
-  console.log('Using Fal API with flux-schnell model\n');
+  console.log('Using Fal API with NanoBanana Pro model\n');
 
   let totalGenerated = 0;
   let totalFailed = 0;
+  let totalSkipped = 0;
 
   for (const [category, items] of Object.entries(presets)) {
     console.log(`\n📁 Category: ${category.toUpperCase()}`);
@@ -256,6 +296,7 @@ async function main() {
       // Skip if already exists
       if (fs.existsSync(jpgPath)) {
         console.log(`  ⏭️  ${item.id}.jpg already exists, skipping`);
+        totalSkipped++;
         continue;
       }
 
@@ -274,11 +315,14 @@ async function main() {
     }
   }
 
+  const totalImages = Object.values(presets).flat().length;
+
   console.log('\n' + '═'.repeat(50));
   console.log(`✨ Generation complete!`);
   console.log(`   Generated: ${totalGenerated} images`);
   console.log(`   Failed: ${totalFailed} images`);
-  console.log(`   Skipped: ${36 - totalGenerated - totalFailed} images (already existed)`);
+  console.log(`   Skipped: ${totalSkipped} images (already existed)`);
+  console.log(`   Total: ${totalImages} images in ${Object.keys(presets).length} categories`);
 }
 
 // Run

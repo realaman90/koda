@@ -135,6 +135,15 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
       return;
     }
 
+    // Collect all reference URLs (main reference + additional refs)
+    const allReferenceUrls: string[] = [];
+    if (connectedInputs.referenceUrl) {
+      allReferenceUrls.push(connectedInputs.referenceUrl);
+    }
+    if (connectedInputs.referenceUrls) {
+      allReferenceUrls.push(...connectedInputs.referenceUrls);
+    }
+
     const imageCount = data.imageCount || 1;
     updateNodeData(id, { isGenerating: true, error: undefined });
 
@@ -149,7 +158,10 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
           imageSize: data.imageSize || 'square_hd',
           resolution: data.resolution || '1K',
           imageCount,
+          // Pass single referenceUrl for backwards compatibility
           referenceUrl: connectedInputs.referenceUrl,
+          // Pass all references as array for multi-reference models (NanoBanana supports up to 14)
+          referenceUrls: allReferenceUrls.length > 0 ? allReferenceUrls : undefined,
           // Model-specific params
           style: data.style,
           magicPrompt: data.magicPrompt,
@@ -309,9 +321,11 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
         className={`
           w-[420px] rounded-2xl overflow-hidden
           transition-all duration-150
-          ${selected
-            ? 'ring-[2.5px] ring-blue-500 shadow-lg shadow-blue-500/10'
-            : 'ring-1 ring-zinc-800 hover:ring-zinc-700'
+          ${data.isGenerating
+            ? 'ring-[2.5px] ring-teal-500 shadow-lg shadow-teal-500/20 animate-pulse-glow-teal'
+            : selected
+              ? 'ring-[2.5px] ring-blue-500 shadow-lg shadow-blue-500/10'
+              : 'ring-1 ring-zinc-800 hover:ring-zinc-700'
           }
         `}
         style={{

@@ -1,162 +1,294 @@
-# Spaces Clone - Claude Code Context
+# Spaces Clone - Complete Project Reference
 
-## Project Overview
-A **Freepik Spaces clone** - node-based visual workflow editor for AI-powered image generation.
-Users drag nodes onto a canvas, connect them, and generate AI images.
+## What This Is
+
+A **Freepik Spaces clone** - a node-based visual workflow editor for AI-powered image and video generation. Users drag nodes onto a canvas, connect them with edges, and generate AI content. Think of it as a visual programming environment for AI content creation.
 
 ## Tech Stack
-- **Framework**: Next.js 15.3.8 (App Router)
-- **Canvas**: @xyflow/react (React Flow v12)
-- **State**: Zustand with persist middleware (localStorage)
-- **UI**: Tailwind CSS v4 + shadcn/ui
-- **AI**: Fal.ai API (Flux models)
-- **Validation**: Zod
-- **Hosting**: Vercel
 
-## Architecture: Local-First
+| Category | Technology | Version |
+|----------|------------|---------|
+| Framework | Next.js (App Router) | 16.1.1 |
+| Canvas | @xyflow/react (React Flow) | 12.10.0 |
+| State | Zustand + persist | 5.0.9 |
+| UI | Tailwind CSS + shadcn/ui | 4.0 |
+| AI Generation | Fal.ai | via @fal-ai/client |
+| AI Agents | Mastra + Anthropic | 0.24.9 |
+| Validation | Zod | 4.3.5 |
+| Notifications | Sonner | 2.0.7 |
+
+## Architecture Pattern
+
+**Local-First**: No database for MVP. All state lives in Zustand and persists to localStorage.
+
 ```
-User Action → Zustand (instant UI) → localStorage (persist)
+User Action → Zustand (instant UI) → localStorage
                     ↓
-              Fal API (background)
+              Fal API (background polling)
                     ↓
-              Poll for result → Update state → UI reflects
+              Update state → UI reflects
 ```
 
-No database for MVP. All state is local. Fast like Linear.
+---
 
-## Project Structure
+## Node Types
+
+### 1. ImageGeneratorNode
+- **Purpose**: Generate AI images from prompts
+- **Inputs**: Text prompt, up to 8 reference images (via edges)
+- **Outputs**: 1-4 generated images
+- **Models**: flux-schnell, flux-pro, nanobanana-pro, recraft-v3, ideogram-v3, sd-3.5
+- **Presets**: Character, Style, Camera Angle, Camera Lens
+- **Settings**: Aspect ratio, resolution, CFG scale, steps, strength, magic prompt
+
+### 2. VideoGeneratorNode
+- **Purpose**: Generate AI videos
+- **Inputs**: Text prompt, reference images (model-dependent)
+- **Outputs**: Video file
+- **Models**: veo-3, veo-3.1-i2v, kling-2.6-t2v/i2v, luma-ray2, minimax-video, runway-gen3
+- **Settings**: Duration (4-10s), resolution (540p-1080p), audio toggle
+
+### 3. TextNode
+- **Purpose**: Text input that connects to generators
+- **Features**: Auto-expanding textarea, editable name
+- **Output**: Text handle for connections
+
+### 4. MediaNode
+- **Purpose**: Upload or paste images
+- **Features**: Drag-drop, URL paste, base64 support
+- **Output**: Image handle for connections
+
+---
+
+## Key Files & Locations
+
 ```
 src/
 ├── app/
-│   ├── page.tsx              # Main canvas page
-│   ├── layout.tsx            # Root layout
-│   ├── globals.css           # Tailwind + CSS vars
-│   └── api/
-│       └── generate/
-│           └── route.ts      # Fal proxy endpoint
+│   ├── page.tsx                    # Main canvas page (server component)
+│   ├── api/
+│   │   ├── generate/route.ts       # Image generation proxy
+│   │   ├── generate-video/route.ts # Video generation proxy
+│   │   └── agents/enhance-prompt/  # Prompt enhancement agent
 ├── components/
 │   ├── canvas/
-│   │   ├── Canvas.tsx        # React Flow wrapper
-│   │   ├── NodeToolbar.tsx   # Drag to add nodes
-│   │   └── nodes/
-│   │       ├── ImageGeneratorNode.tsx
-│   │       └── index.ts      # Node type registry
-│   └── ui/                   # shadcn components
+│   │   ├── Canvas.tsx              # React Flow wrapper
+│   │   ├── NodeToolbar.tsx         # Left sidebar tools
+│   │   ├── SettingsPanel.tsx       # Floating settings for nodes
+│   │   ├── PresetPopover.tsx       # Preset selector modal
+│   │   ├── ContextMenu.tsx         # Right-click menu
+│   │   ├── KeyboardShortcuts.tsx   # Shortcuts modal
+│   │   ├── nodes/
+│   │   │   ├── ImageGeneratorNode.tsx
+│   │   │   ├── VideoGeneratorNode.tsx
+│   │   │   ├── TextNode.tsx
+│   │   │   ├── MediaNode.tsx
+│   │   │   └── index.ts            # Node registry
+│   │   └── edges/
+│   │       └── DeletableEdge.tsx   # Custom edge with delete
+│   ├── layout/
+│   │   └── Header.tsx              # Top bar with export
+│   └── ui/                         # shadcn components
 ├── stores/
-│   └── canvas-store.ts       # Zustand store
-└── lib/
-    ├── utils.ts              # shadcn utils
-    ├── fal.ts                # Fal client config
-    └── types.ts              # TypeScript types
+│   └── canvas-store.ts             # Zustand store (main state)
+├── lib/
+│   ├── types.ts                    # TypeScript types
+│   ├── fal.ts                      # Fal client config
+│   ├── model-adapters.ts           # Model → API adapters
+│   └── utils.ts                    # Utilities
+├── mastra/
+│   ├── index.ts                    # Mastra init
+│   └── agents/
+│       ├── prompt-enhancer.ts      # Enhances prompts
+│       └── creative-assistant.ts   # Brainstorming (not in UI yet)
+└── public/assets/                  # Preset SVG images
 ```
 
-## Key Files
+---
 
-### Canvas Store (`src/stores/canvas-store.ts`)
-Zustand store managing:
-- `nodes`: React Flow nodes array
-- `edges`: React Flow edges array
-- `addNode()`: Add node at position
-- `updateNodeData()`: Update node settings
-- `onNodesChange()`: Handle node drag/resize
-- `onEdgesChange()`: Handle edge changes
-- `onConnect()`: Create new edge
+## Canvas Store (`canvas-store.ts`)
 
-Persisted to localStorage with `persist` middleware.
+### State Shape
+```typescript
+{
+  nodes: AppNode[]           // All canvas nodes
+  edges: AppEdge[]           // All connections
+  spaceName: string          // Workflow name
+  selectedNodeIds: string[]  // Selected nodes
+  history: HistorySnapshot[] // Undo stack (max 50)
+  historyIndex: number       // Current position
+  clipboard: ClipboardData   // Copy buffer
+  activeTool: 'select' | 'pan' | 'scissors'
+  // + UI state (panels, menus)
+}
+```
 
-### Image Generator Node
-**Inputs**: Prompt (text), Reference image (optional via connection)
-**Outputs**: Generated image URL
-**Settings**:
-- Model: flux-schnell, flux-pro, nanobanana-pro
-- Aspect ratio: 1:1, 16:9, 9:16, 4:3
+### Key Actions
+- `addNode(type, position)` - Create node
+- `updateNodeData(id, data)` - Update node (triggers history)
+- `onNodesChange/onEdgesChange/onConnect` - React Flow handlers
+- `copySelected/cutSelected/paste/duplicateSelected` - Clipboard
+- `undo/redo` - History navigation
+- `runAll()` - Batch generate all image nodes
 
-### Fal API Route (`src/app/api/generate/route.ts`)
-Proxies requests to Fal.ai. Required because Fal API key shouldn't be exposed client-side.
-Uses polling pattern (not webhooks).
+### Persistence
+Only `nodes`, `edges`, `spaceName` persist to localStorage key `spaces-canvas-storage`.
 
-## Image Models Available
-| Model | ID | Speed | Use |
-|-------|-----|-------|-----|
-| Flux Schnell | fal-ai/flux/schnell | ~2s | Dev/testing |
-| Flux Pro | fal-ai/flux-pro | ~10s | Production |
-| NanoBanana Pro | TBD | TBD | Alternative |
+---
+
+## API Routes
+
+### POST `/api/generate`
+Image generation via Fal.ai
+```typescript
+// Input
+{ prompt, model, aspectRatio, imageCount, referenceUrl?, styleParams... }
+// Output
+{ success, imageUrl, imageUrls[], model }
+```
+
+### POST `/api/generate-video`
+Video generation via Fal.ai
+```typescript
+// Input
+{ prompt, model, duration, resolution, referenceUrl?, firstFrameUrl?, lastFrameUrl? }
+// Output
+{ success, videoUrl, model }
+```
+
+### POST `/api/agents/enhance-prompt`
+Prompt enhancement via Mastra agent
+```typescript
+// Input
+{ prompt }
+// Output
+{ success, originalPrompt, enhancedPrompt }
+```
+
+---
+
+## Model Adapters
+
+Each model has an adapter in `lib/model-adapters.ts` that:
+1. Converts generic request → model-specific Fal payload
+2. Extracts outputs from model-specific responses
+
+**Image Models**: FluxSchnell, FluxPro, NanoBanana, RecraftV3, IdeogramV3, SD35
+
+**Video Models**: Veo3, Veo31, Kling26, LumaRay2, Minimax, RunwayGen3
+
+---
+
+## UI Patterns
+
+- **Dark theme**: zinc-950 background, zinc-100 text
+- **Accents**: Indigo/purple for interactive elements
+- **Node width**: 280px standard
+- **Handles**: 10px circles, color-coded by type
+- **Selection**: Ring-based indicators (ring-2 ring-indigo-500)
+- **Floating panels**: Positioned relative to nodes
+
+---
+
+## Keyboard Shortcuts
+
+| Action | Shortcut |
+|--------|----------|
+| Undo | Ctrl+Z |
+| Redo | Ctrl+Shift+Z |
+| Copy | Ctrl+C |
+| Paste | Ctrl+V |
+| Cut | Ctrl+X |
+| Duplicate | Ctrl+D |
+| Delete | Delete/Backspace |
+| Select All | Ctrl+A |
+| Pan Mode | Space (hold) |
+| Fit View | F |
+
+---
+
+## Preset System
+
+Located in `public/assets/`:
+- **Characters**: Face/identity presets
+- **Styles**: Art style presets (anime, photorealistic, etc.)
+- **Camera Angles**: Shot composition presets
+- **Camera Lenses**: Lens/focal length presets
+
+Each preset has an SVG thumbnail and contributes to the final prompt.
+
+---
+
+## Development Commands
+
+```bash
+npm run dev      # Start dev server (port 3000)
+npm run build    # Production build
+npm run lint     # ESLint check
+```
+
+---
 
 ## Environment Variables
+
 ```env
-FAL_KEY=your_fal_api_key
+FAL_KEY=           # Required: Fal.ai API key
+ANTHROPIC_API_KEY= # Required: For Mastra agents
+OPENAI_API_KEY=    # Optional: Fallback LLM
 ```
 
-## Commands
-```bash
-npm run dev      # Start dev server
-npm run build    # Production build
-npm run lint     # ESLint
-```
+---
 
-## Development Guidelines
+## Adding New Features
 
-### Adding a New Node Type
+### New Node Type
 1. Create component in `src/components/canvas/nodes/`
-2. Register in `src/components/canvas/nodes/index.ts`
-3. Add to NodeToolbar
-4. Define TypeScript types in `src/lib/types.ts`
+2. Export from `src/components/canvas/nodes/index.ts`
+3. Add creator function in `canvas-store.ts`
+4. Add to NodeToolbar and ContextMenu
+5. Define types in `lib/types.ts`
 
-### State Updates
-Always use Zustand actions, never mutate state directly:
-```ts
-// Good
-useCanvasStore.getState().updateNodeData(nodeId, { prompt: 'new' })
+### New Image Model
+1. Create adapter class in `lib/model-adapters.ts`
+2. Add to model registry in adapter file
+3. Update ImageModelType in `lib/types.ts`
+4. Add to model selector in SettingsPanel
 
-// Bad
-node.data.prompt = 'new'
-```
+### New Preset Category
+1. Add SVGs to `public/assets/[category]/`
+2. Update PresetPopover component
+3. Add to ImageGeneratorNode data type
 
-### Styling Nodes
-- Use Tailwind classes
-- Dark theme by default (bg-zinc-900, text-zinc-100)
-- Node width: 280px standard
-- Handles: 10px circles on edges
+---
 
-## Current MVP Scope
-- [x] Canvas with pan/zoom
-- [x] Image Generator node
-- [ ] Text input node
-- [ ] Media upload node
-- [ ] Node connections working
-- [ ] Generate images via Fal
-- [ ] Output preview in node
+## Current Status
 
-## Claude Agents (Mastra)
+**Complete**:
+- Canvas with pan/zoom
+- 4 node types (Image, Video, Text, Media)
+- 6 image models, 10 video models
+- Preset system (Character, Style, Camera Angle, Lens)
+- Undo/redo (50 levels)
+- Copy/paste/duplicate
+- Export (JSON/PNG)
+- Keyboard shortcuts
+- Context menus
+- Floating settings panel
+- Batch generation (Run All)
 
-Two agents are set up for AI-assisted features:
+**Planned**:
+- Plugin system (architecture documented in `/docs/PLUGIN_ARCHITECTURE.md`)
+- Database persistence (Supabase)
+- User authentication
+- Template gallery
+- Collaboration features
+- Assistant node (uses creativeAssistantAgent)
 
-### Prompt Enhancer Agent
-- **Purpose**: Takes basic prompts and enhances them for better image generation
-- **Endpoint**: `POST /api/agents/enhance-prompt`
-- **Input**: `{ prompt: string }`
-- **Output**: Enhanced prompt with style, lighting, composition details
-
-### Creative Assistant Agent
-- **Purpose**: Helps brainstorm ideas, suggest prompts, plan image series
-- **Location**: `src/mastra/agents/creative-assistant.ts`
-- **Usage**: For Assistant node (future) or chat interface
-
-### Adding New Agents
-1. Create agent file in `src/mastra/agents/`
-2. Register in `src/mastra/index.ts`
-3. Create API route if needed in `src/app/api/agents/`
-
-## Future (Post-MVP)
-- Supabase DB for persistence
-- User auth
-- Video Generator node
-- Assistant (LLM) node using creativeAssistantAgent
-- Templates gallery
-- Share/export
+---
 
 ## Reference Docs
 - [React Flow](https://reactflow.dev/docs)
 - [Fal.ai](https://fal.ai/docs)
 - [Zustand](https://zustand.docs.pmnd.rs/)
 - [shadcn/ui](https://ui.shadcn.com)
+- [Mastra](https://mastra.ai/docs)

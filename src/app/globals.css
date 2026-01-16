@@ -197,3 +197,39 @@
   animation: shimmer 2s infinite;
 }
 
+/* Pulsing glow animation for generating nodes */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 15px 2px rgba(168, 85, 247, 0.4),
+                0 0 30px 5px rgba(168, 85, 247, 0.2),
+                inset 0 0 8px rgba(168, 85, 247, 0.1);
+  }
+  50% {
+    box-shadow: 0 0 25px 5px rgba(168, 85, 247, 0.6),
+                0 0 50px 10px rgba(168, 85, 247, 0.3),
+                inset 0 0 15px rgba(168, 85, 247, 0.2);
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Teal variant for image generation */
+@keyframes pulse-glow-teal {
+  0%, 100% {
+    box-shadow: 0 0 15px 2px rgba(20, 184, 166, 0.4),
+                0 0 30px 5px rgba(20, 184, 166, 0.2),
+                inset 0 0 8px rgba(20, 184, 166, 0.1);
+  }
+  50% {
+    box-shadow: 0 0 25px 5px rgba(20, 184, 166, 0.6),
+                0 0 50px 10px rgba(20, 184, 166, 0.3),
+                inset 0 0 15px rgba(20, 184, 166, 0.2);
+  }
+}
+
+.animate-pulse-glow-teal {
+  animation: pulse-glow-teal 2s ease-in-out infinite;
+}
+

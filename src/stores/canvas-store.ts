@@ -39,9 +39,13 @@ interface CanvasState {
   // Clipboard state (not persisted)
   clipboard: ClipboardData | null;
 
-  // Settings panel state
+  // Settings panel state (Image Generator)
   settingsPanelNodeId: string | null;
   settingsPanelPosition: { x: number; y: number } | null;
+
+  // Video settings panel state
+  videoSettingsPanelNodeId: string | null;
+  videoSettingsPanelPosition: { x: number; y: number } | null;
 
   // Context menu state
   contextMenu: {
@@ -87,9 +91,13 @@ interface CanvasState {
   runAll: () => Promise<void>;
   isRunningAll: boolean;
 
-  // Settings panel actions
+  // Settings panel actions (Image Generator)
   openSettingsPanel: (nodeId: string, position: { x: number; y: number }) => void;
   closeSettingsPanel: () => void;
+
+  // Video settings panel actions
+  openVideoSettingsPanel: (nodeId: string, position: { x: number; y: number }) => void;
+  closeVideoSettingsPanel: () => void;
 
   // Context menu actions
   showContextMenu: (x: number, y: number, type: 'node' | 'canvas') => void;
@@ -168,7 +176,9 @@ export const createVideoGeneratorNode = (position: { x: number; y: number }, nam
     prompt: '',
     model: 'veo-3',
     aspectRatio: '16:9',
-    duration: 5,
+    duration: 8, // Veo-3 supports 4, 6, 8 - use 8 as default
+    resolution: '720p',
+    generateAudio: true,
     isGenerating: false,
     name,
   } as VideoGeneratorNodeData,
@@ -188,6 +198,8 @@ export const useCanvasStore = create<CanvasState>()(
       clipboard: null,
       settingsPanelNodeId: null,
       settingsPanelPosition: null,
+      videoSettingsPanelNodeId: null,
+      videoSettingsPanelPosition: null,
       contextMenu: null,
       isRunningAll: false,
       showShortcuts: false,
@@ -517,6 +529,15 @@ export const useCanvasStore = create<CanvasState>()(
           // Skip if no prompt and no presets
           if (!finalPrompt && !hasPresets) continue;
 
+          // Collect all reference URLs (main reference + additional refs)
+          const allReferenceUrls: string[] = [];
+          if (connectedInputs.referenceUrl) {
+            allReferenceUrls.push(connectedInputs.referenceUrl);
+          }
+          if (connectedInputs.referenceUrls) {
+            allReferenceUrls.push(...connectedInputs.referenceUrls);
+          }
+
           updateNodeData(gen.id, { isGenerating: true, error: undefined });
 
           try {
@@ -530,7 +551,10 @@ export const useCanvasStore = create<CanvasState>()(
                 imageSize: data.imageSize || 'square_hd',
                 resolution: data.resolution || '1K',
                 imageCount: data.imageCount || 1,
+                // Pass single referenceUrl for backwards compatibility
                 referenceUrl: connectedInputs.referenceUrl,
+                // Pass all references as array for multi-reference models (NanoBanana supports up to 14)
+                referenceUrls: allReferenceUrls.length > 0 ? allReferenceUrls : undefined,
                 // Model-specific params
                 style: data.style,
                 magicPrompt: data.magicPrompt,
@@ -570,6 +594,15 @@ export const useCanvasStore = create<CanvasState>()(
 
       closeSettingsPanel: () => {
         set({ settingsPanelNodeId: null, settingsPanelPosition: null });
+      },
+
+      // Video settings panel actions
+      openVideoSettingsPanel: (nodeId, position) => {
+        set({ videoSettingsPanelNodeId: nodeId, videoSettingsPanelPosition: position });
+      },
+
+      closeVideoSettingsPanel: () => {
+        set({ videoSettingsPanelNodeId: null, videoSettingsPanelPosition: null });
       },
 
       // Context menu actions

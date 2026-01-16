@@ -21,6 +21,7 @@ import { edgeTypes } from './edges';
 import { NodeToolbar } from './NodeToolbar';
 import { WelcomeOverlay } from './WelcomeOverlay';
 import { SettingsPanel } from './SettingsPanel';
+import { VideoSettingsPanel } from './VideoSettingsPanel';
 import { ContextMenu } from './ContextMenu';
 import { KeyboardShortcuts } from './KeyboardShortcuts';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
@@ -131,6 +132,7 @@ export function Canvas() {
       <NodeToolbar />
       <WelcomeOverlay />
       <SettingsPanel />
+      <VideoSettingsPanel />
       <ContextMenu />
       <KeyboardShortcuts />
       <ReactFlow

@@ -19,6 +19,7 @@ export async function POST(request: Request) {
       resolution,
       imageCount = 1,
       referenceUrl,
+      referenceUrls, // Multi-reference support (up to 14 for NanoBanana)
       // New model-specific params
       style,
       magicPrompt,
@@ -35,7 +36,6 @@ export async function POST(request: Request) {
     }
 
     const modelType = model as ImageModelType;
-    const modelId = FAL_MODELS[modelType] || FAL_MODELS['flux-schnell'];
 
     // Clamp imageCount to 1-4
     const numImages = Math.max(1, Math.min(4, imageCount));
@@ -49,6 +49,7 @@ export async function POST(request: Request) {
       resolution,
       numImages,
       referenceUrl,
+      referenceUrls, // Pass multi-reference array
       style,
       magicPrompt,
       cfgScale,
@@ -59,6 +60,11 @@ export async function POST(request: Request) {
     // Get adapter and build input
     const adapter = getModelAdapter(modelType);
     const input = adapter.buildInput(generateRequest);
+
+    // Get model ID - use adapter's dynamic ID if available (for dual-endpoint models like NanoBanana)
+    const modelId = adapter.getModelId
+      ? adapter.getModelId(generateRequest)
+      : FAL_MODELS[modelType] || FAL_MODELS['flux-schnell'];
 
     // Call Fal API
     const result = await fal.subscribe(modelId, {

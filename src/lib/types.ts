@@ -38,6 +38,9 @@ export interface CameraAnglePreset extends PresetOption {}
 // Camera lens preset
 export interface CameraLensPreset extends PresetOption {}
 
+// Camera preset (camera body types)
+export interface CameraPreset extends PresetOption {}
+
 // Reference type for style/character references
 export interface ImageReference {
   id: string;
@@ -260,10 +263,10 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
     maxImages: 4,
     inputType: 'text-and-image',
     supportsReferences: true,
-    maxReferences: 8,
+    maxReferences: 14,
     aspectRatios: ['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9', '5:4', '4:5'],
     resolutions: ['1K', '2K', '4K'],
-    description: 'Up to 8 style refs',
+    description: 'Up to 14 style refs',
   },
   'recraft-v3': {
     label: 'Recraft V3',
@@ -350,10 +353,12 @@ export interface VideoModelCapabilities {
   inputType: ModelInputType;
   inputMode: VideoInputMode; // Determines which handles to show
   durations: readonly VideoDuration[];
+  defaultDuration: VideoDuration; // Default duration for this model
   aspectRatios: readonly VideoAspectRatio[];
   resolutions?: readonly VideoResolution[];
   supportsAudio?: boolean;
   maxReferences?: number; // For multi-reference models (default 1)
+  lastFrameOptional?: boolean; // For first-last-frame mode: if true, last frame is optional
   description: string;
 }
 
@@ -363,6 +368,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     inputType: 'text-only',
     inputMode: 'text',
     durations: [4, 6, 8],
+    defaultDuration: 8,
     aspectRatios: ['16:9', '9:16'],
     resolutions: ['720p', '1080p'],
     supportsAudio: true,
@@ -373,6 +379,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     inputType: 'text-and-image',
     inputMode: 'single-image',
     durations: [4, 6, 8],
+    defaultDuration: 8,
     aspectRatios: ['16:9', '9:16'],
     resolutions: ['720p', '1080p'],
     supportsAudio: true,
@@ -383,6 +390,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     inputType: 'text-and-image',
     inputMode: 'multi-reference',
     durations: [8],
+    defaultDuration: 8,
     aspectRatios: ['16:9', '9:16'],
     resolutions: ['720p', '1080p'],
     supportsAudio: true,
@@ -394,6 +402,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     inputType: 'image-only',
     inputMode: 'first-last-frame',
     durations: [4, 6, 8],
+    defaultDuration: 8,
     aspectRatios: ['16:9', '9:16'],
     resolutions: ['720p', '1080p'],
     supportsAudio: true,
@@ -404,6 +413,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     inputType: 'image-only',
     inputMode: 'first-last-frame',
     durations: [4, 6, 8],
+    defaultDuration: 8,
     aspectRatios: ['16:9', '9:16'],
     resolutions: ['720p', '1080p'],
     supportsAudio: true,
@@ -414,6 +424,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     inputType: 'text-only',
     inputMode: 'text',
     durations: [5, 10],
+    defaultDuration: 5,
     aspectRatios: ['16:9', '9:16', '1:1'],
     supportsAudio: true,
     description: 'Text-to-video with audio',
@@ -421,17 +432,20 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
   'kling-2.6-i2v': {
     label: 'Kling 2.6 Image',
     inputType: 'text-and-image',
-    inputMode: 'single-image',
+    inputMode: 'first-last-frame',
     durations: [5, 10],
+    defaultDuration: 5,
     aspectRatios: ['16:9', '9:16', '1:1'],
     supportsAudio: true,
-    description: 'Image-to-video with audio',
+    lastFrameOptional: true,
+    description: 'Start + optional end frame with audio',
   },
   'luma-ray2': {
     label: 'Luma Ray 2',
     inputType: 'text-and-image',
     inputMode: 'single-image',
     durations: [5, 9],
+    defaultDuration: 5,
     aspectRatios: ['16:9', '9:16', '4:3', '3:4', '1:1'],
     resolutions: ['540p', '720p', '1080p'],
     description: 'Cinematic quality',
@@ -441,6 +455,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     inputType: 'text-and-image',
     inputMode: 'single-image',
     durations: [5],
+    defaultDuration: 5,
     aspectRatios: ['16:9', '9:16', '1:1'],
     description: 'Fast generation',
   },
@@ -449,6 +464,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     inputType: 'image-only',
     inputMode: 'single-image',
     durations: [5, 10],
+    defaultDuration: 5,
     aspectRatios: ['16:9', '9:16'],
     description: 'Premium image-to-video',
   },

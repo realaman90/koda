@@ -21,6 +21,7 @@ export interface GenerateRequest {
   resolution?: NanoBananaResolution;
   numImages?: number;
   referenceUrl?: string;
+  referenceUrls?: string[]; // For multi-reference models (NanoBanana supports up to 14)
   // Model-specific params
   style?: RecraftStyle | IdeogramStyle;
   magicPrompt?: boolean;
@@ -33,6 +34,8 @@ export interface GenerateRequest {
 export interface ModelAdapter {
   buildInput(request: GenerateRequest): Record<string, unknown>;
   extractImageUrls(result: { data?: { images?: Array<{ url: string }> } }): string[];
+  // Optional: Get dynamic model ID based on request (for dual-endpoint models like NanoBanana)
+  getModelId?(request: GenerateRequest): string;
 }
 
 // Flux models (Schnell and Pro)
@@ -53,16 +56,48 @@ class FluxAdapter implements ModelAdapter {
   }
 }
 
-// Nano Banana Pro
+// Nano Banana Pro (supports dual endpoints: text-to-image and image editing)
 class NanoBananaAdapter implements ModelAdapter {
+  // Determine if we should use the /edit endpoint
+  private hasImageReferences(request: GenerateRequest): boolean {
+    return (
+      (request.referenceUrls && request.referenceUrls.length > 0) ||
+      !!request.referenceUrl
+    );
+  }
+
+  // Get all reference URLs as an array
+  private getImageUrls(request: GenerateRequest): string[] {
+    if (request.referenceUrls && request.referenceUrls.length > 0) {
+      return request.referenceUrls;
+    }
+    if (request.referenceUrl) {
+      return [request.referenceUrl];
+    }
+    return [];
+  }
+
+  // Dynamic model ID based on whether images are provided
+  getModelId(request: GenerateRequest): string {
+    if (this.hasImageReferences(request)) {
+      return 'fal-ai/nano-banana-pro/edit';
+    }
+    return 'fal-ai/nano-banana-pro';
+  }
+
   buildInput(request: GenerateRequest): Record<string, unknown> {
+    const imageUrls = this.getImageUrls(request);
+    const isEditMode = imageUrls.length > 0;
+
     return {
       prompt: request.prompt,
-      aspect_ratio: request.aspectRatio,
+      // For edit mode, use 'auto' aspect ratio; for text-to-image, use specified
+      aspect_ratio: isEditMode ? 'auto' : request.aspectRatio,
       resolution: request.resolution || '1K',
       num_images: request.numImages || 1,
       output_format: 'png',
-      ...(request.referenceUrl && { image_urls: [request.referenceUrl] }),
+      // Only include image_urls if we have references (edit mode)
+      ...(isEditMode && { image_urls: imageUrls }),
     };
   }
 
@@ -295,7 +330,7 @@ class KlingT2VAdapter implements VideoModelAdapter {
       prompt: request.prompt,
       duration: String(request.duration),
       aspect_ratio: request.aspectRatio,
-      ...(request.generateAudio !== false && { enable_audio: true }),
+      enable_audio: request.generateAudio !== false,
     };
   }
 
@@ -305,15 +340,20 @@ class KlingT2VAdapter implements VideoModelAdapter {
   }
 }
 
-// Kling 2.6 Image-to-Video
+// Kling 2.6 Image-to-Video (supports start image + optional end image)
 class KlingI2VAdapter implements VideoModelAdapter {
   buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    // Use firstFrameUrl if available, otherwise fall back to referenceUrl
+    const startImage = request.firstFrameUrl || request.referenceUrl;
+    const endImage = request.lastFrameUrl;
+
     return {
       prompt: request.prompt,
       duration: String(request.duration),
       aspect_ratio: request.aspectRatio,
-      ...(request.referenceUrl && { image_url: request.referenceUrl }),
-      ...(request.generateAudio !== false && { enable_audio: true }),
+      ...(startImage && { image_url: startImage }),
+      ...(endImage && { tail_image_url: endImage }),
+      enable_audio: request.generateAudio !== false,
     };
   }
 
@@ -329,7 +369,10 @@ class LumaRay2Adapter implements VideoModelAdapter {
     return {
       prompt: request.prompt,
       aspect_ratio: request.aspectRatio,
-      resolution: request.resolution || '720p',
+      // Luma accepts duration as number or string like "5s"
+      loop: false,
+      ...(request.duration && { duration: `${request.duration}s` }),
+      ...(request.resolution && { resolution: request.resolution }),
       ...(request.referenceUrl && { image_url: request.referenceUrl }),
     };
   }

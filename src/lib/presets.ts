@@ -1,4 +1,4 @@
-import type { CharacterPreset, StylePreset, CameraAnglePreset, CameraLensPreset } from './types';
+import type { CharacterPreset, StylePreset, CameraAnglePreset, CameraLensPreset, CameraPreset } from './types';
 
 // ============================================
 // CHARACTER PRESETS
@@ -245,5 +245,59 @@ export const CAMERA_LENS_PRESETS: CameraLensPreset[] = [
     label: 'Anamorphic',
     preview: '/assets/presets/camera-lens/anamorphic.svg',
     promptModifier: 'anamorphic lens, cinematic, lens flares, oval bokeh',
+  },
+];
+
+// ============================================
+// CAMERA PRESETS (Camera body types)
+// ============================================
+export const CAMERA_PRESETS: CameraPreset[] = [
+  {
+    id: 'dslr',
+    label: 'DSLR',
+    preview: '/assets/presets/cameras/dslr.svg',
+    promptModifier: 'shot on professional DSLR camera',
+  },
+  {
+    id: 'mirrorless',
+    label: 'Mirrorless',
+    preview: '/assets/presets/cameras/mirrorless.svg',
+    promptModifier: 'shot on mirrorless camera, sharp detail',
+  },
+  {
+    id: 'film-slr',
+    label: 'Film SLR',
+    preview: '/assets/presets/cameras/film-slr.svg',
+    promptModifier: 'shot on 35mm film camera, film grain, analog aesthetic',
+  },
+  {
+    id: 'rangefinder',
+    label: 'Rangefinder',
+    preview: '/assets/presets/cameras/rangefinder.svg',
+    promptModifier: 'shot on Leica rangefinder, classic street photography look',
+  },
+  {
+    id: 'medium-format',
+    label: 'Medium Format',
+    preview: '/assets/presets/cameras/medium-format.svg',
+    promptModifier: 'shot on medium format camera, high resolution, exceptional detail',
+  },
+  {
+    id: 'cinema',
+    label: 'Cinema',
+    preview: '/assets/presets/cameras/cinema.svg',
+    promptModifier: 'shot on cinema camera, cinematic look, movie quality',
+  },
+  {
+    id: 'instant',
+    label: 'Instant',
+    preview: '/assets/presets/cameras/instant.svg',
+    promptModifier: 'Polaroid instant photo, vintage border, nostalgic',
+  },
+  {
+    id: 'compact',
+    label: 'Compact',
+    preview: '/assets/presets/cameras/compact.svg',
+    promptModifier: 'shot on compact camera, casual street photography',
   },
 ];
