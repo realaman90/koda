@@ -55,6 +55,8 @@ export const StoryboardSceneSchema = z.object({
   camera: z.string(),
   /** Mood/atmosphere */
   mood: z.string(),
+  /** Video transition prompt describing motion from this scene to the next (optional for last scene) */
+  transition: z.string().optional(),
 });
 
 export type StoryboardScene = z.infer<typeof StoryboardSceneSchema>;
@@ -81,7 +83,7 @@ export type StoryboardOutput = z.infer<typeof StoryboardOutputSchema>;
  */
 export const STORYBOARD_SYSTEM_PROMPT = `You are an expert storyboard artist and creative director specializing in visual storytelling for advertising and content creation.
 
-Your task is to break down a concept into a series of scenes optimized for AI image generation.
+Your task is to break down a concept into a series of scenes optimized for AI image generation and video transitions.
 
 For each scene, provide:
 - **title**: A short, descriptive title (2-5 words)
@@ -94,6 +96,11 @@ For each scene, provide:
   - Keep the product/subject visually prominent
 - **camera**: Camera direction (e.g., "wide shot", "close-up", "over-the-shoulder", "aerial view")
 - **mood**: The emotional tone (e.g., "warm and inviting", "dramatic tension", "peaceful serenity")
+- **transition**: (For all scenes EXCEPT the last one) A video transition prompt describing the motion and action from this scene to the next. This will be used for AI video generation between frames. Examples:
+  - "The camera slowly pushes in as the person reaches for the bottle"
+  - "Smooth pan following the character as they walk toward the window"
+  - "Quick zoom out revealing the full environment"
+  - "The subject turns their head, transitioning from profile to front view"
 
 Guidelines:
 1. Maintain visual continuity across scenes
@@ -101,7 +108,8 @@ Guidelines:
 3. If a character is specified, ensure they appear consistently
 4. Build a narrative arc across the scenes
 5. Vary camera angles and compositions for visual interest
-6. Match prompts to the specified style`;
+6. Match prompts to the specified style
+7. Write transition prompts that describe realistic camera movements and subject actions between consecutive scenes`;
 
 // ============================================
 // PROMPT BUILDER

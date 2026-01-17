@@ -77,6 +77,11 @@ export function StoryboardSandbox({ canvas, onClose, notify }: AgentSandboxProps
     }
   };
 
+  // Helper function to generate fallback transition prompt
+  const generateFallbackTransition = (fromScene: StoryboardScene, toScene: StoryboardScene): string => {
+    return `Cinematic transition from "${fromScene.title}" to "${toScene.title}". ${fromScene.camera} transitioning smoothly, maintaining ${fromScene.mood} atmosphere.`;
+  };
+
   // Create nodes on canvas
   const handleCreateOnCanvas = async () => {
     if (!result) return;
@@ -85,44 +90,30 @@ export function StoryboardSandbox({ canvas, onClose, notify }: AgentSandboxProps
       const viewportCenter = canvas.getViewportCenter();
       const nodeInputs: CreateNodeInput[] = [];
 
-      // Create reference nodes on the left
-      let referenceY = viewportCenter.y - 100;
-      const referenceX = viewportCenter.x - 400;
+      // Track the starting index for image nodes
+      const imageNodeStartIndex = nodeInputs.length;
 
-      // Product/Subject text node
-      nodeInputs.push({
-        type: 'text',
-        position: { x: referenceX, y: referenceY },
-        data: { content: `Product: ${product}` },
-      });
-      referenceY += 150;
+      // Layout constants
+      const IMAGE_NODE_WIDTH = 280;
+      const VIDEO_NODE_WIDTH = 420;
+      const IMAGE_SPACING = 380; // Horizontal spacing between image nodes
+      const VIDEO_Y_OFFSET = 450; // Vertical offset for video nodes below images
 
-      // Character text node (if provided)
-      if (character.trim()) {
-        nodeInputs.push({
-          type: 'text',
-          position: { x: referenceX, y: referenceY },
-          data: { content: `Character: ${character}` },
-        });
-        referenceY += 150;
-      }
+      // Calculate starting X to center the layout
+      const totalImageWidth = (result.scenes.length - 1) * IMAGE_SPACING + IMAGE_NODE_WIDTH;
+      const imageStartX = viewportCenter.x - totalImageWidth / 2;
+      const imageStartY = viewportCenter.y - 200;
 
-      // Style text node
-      nodeInputs.push({
-        type: 'text',
-        position: { x: referenceX, y: referenceY },
-        data: { content: `Style: ${style}` },
-      });
+      // Store image positions for video node placement
+      const imagePositions: { x: number; y: number }[] = [];
 
-      // Create image generator nodes in a grid
-      const gridStartX = viewportCenter.x;
-      const gridStartY = viewportCenter.y - 200;
-
+      // Create image generator nodes in a horizontal row
       result.scenes.forEach((scene, index) => {
-        const position = canvas.getGridPosition(index, 3, 320, {
-          x: gridStartX,
-          y: gridStartY,
-        });
+        const position = {
+          x: imageStartX + index * IMAGE_SPACING,
+          y: imageStartY,
+        };
+        imagePositions.push(position);
 
         nodeInputs.push({
           type: 'imageGenerator',
@@ -130,18 +121,84 @@ export function StoryboardSandbox({ canvas, onClose, notify }: AgentSandboxProps
           name: `Scene ${scene.number}: ${scene.title}`,
           data: {
             prompt: scene.prompt,
+            model: 'nanobanana-pro',
           },
         });
       });
 
+      // Track the starting index for video nodes
+      const videoNodeStartIndex = nodeInputs.length;
+
+      // Create video generator nodes between consecutive image pairs
+      // N images = N-1 videos
+      for (let i = 0; i < result.scenes.length - 1; i++) {
+        const sourcePos = imagePositions[i];
+        const targetPos = imagePositions[i + 1];
+        const currentScene = result.scenes[i];
+        const nextScene = result.scenes[i + 1];
+
+        // Position video node below and centered between source and target image nodes
+        const videoPosition = {
+          x: (sourcePos.x + targetPos.x) / 2 + (IMAGE_NODE_WIDTH - VIDEO_NODE_WIDTH) / 2,
+          y: imageStartY + VIDEO_Y_OFFSET,
+        };
+
+        // Use AI-generated transition or fallback
+        const transitionPrompt = currentScene.transition || generateFallbackTransition(currentScene, nextScene);
+
+        nodeInputs.push({
+          type: 'videoGenerator',
+          position: videoPosition,
+          name: `Video Generator ${i + 1}`,
+          data: {
+            prompt: transitionPrompt,
+            model: 'veo-3.1-flf',
+            aspectRatio: '16:9',
+            duration: 4,
+            resolution: '720p',
+            generateAudio: true,
+          },
+        });
+      }
+
       // Create all nodes
-      await canvas.createNodes(nodeInputs);
+      const nodeIds = await canvas.createNodes(nodeInputs);
+
+      // Create edges connecting image nodes in a chain (for style reference)
+      // Image 1 → Image 2 → Image 3 → etc.
+      for (let i = 0; i < result.scenes.length - 1; i++) {
+        const sourceImageId = nodeIds[imageNodeStartIndex + i];
+        const targetImageId = nodeIds[imageNodeStartIndex + i + 1];
+
+        // Connect output of current image to reference input of next image
+        await canvas.createEdge(sourceImageId, 'output', targetImageId, 'reference');
+      }
+
+      // Create edges connecting image nodes to video nodes
+      // For each video node, connect:
+      // - Source image output → video firstFrame
+      // - Target image output → video lastFrame
+      const videoNodeCount = result.scenes.length - 1;
+      for (let i = 0; i < videoNodeCount; i++) {
+        const sourceImageId = nodeIds[imageNodeStartIndex + i];
+        const targetImageId = nodeIds[imageNodeStartIndex + i + 1];
+        const videoNodeId = nodeIds[videoNodeStartIndex + i];
+
+        // Source image → firstFrame
+        await canvas.createEdge(sourceImageId, 'output', videoNodeId, 'firstFrame');
+        // Target image → lastFrame
+        await canvas.createEdge(targetImageId, 'output', videoNodeId, 'lastFrame');
+      }
 
       // Fit view to show all nodes
       canvas.fitView();
 
       // Close sandbox and notify
-      notify(`Created ${result.scenes.length} scene nodes. Click "Run All" to generate images.`, 'success');
+      const videoCount = result.scenes.length - 1;
+      notify(
+        `Created ${result.scenes.length} scene nodes and ${videoCount} video nodes. Click "Run All" to generate images, then videos.`,
+        'success'
+      );
       onClose();
     } catch (err) {
       notify(err instanceof Error ? err.message : 'Failed to create nodes', 'error');
