@@ -9,7 +9,7 @@ import {
   type Connection,
   type ReactFlowInstance,
 } from '@xyflow/react';
-import type { AppNode, AppEdge, ImageGeneratorNodeData, VideoGeneratorNodeData, TextNodeData, MediaNodeData, StickyNoteNodeData, StickerNodeData, GroupNodeData } from '@/lib/types';
+import type { AppNode, AppEdge, ImageGeneratorNodeData, VideoGeneratorNodeData, TextNodeData, MediaNodeData, StickyNoteNodeData, StickerNodeData, GroupNodeData, StoryboardNodeData } from '@/lib/types';
 
 // History snapshot type
 interface HistorySnapshot {
@@ -125,6 +125,8 @@ interface CanvasState {
     firstFrameUrl?: string;
     lastFrameUrl?: string;
     referenceUrls?: string[];
+    productImageUrl?: string;
+    characterImageUrl?: string;
   };
   clearCanvas: () => void;
 }
@@ -221,6 +223,21 @@ export const createGroupNode = (position: { x: number; y: number }, name?: strin
     width: 300,
     height: 200,
   } as GroupNodeData,
+});
+
+export const createStoryboardNode = (position: { x: number; y: number }, name?: string): AppNode => ({
+  id: generateId(),
+  type: 'storyboard',
+  position,
+  data: {
+    name: name || 'Storyboard',
+    product: '',
+    character: '',
+    concept: '',
+    sceneCount: 4,
+    style: 'cinematic',
+    viewState: 'form',
+  } as StoryboardNodeData,
 });
 
 export const useCanvasStore = create<CanvasState>()(
@@ -788,6 +805,8 @@ export const useCanvasStore = create<CanvasState>()(
         const refEdge = incomingEdges.find((e) => e.targetHandle === 'reference');
         const firstFrameEdge = incomingEdges.find((e) => e.targetHandle === 'firstFrame');
         const lastFrameEdge = incomingEdges.find((e) => e.targetHandle === 'lastFrame');
+        const productImageEdge = incomingEdges.find((e) => e.targetHandle === 'productImage');
+        const characterImageEdge = incomingEdges.find((e) => e.targetHandle === 'characterImage');
 
         // Multi-reference handles (ref2-ref8 for ImageGenerator, ref1-ref3 for VideoGenerator)
         const refEdges = ['ref1', 'ref2', 'ref3', 'ref4', 'ref5', 'ref6', 'ref7', 'ref8']
@@ -799,6 +818,8 @@ export const useCanvasStore = create<CanvasState>()(
         const refNode = refEdge ? nodes.find((n) => n.id === refEdge.source) : null;
         const firstFrameNode = firstFrameEdge ? nodes.find((n) => n.id === firstFrameEdge.source) : null;
         const lastFrameNode = lastFrameEdge ? nodes.find((n) => n.id === lastFrameEdge.source) : null;
+        const productImageNode = productImageEdge ? nodes.find((n) => n.id === productImageEdge.source) : null;
+        const characterImageNode = characterImageEdge ? nodes.find((n) => n.id === characterImageEdge.source) : null;
 
         // Get multi-reference URLs
         const referenceUrls = refEdges
@@ -814,6 +835,8 @@ export const useCanvasStore = create<CanvasState>()(
           firstFrameUrl: getImageUrl(firstFrameNode),
           lastFrameUrl: getImageUrl(lastFrameNode),
           referenceUrls: referenceUrls.length > 0 ? referenceUrls : undefined,
+          productImageUrl: getImageUrl(productImageNode),
+          characterImageUrl: getImageUrl(characterImageNode),
         };
       },
 

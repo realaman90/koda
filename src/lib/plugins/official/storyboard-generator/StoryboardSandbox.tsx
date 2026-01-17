@@ -1,6 +1,14 @@
 'use client';
 
 /**
+ * @deprecated This modal-based sandbox is deprecated. Use StoryboardNode instead.
+ *
+ * The storyboard generator has been moved from a modal-based plugin to a
+ * canvas node. The same UI now renders directly on the canvas as StoryboardNode
+ * (see src/components/canvas/nodes/StoryboardNode.tsx).
+ *
+ * This file is kept for reference and will be removed in a future version.
+ *
  * Storyboard Sandbox UI
  *
  * Form UI for generating storyboards and creating nodes on the canvas.

@@ -43,7 +43,9 @@ A flexible plugin system that enables users to create custom utility nodes and a
 |------|---------|---------|---------|
 | **Simple** | Anyone (No-Code UI) | Input → AI Prompt → Output | Single node on canvas |
 | **Transform** | Official / Developers | Input → API/Processing → Output | Single node on canvas |
-| **Agent** | Official only | Interactive → Multi-step → Creates nodes | Opens sandbox modal |
+| **Agent** | Official only | Interactive → Multi-step → Creates nodes | Node on canvas OR modal sandbox |
+
+> **Note:** Agent plugins can be rendered either as a canvas node or as a modal sandbox. Node-based agents (like Storyboard Generator) render their UI directly on the canvas, while modal-based agents open in a separate overlay. Node-based is preferred when users want to keep the tool visible and iterate on it.
 
 ---
 
@@ -939,7 +941,20 @@ export const backgroundRemover: TransformPlugin = {
 
 ## Agent Plugin
 
-Official interactive plugins that open a sandbox and can manipulate the canvas.
+Official interactive plugins that can manipulate the canvas. Agent plugins can be rendered in two ways:
+
+### Rendering Modes
+
+| Mode | Description | Use When |
+|------|-------------|----------|
+| **Node-based** | UI renders directly on canvas as a node | Users want to keep the tool visible, iterate on inputs, or reference it later |
+| **Modal-based** | UI opens in a modal overlay (sandbox) | One-time operations or linear workflows (configure → execute → done) |
+
+**Node-based Example:** Storyboard Generator renders as `StoryboardNode` on the canvas. Users can fill in the form, generate scenes, and the node persists for future reference.
+
+**Modal-based Example:** Brand Extractor opens as a modal, extracts brand assets, creates nodes, and closes.
+
+> **Note:** The `StoryboardSandbox` modal component is deprecated. Storyboard generation now uses `StoryboardNode` (see `src/components/canvas/nodes/StoryboardNode.tsx`).
 
 ### Type Definition
 
@@ -1619,7 +1634,8 @@ src/components/plugins/
 |------|---------|--------------|----------|
 | **Simple** | Anyone via UI | Input → AI Prompt → Output | Script to Scenes, Reverse Prompt, Caption Generator |
 | **Transform** | Official | Input → API/Code → Output | Aspect Ratio, Background Remover, Upscaler |
-| **Agent** | Official | Interactive sandbox → Creates nodes | Brand Extractor, Social Media Kit, Batch Processor |
+| **Agent (Node)** | Official | Interactive canvas node → Creates nodes | Storyboard Generator |
+| **Agent (Modal)** | Official | Interactive sandbox → Creates nodes | Brand Extractor, Social Media Kit, Batch Processor |
 
 ---
 

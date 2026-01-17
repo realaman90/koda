@@ -12,7 +12,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
-import { useCanvasStore } from '@/stores/canvas-store';
+import { useCanvasStore, createStoryboardNode } from '@/stores/canvas-store';
 import type { AppNode, ImageGeneratorNodeData, VideoGeneratorNodeData, ImageModelType, VideoModelType } from '@/lib/types';
 import { MODEL_CAPABILITIES, VIDEO_MODEL_CAPABILITIES } from '@/lib/types';
 import { nodeTypes } from './nodes';
@@ -47,6 +47,35 @@ export function Canvas() {
 
   // Plugin sandbox state
   const { activePlugin, openSandbox, closeSandbox } = useAgentSandbox();
+
+  // Get addNode and reactFlowInstance for creating nodes
+  const addNode = useCanvasStore((state) => state.addNode);
+  const reactFlowInstance = useCanvasStore((state) => state.reactFlowInstance);
+
+  // Handle plugin launch - create node for storyboard, open sandbox for others
+  const handlePluginLaunch = useCallback(
+    (pluginId: string) => {
+      if (pluginId === 'storyboard-generator') {
+        // Create a storyboard node at viewport center
+        let position = { x: 400, y: 300 };
+        if (reactFlowInstance) {
+          const viewport = reactFlowInstance.getViewport();
+          const width = window.innerWidth;
+          const height = window.innerHeight;
+          position = {
+            x: (-viewport.x + width / 2 - 200) / viewport.zoom,
+            y: (-viewport.y + height / 2 - 200) / viewport.zoom,
+          };
+        }
+        const node = createStoryboardNode(position, 'Storyboard');
+        addNode(node);
+      } else {
+        // Other plugins still open as modals
+        openSandbox(pluginId);
+      }
+    },
+    [addNode, openSandbox, reactFlowInstance]
+  );
 
   // Enable keyboard shortcuts
   useKeyboardShortcuts();
@@ -123,6 +152,14 @@ export function Canvas() {
         return false;
       }
 
+      // Storyboard node image handles (productImage, characterImage)
+      if (targetNode.type === 'storyboard') {
+        const storyboardImageHandles = ['productImage', 'characterImage'];
+        if (storyboardImageHandles.includes(targetHandle)) {
+          return isImageSource;
+        }
+      }
+
       // Text handle only accepts text nodes
       if (connection.targetHandle === 'text') {
         return sourceNode.type === 'text';
@@ -135,11 +172,11 @@ export function Canvas() {
 
   return (
     <div className="w-full h-full bg-zinc-950 relative">
-      <NodeToolbar onPluginLaunch={openSandbox} />
+      <NodeToolbar onPluginLaunch={handlePluginLaunch} />
       <WelcomeOverlay />
       <SettingsPanel />
       <VideoSettingsPanel />
-      <ContextMenu onPluginLaunch={openSandbox} />
+      <ContextMenu onPluginLaunch={handlePluginLaunch} />
       <KeyboardShortcuts />
       {activePlugin && (
         <AgentSandbox plugin={activePlugin} onClose={closeSandbox} />

@@ -1,7 +1,7 @@
 import type { Node, Edge } from '@xyflow/react';
 
 // Node Types
-export type NodeType = 'imageGenerator' | 'videoGenerator' | 'text' | 'media' | 'stickyNote' | 'sticker' | 'group';
+export type NodeType = 'imageGenerator' | 'videoGenerator' | 'text' | 'media' | 'stickyNote' | 'sticker' | 'group' | 'storyboard';
 
 // ============================================
 // PRESET TYPES (for Settings Panel)
@@ -174,7 +174,7 @@ export interface GroupNodeData extends Record<string, unknown> {
 export type GroupNode = Node<GroupNodeData, 'group'>;
 
 // Union of all node types
-export type AppNode = ImageGeneratorNode | VideoGeneratorNode | TextNode | MediaNode | StickyNoteNode | StickerNode | GroupNode;
+export type AppNode = ImageGeneratorNode | VideoGeneratorNode | TextNode | MediaNode | StickyNoteNode | StickerNode | GroupNode | StoryboardNode;
 export type AppEdge = Edge;
 
 // Fal API types
@@ -527,3 +527,45 @@ export const FAL_VIDEO_MODELS: Record<VideoModelType, string> = {
   'minimax-video': 'fal-ai/minimax-video/image-to-video',
   'runway-gen3': 'fal-ai/runway-gen3/turbo/image-to-video',
 } as const;
+
+// ============================================
+// STORYBOARD NODE TYPES
+// ============================================
+
+// Storyboard visual style
+export type StoryboardStyle = 'cinematic' | 'anime' | 'photorealistic' | 'illustrated' | 'commercial';
+
+// Storyboard view state
+export type StoryboardViewState = 'form' | 'loading' | 'preview';
+
+// Scene data structure (matches schema.ts)
+export interface StoryboardSceneData {
+  number: number;
+  title: string;
+  description: string;
+  prompt: string;
+  camera: string;
+  mood: string;
+  transition?: string;
+}
+
+// Storyboard Node Data
+export interface StoryboardNodeData extends Record<string, unknown> {
+  name?: string;
+  // Form fields
+  product: string;
+  character: string;
+  concept: string;
+  sceneCount: number;
+  style: StoryboardStyle;
+  // UI state
+  viewState: StoryboardViewState;
+  error?: string;
+  // Generated result (stored for persistence)
+  result?: {
+    scenes: StoryboardSceneData[];
+    summary: string;
+  };
+}
+
+export type StoryboardNode = Node<StoryboardNodeData, 'storyboard'>;

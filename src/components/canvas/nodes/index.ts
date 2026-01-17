@@ -6,6 +6,7 @@ import { MediaNode } from './MediaNode';
 import { StickyNoteNode } from './StickyNoteNode';
 import { StickerNode } from './StickerNode';
 import { GroupNode } from './GroupNode';
+import { StoryboardNode } from './StoryboardNode';
 
 export const nodeTypes: NodeTypes = {
   imageGenerator: ImageGeneratorNode,
@@ -15,6 +16,7 @@ export const nodeTypes: NodeTypes = {
   stickyNote: StickyNoteNode,
   sticker: StickerNode,
   group: GroupNode,
+  storyboard: StoryboardNode,
 };
 
-export { ImageGeneratorNode, VideoGeneratorNode, TextNode, MediaNode, StickyNoteNode, StickerNode, GroupNode };
+export { ImageGeneratorNode, VideoGeneratorNode, TextNode, MediaNode, StickyNoteNode, StickerNode, GroupNode, StoryboardNode };
