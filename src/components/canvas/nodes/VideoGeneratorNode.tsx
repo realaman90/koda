@@ -29,6 +29,7 @@ import {
   Settings,
   Volume2,
   VolumeX,
+  RefreshCw,
 } from 'lucide-react';
 
 function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGeneratorNodeType>) {
@@ -328,7 +329,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
       {/* Main Node Card */}
       <div
         className={`
-          w-[420px] rounded-2xl overflow-hidden
+          w-[420px] rounded-2xl
           transition-all duration-150
           ${data.isGenerating
             ? 'ring-[2.5px] ring-purple-500 shadow-lg shadow-purple-500/20 animate-pulse-glow'
@@ -364,7 +365,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
             </div>
           ) : data.outputUrl ? (
             /* Video Preview */
-            <div className="relative">
+            <div className="relative overflow-hidden">
               <video
                 ref={videoRef}
                 src={data.outputUrl}
@@ -376,6 +377,10 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
               {/* Duration badge */}
               <div className="absolute top-2 right-2 px-2 py-0.5 bg-black/60 backdrop-blur-sm rounded text-xs text-zinc-300 font-medium">
                 {data.duration}s
+              </div>
+              {/* Prompt overlay on video - positioned above video controls */}
+              <div className="absolute bottom-10 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-3 pt-6 pointer-events-none">
+                <p className="text-white text-sm line-clamp-2">{data.prompt}</p>
               </div>
             </div>
           ) : (
@@ -487,7 +492,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
           {/* Spacer */}
           <div className="flex-1 min-w-0" />
 
-          {/* Generate Button */}
+          {/* Generate/Refresh Button */}
           <Button
             onClick={handleGenerate}
             disabled={!hasValidInput || data.isGenerating}
@@ -496,6 +501,8 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
           >
             {data.isGenerating ? (
               <Loader2 className="h-4 w-4 animate-spin" />
+            ) : data.outputUrl ? (
+              <RefreshCw className="h-4 w-4" />
             ) : (
               <Play className="h-4 w-4" />
             )}

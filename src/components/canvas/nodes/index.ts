@@ -3,12 +3,18 @@ import { ImageGeneratorNode } from './ImageGeneratorNode';
 import { VideoGeneratorNode } from './VideoGeneratorNode';
 import { TextNode } from './TextNode';
 import { MediaNode } from './MediaNode';
+import { StickyNoteNode } from './StickyNoteNode';
+import { StickerNode } from './StickerNode';
+import { GroupNode } from './GroupNode';
 
 export const nodeTypes: NodeTypes = {
   imageGenerator: ImageGeneratorNode,
   videoGenerator: VideoGeneratorNode,
   text: TextNode,
   media: MediaNode,
+  stickyNote: StickyNoteNode,
+  sticker: StickerNode,
+  group: GroupNode,
 };
 
-export { ImageGeneratorNode, VideoGeneratorNode, TextNode, MediaNode };
+export { ImageGeneratorNode, VideoGeneratorNode, TextNode, MediaNode, StickyNoteNode, StickerNode, GroupNode };

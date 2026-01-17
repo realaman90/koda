@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useMemo } from 'react';
-import { useCanvasStore, createImageGeneratorNode, createVideoGeneratorNode, createTextNode, createMediaNode } from '@/stores/canvas-store';
+import { useCanvasStore, createImageGeneratorNode, createVideoGeneratorNode, createTextNode, createMediaNode, createStickyNoteNode, createStickerNode, createGroupNode } from '@/stores/canvas-store';
 import { useReactFlow } from '@xyflow/react';
 import {
   Copy,
@@ -15,15 +15,17 @@ import {
   Image as ImageIcon,
   Type,
   Video,
-  Sparkles,
-  Wand2,
   StickyNote,
   Smile,
   Group,
   Sparkle,
   ChevronDown,
   ChevronUp,
+  Puzzle,
 } from 'lucide-react';
+import { pluginRegistry } from '@/lib/plugins/registry';
+// Import official plugins to register them
+import '@/lib/plugins/official/storyboard-generator';
 
 interface MenuItem {
   id: string;
@@ -39,7 +41,11 @@ interface MenuSection {
   collapsible?: boolean;
 }
 
-export function ContextMenu() {
+interface ContextMenuProps {
+  onPluginLaunch?: (pluginId: string) => void;
+}
+
+export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
   const contextMenu = useCanvasStore((state) => state.contextMenu);
   const hideContextMenu = useCanvasStore((state) => state.hideContextMenu);
   const copySelected = useCanvasStore((state) => state.copySelected);
@@ -58,6 +64,7 @@ export function ContextMenu() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [utilitiesExpanded, setUtilitiesExpanded] = useState(false);
+  const [pluginsExpanded, setPluginsExpanded] = useState(false);
 
   // Focus search input when menu opens
   useEffect(() => {
@@ -66,6 +73,7 @@ export function ContextMenu() {
     }
     setSearchQuery('');
     setUtilitiesExpanded(false);
+    setPluginsExpanded(false);
   }, [contextMenu]);
 
   // Close on outside click
@@ -186,30 +194,10 @@ export function ContextMenu() {
         },
         {
           id: 'videoGenerator',
-          icon: <Video className="h-4 w-4 text-zinc-400" />,
+          icon: <Video className="h-4 w-4 text-blue-400" />,
           label: 'Video Generator',
           action: () => handleAddNode(createVideoGeneratorNode, 'Video Generator'),
           keywords: ['video', 'generate', 'ai', 'movie', 'clip'],
-        },
-        {
-          id: 'assistant',
-          icon: <Sparkles className="h-4 w-4 text-purple-400" />,
-          label: 'Assistant',
-          action: () => {
-            // TODO: Add assistant node
-            hideContextMenu();
-          },
-          keywords: ['assistant', 'ai', 'chat', 'help'],
-        },
-        {
-          id: 'upscaler',
-          icon: <Wand2 className="h-4 w-4 text-zinc-400" />,
-          label: 'Image Upscaler',
-          action: () => {
-            // TODO: Add upscaler node
-            hideContextMenu();
-          },
-          keywords: ['upscale', 'enhance', 'quality', 'resolution'],
         },
       ],
     },
@@ -222,7 +210,8 @@ export function ContextMenu() {
           icon: <StickyNote className="h-4 w-4 text-yellow-400" />,
           label: 'Sticky note',
           action: () => {
-            // TODO: Add sticky note node
+            const position = getNodePosition();
+            addNode(createStickyNoteNode(position));
             hideContextMenu();
           },
           keywords: ['sticky', 'note', 'comment', 'annotation'],
@@ -230,26 +219,45 @@ export function ContextMenu() {
         {
           id: 'stickers',
           icon: <Smile className="h-4 w-4 text-zinc-400" />,
-          label: 'Stickers',
+          label: 'Sticker',
           action: () => {
-            // TODO: Add stickers
+            const position = getNodePosition();
+            addNode(createStickerNode(position));
             hideContextMenu();
           },
           keywords: ['sticker', 'emoji', 'icon'],
         },
         {
           id: 'group',
-          icon: <Group className="h-4 w-4 text-zinc-400" />,
+          icon: <Group className="h-4 w-4 text-indigo-400" />,
           label: 'Group',
           action: () => {
-            // TODO: Add group functionality
+            const position = getNodePosition();
+            const count = nodes.filter((n) => n.type === 'group').length + 1;
+            addNode(createGroupNode(position, `Group ${count}`));
             hideContextMenu();
           },
           keywords: ['group', 'container', 'organize'],
         },
       ],
     },
-  ], [addNode, hideContextMenu, handleUpload, nodes]);
+    {
+      title: 'PLUGINS',
+      collapsible: true,
+      items: pluginRegistry.getAll().map((plugin) => ({
+        id: plugin.id,
+        icon: <span className="text-base leading-none">{plugin.icon}</span>,
+        label: plugin.name,
+        action: () => {
+          if (onPluginLaunch) {
+            onPluginLaunch(plugin.id);
+          }
+          hideContextMenu();
+        },
+        keywords: [plugin.name.toLowerCase(), plugin.category, 'plugin'],
+      })),
+    },
+  ], [addNode, hideContextMenu, handleUpload, nodes, onPluginLaunch]);
 
   // Filter sections based on search query
   const filteredSections = useMemo(() => {
@@ -358,18 +366,30 @@ export function ContextMenu() {
       <div className="py-1 max-h-[400px] overflow-y-auto">
         {filteredSections.map((section, sectionIndex) => {
           const isUtilities = section.title === 'UTILITIES';
-          const shouldShowItems = !isUtilities || utilitiesExpanded || searchQuery;
+          const isPlugins = section.title === 'PLUGINS';
+          const isCollapsible = isUtilities || isPlugins;
+          const isExpanded = isUtilities ? utilitiesExpanded : isPlugins ? pluginsExpanded : true;
+          const shouldShowItems = !isCollapsible || isExpanded || searchQuery;
+
+          // Skip plugins section if no plugins available
+          if (isPlugins && section.items.length === 0) return null;
 
           return (
             <div key={section.title || sectionIndex}>
               {section.title && (
                 <div
-                  className={`px-4 py-1.5 text-[10px] font-medium text-zinc-500 uppercase tracking-wider flex items-center justify-between ${isUtilities ? 'cursor-pointer hover:bg-zinc-800/50' : ''}`}
-                  onClick={() => isUtilities && setUtilitiesExpanded(!utilitiesExpanded)}
+                  className={`px-4 py-1.5 text-[10px] font-medium text-zinc-500 uppercase tracking-wider flex items-center justify-between ${isCollapsible ? 'cursor-pointer hover:bg-zinc-800/50' : ''}`}
+                  onClick={() => {
+                    if (isUtilities) setUtilitiesExpanded(!utilitiesExpanded);
+                    if (isPlugins) setPluginsExpanded(!pluginsExpanded);
+                  }}
                 >
-                  {section.title}
-                  {isUtilities && !searchQuery && (
-                    utilitiesExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                  <span className="flex items-center gap-1.5">
+                    {isPlugins && <Puzzle className="h-3 w-3" />}
+                    {section.title}
+                  </span>
+                  {isCollapsible && !searchQuery && (
+                    isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
                   )}
                 </div>
               )}

@@ -7,8 +7,9 @@ import {
   type NodeChange,
   type EdgeChange,
   type Connection,
+  type ReactFlowInstance,
 } from '@xyflow/react';
-import type { AppNode, AppEdge, ImageGeneratorNodeData, VideoGeneratorNodeData, TextNodeData, MediaNodeData } from '@/lib/types';
+import type { AppNode, AppEdge, ImageGeneratorNodeData, VideoGeneratorNodeData, TextNodeData, MediaNodeData, StickyNoteNodeData, StickerNodeData, GroupNodeData } from '@/lib/types';
 
 // History snapshot type
 interface HistorySnapshot {
@@ -111,6 +112,11 @@ interface CanvasState {
   activeTool: 'select' | 'pan' | 'scissors';
   setActiveTool: (tool: 'select' | 'pan' | 'scissors') => void;
 
+  // React Flow instance (for viewport calculations)
+  reactFlowInstance: ReactFlowInstance<AppNode, AppEdge> | null;
+  setReactFlowInstance: (instance: ReactFlowInstance<AppNode, AppEdge>) => void;
+  getViewportCenter: () => { x: number; y: number };
+
   // Utility
   getNode: (nodeId: string) => AppNode | undefined;
   getConnectedInputs: (nodeId: string) => {
@@ -184,6 +190,39 @@ export const createVideoGeneratorNode = (position: { x: number; y: number }, nam
   } as VideoGeneratorNodeData,
 });
 
+export const createStickyNoteNode = (position: { x: number; y: number }): AppNode => ({
+  id: generateId(),
+  type: 'stickyNote',
+  position,
+  data: {
+    content: '',
+    color: 'yellow',
+  } as StickyNoteNodeData,
+});
+
+export const createStickerNode = (position: { x: number; y: number }): AppNode => ({
+  id: generateId(),
+  type: 'sticker',
+  position,
+  data: {
+    emoji: '👍',
+    size: 'md',
+  } as StickerNodeData,
+});
+
+export const createGroupNode = (position: { x: number; y: number }, name?: string): AppNode => ({
+  id: generateId(),
+  type: 'group',
+  position,
+  zIndex: -1, // Render behind other nodes
+  data: {
+    name: name || 'Group',
+    color: '#6366f1',
+    width: 300,
+    height: 200,
+  } as GroupNodeData,
+});
+
 export const useCanvasStore = create<CanvasState>()(
   persist(
     (set, get) => ({
@@ -204,6 +243,7 @@ export const useCanvasStore = create<CanvasState>()(
       isRunningAll: false,
       showShortcuts: false,
       activeTool: 'select' as const,
+      reactFlowInstance: null,
 
       // Helper to push current state to history
       _pushHistory: () => {
@@ -259,14 +299,81 @@ export const useCanvasStore = create<CanvasState>()(
       },
 
       onNodesChange: (changes) => {
-        const { _pushHistory } = get() as CanvasState & { _pushHistory: () => void };
+        const { _pushHistory, nodes } = get() as CanvasState & { _pushHistory: () => void };
         const hasPositionChange = changes.some(
           (c) => c.type === 'position' && c.dragging === false
         );
 
-        set((state) => ({
-          nodes: applyNodeChanges(changes, state.nodes) as AppNode[],
-        }));
+        // Check if any group nodes are being dragged
+        const groupPositionChanges = changes.filter(
+          (c) => c.type === 'position' && c.position
+        );
+
+        // Track group movements to move child nodes
+        const groupDeltas: { groupId: string; deltaX: number; deltaY: number; group: AppNode }[] = [];
+
+        for (const change of groupPositionChanges) {
+          if (change.type === 'position' && change.position) {
+            const node = nodes.find((n) => n.id === change.id);
+            if (node?.type === 'group') {
+              const deltaX = change.position.x - node.position.x;
+              const deltaY = change.position.y - node.position.y;
+              // Only track if there's actual movement
+              if (deltaX !== 0 || deltaY !== 0) {
+                groupDeltas.push({ groupId: change.id, deltaX, deltaY, group: node });
+              }
+            }
+          }
+        }
+
+        // Helper to check if a node is inside a group's bounds
+        const isNodeInsideGroup = (node: AppNode, group: AppNode): boolean => {
+          if (node.type === 'group' || node.id === group.id) return false;
+          const groupData = group.data as GroupNodeData;
+          const groupWidth = groupData.width || 300;
+          const groupHeight = groupData.height || 200;
+
+          // Check if node's center is inside the group
+          const nodeCenterX = node.position.x + (node.measured?.width || 100) / 2;
+          const nodeCenterY = node.position.y + (node.measured?.height || 50) / 2;
+
+          return (
+            nodeCenterX >= group.position.x &&
+            nodeCenterX <= group.position.x + groupWidth &&
+            nodeCenterY >= group.position.y &&
+            nodeCenterY <= group.position.y + groupHeight
+          );
+        };
+
+        // Apply original changes
+        let updatedNodes = applyNodeChanges(changes, nodes) as AppNode[];
+
+        // Move child nodes that are inside any moving group
+        if (groupDeltas.length > 0) {
+          const movedNodeIds = new Set(changes.filter((c) => c.type === 'position').map((c) => c.id));
+
+          updatedNodes = updatedNodes.map((node) => {
+            // Skip if this node is already being moved by the user
+            if (movedNodeIds.has(node.id)) return node;
+
+            // Check each moving group
+            for (const { groupId, deltaX, deltaY, group } of groupDeltas) {
+              // Check if node was inside the group BEFORE it moved
+              if (isNodeInsideGroup(node, group)) {
+                return {
+                  ...node,
+                  position: {
+                    x: node.position.x + deltaX,
+                    y: node.position.y + deltaY,
+                  },
+                };
+              }
+            }
+            return node;
+          });
+        }
+
+        set({ nodes: updatedNodes });
 
         // Only push history when drag ends
         if (hasPositionChange) {
@@ -622,6 +729,38 @@ export const useCanvasStore = create<CanvasState>()(
       // Active tool
       setActiveTool: (tool) => {
         set({ activeTool: tool, selectedEdgeIds: [] });
+      },
+
+      // React Flow instance
+      setReactFlowInstance: (instance) => {
+        set({ reactFlowInstance: instance });
+      },
+
+      getViewportCenter: () => {
+        const { reactFlowInstance } = get();
+        if (!reactFlowInstance) {
+          // Fallback if no instance available
+          return { x: 200, y: 200 };
+        }
+
+        // Get the viewport dimensions from the React Flow wrapper
+        const { x, y, zoom } = reactFlowInstance.getViewport();
+        const domNode = document.querySelector('.react-flow');
+        const rect = domNode?.getBoundingClientRect();
+
+        if (!rect) {
+          return { x: 200, y: 200 };
+        }
+
+        // Calculate the center of the viewport in flow coordinates
+        const centerX = (-x + rect.width / 2) / zoom;
+        const centerY = (-y + rect.height / 2) / zoom;
+
+        // Add small random offset to prevent stacking
+        return {
+          x: centerX + (Math.random() - 0.5) * 100,
+          y: centerY + (Math.random() - 0.5) * 100,
+        };
       },
 
       // Utility
