@@ -28,8 +28,14 @@ const shortcuts = [
     { keys: ['H'], description: 'Pan tool' },
     { keys: ['X'], description: 'Scissors tool' },
   ]},
-  { category: 'Canvas', items: [
+  { category: 'Zoom', items: [
+    { keys: ['⌘', '+'], description: 'Zoom in' },
+    { keys: ['⌘', '-'], description: 'Zoom out' },
+    { keys: ['D'], description: 'Zoom to fit' },
+    { keys: ['F'], description: 'Zoom to selection' },
     { keys: ['Scroll'], description: 'Zoom in/out' },
+  ]},
+  { category: 'Canvas', items: [
     { keys: ['Drag'], description: 'Select: box select / Pan: move canvas' },
     { keys: ['Drag handle'], description: 'Create connection (Select mode)' },
   ]},

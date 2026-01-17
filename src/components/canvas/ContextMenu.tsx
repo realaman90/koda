@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useMemo } from 'react';
-import { useCanvasStore, createImageGeneratorNode, createVideoGeneratorNode, createTextNode, createMediaNode } from '@/stores/canvas-store';
+import { useCanvasStore, createImageGeneratorNode, createVideoGeneratorNode, createTextNode, createMediaNode, createStickyNoteNode, createStickerNode, createGroupNode } from '@/stores/canvas-store';
 import { useReactFlow } from '@xyflow/react';
 import {
   Copy,
@@ -222,7 +222,8 @@ export function ContextMenu() {
           icon: <StickyNote className="h-4 w-4 text-yellow-400" />,
           label: 'Sticky note',
           action: () => {
-            // TODO: Add sticky note node
+            const position = getNodePosition();
+            addNode(createStickyNoteNode(position));
             hideContextMenu();
           },
           keywords: ['sticky', 'note', 'comment', 'annotation'],
@@ -230,19 +231,22 @@ export function ContextMenu() {
         {
           id: 'stickers',
           icon: <Smile className="h-4 w-4 text-zinc-400" />,
-          label: 'Stickers',
+          label: 'Sticker',
           action: () => {
-            // TODO: Add stickers
+            const position = getNodePosition();
+            addNode(createStickerNode(position));
             hideContextMenu();
           },
           keywords: ['sticker', 'emoji', 'icon'],
         },
         {
           id: 'group',
-          icon: <Group className="h-4 w-4 text-zinc-400" />,
+          icon: <Group className="h-4 w-4 text-indigo-400" />,
           label: 'Group',
           action: () => {
-            // TODO: Add group functionality
+            const position = getNodePosition();
+            const count = nodes.filter((n) => n.type === 'group').length + 1;
+            addNode(createGroupNode(position, `Group ${count}`));
             hideContextMenu();
           },
           keywords: ['group', 'container', 'organize'],

@@ -1,19 +1,12 @@
 'use client';
 
-import { useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { useCanvasStore, createImageGeneratorNode, createVideoGeneratorNode, createTextNode, createMediaNode } from '@/stores/canvas-store';
+import { useCanvasStore } from '@/stores/canvas-store';
 import {
-  Plus,
   Play,
   Hand,
-  Type,
-  Image as ImageIcon,
-  Video,
   Undo2,
   Redo2,
-  Settings,
-  Sparkle,
   Scissors,
   Keyboard,
   MousePointer2,
@@ -24,10 +17,9 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { AddNodeDropdown } from './AddNodeDropdown';
 
 export function NodeToolbar() {
-  const addNode = useCanvasStore((state) => state.addNode);
-  const clearCanvas = useCanvasStore((state) => state.clearCanvas);
   const nodes = useCanvasStore((state) => state.nodes);
   const undo = useCanvasStore((state) => state.undo);
   const redo = useCanvasStore((state) => state.redo);
@@ -47,99 +39,195 @@ export function NodeToolbar() {
     return !!data.prompt;
   });
 
-  const getRandomPosition = useCallback(() => ({
-    x: 100 + Math.random() * 200,
-    y: 100 + Math.random() * 200,
-  }), []);
-
-  const handleAddImageGenerator = useCallback(() => {
-    const count = nodes.filter((n) => n.type === 'imageGenerator').length + 1;
-    addNode(createImageGeneratorNode(getRandomPosition(), `Image Generator ${count}`));
-  }, [addNode, getRandomPosition, nodes]);
-
-  const handleAddVideoGenerator = useCallback(() => {
-    const count = nodes.filter((n) => n.type === 'videoGenerator').length + 1;
-    addNode(createVideoGeneratorNode(getRandomPosition(), `Video Generator ${count}`));
-  }, [addNode, getRandomPosition, nodes]);
-
-  const handleAddText = useCallback(() => {
-    addNode(createTextNode(getRandomPosition()));
-  }, [addNode, getRandomPosition]);
-
-  const handleAddMedia = useCallback(() => {
-    addNode(createMediaNode(getRandomPosition()));
-  }, [addNode, getRandomPosition]);
-
-  const toolbarItems = [
-    // Tools
-    { id: 'select', icon: <MousePointer2 className="h-4 w-4" />, label: 'Select (V)', onClick: () => setActiveTool('select'), active: activeTool === 'select', disabled: false },
-    { id: 'pan', icon: <Hand className="h-4 w-4" />, label: 'Pan (H)', onClick: () => setActiveTool('pan'), active: activeTool === 'pan', disabled: false },
-    { id: 'scissors', icon: <Scissors className="h-4 w-4" />, label: 'Scissors (X) - drag to cut edges', onClick: () => setActiveTool('scissors'), active: activeTool === 'scissors', disabled: false },
-    { id: 'divider1', type: 'divider' },
-    // Add nodes
-    { id: 'image-gen', icon: <div className="relative h-4 w-4 overflow-visible"><ImageIcon className="h-4 w-4" /><Sparkle className="absolute -top-[3px] -right-[3px] fill-current" style={{ width: '6px', height: '6px' }} /></div>, label: 'Image Generator', onClick: handleAddImageGenerator, active: false, disabled: false },
-    { id: 'video-gen', icon: <Video className="h-4 w-4" />, label: 'Video Generator', onClick: handleAddVideoGenerator, active: false, disabled: false },
-    { id: 'text', icon: <Type className="h-4 w-4" />, label: 'Text Node', onClick: handleAddText, active: false, disabled: false },
-    { id: 'media', icon: <ImageIcon className="h-4 w-4" />, label: 'Media Node', onClick: handleAddMedia, active: false, disabled: false },
-    { id: 'divider2', type: 'divider' },
-    // Actions
-    { id: 'run', icon: <Play className="h-4 w-4" />, label: 'Run All', onClick: runAll, active: isRunningAll, disabled: !hasRunnableGenerators || isRunningAll },
-    { id: 'divider3', type: 'divider' },
-    { id: 'undo', icon: <Undo2 className="h-4 w-4" />, label: 'Undo (Cmd+Z)', onClick: undo, active: false, disabled: !canUndo() },
-    { id: 'redo', icon: <Redo2 className="h-4 w-4" />, label: 'Redo (Cmd+Shift+Z)', onClick: redo, active: false, disabled: !canRedo() },
-    { id: 'divider4', type: 'divider' },
-    { id: 'shortcuts', icon: <Keyboard className="h-4 w-4" />, label: 'Keyboard Shortcuts (?)', onClick: () => setShowShortcuts(!showShortcuts), active: showShortcuts, disabled: false },
-    { id: 'settings', icon: <Settings className="h-4 w-4" />, label: 'Settings', onClick: () => {}, active: false, disabled: true },
-  ];
-
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="absolute left-4 top-1/2 -translate-y-1/2 z-10">
+      <div className="absolute left-4 top-4 z-10">
         <div className="bg-zinc-900/90 backdrop-blur border border-zinc-700/50 rounded-xl p-1.5 flex flex-col gap-1">
-          {toolbarItems.map((item) => {
-            if (item.type === 'divider') {
-              return <div key={item.id} className="h-px bg-zinc-700/50 my-1" />;
-            }
-
-            return (
-              <Tooltip key={item.id}>
+          {/* Row 1: Tools | Add | Run */}
+          <div className="flex items-center gap-1">
+            {/* Tool buttons */}
+            <div className="flex items-center gap-0.5">
+              <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    onClick={item.onClick}
-                    disabled={item.disabled}
+                    onClick={() => setActiveTool('select')}
                     className={`
-                      h-9 w-9 rounded-lg
-                      ${item.active
+                      h-8 w-8 rounded-lg
+                      ${activeTool === 'select'
                         ? 'bg-zinc-700 text-white'
                         : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
                       }
-                      ${item.disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}
                     `}
                   >
-                    {item.icon}
+                    <MousePointer2 className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="right" className="bg-zinc-800 border-zinc-700 text-zinc-200">
-                  {item.label}
+                <TooltipContent side="bottom" className="bg-zinc-800 border-zinc-700 text-zinc-200">
+                  Select (V)
                 </TooltipContent>
               </Tooltip>
-            );
-          })}
-        </div>
 
-        {/* Clear button - only show when there are nodes */}
-        {nodes.length > 0 && (
-          <Button
-            onClick={clearCanvas}
-            variant="ghost"
-            size="sm"
-            className="mt-3 text-zinc-500 hover:text-zinc-300 text-xs w-full"
-          >
-            Clear
-          </Button>
-        )}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => setActiveTool('pan')}
+                    className={`
+                      h-8 w-8 rounded-lg
+                      ${activeTool === 'pan'
+                        ? 'bg-zinc-700 text-white'
+                        : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                      }
+                    `}
+                  >
+                    <Hand className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="bg-zinc-800 border-zinc-700 text-zinc-200">
+                  Pan (H)
+                </TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => setActiveTool('scissors')}
+                    className={`
+                      h-8 w-8 rounded-lg
+                      ${activeTool === 'scissors'
+                        ? 'bg-zinc-700 text-white'
+                        : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                      }
+                    `}
+                  >
+                    <Scissors className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="bg-zinc-800 border-zinc-700 text-zinc-200">
+                  Scissors (X) - drag to cut edges
+                </TooltipContent>
+              </Tooltip>
+            </div>
+
+            {/* Divider */}
+            <div className="w-px h-6 bg-zinc-700/50 mx-1" />
+
+            {/* Add Node Dropdown */}
+            <AddNodeDropdown />
+
+            {/* Divider */}
+            <div className="w-px h-6 bg-zinc-700/50 mx-1" />
+
+            {/* Run All */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={runAll}
+                  disabled={!hasRunnableGenerators || isRunningAll}
+                  className={`
+                    h-8 w-8 rounded-lg
+                    ${isRunningAll
+                      ? 'bg-emerald-600 text-white'
+                      : !hasRunnableGenerators
+                        ? 'text-zinc-600 cursor-not-allowed'
+                        : 'text-emerald-400 hover:text-white hover:bg-emerald-600/20'
+                    }
+                  `}
+                >
+                  <Play className={`h-4 w-4 ${isRunningAll ? 'animate-pulse' : ''}`} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="bg-zinc-800 border-zinc-700 text-zinc-200">
+                Run All
+              </TooltipContent>
+            </Tooltip>
+          </div>
+
+          {/* Row 2: History | Help */}
+          <div className="flex items-center gap-1">
+            {/* History buttons */}
+            <div className="flex items-center gap-0.5">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={undo}
+                    disabled={!canUndo()}
+                    className={`
+                      h-8 w-8 rounded-lg
+                      ${!canUndo()
+                        ? 'text-zinc-600 cursor-not-allowed'
+                        : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                      }
+                    `}
+                  >
+                    <Undo2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="bg-zinc-800 border-zinc-700 text-zinc-200">
+                  Undo (Cmd+Z)
+                </TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={redo}
+                    disabled={!canRedo()}
+                    className={`
+                      h-8 w-8 rounded-lg
+                      ${!canRedo()
+                        ? 'text-zinc-600 cursor-not-allowed'
+                        : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                      }
+                    `}
+                  >
+                    <Redo2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="bg-zinc-800 border-zinc-700 text-zinc-200">
+                  Redo (Cmd+Shift+Z)
+                </TooltipContent>
+              </Tooltip>
+            </div>
+
+            {/* Divider */}
+            <div className="w-px h-6 bg-zinc-700/50 mx-1" />
+
+            {/* Help */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => setShowShortcuts(!showShortcuts)}
+                  className={`
+                    h-8 w-8 rounded-lg
+                    ${showShortcuts
+                      ? 'bg-zinc-700 text-white'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                    }
+                  `}
+                >
+                  <Keyboard className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="bg-zinc-800 border-zinc-700 text-zinc-200">
+                Keyboard Shortcuts (?)
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        </div>
       </div>
     </TooltipProvider>
   );

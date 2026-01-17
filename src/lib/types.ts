@@ -1,7 +1,7 @@
 import type { Node, Edge } from '@xyflow/react';
 
 // Node Types
-export type NodeType = 'imageGenerator' | 'videoGenerator' | 'text' | 'media';
+export type NodeType = 'imageGenerator' | 'videoGenerator' | 'text' | 'media' | 'stickyNote' | 'sticker' | 'group';
 
 // ============================================
 // PRESET TYPES (for Settings Panel)
@@ -129,8 +129,52 @@ export interface MediaNodeData extends Record<string, unknown> {
 
 export type MediaNode = Node<MediaNodeData, 'media'>;
 
+// Sticky Note Node
+export type StickyNoteColor = 'yellow' | 'pink' | 'blue' | 'green' | 'purple' | 'orange';
+export type StickyNoteSize = 'sm' | 'md' | 'lg';
+export type TextAlign = 'left' | 'center' | 'right';
+
+export interface StickyNoteNodeData extends Record<string, unknown> {
+  content: string;
+  author?: string;
+  color: StickyNoteColor;
+  size?: StickyNoteSize;
+  textAlign?: TextAlign;
+  fontSize?: number; // 12-24
+  bold?: boolean;
+  italic?: boolean;
+  rotation?: number; // degrees
+  opacity?: number; // 0-100
+}
+
+export type StickyNoteNode = Node<StickyNoteNodeData, 'stickyNote'>;
+
+// Sticker Node
+export type StickerSize = 'sm' | 'md' | 'lg' | 'xl';
+
+export interface StickerNodeData extends Record<string, unknown> {
+  emoji: string;
+  size: StickerSize;
+  rotation?: number; // degrees (0-360)
+  opacity?: number; // 0-100
+  flipX?: boolean;
+  flipY?: boolean;
+}
+
+export type StickerNode = Node<StickerNodeData, 'sticker'>;
+
+// Group Node
+export interface GroupNodeData extends Record<string, unknown> {
+  name: string;
+  color: string;
+  width: number;
+  height: number;
+}
+
+export type GroupNode = Node<GroupNodeData, 'group'>;
+
 // Union of all node types
-export type AppNode = ImageGeneratorNode | VideoGeneratorNode | TextNode | MediaNode;
+export type AppNode = ImageGeneratorNode | VideoGeneratorNode | TextNode | MediaNode | StickyNoteNode | StickerNode | GroupNode;
 export type AppEdge = Edge;
 
 // Fal API types

@@ -4,7 +4,6 @@ import { useCallback } from 'react';
 import {
   ReactFlow,
   Background,
-  Controls,
   BackgroundVariant,
   ConnectionLineType,
   SelectionMode,
@@ -24,6 +23,7 @@ import { SettingsPanel } from './SettingsPanel';
 import { VideoSettingsPanel } from './VideoSettingsPanel';
 import { ContextMenu } from './ContextMenu';
 import { KeyboardShortcuts } from './KeyboardShortcuts';
+import { ZoomControls } from './ZoomControls';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 
 export function Canvas() {
@@ -41,6 +41,7 @@ export function Canvas() {
   const setActiveTool = useCanvasStore((state) => state.setActiveTool);
   const deleteSelectedEdges = useCanvasStore((state) => state.deleteSelectedEdges);
   const selectedEdgeIds = useCanvasStore((state) => state.selectedEdgeIds);
+  const setReactFlowInstance = useCanvasStore((state) => state.setReactFlowInstance);
 
   // Enable keyboard shortcuts
   useKeyboardShortcuts();
@@ -145,6 +146,7 @@ export function Canvas() {
         onSelectionEnd={onSelectionEnd}
         onPaneClick={handlePaneClick}
         onContextMenu={handleContextMenu}
+        onInit={setReactFlowInstance}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         isValidConnection={isValidConnection}
@@ -175,10 +177,7 @@ export function Canvas() {
           size={1}
           color="#27272a"
         />
-        <Controls
-          className="!bg-zinc-900/90 !border-zinc-700/50 !rounded-lg [&>button]:!bg-zinc-800 [&>button]:!border-zinc-700 [&>button]:!text-zinc-400 [&>button:hover]:!bg-zinc-700 [&>button:hover]:!text-white"
-          position="bottom-right"
-        />
+        <ZoomControls />
       </ReactFlow>
     </div>
   );
