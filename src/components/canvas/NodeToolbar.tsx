@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useCanvasStore, createImageGeneratorNode, createVideoGeneratorNode, createTextNode, createMediaNode } from '@/stores/canvas-store';
 import {
@@ -17,7 +17,13 @@ import {
   Scissors,
   Keyboard,
   MousePointer2,
+  Puzzle,
 } from 'lucide-react';
+import { PluginLauncher } from '@/components/plugins/PluginLauncher';
+import { useAgentSandbox } from '@/hooks/useAgentSandbox';
+import { AgentSandbox } from '@/components/plugins/AgentSandbox';
+// Import official plugins to register them
+import '@/lib/plugins/official/storyboard-generator';
 import {
   Tooltip,
   TooltipContent,
@@ -39,6 +45,11 @@ export function NodeToolbar() {
   const setShowShortcuts = useCanvasStore((state) => state.setShowShortcuts);
   const activeTool = useCanvasStore((state) => state.activeTool);
   const setActiveTool = useCanvasStore((state) => state.setActiveTool);
+
+  // Plugin state
+  const [showPluginLauncher, setShowPluginLauncher] = useState(false);
+  const pluginButtonRef = useRef<HTMLButtonElement>(null);
+  const { activePlugin, openSandbox, closeSandbox } = useAgentSandbox();
 
   // Check if there are any generators with prompts
   const hasRunnableGenerators = nodes.some((n) => {
@@ -82,6 +93,9 @@ export function NodeToolbar() {
     { id: 'text', icon: <Type className="h-4 w-4" />, label: 'Text Node', onClick: handleAddText, active: false, disabled: false },
     { id: 'media', icon: <ImageIcon className="h-4 w-4" />, label: 'Media Node', onClick: handleAddMedia, active: false, disabled: false },
     { id: 'divider2', type: 'divider' },
+    // Plugins
+    { id: 'plugins', icon: <Puzzle className="h-4 w-4" />, label: 'Plugins', onClick: () => setShowPluginLauncher(!showPluginLauncher), active: showPluginLauncher, disabled: false, ref: pluginButtonRef },
+    { id: 'divider2b', type: 'divider' },
     // Actions
     { id: 'run', icon: <Play className="h-4 w-4" />, label: 'Run All', onClick: runAll, active: isRunningAll, disabled: !hasRunnableGenerators || isRunningAll },
     { id: 'divider3', type: 'divider' },
@@ -101,10 +115,14 @@ export function NodeToolbar() {
               return <div key={item.id} className="h-px bg-zinc-700/50 my-1" />;
             }
 
+            // Handle plugins button with ref
+            const buttonRef = item.id === 'plugins' ? pluginButtonRef : undefined;
+
             return (
               <Tooltip key={item.id}>
                 <TooltipTrigger asChild>
                   <Button
+                    ref={buttonRef}
                     variant="ghost"
                     size="icon-sm"
                     onClick={item.onClick}
@@ -141,6 +159,22 @@ export function NodeToolbar() {
           </Button>
         )}
       </div>
+
+      {/* Plugin Launcher Dropdown */}
+      <PluginLauncher
+        isOpen={showPluginLauncher}
+        onClose={() => setShowPluginLauncher(false)}
+        onLaunch={(pluginId) => {
+          openSandbox(pluginId);
+          setShowPluginLauncher(false);
+        }}
+        anchorRef={pluginButtonRef}
+      />
+
+      {/* Agent Sandbox Modal */}
+      {activePlugin && (
+        <AgentSandbox plugin={activePlugin} onClose={closeSandbox} />
+      )}
     </TooltipProvider>
   );
 }
