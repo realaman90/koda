@@ -299,14 +299,81 @@ export const useCanvasStore = create<CanvasState>()(
       },
 
       onNodesChange: (changes) => {
-        const { _pushHistory } = get() as CanvasState & { _pushHistory: () => void };
+        const { _pushHistory, nodes } = get() as CanvasState & { _pushHistory: () => void };
         const hasPositionChange = changes.some(
           (c) => c.type === 'position' && c.dragging === false
         );
 
-        set((state) => ({
-          nodes: applyNodeChanges(changes, state.nodes) as AppNode[],
-        }));
+        // Check if any group nodes are being dragged
+        const groupPositionChanges = changes.filter(
+          (c) => c.type === 'position' && c.position
+        );
+
+        // Track group movements to move child nodes
+        const groupDeltas: { groupId: string; deltaX: number; deltaY: number; group: AppNode }[] = [];
+
+        for (const change of groupPositionChanges) {
+          if (change.type === 'position' && change.position) {
+            const node = nodes.find((n) => n.id === change.id);
+            if (node?.type === 'group') {
+              const deltaX = change.position.x - node.position.x;
+              const deltaY = change.position.y - node.position.y;
+              // Only track if there's actual movement
+              if (deltaX !== 0 || deltaY !== 0) {
+                groupDeltas.push({ groupId: change.id, deltaX, deltaY, group: node });
+              }
+            }
+          }
+        }
+
+        // Helper to check if a node is inside a group's bounds
+        const isNodeInsideGroup = (node: AppNode, group: AppNode): boolean => {
+          if (node.type === 'group' || node.id === group.id) return false;
+          const groupData = group.data as GroupNodeData;
+          const groupWidth = groupData.width || 300;
+          const groupHeight = groupData.height || 200;
+
+          // Check if node's center is inside the group
+          const nodeCenterX = node.position.x + (node.measured?.width || 100) / 2;
+          const nodeCenterY = node.position.y + (node.measured?.height || 50) / 2;
+
+          return (
+            nodeCenterX >= group.position.x &&
+            nodeCenterX <= group.position.x + groupWidth &&
+            nodeCenterY >= group.position.y &&
+            nodeCenterY <= group.position.y + groupHeight
+          );
+        };
+
+        // Apply original changes
+        let updatedNodes = applyNodeChanges(changes, nodes) as AppNode[];
+
+        // Move child nodes that are inside any moving group
+        if (groupDeltas.length > 0) {
+          const movedNodeIds = new Set(changes.filter((c) => c.type === 'position').map((c) => c.id));
+
+          updatedNodes = updatedNodes.map((node) => {
+            // Skip if this node is already being moved by the user
+            if (movedNodeIds.has(node.id)) return node;
+
+            // Check each moving group
+            for (const { groupId, deltaX, deltaY, group } of groupDeltas) {
+              // Check if node was inside the group BEFORE it moved
+              if (isNodeInsideGroup(node, group)) {
+                return {
+                  ...node,
+                  position: {
+                    x: node.position.x + deltaX,
+                    y: node.position.y + deltaY,
+                  },
+                };
+              }
+            }
+            return node;
+          });
+        }
+
+        set({ nodes: updatedNodes });
 
         // Only push history when drag ends
         if (hasPositionChange) {

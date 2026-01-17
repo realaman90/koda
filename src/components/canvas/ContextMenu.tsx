@@ -15,8 +15,6 @@ import {
   Image as ImageIcon,
   Type,
   Video,
-  Sparkles,
-  Wand2,
   StickyNote,
   Smile,
   Group,
@@ -186,30 +184,10 @@ export function ContextMenu() {
         },
         {
           id: 'videoGenerator',
-          icon: <Video className="h-4 w-4 text-zinc-400" />,
+          icon: <Video className="h-4 w-4 text-blue-400" />,
           label: 'Video Generator',
           action: () => handleAddNode(createVideoGeneratorNode, 'Video Generator'),
           keywords: ['video', 'generate', 'ai', 'movie', 'clip'],
-        },
-        {
-          id: 'assistant',
-          icon: <Sparkles className="h-4 w-4 text-purple-400" />,
-          label: 'Assistant',
-          action: () => {
-            // TODO: Add assistant node
-            hideContextMenu();
-          },
-          keywords: ['assistant', 'ai', 'chat', 'help'],
-        },
-        {
-          id: 'upscaler',
-          icon: <Wand2 className="h-4 w-4 text-zinc-400" />,
-          label: 'Image Upscaler',
-          action: () => {
-            // TODO: Add upscaler node
-            hideContextMenu();
-          },
-          keywords: ['upscale', 'enhance', 'quality', 'resolution'],
         },
       ],
     },
