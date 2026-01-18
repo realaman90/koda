@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 import {
   applyNodeChanges,
   applyEdgeChanges,
@@ -9,7 +8,7 @@ import {
   type Connection,
   type ReactFlowInstance,
 } from '@xyflow/react';
-import type { AppNode, AppEdge, ImageGeneratorNodeData, VideoGeneratorNodeData, TextNodeData, MediaNodeData, StickyNoteNodeData, StickerNodeData, GroupNodeData, StoryboardNodeData } from '@/lib/types';
+import type { AppNode, AppEdge, ImageGeneratorNodeData, VideoGeneratorNodeData, TextNodeData, MediaNodeData, StickyNoteNodeData, StickerNodeData, GroupNodeData, StoryboardNodeData, MusicGeneratorNodeData, SpeechNodeData, VideoAudioNodeData } from '@/lib/types';
 
 // History snapshot type
 interface HistorySnapshot {
@@ -27,7 +26,6 @@ interface CanvasState {
   // Canvas state
   nodes: AppNode[];
   edges: AppEdge[];
-  spaceName: string;
 
   // Selection state
   selectedNodeIds: string[];
@@ -85,9 +83,6 @@ interface CanvasState {
   canUndo: () => boolean;
   canRedo: () => boolean;
 
-  // Space actions
-  setSpaceName: (name: string) => void;
-
   // Workflow actions
   runAll: () => Promise<void>;
   isRunningAll: boolean;
@@ -127,8 +122,18 @@ interface CanvasState {
     referenceUrls?: string[];
     productImageUrl?: string;
     characterImageUrl?: string;
+    videoUrl?: string;
   };
   clearCanvas: () => void;
+
+  // Canvas loading (for multi-canvas support)
+  loadCanvasData: (nodes: AppNode[], edges: AppEdge[]) => void;
+
+  // Read-only mode (for showcase templates)
+  isReadOnly: boolean;
+  setReadOnly: (readOnly: boolean) => void;
+  loadAsReadOnly: (nodes: AppNode[], edges: AppEdge[]) => void;
+  duplicateToEditable: () => void;
 }
 
 // Generate unique IDs
@@ -240,27 +245,67 @@ export const createStoryboardNode = (position: { x: number; y: number }, name?: 
   } as StoryboardNodeData,
 });
 
+export const createMusicGeneratorNode = (position: { x: number; y: number }, name?: string): AppNode => ({
+  id: generateId(),
+  type: 'musicGenerator',
+  position,
+  data: {
+    name: name || 'Music Generator',
+    prompt: '',
+    duration: 30,
+    instrumental: false,
+    guidanceScale: 7,
+    isGenerating: false,
+  } as MusicGeneratorNodeData,
+});
+
+export const createSpeechNode = (position: { x: number; y: number }, name?: string): AppNode => ({
+  id: generateId(),
+  type: 'speech',
+  position,
+  data: {
+    name: name || 'Speech',
+    text: '',
+    voice: 'rachel',
+    speed: 1.0,
+    stability: 0.5,
+    isGenerating: false,
+  } as SpeechNodeData,
+});
+
+export const createVideoAudioNode = (position: { x: number; y: number }, name?: string): AppNode => ({
+  id: generateId(),
+  type: 'videoAudio',
+  position,
+  data: {
+    name: name || 'Video Audio',
+    prompt: '',
+    duration: 10,
+    cfgStrength: 4.5,
+    isGenerating: false,
+  } as VideoAudioNodeData,
+});
+
 export const useCanvasStore = create<CanvasState>()(
-  persist(
-    (set, get) => ({
-      // Initial state
-      nodes: [],
-      edges: [],
-      spaceName: 'Untitled Space',
-      selectedNodeIds: [],
-      selectedEdgeIds: [],
-      history: [],
-      historyIndex: -1,
-      clipboard: null,
-      settingsPanelNodeId: null,
-      settingsPanelPosition: null,
-      videoSettingsPanelNodeId: null,
-      videoSettingsPanelPosition: null,
-      contextMenu: null,
-      isRunningAll: false,
-      showShortcuts: false,
-      activeTool: 'select' as const,
-      reactFlowInstance: null,
+  (set, get) => ({
+    // Initial state
+    nodes: [],
+    edges: [],
+    selectedNodeIds: [],
+    selectedEdgeIds: [],
+    history: [],
+    historyIndex: -1,
+    clipboard: null,
+    settingsPanelNodeId: null,
+    settingsPanelPosition: null,
+    videoSettingsPanelNodeId: null,
+    videoSettingsPanelPosition: null,
+    contextMenu: null,
+    isRunningAll: false,
+    showShortcuts: false,
+    activeTool: 'select' as const,
+    reactFlowInstance: null,
+    isReadOnly: false,
 
       // Helper to push current state to history
       _pushHistory: () => {
@@ -586,11 +631,6 @@ export const useCanvasStore = create<CanvasState>()(
         return historyIndex < history.length - 1;
       },
 
-      // Space actions
-      setSpaceName: (name) => {
-        set({ spaceName: name });
-      },
-
       // Workflow actions
       runAll: async () => {
         const { nodes, updateNodeData, getConnectedInputs } = get() as CanvasState & { _pushHistory: () => void };
@@ -800,6 +840,20 @@ export const useCanvasStore = create<CanvasState>()(
           return undefined;
         };
 
+        // Helper to get video URL from a node
+        const getVideoUrl = (node: AppNode | null | undefined): string | undefined => {
+          if (!node) return undefined;
+          if (node.type === 'media') {
+            const mediaData = node.data as MediaNodeData;
+            return mediaData.type === 'video' ? mediaData.url : undefined;
+          } else if (node.type === 'videoGenerator') {
+            return (node.data as VideoGeneratorNodeData).outputUrl;
+          } else if (node.type === 'videoAudio') {
+            return (node.data as VideoAudioNodeData).outputUrl;
+          }
+          return undefined;
+        };
+
         // Find edges connected to specific handles
         const textEdge = incomingEdges.find((e) => e.targetHandle === 'text');
         const refEdge = incomingEdges.find((e) => e.targetHandle === 'reference');
@@ -807,6 +861,7 @@ export const useCanvasStore = create<CanvasState>()(
         const lastFrameEdge = incomingEdges.find((e) => e.targetHandle === 'lastFrame');
         const productImageEdge = incomingEdges.find((e) => e.targetHandle === 'productImage');
         const characterImageEdge = incomingEdges.find((e) => e.targetHandle === 'characterImage');
+        const videoEdge = incomingEdges.find((e) => e.targetHandle === 'video');
 
         // Multi-reference handles (ref2-ref8 for ImageGenerator, ref1-ref3 for VideoGenerator)
         const refEdges = ['ref1', 'ref2', 'ref3', 'ref4', 'ref5', 'ref6', 'ref7', 'ref8']
@@ -820,6 +875,7 @@ export const useCanvasStore = create<CanvasState>()(
         const lastFrameNode = lastFrameEdge ? nodes.find((n) => n.id === lastFrameEdge.source) : null;
         const productImageNode = productImageEdge ? nodes.find((n) => n.id === productImageEdge.source) : null;
         const characterImageNode = characterImageEdge ? nodes.find((n) => n.id === characterImageEdge.source) : null;
+        const videoNode = videoEdge ? nodes.find((n) => n.id === videoEdge.source) : null;
 
         // Get multi-reference URLs
         const referenceUrls = refEdges
@@ -837,6 +893,7 @@ export const useCanvasStore = create<CanvasState>()(
           referenceUrls: referenceUrls.length > 0 ? referenceUrls : undefined,
           productImageUrl: getImageUrl(productImageNode),
           characterImageUrl: getImageUrl(characterImageNode),
+          videoUrl: getVideoUrl(videoNode),
         };
       },
 
@@ -845,15 +902,91 @@ export const useCanvasStore = create<CanvasState>()(
         set({ nodes: [], edges: [], selectedNodeIds: [] });
         _pushHistory();
       },
-    }),
-    {
-      name: 'spaces-canvas-storage',
-      partialize: (state) => ({
-        nodes: state.nodes,
-        edges: state.edges,
-        spaceName: state.spaceName,
-        // Don't persist: history, historyIndex, clipboard, selectedNodeIds
-      }),
-    }
-  )
+
+      // Canvas loading (for multi-canvas support)
+      loadCanvasData: (nodes, edges) => {
+        // Reset history and load new canvas data
+        set({
+          nodes: JSON.parse(JSON.stringify(nodes)),
+          edges: JSON.parse(JSON.stringify(edges)),
+          selectedNodeIds: [],
+          selectedEdgeIds: [],
+          history: [],
+          historyIndex: -1,
+          clipboard: null,
+          settingsPanelNodeId: null,
+          settingsPanelPosition: null,
+          videoSettingsPanelNodeId: null,
+          videoSettingsPanelPosition: null,
+          contextMenu: null,
+          isReadOnly: false,
+        });
+
+        // Initialize history with loaded state
+        const { _pushHistory } = get() as CanvasState & { _pushHistory: () => void };
+        _pushHistory();
+      },
+
+      // Read-only mode (for showcase templates)
+      setReadOnly: (readOnly) => {
+        set({ isReadOnly: readOnly });
+      },
+
+      loadAsReadOnly: (nodes, edges) => {
+        // Load canvas in read-only mode (for showcase templates)
+        set({
+          nodes: JSON.parse(JSON.stringify(nodes)),
+          edges: JSON.parse(JSON.stringify(edges)),
+          selectedNodeIds: [],
+          selectedEdgeIds: [],
+          history: [],
+          historyIndex: -1,
+          clipboard: null,
+          settingsPanelNodeId: null,
+          settingsPanelPosition: null,
+          videoSettingsPanelNodeId: null,
+          videoSettingsPanelPosition: null,
+          contextMenu: null,
+          isReadOnly: true,
+        });
+      },
+
+      duplicateToEditable: () => {
+        // Clone current canvas and make it editable
+        const { nodes, edges } = get();
+
+        // Generate new IDs for all nodes
+        const idMap = new Map<string, string>();
+        const newNodes = nodes.map((node) => {
+          const newId = generateId();
+          idMap.set(node.id, newId);
+          return {
+            ...JSON.parse(JSON.stringify(node)),
+            id: newId,
+          };
+        });
+
+        // Update edge references
+        const newEdges = edges.map((edge) => ({
+          ...JSON.parse(JSON.stringify(edge)),
+          id: `edge_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+          source: idMap.get(edge.source) || edge.source,
+          target: idMap.get(edge.target) || edge.target,
+        }));
+
+        set({
+          nodes: newNodes as AppNode[],
+          edges: newEdges,
+          isReadOnly: false,
+          selectedNodeIds: [],
+          selectedEdgeIds: [],
+          history: [],
+          historyIndex: -1,
+        });
+
+        // Initialize history
+        const { _pushHistory } = get() as CanvasState & { _pushHistory: () => void };
+        _pushHistory();
+      },
+    })
 );

@@ -115,12 +115,12 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
 
       {/* Floating Toolbar - appears above node when selected */}
       {selected && (
-        <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-zinc-800/90 backdrop-blur rounded-lg px-2 py-1.5 border border-zinc-700/50 shadow-xl z-10">
+        <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1 backdrop-blur rounded-lg px-2 py-1.5 border node-toolbar-floating shadow-xl z-10">
           {data.url && (
             <Button
               variant="ghost"
               size="icon-sm"
-              className="h-7 w-7 text-zinc-400 hover:text-white hover:bg-zinc-700/50"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
               onClick={handleClear}
             >
               <X className="h-3.5 w-3.5" />
@@ -129,7 +129,7 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
           <Button
             variant="ghost"
             size="icon-sm"
-            className="h-7 w-7 text-zinc-400 hover:text-red-400 hover:bg-zinc-700/50"
+            className="h-7 w-7 text-muted-foreground hover:text-red-400 hover:bg-muted/50"
             onClick={handleDelete}
           >
             <Trash2 className="h-3.5 w-3.5" />
@@ -138,7 +138,7 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
       )}
 
       {/* Node Title */}
-      <div className="flex items-center gap-2 mb-2 text-zinc-400 text-sm font-medium">
+      <div className="flex items-center gap-2 mb-2 text-sm font-medium" style={{ color: 'var(--node-title-media)' }}>
         <ImageIcon className="h-4 w-4" />
         {isEditingName ? (
           <input
@@ -154,12 +154,13 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
                 setIsEditingName(false);
               }
             }}
-            className="bg-transparent border-b border-zinc-600 outline-none text-zinc-300 px-0.5 min-w-[60px]"
+            className="bg-transparent border-b outline-none px-0.5 min-w-[60px]"
+            style={{ borderColor: 'var(--input-border)', color: 'var(--text-secondary)' }}
           />
         ) : (
           <span
             onDoubleClick={() => setIsEditingName(true)}
-            className="cursor-text hover:text-zinc-300 transition-colors"
+            className="cursor-text transition-colors hover:opacity-80"
           >
             {nodeName}
           </span>
@@ -170,13 +171,13 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
       <div
         className={`
           w-[280px] rounded-2xl overflow-hidden
-          transition-all duration-150
+          transition-[box-shadow,ring-color] duration-150
           ${selected
             ? 'ring-[2.5px] ring-blue-500 shadow-lg shadow-blue-500/10'
-            : 'ring-1 ring-zinc-800 hover:ring-zinc-700'
+            : 'ring-1 ring-border hover:ring-muted-foreground/30'
           }
         `}
-        style={{ backgroundColor: '#1a1a1c' }}
+        style={{ backgroundColor: 'var(--node-card-bg)' }}
       >
         {/* Content Area */}
         <div className="relative min-h-[160px]">
@@ -201,13 +202,13 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
                 transition-colors
                 ${isDragging
                   ? 'bg-blue-500/10 border-2 border-dashed border-blue-500'
-                  : 'hover:bg-zinc-800/50'
+                  : 'hover:opacity-80'
                 }
               `}
             >
-              <Upload className="h-8 w-8 text-zinc-600 mb-3" />
-              <p className="text-zinc-400 text-sm font-medium">Drop image here</p>
-              <p className="text-zinc-600 text-xs mt-1">or click to browse</p>
+              <Upload className="h-8 w-8 mb-3" style={{ color: 'var(--text-placeholder)' }} />
+              <p className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>Drop image here</p>
+              <p className="text-xs mt-1" style={{ color: 'var(--text-placeholder)' }}>or click to browse</p>
 
               {/* URL Input Toggle */}
               {!showUrlInput ? (
@@ -216,7 +217,8 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
                     e.stopPropagation();
                     setShowUrlInput(true);
                   }}
-                  className="mt-4 flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                  className="mt-4 flex items-center gap-1.5 text-xs transition-colors hover:opacity-80"
+                  style={{ color: 'var(--text-muted)' }}
                 >
                   <Link className="h-3 w-3" />
                   Paste URL
@@ -235,14 +237,16 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
                       if (e.key === 'Escape') setShowUrlInput(false);
                     }}
                     placeholder="Image URL..."
-                    className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-300 placeholder:text-zinc-600 outline-none focus:border-blue-500"
+                    className="flex-1 rounded px-2 py-1 text-xs outline-none focus:border-blue-500 node-input"
+                    style={{ borderWidth: '1px' }}
                     autoFocus
                   />
                   <Button
                     size="icon-sm"
                     variant="ghost"
                     onClick={handleUrlSubmit}
-                    className="h-6 w-6 text-zinc-400 hover:text-white"
+                    className="h-6 w-6"
+                    style={{ color: 'var(--text-muted)' }}
                   >
                     <Link className="h-3 w-3" />
                   </Button>
@@ -260,11 +264,11 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
             type="source"
             position={Position.Right}
             id="output"
-            className="!relative !transform-none !w-6 !h-6 !bg-zinc-800 !border-2 !border-zinc-600 !rounded-md hover:!border-green-500 hover:!bg-zinc-700"
+            className="!relative !transform-none !w-6 !h-6 !border-2 !rounded-md node-handle hover:!border-green-500"
           />
-          <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 text-zinc-500 pointer-events-none" />
+          <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none" style={{ color: 'var(--text-muted)' }} />
         </div>
-        <span className="absolute right-8 top-1/2 -translate-y-1/2 px-2 py-1 bg-zinc-800 text-zinc-300 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border border-zinc-700">
+        <span className="absolute right-8 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
           Image output
         </span>
       </div>

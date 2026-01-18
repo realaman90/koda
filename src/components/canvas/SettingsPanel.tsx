@@ -412,14 +412,14 @@ export function SettingsPanel() {
   return (
     <div
       ref={panelRef}
-      className="fixed w-[280px] max-h-[500px] bg-zinc-900 border border-zinc-700 rounded-xl z-50 flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+      className="fixed w-[280px] max-h-[500px] bg-popover border border-border rounded-xl z-50 flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-150"
       style={{ left: position.left, top: position.top }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between p-3 border-b border-zinc-800">
+      <div className="flex items-center justify-between p-3 border-b border-border">
           <div className="flex items-center gap-2">
-            <ImageIcon className="h-4 w-4 text-zinc-400" />
-            <span className="text-zinc-200 font-medium">
+            <ImageIcon className="h-4 w-4 text-muted-foreground" />
+            <span className="text-foreground font-medium">
               {data.name || 'Image Generator'}
             </span>
           </div>
@@ -440,7 +440,7 @@ export function SettingsPanel() {
               variant="ghost"
               size="icon-sm"
               onClick={closeSettingsPanel}
-              className="h-8 w-8 text-zinc-400 hover:text-white"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
             >
               <X className="h-4 w-4" />
             </Button>
@@ -451,14 +451,14 @@ export function SettingsPanel() {
         <div className="flex-1 overflow-y-auto p-4 space-y-6">
           {/* Model */}
           <div>
-            <label className="text-xs text-zinc-500 uppercase tracking-wider mb-2 block">
+            <label className="text-xs text-muted-foreground uppercase tracking-wider mb-2 block">
               Model
             </label>
             <Select value={data.model} onValueChange={handleModelChange}>
-              <SelectTrigger className="w-full bg-zinc-800 border-zinc-700 text-zinc-200">
+              <SelectTrigger className="w-full bg-muted border-border text-foreground">
                 <SelectValue>{modelCapabilities.label}</SelectValue>
               </SelectTrigger>
-              <SelectContent className="bg-zinc-800 border-zinc-700">
+              <SelectContent className="bg-popover border-border">
                 {Object.entries(MODEL_CAPABILITIES).map(([key, cap]) => (
                   <SelectItem key={key} value={key} className="flex flex-col items-start">
                     <span>{cap.label}</span>
@@ -466,12 +466,12 @@ export function SettingsPanel() {
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-zinc-500 mt-1.5">{modelCapabilities.description}</p>
+            <p className="text-xs text-muted-foreground mt-1.5">{modelCapabilities.description}</p>
           </div>
 
           {/* Presets Section */}
           <div>
-            <label className="text-xs text-zinc-500 uppercase tracking-wider mb-3 block">
+            <label className="text-xs text-muted-foreground uppercase tracking-wider mb-3 block">
               Presets
             </label>
             <div className="grid grid-cols-4 gap-2">
@@ -521,7 +521,7 @@ export function SettingsPanel() {
           {modelCapabilities.styles && (
             <div>
               <div className="flex items-center justify-between mb-2">
-                <label className="text-xs text-zinc-500 uppercase tracking-wider">
+                <label className="text-xs text-muted-foreground uppercase tracking-wider">
                   Style
                 </label>
                 {/* Magic Prompt Toggle - for Ideogram */}
@@ -533,7 +533,7 @@ export function SettingsPanel() {
                     className={`h-7 px-2 gap-1.5 ${
                       data.magicPrompt
                         ? 'text-purple-400 bg-purple-500/20 hover:bg-purple-500/30'
-                        : 'text-zinc-500 hover:text-white hover:bg-zinc-700/50'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                     }`}
                   >
                     <Wand2 className="h-3.5 w-3.5" />
@@ -545,7 +545,7 @@ export function SettingsPanel() {
                 value={data.style || (modelCapabilities.styles[0] as string)}
                 onValueChange={handleStyleChange}
               >
-                <SelectTrigger className="w-full bg-zinc-800 border-zinc-700 text-zinc-200">
+                <SelectTrigger className="w-full bg-muted border-border text-foreground">
                   <SelectValue>
                     {data.model === 'recraft-v3'
                       ? RECRAFT_STYLE_LABELS[(data.style as RecraftStyle) || 'realistic_image']
@@ -553,7 +553,7 @@ export function SettingsPanel() {
                     }
                   </SelectValue>
                 </SelectTrigger>
-                <SelectContent className="bg-zinc-800 border-zinc-700">
+                <SelectContent className="bg-popover border-border">
                   {modelCapabilities.styles.map((style) => (
                     <SelectItem key={style} value={style}>
                       {data.model === 'recraft-v3'
@@ -570,15 +570,15 @@ export function SettingsPanel() {
           {/* Advanced Parameters - for SD 3.5 */}
           {modelCapabilities.supportsAdvancedParams && (
             <div className="space-y-4">
-              <label className="text-xs text-zinc-500 uppercase tracking-wider block">
+              <label className="text-xs text-muted-foreground uppercase tracking-wider block">
                 Advanced
               </label>
 
               {/* CFG Scale */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs text-zinc-400">CFG Scale</span>
-                  <span className="text-xs text-zinc-500">{data.cfgScale || 7}</span>
+                  <span className="text-xs text-muted-foreground">CFG Scale</span>
+                  <span className="text-xs text-muted-foreground/70">{data.cfgScale || 7}</span>
                 </div>
                 <Slider
                   value={[data.cfgScale || 7]}
@@ -593,8 +593,8 @@ export function SettingsPanel() {
               {/* Steps */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs text-zinc-400">Steps</span>
-                  <span className="text-xs text-zinc-500">{data.steps || 30}</span>
+                  <span className="text-xs text-muted-foreground">Steps</span>
+                  <span className="text-xs text-muted-foreground/70">{data.steps || 30}</span>
                 </div>
                 <Slider
                   value={[data.steps || 30]}
@@ -610,8 +610,8 @@ export function SettingsPanel() {
               {connectedInputs.referenceUrl && (
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs text-zinc-400">Strength</span>
-                    <span className="text-xs text-zinc-500">{Math.round((data.strength || 0.75) * 100)}%</span>
+                    <span className="text-xs text-muted-foreground">Strength</span>
+                    <span className="text-xs text-muted-foreground/70">{Math.round((data.strength || 0.75) * 100)}%</span>
                   </div>
                   <Slider
                     value={[Math.round((data.strength || 0.75) * 100)]}
@@ -621,7 +621,7 @@ export function SettingsPanel() {
                     step={5}
                     className="w-full"
                   />
-                  <p className="text-xs text-zinc-500 mt-1">How much to transform the reference image</p>
+                  <p className="text-xs text-muted-foreground mt-1">How much to transform the reference image</p>
                 </div>
               )}
             </div>
@@ -631,11 +631,11 @@ export function SettingsPanel() {
           {modelCapabilities.supportsReferences && (
             <div>
               <div className="flex items-center justify-between mb-3">
-                <label className="text-xs text-zinc-500 uppercase tracking-wider">
+                <label className="text-xs text-muted-foreground uppercase tracking-wider">
                   References
                 </label>
                 {(data.references?.length || 0) > 0 && (
-                  <span className="text-xs text-zinc-600">
+                  <span className="text-xs text-muted-foreground/70">
                     {data.references?.length} added
                   </span>
                 )}
@@ -649,7 +649,7 @@ export function SettingsPanel() {
                       <img
                         src={ref.url}
                         alt={ref.type}
-                        className="w-full aspect-square object-cover rounded-lg border border-zinc-700"
+                        className="w-full aspect-square object-cover rounded-lg border border-border"
                       />
                       <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
                         <button
@@ -659,7 +659,7 @@ export function SettingsPanel() {
                           <X className="h-3 w-3 text-white" />
                         </button>
                       </div>
-                      <span className="absolute bottom-1 left-1 text-[10px] px-1 py-0.5 bg-black/60 text-zinc-300 rounded capitalize">
+                      <span className="absolute bottom-1 left-1 text-[10px] px-1 py-0.5 bg-black/60 text-white/80 rounded capitalize">
                         {ref.type}
                       </span>
                     </div>
@@ -671,24 +671,24 @@ export function SettingsPanel() {
               <div className="grid grid-cols-3 gap-2">
                 <button
                   onClick={() => triggerFileUpload('style')}
-                  className="flex flex-col items-center justify-center p-3 rounded-lg border border-zinc-700 hover:border-zinc-600 hover:bg-zinc-800/50 transition-colors"
+                  className="flex flex-col items-center justify-center p-3 rounded-lg border border-border hover:border-muted-foreground/50 hover:bg-muted/50 transition-colors"
                 >
-                  <Sparkles className="h-5 w-5 text-zinc-400 mb-1.5" />
-                  <span className="text-xs text-zinc-400">Style</span>
+                  <Sparkles className="h-5 w-5 text-muted-foreground mb-1.5" />
+                  <span className="text-xs text-muted-foreground">Style</span>
                 </button>
                 <button
                   onClick={() => triggerFileUpload('character')}
-                  className="flex flex-col items-center justify-center p-3 rounded-lg border border-zinc-700 hover:border-zinc-600 hover:bg-zinc-800/50 transition-colors"
+                  className="flex flex-col items-center justify-center p-3 rounded-lg border border-border hover:border-muted-foreground/50 hover:bg-muted/50 transition-colors"
                 >
-                  <User className="h-5 w-5 text-zinc-400 mb-1.5" />
-                  <span className="text-xs text-zinc-400">Character</span>
+                  <User className="h-5 w-5 text-muted-foreground mb-1.5" />
+                  <span className="text-xs text-muted-foreground">Character</span>
                 </button>
                 <button
                   onClick={() => triggerFileUpload('upload')}
-                  className="flex flex-col items-center justify-center p-3 rounded-lg border border-zinc-700 hover:border-zinc-600 hover:bg-zinc-800/50 transition-colors"
+                  className="flex flex-col items-center justify-center p-3 rounded-lg border border-border hover:border-muted-foreground/50 hover:bg-muted/50 transition-colors"
                 >
-                  <Upload className="h-5 w-5 text-zinc-400 mb-1.5" />
-                  <span className="text-xs text-zinc-400">Upload</span>
+                  <Upload className="h-5 w-5 text-muted-foreground mb-1.5" />
+                  <span className="text-xs text-muted-foreground">Upload</span>
                 </button>
               </div>
               <input
@@ -703,14 +703,14 @@ export function SettingsPanel() {
 
           {/* Prompt */}
           <div>
-            <label className="text-xs text-zinc-500 uppercase tracking-wider mb-2 block">
+            <label className="text-xs text-muted-foreground uppercase tracking-wider mb-2 block">
               Prompt
             </label>
             <textarea
               value={data.prompt}
               onChange={handlePromptChange}
               placeholder="Describe the image you want to generate..."
-              className="w-full h-[120px] bg-zinc-800 border border-zinc-700 rounded-lg p-3 text-zinc-200 text-sm placeholder:text-zinc-600 resize-none focus:outline-none focus:border-zinc-600"
+              className="w-full h-[120px] bg-muted border border-border rounded-lg p-3 text-foreground text-sm placeholder:text-muted-foreground/60 resize-none focus:outline-none focus:border-muted-foreground/50"
             />
           </div>
 
@@ -721,23 +721,23 @@ export function SettingsPanel() {
         </div>
 
         {/* Footer Controls */}
-        <div className="p-4 border-t border-zinc-800 space-y-3">
+        <div className="p-4 border-t border-border space-y-3">
           <div className="flex items-center gap-2 flex-wrap">
             {/* Image Count */}
-            <div className="flex items-center bg-zinc-800 rounded-lg h-9">
+            <div className="flex items-center bg-muted rounded-lg h-9">
               <Button
                 variant="ghost"
                 size="icon-sm"
-                className="h-9 w-8 text-zinc-400 hover:text-white hover:bg-transparent"
+                className="h-9 w-8 text-muted-foreground hover:text-foreground hover:bg-transparent"
                 onClick={() => settingsPanelNodeId && updateNodeData(settingsPanelNodeId, { imageCount: Math.max(1, (data.imageCount || 1) - 1) })}
               >
                 <Minus className="h-3.5 w-3.5" />
               </Button>
-              <span className="text-sm text-zinc-300 w-4 text-center">{data.imageCount || 1}</span>
+              <span className="text-sm text-foreground w-4 text-center">{data.imageCount || 1}</span>
               <Button
                 variant="ghost"
                 size="icon-sm"
-                className="h-9 w-8 text-zinc-400 hover:text-white hover:bg-transparent"
+                className="h-9 w-8 text-muted-foreground hover:text-foreground hover:bg-transparent"
                 onClick={() => settingsPanelNodeId && updateNodeData(settingsPanelNodeId, { imageCount: Math.min(modelCapabilities.maxImages, (data.imageCount || 1) + 1) })}
               >
                 <Plus className="h-3.5 w-3.5" />
@@ -746,10 +746,10 @@ export function SettingsPanel() {
 
             {/* Aspect Ratio */}
             <Select value={data.aspectRatio} onValueChange={handleAspectRatioChange}>
-              <SelectTrigger className="w-[70px] bg-zinc-800 border-0 text-zinc-300">
+              <SelectTrigger className="w-[70px] bg-muted border-0 text-foreground">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="bg-zinc-800 border-zinc-700">
+              <SelectContent className="bg-popover border-border">
                 {modelCapabilities.aspectRatios.map((ratio) => (
                   <SelectItem key={ratio} value={ratio}>{ratio}</SelectItem>
                 ))}
@@ -759,10 +759,10 @@ export function SettingsPanel() {
             {/* Image Size - for Flux models */}
             {modelCapabilities.imageSizes && (
               <Select value={data.imageSize || 'square_hd'} onValueChange={handleImageSizeChange}>
-                <SelectTrigger className="w-[100px] bg-zinc-800 border-0 text-zinc-300 text-xs">
+                <SelectTrigger className="w-[100px] bg-muted border-0 text-foreground text-xs">
                   <SelectValue>{FLUX_IMAGE_SIZES[data.imageSize || 'square_hd'].label}</SelectValue>
                 </SelectTrigger>
-                <SelectContent className="bg-zinc-800 border-zinc-700">
+                <SelectContent className="bg-popover border-border">
                   {modelCapabilities.imageSizes.map((size) => (
                     <SelectItem key={size} value={size} className="text-xs">
                       {FLUX_IMAGE_SIZES[size].label}
@@ -775,15 +775,15 @@ export function SettingsPanel() {
             {/* Resolution - for Nano Banana */}
             {modelCapabilities.resolutions && (
               <Select value={data.resolution || '1K'} onValueChange={handleResolutionChange}>
-                <SelectTrigger className="w-[70px] bg-zinc-800 border-0 text-zinc-300">
+                <SelectTrigger className="w-[70px] bg-muted border-0 text-foreground">
                   <SelectValue>{NANO_BANANA_RESOLUTIONS[data.resolution || '1K'].label}</SelectValue>
                 </SelectTrigger>
-                <SelectContent className="bg-zinc-800 border-zinc-700">
+                <SelectContent className="bg-popover border-border">
                   {modelCapabilities.resolutions.map((res) => (
                     <SelectItem key={res} value={res}>
                       <div className="flex flex-col">
                         <span>{NANO_BANANA_RESOLUTIONS[res].label}</span>
-                        <span className="text-xs text-zinc-500">{NANO_BANANA_RESOLUTIONS[res].description}</span>
+                        <span className="text-xs text-muted-foreground">{NANO_BANANA_RESOLUTIONS[res].description}</span>
                       </div>
                     </SelectItem>
                   ))}
@@ -796,7 +796,7 @@ export function SettingsPanel() {
           {(() => {
             const dims = getApproxDimensions(data.aspectRatio, data.model, data.resolution);
             return (
-              <p className="text-xs text-zinc-500">
+              <p className="text-xs text-muted-foreground">
                 Output: ~{dims.width} × {dims.height}px
               </p>
             );

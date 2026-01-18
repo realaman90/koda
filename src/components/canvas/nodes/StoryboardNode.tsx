@@ -251,42 +251,42 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
     <div className="p-4 space-y-3">
       {/* Product/Subject */}
       <div className="space-y-1">
-        <label className="text-xs font-medium text-zinc-400">
+        <label className="text-xs font-medium text-muted-foreground">
           Product / Subject <span className="text-red-400">*</span>
         </label>
         <textarea
           value={data.product || ''}
           onChange={(e) => updateField('product', e.target.value)}
           placeholder="e.g., Premium coffee mug, Fitness app..."
-          className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-500 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 nodrag"
+          className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 nodrag"
           rows={2}
         />
       </div>
 
       {/* Character (optional) */}
       <div className="space-y-1">
-        <label className="text-xs font-medium text-zinc-400">
-          Character <span className="text-zinc-500">(optional)</span>
+        <label className="text-xs font-medium text-muted-foreground">
+          Character <span className="text-muted-foreground/70">(optional)</span>
         </label>
         <textarea
           value={data.character || ''}
           onChange={(e) => updateField('character', e.target.value)}
           placeholder="e.g., Young professional woman in her 30s..."
-          className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-500 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 nodrag"
+          className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 nodrag"
           rows={2}
         />
       </div>
 
       {/* Concept/Story */}
       <div className="space-y-1">
-        <label className="text-xs font-medium text-zinc-400">
+        <label className="text-xs font-medium text-muted-foreground">
           Concept / Story <span className="text-red-400">*</span>
         </label>
         <textarea
           value={data.concept || ''}
           onChange={(e) => updateField('concept', e.target.value)}
           placeholder="e.g., Morning routine ad showing how our coffee mug makes the perfect start..."
-          className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 text-sm placeholder:text-zinc-500 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 nodrag"
+          className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 nodrag"
           rows={3}
         />
       </div>
@@ -294,11 +294,11 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
       {/* Scene Count & Style */}
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <label className="text-xs font-medium text-zinc-400">Scenes</label>
+          <label className="text-xs font-medium text-muted-foreground">Scenes</label>
           <select
             value={data.sceneCount}
             onChange={(e) => updateField('sceneCount', Number(e.target.value))}
-            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 nodrag"
+            className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 nodrag"
           >
             {SCENE_COUNTS.map((count) => (
               <option key={count} value={count}>
@@ -309,11 +309,11 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
         </div>
 
         <div className="space-y-1">
-          <label className="text-xs font-medium text-zinc-400">Style</label>
+          <label className="text-xs font-medium text-muted-foreground">Style</label>
           <select
             value={data.style}
             onChange={(e) => updateField('style', e.target.value as StoryboardStyle)}
-            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 nodrag"
+            className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 nodrag"
           >
             {STYLE_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -335,7 +335,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
       <button
         onClick={handleGenerate}
         disabled={!isValid}
-        className="w-full py-2 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2 nodrag"
+        className="w-full py-2 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-muted disabled:text-muted-foreground text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2 nodrag"
       >
         <Sparkles className="w-4 h-4" />
         Generate Storyboard
@@ -347,7 +347,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
   const renderLoading = () => (
     <div className="flex flex-col items-center justify-center p-8 space-y-3">
       <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
-      <p className="text-zinc-400 text-sm">Generating your storyboard...</p>
+      <p className="text-muted-foreground text-sm">Generating your storyboard...</p>
     </div>
   );
 
@@ -358,14 +358,14 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
     return (
       <div className="p-4 space-y-3">
         {/* Summary */}
-        <div className="p-2 bg-zinc-800 rounded-lg">
-          <h3 className="text-xs font-medium text-zinc-400 mb-1">Summary</h3>
-          <p className="text-xs text-zinc-300">{data.result.summary}</p>
+        <div className="p-2 bg-muted rounded-lg">
+          <h3 className="text-xs font-medium text-muted-foreground mb-1">Summary</h3>
+          <p className="text-xs text-foreground">{data.result.summary}</p>
         </div>
 
         {/* Scenes preview */}
         <div className="space-y-2">
-          <h3 className="text-xs font-medium text-zinc-400">Scenes</h3>
+          <h3 className="text-xs font-medium text-muted-foreground">Scenes</h3>
           <div className="space-y-1 max-h-[200px] overflow-y-auto nowheel" onWheel={(e) => !e.ctrlKey && e.stopPropagation()}>
             {data.result.scenes.map((scene) => (
               <ScenePreview key={scene.number} scene={scene} />
@@ -377,7 +377,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
         <div className="flex gap-2 pt-1">
           <button
             onClick={() => updateNodeData(id, { viewState: 'form' })}
-            className="flex-1 py-2 px-3 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-sm font-medium rounded-lg transition-colors nodrag"
+            className="flex-1 py-2 px-3 bg-muted hover:bg-muted/80 text-foreground text-sm font-medium rounded-lg transition-colors nodrag"
           >
             Back to Edit
           </button>
@@ -397,11 +397,11 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
     <div className="relative">
       {/* Floating Toolbar */}
       {selected && (
-        <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-zinc-800/90 backdrop-blur rounded-lg px-2 py-1.5 border border-zinc-700/50 shadow-xl z-10">
+        <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1 backdrop-blur rounded-lg px-2 py-1.5 border node-toolbar-floating shadow-xl z-10">
           <Button
             variant="ghost"
             size="icon-sm"
-            className="h-7 w-7 text-zinc-400 hover:text-red-400 hover:bg-zinc-700/50"
+            className="h-7 w-7 text-muted-foreground hover:text-red-400 hover:bg-muted/50"
             onClick={handleDelete}
           >
             <Trash2 className="h-3.5 w-3.5" />
@@ -410,7 +410,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
       )}
 
       {/* Node Title */}
-      <div className="flex items-center gap-2 mb-2 text-zinc-400 text-sm font-medium">
+      <div className="flex items-center gap-2 mb-2 text-sm font-medium" style={{ color: 'var(--node-title-storyboard)' }}>
         <Clapperboard className="h-4 w-4" />
         {isEditingName ? (
           <input
@@ -426,12 +426,13 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
                 setIsEditingName(false);
               }
             }}
-            className="bg-transparent border-b border-zinc-600 outline-none text-zinc-300 px-0.5 min-w-[60px] nodrag"
+            className="bg-transparent border-b outline-none px-0.5 min-w-[60px] nodrag"
+            style={{ borderColor: 'var(--input-border)', color: 'var(--text-secondary)' }}
           />
         ) : (
           <span
             onDoubleClick={() => setIsEditingName(true)}
-            className="cursor-text hover:text-zinc-300 transition-colors"
+            className="cursor-text transition-colors hover:opacity-80"
           >
             {nodeName}
           </span>
@@ -442,18 +443,21 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
       <div
         className={`
           w-[400px] rounded-2xl overflow-hidden
-          transition-all duration-150
+          transition-[box-shadow,ring-color] duration-150
           ${selected
             ? 'ring-[2.5px] ring-indigo-500 shadow-lg shadow-indigo-500/10'
-            : 'ring-1 ring-zinc-800 hover:ring-zinc-700'
+            : 'ring-1 hover:ring-2'
           }
         `}
-        style={{ backgroundColor: '#1a1a1c' }}
+        style={{
+          backgroundColor: 'var(--node-card-bg)',
+          '--tw-ring-color': selected ? undefined : 'var(--node-ring)'
+        } as React.CSSProperties}
       >
         {/* Header */}
-        <div className="px-4 py-3 border-b border-zinc-800 flex items-center gap-2">
+        <div className="px-4 py-3 border-b border-border flex items-center gap-2">
           <Clapperboard className="w-4 h-4 text-indigo-400" />
-          <span className="text-sm font-medium text-zinc-200">Create Storyboard</span>
+          <span className="text-sm font-medium text-foreground">Create Storyboard</span>
         </div>
 
         {/* Content */}
@@ -472,17 +476,13 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
                 type="target"
                 position={Position.Left}
                 id="productImage"
-                className={`!relative !transform-none !w-6 !h-6 !rounded-md ${
-                  hasProductImage
-                    ? '!bg-green-900/50 !border-2 !border-green-500'
-                    : '!bg-zinc-800 !border-2 !border-zinc-600 hover:!border-indigo-500 hover:!bg-zinc-700'
+                className={`!relative !transform-none !w-6 !h-6 !rounded-md !border-2 node-handle hover:!border-indigo-500 ${
+                  hasProductImage ? '!border-green-500' : ''
                 }`}
               />
-              <ImageIcon className={`absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none ${
-                hasProductImage ? 'text-green-400' : 'text-zinc-500'
-              }`} />
+              <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none" style={{ color: hasProductImage ? '#4ade80' : 'var(--text-muted)' }} />
             </div>
-            <span className="absolute left-8 top-1/2 -translate-y-1/2 px-2 py-1 bg-zinc-800 text-zinc-300 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border border-zinc-700">
+            <span className="absolute left-8 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
               {hasProductImage ? 'Product Image (connected)' : 'Product Image'}
             </span>
           </div>
@@ -494,17 +494,13 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
                 type="target"
                 position={Position.Left}
                 id="characterImage"
-                className={`!relative !transform-none !w-6 !h-6 !rounded-md ${
-                  hasCharacterImage
-                    ? '!bg-green-900/50 !border-2 !border-green-500'
-                    : '!bg-zinc-800 !border-2 !border-zinc-600 hover:!border-indigo-500 hover:!bg-zinc-700'
+                className={`!relative !transform-none !w-6 !h-6 !rounded-md !border-2 node-handle hover:!border-indigo-500 ${
+                  hasCharacterImage ? '!border-green-500' : ''
                 }`}
               />
-              <User className={`absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none ${
-                hasCharacterImage ? 'text-green-400' : 'text-zinc-500'
-              }`} />
+              <User className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none" style={{ color: hasCharacterImage ? '#4ade80' : 'var(--text-muted)' }} />
             </div>
-            <span className="absolute left-8 top-1/2 -translate-y-1/2 px-2 py-1 bg-zinc-800 text-zinc-300 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border border-zinc-700">
+            <span className="absolute left-8 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
               {hasCharacterImage ? 'Character Image (connected)' : 'Character Image'}
             </span>
           </div>
@@ -519,33 +515,33 @@ function ScenePreview({ scene }: { scene: StoryboardSceneData }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="bg-zinc-800 rounded-lg overflow-hidden">
+    <div className="bg-muted rounded-lg overflow-hidden">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between p-2 text-left hover:bg-zinc-750 nodrag"
+        className="w-full flex items-center justify-between p-2 text-left hover:bg-muted/80 nodrag"
       >
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-medium text-indigo-400 bg-indigo-900/30 px-1.5 py-0.5 rounded">
+          <span className="text-[10px] font-medium text-indigo-400 bg-indigo-500/20 px-1.5 py-0.5 rounded">
             {scene.number}
           </span>
-          <span className="text-xs font-medium text-zinc-200">{scene.title}</span>
+          <span className="text-xs font-medium text-foreground">{scene.title}</span>
         </div>
         <ChevronRight
-          className={`w-3 h-3 text-zinc-500 transition-transform ${expanded ? 'rotate-90' : ''}`}
+          className={`w-3 h-3 text-muted-foreground transition-transform ${expanded ? 'rotate-90' : ''}`}
         />
       </button>
       {expanded && (
         <div className="px-2 pb-2 space-y-1.5 text-xs">
-          <p className="text-zinc-400">{scene.description}</p>
+          <p className="text-muted-foreground">{scene.description}</p>
           <div className="flex gap-1.5 text-[10px]">
-            <span className="bg-zinc-700 px-1.5 py-0.5 rounded text-zinc-300">
+            <span className="bg-background px-1.5 py-0.5 rounded text-foreground">
               {scene.camera}
             </span>
-            <span className="bg-zinc-700 px-1.5 py-0.5 rounded text-zinc-300">
+            <span className="bg-background px-1.5 py-0.5 rounded text-foreground">
               {scene.mood}
             </span>
           </div>
-          <div className="p-1.5 bg-zinc-900 rounded text-[10px] text-zinc-400 font-mono">
+          <div className="p-1.5 bg-background rounded text-[10px] text-muted-foreground font-mono">
             {scene.prompt}
           </div>
         </div>

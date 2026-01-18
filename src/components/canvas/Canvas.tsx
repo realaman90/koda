@@ -171,7 +171,7 @@ export function Canvas() {
   );
 
   return (
-    <div className="w-full h-full bg-zinc-950 relative">
+    <div className="w-full h-full relative" style={{ backgroundColor: 'var(--canvas-bg)' }}>
       <NodeToolbar onPluginLaunch={handlePluginLaunch} />
       <WelcomeOverlay />
       <SettingsPanel />
@@ -196,10 +196,11 @@ export function Canvas() {
         edgeTypes={edgeTypes}
         isValidConnection={isValidConnection}
         fitView
-        className={`bg-zinc-950 tool-${activeTool}`}
+        className={`tool-${activeTool}`}
+        style={{ backgroundColor: 'var(--canvas-bg)' }}
         defaultEdgeOptions={{
           style: { stroke: '#6366f1', strokeWidth: 2 },
-          type: 'default',
+          type: 'deletable',
         }}
         connectionLineType={ConnectionLineType.Bezier}
         connectionLineStyle={{ stroke: '#6366f1', strokeWidth: 2 }}
@@ -220,7 +221,7 @@ export function Canvas() {
           variant={BackgroundVariant.Dots}
           gap={20}
           size={1}
-          color="#27272a"
+          color="var(--canvas-dots)"
         />
         <ZoomControls />
       </ReactFlow>

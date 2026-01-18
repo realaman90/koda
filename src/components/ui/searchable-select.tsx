@@ -107,29 +107,29 @@ export function SearchableSelect({
   const dropdown = open ? (
     <div
       ref={dropdownRef}
-      className="fixed z-[200] min-w-[180px] bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-100"
+      className="fixed z-[200] min-w-[180px] bg-popover border border-border rounded-lg shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-100"
       style={{ top: position.top, left: position.left }}
       onWheel={(e) => e.stopPropagation()}
     >
       {/* Search Input */}
-      <div className="p-2 border-b border-zinc-700">
-        <div className="flex items-center gap-2 px-2 py-1 bg-zinc-900/50 rounded-md">
-          <Search className="h-3 w-3 text-zinc-500" />
+      <div className="p-2 border-b border-border">
+        <div className="flex items-center gap-2 px-2 py-1 bg-muted/50 rounded-md">
+          <Search className="h-3 w-3 text-muted-foreground" />
           <input
             ref={inputRef}
             type="text"
             placeholder={searchPlaceholder}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="flex-1 bg-transparent text-xs text-zinc-300 placeholder-zinc-500 outline-none"
+            className="flex-1 bg-transparent text-xs text-foreground placeholder-muted-foreground outline-none"
           />
         </div>
       </div>
 
       {/* Options List */}
-      <div className="max-h-[250px] overflow-y-auto py-1 scrollbar-thin scrollbar-thumb-zinc-600 scrollbar-track-zinc-800">
+      <div className="max-h-[250px] overflow-y-auto py-1">
         {filteredOptions.length === 0 ? (
-          <div className="px-3 py-2 text-xs text-zinc-500 text-center">
+          <div className="px-3 py-2 text-xs text-muted-foreground text-center">
             No results found
           </div>
         ) : (
@@ -141,8 +141,8 @@ export function SearchableSelect({
               className={cn(
                 'w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors cursor-pointer',
                 option.value === value
-                  ? 'bg-zinc-700 text-white'
-                  : 'text-zinc-300 hover:bg-zinc-700/50'
+                  ? 'bg-accent text-accent-foreground'
+                  : 'text-foreground hover:bg-muted/50'
               )}
             >
               <span className="flex-1">{option.label}</span>
@@ -164,7 +164,7 @@ export function SearchableSelect({
         onClick={() => setOpen(!open)}
         className={cn(
           'flex items-center justify-between gap-1 h-7 px-2 rounded-md text-xs',
-          'bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700/80 transition-colors',
+          'bg-muted/80 text-foreground hover:bg-muted transition-colors',
           triggerClassName
         )}
       >

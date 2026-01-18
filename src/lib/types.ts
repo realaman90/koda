@@ -1,7 +1,7 @@
 import type { Node, Edge } from '@xyflow/react';
 
 // Node Types
-export type NodeType = 'imageGenerator' | 'videoGenerator' | 'text' | 'media' | 'stickyNote' | 'sticker' | 'group' | 'storyboard';
+export type NodeType = 'imageGenerator' | 'videoGenerator' | 'text' | 'media' | 'stickyNote' | 'sticker' | 'group' | 'storyboard' | 'musicGenerator' | 'speech' | 'videoAudio';
 
 // ============================================
 // PRESET TYPES (for Settings Panel)
@@ -117,6 +117,11 @@ export type ImageGeneratorNode = Node<ImageGeneratorNodeData, 'imageGenerator'>;
 // Text Node
 export interface TextNodeData extends Record<string, unknown> {
   content: string;
+  name?: string;
+  width?: number;
+  height?: number;
+  bgColor?: string;
+  isExpanded?: boolean;
 }
 
 export type TextNode = Node<TextNodeData, 'text'>;
@@ -174,7 +179,7 @@ export interface GroupNodeData extends Record<string, unknown> {
 export type GroupNode = Node<GroupNodeData, 'group'>;
 
 // Union of all node types
-export type AppNode = ImageGeneratorNode | VideoGeneratorNode | TextNode | MediaNode | StickyNoteNode | StickerNode | GroupNode | StoryboardNode;
+export type AppNode = ImageGeneratorNode | VideoGeneratorNode | TextNode | MediaNode | StickyNoteNode | StickerNode | GroupNode | StoryboardNode | MusicGeneratorNode | SpeechNode | VideoAudioNode;
 export type AppEdge = Edge;
 
 // Fal API types
@@ -569,3 +574,136 @@ export interface StoryboardNodeData extends Record<string, unknown> {
 }
 
 export type StoryboardNode = Node<StoryboardNodeData, 'storyboard'>;
+
+// ============================================
+// AUDIO GENERATION TYPES
+// ============================================
+
+// Audio model types
+export type AudioModelType = 'ace-step' | 'elevenlabs-tts' | 'mmaudio-v2';
+
+// Music duration options (in seconds)
+export type MusicDuration = 5 | 15 | 30 | 60 | 120 | 180 | 240;
+
+// ElevenLabs voice options
+export type ElevenLabsVoice =
+  | 'alloy'
+  | 'echo'
+  | 'fable'
+  | 'onyx'
+  | 'nova'
+  | 'shimmer'
+  | 'rachel'
+  | 'drew'
+  | 'clyde'
+  | 'paul'
+  | 'domi'
+  | 'dave'
+  | 'fin'
+  | 'sarah'
+  | 'antoni'
+  | 'thomas'
+  | 'charlie'
+  | 'george'
+  | 'emily'
+  | 'elli';
+
+export const ELEVENLABS_VOICE_LABELS: Record<ElevenLabsVoice, string> = {
+  'alloy': 'Alloy (Neutral)',
+  'echo': 'Echo (Male)',
+  'fable': 'Fable (British)',
+  'onyx': 'Onyx (Deep Male)',
+  'nova': 'Nova (Female)',
+  'shimmer': 'Shimmer (Soft Female)',
+  'rachel': 'Rachel (Calm)',
+  'drew': 'Drew (Confident)',
+  'clyde': 'Clyde (War Veteran)',
+  'paul': 'Paul (News)',
+  'domi': 'Domi (Strong)',
+  'dave': 'Dave (British Conversational)',
+  'fin': 'Fin (Irish)',
+  'sarah': 'Sarah (Soft News)',
+  'antoni': 'Antoni (Friendly)',
+  'thomas': 'Thomas (Calm British)',
+  'charlie': 'Charlie (Australian)',
+  'george': 'George (British Narrator)',
+  'emily': 'Emily (Calm American)',
+  'elli': 'Elli (Young Female)',
+} as const;
+
+// Music Generator Node Data
+export interface MusicGeneratorNodeData extends Record<string, unknown> {
+  name?: string;
+  prompt: string;
+  duration: MusicDuration;
+  instrumental: boolean;
+  guidanceScale: number; // 1-15, default 7
+  // Output
+  outputUrl?: string;
+  isGenerating?: boolean;
+  error?: string;
+}
+
+export type MusicGeneratorNode = Node<MusicGeneratorNodeData, 'musicGenerator'>;
+
+// Speech Node Data
+export interface SpeechNodeData extends Record<string, unknown> {
+  name?: string;
+  text: string;
+  voice: ElevenLabsVoice;
+  speed: number; // 0.7-1.2
+  stability: number; // 0-1
+  // Output
+  outputUrl?: string;
+  isGenerating?: boolean;
+  error?: string;
+}
+
+export type SpeechNode = Node<SpeechNodeData, 'speech'>;
+
+// Video Audio Node Data
+export interface VideoAudioNodeData extends Record<string, unknown> {
+  name?: string;
+  prompt: string;
+  duration: number; // 1-30 seconds
+  cfgStrength: number; // 1-10, default 4.5
+  negativePrompt?: string;
+  // Output
+  outputUrl?: string;
+  isGenerating?: boolean;
+  error?: string;
+}
+
+export type VideoAudioNode = Node<VideoAudioNodeData, 'videoAudio'>;
+
+// Audio model capabilities
+export interface AudioModelCapabilities {
+  label: string;
+  inputType: ModelInputType;
+  description: string;
+}
+
+export const AUDIO_MODEL_CAPABILITIES: Record<AudioModelType, AudioModelCapabilities> = {
+  'ace-step': {
+    label: 'ACE-Step',
+    inputType: 'text-only',
+    description: 'Music generation (5-240s)',
+  },
+  'elevenlabs-tts': {
+    label: 'ElevenLabs TTS',
+    inputType: 'text-only',
+    description: 'Text-to-speech (20+ voices)',
+  },
+  'mmaudio-v2': {
+    label: 'MMAudio V2',
+    inputType: 'text-and-image',
+    description: 'Video-synced audio generation',
+  },
+} as const;
+
+// Fal model IDs for audio
+export const FAL_AUDIO_MODELS: Record<AudioModelType, string> = {
+  'ace-step': 'fal-ai/ace-step',
+  'elevenlabs-tts': 'fal-ai/elevenlabs/tts/turbo-v2.5',
+  'mmaudio-v2': 'fal-ai/mmaudio/v2',
+} as const;

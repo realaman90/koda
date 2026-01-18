@@ -434,3 +434,108 @@ const videoAdapters: Record<VideoModelType, VideoModelAdapter> = {
 export function getVideoModelAdapter(model: VideoModelType): VideoModelAdapter {
   return videoAdapters[model] || videoAdapters['veo-3'];
 }
+
+// ============================================
+// AUDIO MODEL ADAPTERS
+// ============================================
+
+import type {
+  AudioModelType,
+  MusicDuration,
+  ElevenLabsVoice,
+} from './types';
+
+// Request data for music generation
+export interface MusicGenerateRequest {
+  prompt: string;
+  duration: MusicDuration;
+  instrumental: boolean;
+  guidanceScale: number;
+}
+
+// Request data for speech generation
+export interface SpeechGenerateRequest {
+  text: string;
+  voice: ElevenLabsVoice;
+  speed: number;
+  stability: number;
+}
+
+// Request data for video audio generation
+export interface VideoAudioGenerateRequest {
+  prompt: string;
+  videoUrl: string;
+  duration: number;
+  cfgStrength: number;
+  negativePrompt?: string;
+}
+
+// Common interface for audio adapters
+export interface AudioModelAdapter {
+  buildInput(request: MusicGenerateRequest | SpeechGenerateRequest | VideoAudioGenerateRequest): Record<string, unknown>;
+  extractAudioUrl(result: Record<string, unknown>): string | undefined;
+}
+
+// ACE-Step Music Adapter
+class AceStepAdapter implements AudioModelAdapter {
+  buildInput(request: MusicGenerateRequest): Record<string, unknown> {
+    return {
+      prompt: request.prompt,
+      duration: request.duration,
+      instrumental: request.instrumental,
+      guidance_scale: request.guidanceScale,
+    };
+  }
+
+  extractAudioUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { audio?: { url: string } } | undefined;
+    return data?.audio?.url;
+  }
+}
+
+// ElevenLabs TTS Adapter
+class ElevenLabsTTSAdapter implements AudioModelAdapter {
+  buildInput(request: SpeechGenerateRequest): Record<string, unknown> {
+    return {
+      text: request.text,
+      voice: request.voice,
+      speed: request.speed,
+      stability: request.stability,
+    };
+  }
+
+  extractAudioUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { audio?: { url: string } } | undefined;
+    return data?.audio?.url;
+  }
+}
+
+// MMAudio V2 Adapter (Video Audio Sync)
+class MMAudioV2Adapter implements AudioModelAdapter {
+  buildInput(request: VideoAudioGenerateRequest): Record<string, unknown> {
+    return {
+      prompt: request.prompt,
+      video_url: request.videoUrl,
+      duration: request.duration,
+      cfg_strength: request.cfgStrength,
+      ...(request.negativePrompt && { negative_prompt: request.negativePrompt }),
+    };
+  }
+
+  extractAudioUrl(result: Record<string, unknown>): string | undefined {
+    // MMAudio returns a video with audio, not just audio
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+}
+
+// Audio adapter factory
+const audioAdapters: Record<AudioModelType, AudioModelAdapter> = {
+  'ace-step': new AceStepAdapter(),
+  'elevenlabs-tts': new ElevenLabsTTSAdapter(),
+  'mmaudio-v2': new MMAudioV2Adapter(),
+};
+
+export function getAudioModelAdapter(model: AudioModelType): AudioModelAdapter {
+  return audioAdapters[model] || audioAdapters['ace-step'];
+}

@@ -1,0 +1,11 @@
+export { DashboardPage } from './DashboardPage';
+export { DashboardHeader } from './DashboardHeader';
+export { DashboardTabs } from './DashboardTabs';
+export { ProjectsGrid } from './ProjectsGrid';
+export { TemplatesSection } from './TemplatesSection';
+export { SharedSection } from './SharedSection';
+export { CanvasCard } from './CanvasCard';
+export { TemplateCard } from './TemplateCard';
+export { CreateCanvasButton } from './CreateCanvasButton';
+export { useDashboardState } from './hooks/useDashboardState';
+export type { TabType, TemplateFilter, DashboardState } from './hooks/useDashboardState';

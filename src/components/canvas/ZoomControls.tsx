@@ -176,12 +176,12 @@ export function ZoomControls() {
     <div className="zoom-controls-container absolute bottom-4 right-4 z-10">
       {/* Dropdown Menu */}
       {isOpen && (
-        <div className="absolute bottom-full right-0 mb-2 w-[200px] bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-150">
+        <div className="absolute bottom-full right-0 mb-2 w-[200px] bg-popover border border-border rounded-lg shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-150">
           {/* Zoom Options */}
           <div className="py-1">
             {menuItems.map((item) => {
               if ('divider' in item && item.divider) {
-                return <div key={item.id} className="my-1 border-t border-zinc-800" />;
+                return <div key={item.id} className="my-1 border-t border-border" />;
               }
 
               return (
@@ -192,23 +192,23 @@ export function ZoomControls() {
                   className={`
                     w-full flex items-center gap-3 px-3 py-2 text-sm
                     ${item.disabled
-                      ? 'text-zinc-600 cursor-not-allowed'
-                      : 'text-zinc-300 hover:bg-zinc-800 cursor-pointer'
+                      ? 'text-muted-foreground/50 cursor-not-allowed'
+                      : 'text-foreground hover:bg-muted cursor-pointer'
                     }
                     transition-colors
                   `}
                 >
                   {item.icon}
                   <span className="flex-1 text-left">{item.label}</span>
-                  <span className="text-xs text-zinc-500">{item.shortcut}</span>
+                  <span className="text-xs text-muted-foreground">{item.shortcut}</span>
                 </button>
               );
             })}
           </div>
 
           {/* Zoom Presets */}
-          <div className="border-t border-zinc-800 py-1">
-            <div className="px-3 py-1 text-[10px] font-medium text-zinc-500 uppercase tracking-wider">
+          <div className="border-t border-border py-1">
+            <div className="px-3 py-1 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
               Zoom Level
             </div>
             <div className="flex flex-wrap gap-1 px-2 pb-2">
@@ -220,7 +220,7 @@ export function ZoomControls() {
                     px-2 py-1 text-xs rounded
                     ${Math.abs(zoom - preset) < 5
                       ? 'bg-indigo-600 text-white'
-                      : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300'
+                      : 'bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground'
                     }
                     transition-colors
                   `}
@@ -236,7 +236,7 @@ export function ZoomControls() {
       {/* Zoom Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900/90 backdrop-blur border border-zinc-700/50 rounded-lg text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors"
+        className="flex items-center gap-1.5 px-3 py-1.5 bg-popover/90 backdrop-blur border border-border/50 rounded-lg text-sm text-foreground hover:bg-muted transition-colors"
       >
         <span className="min-w-[40px] text-center font-medium">{zoom}%</span>
         <ChevronUp className={`h-3.5 w-3.5 transition-transform ${isOpen ? 'rotate-180' : ''}`} />

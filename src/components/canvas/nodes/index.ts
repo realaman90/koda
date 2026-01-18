@@ -7,6 +7,9 @@ import { StickyNoteNode } from './StickyNoteNode';
 import { StickerNode } from './StickerNode';
 import { GroupNode } from './GroupNode';
 import { StoryboardNode } from './StoryboardNode';
+import { MusicGeneratorNode } from './MusicGeneratorNode';
+import { SpeechNode } from './SpeechNode';
+import { VideoAudioNode } from './VideoAudioNode';
 
 export const nodeTypes: NodeTypes = {
   imageGenerator: ImageGeneratorNode,
@@ -17,6 +20,11 @@ export const nodeTypes: NodeTypes = {
   sticker: StickerNode,
   group: GroupNode,
   storyboard: StoryboardNode,
+  musicGenerator: MusicGeneratorNode,
+  speech: SpeechNode,
+  videoAudio: VideoAudioNode,
 };
 
-export { ImageGeneratorNode, VideoGeneratorNode, TextNode, MediaNode, StickyNoteNode, StickerNode, GroupNode, StoryboardNode };
+export { ImageGeneratorNode, VideoGeneratorNode, TextNode, MediaNode, StickyNoteNode, StickerNode, GroupNode, StoryboardNode, MusicGeneratorNode, SpeechNode, VideoAudioNode };
+export { ExpandButton } from './ExpandButton';
+export { ResizeHandle } from './ResizeHandle';
