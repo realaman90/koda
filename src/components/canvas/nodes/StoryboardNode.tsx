@@ -33,6 +33,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
   const deleteNode = useCanvasStore((state) => state.deleteNode);
   const getConnectedInputs = useCanvasStore((state) => state.getConnectedInputs);
+  const isReadOnly = useCanvasStore((state) => state.isReadOnly);
   const canvas = useCanvasAPI();
 
   // Check for connected images
@@ -252,13 +253,14 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
       {/* Product/Subject */}
       <div className="space-y-1">
         <label className="text-xs font-medium text-muted-foreground">
-          Product / Subject <span className="text-red-400">*</span>
+          Product / Subject {!isReadOnly && <span className="text-red-400">*</span>}
         </label>
         <textarea
           value={data.product || ''}
           onChange={(e) => updateField('product', e.target.value)}
-          placeholder="e.g., Premium coffee mug, Fitness app..."
-          className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 nodrag"
+          placeholder={isReadOnly ? '' : 'e.g., Premium coffee mug, Fitness app...'}
+          disabled={isReadOnly}
+          className={`w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 nodrag ${isReadOnly ? 'cursor-default' : ''}`}
           rows={2}
         />
       </div>
@@ -266,13 +268,14 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
       {/* Character (optional) */}
       <div className="space-y-1">
         <label className="text-xs font-medium text-muted-foreground">
-          Character <span className="text-muted-foreground/70">(optional)</span>
+          Character {!isReadOnly && <span className="text-muted-foreground/70">(optional)</span>}
         </label>
         <textarea
           value={data.character || ''}
           onChange={(e) => updateField('character', e.target.value)}
-          placeholder="e.g., Young professional woman in her 30s..."
-          className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 nodrag"
+          placeholder={isReadOnly ? '' : 'e.g., Young professional woman in her 30s...'}
+          disabled={isReadOnly}
+          className={`w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 nodrag ${isReadOnly ? 'cursor-default' : ''}`}
           rows={2}
         />
       </div>
@@ -280,13 +283,14 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
       {/* Concept/Story */}
       <div className="space-y-1">
         <label className="text-xs font-medium text-muted-foreground">
-          Concept / Story <span className="text-red-400">*</span>
+          Concept / Story {!isReadOnly && <span className="text-red-400">*</span>}
         </label>
         <textarea
           value={data.concept || ''}
           onChange={(e) => updateField('concept', e.target.value)}
-          placeholder="e.g., Morning routine ad showing how our coffee mug makes the perfect start..."
-          className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 nodrag"
+          placeholder={isReadOnly ? '' : 'e.g., Morning routine ad showing how our coffee mug makes the perfect start...'}
+          disabled={isReadOnly}
+          className={`w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 nodrag ${isReadOnly ? 'cursor-default' : ''}`}
           rows={3}
         />
       </div>
@@ -298,7 +302,8 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
           <select
             value={data.sceneCount}
             onChange={(e) => updateField('sceneCount', Number(e.target.value))}
-            className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 nodrag"
+            disabled={isReadOnly}
+            className={`w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 nodrag ${isReadOnly ? 'cursor-default' : ''}`}
           >
             {SCENE_COUNTS.map((count) => (
               <option key={count} value={count}>
@@ -313,7 +318,8 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
           <select
             value={data.style}
             onChange={(e) => updateField('style', e.target.value as StoryboardStyle)}
-            className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 nodrag"
+            disabled={isReadOnly}
+            className={`w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 nodrag ${isReadOnly ? 'cursor-default' : ''}`}
           >
             {STYLE_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -331,15 +337,17 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
         </div>
       )}
 
-      {/* Generate button */}
-      <button
-        onClick={handleGenerate}
-        disabled={!isValid}
-        className="w-full py-2 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-muted disabled:text-muted-foreground text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2 nodrag"
-      >
-        <Sparkles className="w-4 h-4" />
-        Generate Storyboard
-      </button>
+      {/* Generate button - hidden in read-only mode */}
+      {!isReadOnly && (
+        <button
+          onClick={handleGenerate}
+          disabled={!isValid}
+          className="w-full py-2 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-muted disabled:text-muted-foreground text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2 nodrag"
+        >
+          <Sparkles className="w-4 h-4" />
+          Generate Storyboard
+        </button>
+      )}
     </div>
   );
 
@@ -373,30 +381,32 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
           </div>
         </div>
 
-        {/* Actions */}
-        <div className="flex gap-2 pt-1">
-          <button
-            onClick={() => updateNodeData(id, { viewState: 'form' })}
-            className="flex-1 py-2 px-3 bg-muted hover:bg-muted/80 text-foreground text-sm font-medium rounded-lg transition-colors nodrag"
-          >
-            Back to Edit
-          </button>
-          <button
-            onClick={handleCreateOnCanvas}
-            className="flex-1 py-2 px-3 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-1.5 nodrag"
-          >
-            <Grid3X3 className="w-3.5 h-3.5" />
-            Create Nodes
-          </button>
-        </div>
+        {/* Actions - hidden in read-only mode */}
+        {!isReadOnly && (
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={() => updateNodeData(id, { viewState: 'form' })}
+              className="flex-1 py-2 px-3 bg-muted hover:bg-muted/80 text-foreground text-sm font-medium rounded-lg transition-colors nodrag"
+            >
+              Back to Edit
+            </button>
+            <button
+              onClick={handleCreateOnCanvas}
+              className="flex-1 py-2 px-3 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-1.5 nodrag"
+            >
+              <Grid3X3 className="w-3.5 h-3.5" />
+              Create Nodes
+            </button>
+          </div>
+        )}
       </div>
     );
   };
 
   return (
     <div className="relative">
-      {/* Floating Toolbar */}
-      {selected && (
+      {/* Floating Toolbar - hidden in read-only mode */}
+      {selected && !isReadOnly && (
         <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1 backdrop-blur rounded-lg px-2 py-1.5 border node-toolbar-floating shadow-xl z-10">
           <Button
             variant="ghost"
@@ -431,8 +441,8 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
           />
         ) : (
           <span
-            onDoubleClick={() => setIsEditingName(true)}
-            className="cursor-text transition-colors hover:opacity-80"
+            onDoubleClick={() => !isReadOnly && setIsEditingName(true)}
+            className={`transition-colors hover:opacity-80 ${isReadOnly ? 'cursor-default' : 'cursor-text'}`}
           >
             {nodeName}
           </span>

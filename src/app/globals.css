@@ -148,56 +148,91 @@
 
 /* CSS variables for theming inline styles */
 /* Follow shadcn pattern: light values in :root, dark overrides in .dark */
+/* Freepik-inspired design system */
 :root {
   /* Canvas */
   --canvas-bg: #fafafa;
-  --canvas-dots: #d4d4d8;
+  --canvas-dots: #e5e7eb;
 
-  /* Node cards */
+  /* Node cards - Freepik style */
   --node-card-bg: #ffffff;
-  --node-card-bg-secondary: #f4f4f5;
-  --node-toolbar-bg: rgba(255, 255, 255, 0.95);
-  --node-ring: #e4e4e7;
-  --node-ring-hover: #d4d4d8;
+  --node-card-bg-secondary: #f9fafb;
+  --node-card-border: #e5e7eb;
+  --node-card-border-hover: #d1d5db;
+  --node-card-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02);
+  --node-card-shadow-hover: 0 4px 6px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.03);
 
-  /* Handles */
-  --handle-bg: #e4e4e7;
-  --handle-border: #a1a1aa;
-  --handle-hover-bg: #d4d4d8;
+  /* Selection - blue border style */
+  --node-border-selected: #3b82f6;
+  --node-shadow-selected: 0 0 0 4px rgba(59,130,246,0.1), 0 4px 12px rgba(0,0,0,0.08);
+
+  /* Node type backgrounds */
+  --node-bg-text: #fef9c3;
+  --node-bg-text-border: #fde047;
+  --node-bg-image: #ffffff;
+  --node-bg-media: #ffffff;
+  --node-bg-video: #ffffff;
+
+  /* Inner content area */
+  --node-content-bg: #f9fafb;
+  --node-content-border: #f3f4f6;
+
+  /* Legacy compatibility */
+  --node-toolbar-bg: rgba(255, 255, 255, 0.98);
+  --node-ring: #e5e7eb;
+  --node-ring-hover: #d1d5db;
+
+  /* Handles - Freepik style */
+  --handle-bg: #ffffff;
+  --handle-border: #d1d5db;
+  --handle-hover-bg: #f3f4f6;
+  --handle-shadow: 0 1px 3px rgba(0,0,0,0.08);
 
   /* Tooltips */
   --tooltip-bg: #ffffff;
-  --tooltip-border: #d4d4d8;
+  --tooltip-border: #e5e7eb;
   --tooltip-text: #18181b;
 
   /* Text colors */
   --text-primary: #18181b;
-  --text-secondary: #3f3f46;
-  --text-muted: #71717a;
-  --text-placeholder: #a1a1aa;
+  --text-secondary: #374151;
+  --text-muted: #6b7280;
+  --text-placeholder: #9ca3af;
 
   /* Node title colors (specific to node types) */
-  --node-title-default: #3f3f46;
-  --node-title-image: #0d9488;
-  --node-title-video: #a855f7;
-  --node-title-text: #71717a;
-  --node-title-media: #6366f1;
-  --node-title-speech: #06b6d4;
-  --node-title-music: #f97316;
-  --node-title-storyboard: #8b5cf6;
+  --node-title-default: #374151;
+  --node-title-image: #0f766e;
+  --node-title-video: #7c3aed;
+  --node-title-text: #92400e;
+  --node-title-media: #4f46e5;
+  --node-title-speech: #0891b2;
+  --node-title-music: #ea580c;
+  --node-title-storyboard: #7c3aed;
 
   /* Inputs */
-  --input-bg: #f4f4f5;
-  --input-border: #d4d4d8;
+  --input-bg: #f9fafb;
+  --input-border: #e5e7eb;
   --input-text: #18181b;
 
+  /* Floating toolbar */
+  --toolbar-bg: rgba(255, 255, 255, 0.98);
+  --toolbar-border: #e5e7eb;
+  --toolbar-shadow: 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+
   /* Bottom toolbar */
-  --toolbar-bg: rgba(244, 244, 245, 0.8);
+  --bottom-toolbar-bg: rgba(249, 250, 251, 0.95);
+  --bottom-toolbar-border: #f3f4f6;
 
   /* Buttons */
-  --button-secondary-bg: #e4e4e7;
-  --button-secondary-hover: #d4d4d8;
-  --button-secondary-text: #3f3f46;
+  --button-secondary-bg: #f3f4f6;
+  --button-secondary-hover: #e5e7eb;
+  --button-secondary-text: #374151;
+
+  /* Edge colors */
+  --edge-text: #3b82f6;
+  --edge-image: #f59e0b;
+  --edge-video: #8b5cf6;
+  --edge-default: #6366f1;
 }
 
 .dark {
@@ -205,17 +240,39 @@
   --canvas-bg: #09090b;
   --canvas-dots: #27272a;
 
-  /* Node cards */
-  --node-card-bg: #1a1a1c;
+  /* Node cards - dark mode */
+  --node-card-bg: #18181b;
   --node-card-bg-secondary: #27272a;
-  --node-toolbar-bg: rgba(24, 24, 27, 0.9);
+  --node-card-border: #27272a;
+  --node-card-border-hover: #3f3f46;
+  --node-card-shadow: none;
+  --node-card-shadow-hover: 0 0 0 1px rgba(255,255,255,0.05);
+
+  /* Selection - dark mode */
+  --node-border-selected: #6366f1;
+  --node-shadow-selected: 0 0 0 3px rgba(99,102,241,0.25);
+
+  /* Node type backgrounds - dark mode */
+  --node-bg-text: #292524;
+  --node-bg-text-border: #78716c;
+  --node-bg-image: #18181b;
+  --node-bg-media: #18181b;
+  --node-bg-video: #18181b;
+
+  /* Inner content area */
+  --node-content-bg: transparent;
+  --node-content-border: transparent;
+
+  /* Legacy compatibility */
+  --node-toolbar-bg: rgba(24, 24, 27, 0.95);
   --node-ring: #27272a;
   --node-ring-hover: #3f3f46;
 
-  /* Handles */
+  /* Handles - dark mode */
   --handle-bg: #27272a;
   --handle-border: #52525b;
   --handle-hover-bg: #3f3f46;
+  --handle-shadow: none;
 
   /* Tooltips */
   --tooltip-bg: #27272a;
@@ -228,11 +285,11 @@
   --text-muted: #71717a;
   --text-placeholder: #52525b;
 
-  /* Node title colors (same in dark mode - accent colors) */
+  /* Node title colors - dark mode accent colors */
   --node-title-default: #a1a1aa;
   --node-title-image: #14b8a6;
   --node-title-video: #a855f7;
-  --node-title-text: #a1a1aa;
+  --node-title-text: #fcd34d;
   --node-title-media: #818cf8;
   --node-title-speech: #22d3ee;
   --node-title-music: #fb923c;
@@ -243,39 +300,92 @@
   --input-border: #3f3f46;
   --input-text: #d4d4d8;
 
+  /* Floating toolbar */
+  --toolbar-bg: rgba(24, 24, 27, 0.95);
+  --toolbar-border: #3f3f46;
+  --toolbar-shadow: 0 4px 12px rgba(0,0,0,0.4);
+
   /* Bottom toolbar */
-  --toolbar-bg: rgba(24, 24, 27, 0.5);
+  --bottom-toolbar-bg: rgba(24, 24, 27, 0.8);
+  --bottom-toolbar-border: #27272a;
 
   /* Buttons */
   --button-secondary-bg: #27272a;
   --button-secondary-hover: #3f3f46;
   --button-secondary-text: #d4d4d8;
+
+  /* Edge colors - dark mode (brighter) */
+  --edge-text: #60a5fa;
+  --edge-image: #fbbf24;
+  --edge-video: #a78bfa;
+  --edge-default: #818cf8;
 }
 
 
 /* Theme-aware utility classes for nodes */
+
+/* Node card - Freepik style */
+.node-card {
+  background-color: var(--node-card-bg);
+  border: 1px solid var(--node-card-border);
+  box-shadow: var(--node-card-shadow);
+  transition: all 0.15s ease;
+}
+
+.node-card:hover {
+  border-color: var(--node-card-border-hover);
+  box-shadow: var(--node-card-shadow-hover);
+}
+
+.node-card-selected {
+  border: 2.5px solid var(--node-border-selected) !important;
+  box-shadow: var(--node-shadow-selected) !important;
+}
+
+/* Handle styling - Freepik style */
 .node-handle {
   background-color: var(--handle-bg) !important;
   border-color: var(--handle-border) !important;
+  box-shadow: var(--handle-shadow) !important;
+  transition: all 0.15s ease !important;
 }
 
 .node-handle:hover {
   background-color: var(--handle-hover-bg) !important;
+  border-color: var(--node-border-selected) !important;
+  transform: scale(1.1);
 }
 
 .node-tooltip {
   background-color: var(--tooltip-bg);
   border-color: var(--tooltip-border);
   color: var(--tooltip-text);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 
+/* Floating toolbar - Freepik style */
 .node-toolbar-floating {
-  background-color: var(--node-toolbar-bg);
-  border-color: var(--node-ring);
+  background-color: var(--toolbar-bg);
+  border: 1px solid var(--toolbar-border);
+  box-shadow: var(--toolbar-shadow);
 }
 
+/* Bottom toolbar - Freepik style */
 .node-bottom-toolbar {
-  background-color: var(--toolbar-bg);
+  background-color: var(--bottom-toolbar-bg);
+  border-top: 1px solid var(--bottom-toolbar-border);
+  backdrop-filter: blur(8px);
+}
+
+/* Inner content area */
+.node-content-area {
+  background-color: var(--node-content-bg);
+  border: 1px solid var(--node-content-border);
+  border-radius: 12px;
+}
+
+.node-content-area textarea::placeholder {
+  color: var(--text-placeholder);
 }
 
 .node-input {
@@ -303,12 +413,12 @@
 /* React Flow custom styles */
 .react-flow__edge-path {
   stroke-width: 2px !important;
-  stroke: #6366f1 !important;
+  stroke: var(--edge-default) !important;
 }
 
 /* Light mode edge styling - ensure edges are visible */
 .light .react-flow__edge-path {
-  stroke: #6366f1 !important;
+  stroke: var(--edge-default) !important;
 }
 
 .light .react-flow__edge.selected .react-flow__edge-path {
@@ -316,7 +426,14 @@
 }
 
 .light .react-flow__connection-line {
-  stroke: #6366f1 !important;
+  stroke: var(--edge-default) !important;
+  stroke-width: 2px !important;
+}
+
+/* Dark mode connection line */
+.dark .react-flow__connection-line {
+  stroke: var(--edge-default) !important;
+  stroke-width: 2px !important;
 }
 
 /* Light mode React Flow controls and selection */
@@ -537,6 +654,17 @@
 
 .animate-pulse-glow-teal {
   animation: pulse-glow-teal 2s ease-in-out infinite;
+}
+
+/* Generating state border styles */
+.generating-border-purple {
+  border: 2.5px solid #a855f7;
+  background-color: var(--node-card-bg);
+}
+
+.generating-border-teal {
+  border: 2.5px solid #14b8a6;
+  background-color: var(--node-card-bg);
 }
 
 /* TipTap Editor Styles */

@@ -356,6 +356,7 @@ interface RichTextEditorProps {
   placeholder?: string;
   minHeight?: number;
   isExpanded?: boolean;
+  editable?: boolean;
 }
 
 export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
@@ -365,9 +366,11 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
     placeholder = 'Start typing...',
     minHeight = 80,
     isExpanded = false,
+    editable = true,
   }, ref) {
     const editor = useEditor({
       immediatelyRender: false,
+      editable,
       extensions: [
         StarterKit.configure({
           heading: {

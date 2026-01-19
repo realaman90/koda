@@ -49,9 +49,22 @@ export function SettingsPanel() {
   // Close on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
-        closeSettingsPanel();
+      const target = e.target as Node;
+      // Don't close if clicking inside the panel
+      if (panelRef.current && panelRef.current.contains(target)) {
+        return;
       }
+      // Don't close if clicking inside a preset popover modal (portaled to body)
+      const presetModal = document.querySelector('[data-preset-modal="true"]');
+      if (presetModal && presetModal.contains(target)) {
+        return;
+      }
+      // Don't close if clicking inside a Radix UI Select dropdown (portaled to body)
+      const radixSelect = (target as Element).closest?.('[data-radix-popper-content-wrapper]');
+      if (radixSelect) {
+        return;
+      }
+      closeSettingsPanel();
     };
 
     const handleEscape = (e: KeyboardEvent) => {
@@ -482,7 +495,7 @@ export function SettingsPanel() {
                 presets={CHARACTER_PRESETS}
                 selected={data.selectedCharacter?.type === 'preset' ? data.selectedCharacter : null}
                 onSelect={handleCharacterSelect}
-                allowCustomUpload
+                allowCustomUpload={modelCapabilities.supportsReferences}
                 customImage={data.selectedCharacter?.type === 'custom' ? data.selectedCharacter.imageUrl : undefined}
                 onCustomUpload={handleCharacterUpload}
                 onClearCustom={handleClearCustomCharacter}

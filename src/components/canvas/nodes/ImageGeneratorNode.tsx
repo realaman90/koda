@@ -37,10 +37,16 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
   const getConnectedInputs = useCanvasStore((state) => state.getConnectedInputs);
   const addNode = useCanvasStore((state) => state.addNode);
   const isReadOnly = useCanvasStore((state) => state.isReadOnly);
+  const edges = useCanvasStore((state) => state.edges);
   const updateNodeInternals = useUpdateNodeInternals();
   const [isEditingName, setIsEditingName] = useState(false);
   const [nodeName, setNodeName] = useState(data.name || 'Image Generator');
+  const [isHovered, setIsHovered] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
+
+  // Check if this node has any connections
+  const isConnected = edges.some(edge => edge.source === id || edge.target === id);
+  const showHandles = selected || isHovered || isConnected;
 
   const modelCapabilities = MODEL_CAPABILITIES[data.model];
   const maxRefs = modelCapabilities.maxReferences || 1;
@@ -125,14 +131,43 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
     // Get connected inputs from TextNode and MediaNode
     const connectedInputs = getConnectedInputs(id);
 
-    // Merge connected text with prompt (connected text takes priority, or append if prompt exists)
-    let finalPrompt = data.prompt || '';
-    if (connectedInputs.textContent) {
-      finalPrompt = connectedInputs.textContent + (data.prompt ? `\n${data.prompt}` : '');
+    // Build final prompt with preset modifiers (matching SettingsPanel behavior)
+    const promptParts: string[] = [];
+
+    // Add character modifier
+    if (data.selectedCharacter?.type === 'preset' && data.selectedCharacter.promptModifier) {
+      promptParts.push(data.selectedCharacter.promptModifier);
     }
 
+    // Add style preset modifier
+    if (data.selectedStyle?.promptModifier) {
+      promptParts.push(data.selectedStyle.promptModifier);
+    }
+
+    // Add camera angle modifier
+    if (data.selectedCameraAngle?.promptModifier) {
+      promptParts.push(data.selectedCameraAngle.promptModifier);
+    }
+
+    // Add camera lens modifier
+    if (data.selectedCameraLens?.promptModifier) {
+      promptParts.push(data.selectedCameraLens.promptModifier);
+    }
+
+    // Add connected text content
+    if (connectedInputs.textContent) {
+      promptParts.push(connectedInputs.textContent);
+    }
+
+    // Add user prompt
+    if (data.prompt) {
+      promptParts.push(data.prompt);
+    }
+
+    const finalPrompt = promptParts.join(', ');
+
     if (!finalPrompt) {
-      toast.error('Please enter a prompt or connect a text node');
+      toast.error('Please enter a prompt, connect a text node, or select presets');
       return;
     }
 
@@ -207,7 +242,7 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
       });
       toast.error(`Generation failed: ${errorMessage}`);
     }
-  }, [id, data.prompt, data.model, data.aspectRatio, data.imageCount, updateNodeData, getConnectedInputs, addNode, positionAbsoluteX, positionAbsoluteY]);
+  }, [id, data.prompt, data.model, data.aspectRatio, data.imageCount, data.selectedCharacter, data.selectedStyle, data.selectedCameraAngle, data.selectedCameraLens, data.imageSize, data.resolution, data.style, data.magicPrompt, data.cfgScale, data.steps, data.strength, updateNodeData, getConnectedInputs, addNode, positionAbsoluteX, positionAbsoluteY]);
 
   const handleDelete = useCallback(() => {
     deleteNode(id);
@@ -246,24 +281,36 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
   // Get dimensions for badge
   const dimensions = getApproxDimensions(data.aspectRatio, data.model, data.resolution);
 
-  // Check if we have a valid prompt (either direct or from connected TextNode)
+  // Check if we have a valid prompt (direct, connected, or from presets)
   const connectedInputs = getConnectedInputs(id);
-  const hasValidPrompt = !!(data.prompt || connectedInputs.textContent);
+  const hasPresetSelected = !!(
+    data.selectedCharacter ||
+    data.selectedStyle ||
+    data.selectedCameraAngle ||
+    data.selectedCameraLens
+  );
+  const hasValidPrompt = !!(data.prompt || connectedInputs.textContent || hasPresetSelected);
 
   return (
-    <div className="relative">
-      {/* Floating Toolbar - appears above node when selected */}
+    <div
+      className="relative"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      {/* Floating Toolbar - appears above node when selected (hidden in read-only except download) */}
       {selected && (
-        <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1 backdrop-blur rounded-lg px-2 py-1.5 border shadow-xl z-10 node-toolbar-floating">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
-            onClick={handleGenerate}
-            disabled={!hasValidPrompt || data.isGenerating}
-          >
-            <Play className="h-3.5 w-3.5" />
-          </Button>
+        <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1 rounded-lg px-2 py-1.5 z-10 node-toolbar-floating">
+          {!isReadOnly && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              onClick={handleGenerate}
+              disabled={!hasValidPrompt || data.isGenerating}
+            >
+              <Play className="h-3.5 w-3.5" />
+            </Button>
+          )}
           {data.outputUrl && (
             <Button
               variant="ghost"
@@ -274,14 +321,16 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
               <Download className="h-3.5 w-3.5" />
             </Button>
           )}
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="h-7 w-7 text-muted-foreground hover:text-red-400 hover:bg-muted/50"
-            onClick={handleDelete}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          {!isReadOnly && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="h-7 w-7 text-muted-foreground hover:text-red-400 hover:bg-muted/50"
+              onClick={handleDelete}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
         </div>
       )}
 
@@ -291,7 +340,7 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
           <ImageIcon className="h-4 w-4" />
           <Sparkle className="h-2 w-2 absolute -top-0.5 -right-0.5 fill-current" />
         </div>
-        {isEditingName ? (
+        {isEditingName && !isReadOnly ? (
           <input
             ref={nameInputRef}
             type="text"
@@ -310,8 +359,8 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
           />
         ) : (
           <span
-            onDoubleClick={() => setIsEditingName(true)}
-            className="cursor-text transition-colors hover:opacity-80"
+            onDoubleClick={() => !isReadOnly && setIsEditingName(true)}
+            className={`transition-colors hover:opacity-80 ${isReadOnly ? 'cursor-default' : 'cursor-text'}`}
           >
             {data.name || 'Image Generator'}
           </span>
@@ -323,15 +372,11 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
         className={`
           w-[420px] rounded-2xl overflow-hidden
           transition-all duration-150
-          ${data.isGenerating
-            ? 'ring-[2.5px] ring-teal-500 shadow-lg shadow-teal-500/20 animate-pulse-glow-teal'
-            : selected
-              ? 'ring-[2.5px] ring-white/20'
-              : ''
-          }
+          ${data.isGenerating ? 'animate-pulse-glow-teal generating-border-teal' : ''}
+          ${!data.isGenerating && !data.outputUrl ? (selected ? 'node-card node-card-selected' : 'node-card') : ''}
         `}
         style={{
-          backgroundColor: data.outputUrl ? 'transparent' : 'var(--node-card-bg)',
+          backgroundColor: data.outputUrl ? 'transparent' : undefined,
           minHeight: refHandleCount > 1 ? `${280 + (refHandleCount - 1) * 45}px` : undefined,
         }}
       >
@@ -339,7 +384,7 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
         <div className="relative">
           {/* Loading State */}
           {data.isGenerating ? (
-            <div className="p-4 min-h-[200px] flex flex-col items-center justify-center gap-4 rounded-2xl" style={{ backgroundColor: 'var(--node-card-bg)' }}>
+            <div className="p-4 min-h-[200px] flex flex-col items-center justify-center gap-4" style={{ backgroundColor: 'var(--node-card-bg)' }}>
               <div className="relative">
                 <div className="w-16 h-16 rounded-full border-4 border-border border-t-teal-500 animate-spin" />
                 <Loader2 className="absolute inset-0 m-auto h-6 w-6 text-teal-500 animate-pulse" />
@@ -350,114 +395,128 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
               </div>
             </div>
           ) : data.outputUrl ? (
-            /* Generated Image - Freepik Style */
-            <div className="relative">
+            /* Generated Image - Freepik Style with hover toolbar */
+            <div
+              className={`group/image relative rounded-2xl overflow-hidden ${selected ? 'node-card-selected' : ''}`}
+              style={{
+                border: selected ? undefined : '1px solid var(--node-card-border)',
+                boxShadow: selected ? undefined : 'var(--node-card-shadow)',
+              }}
+            >
               <img
                 src={data.outputUrl}
                 alt="Generated"
-                className="w-full h-auto rounded-2xl"
+                className="w-full h-auto"
               />
-              {/* Dimension badge */}
-              <div className="absolute top-3 right-3 px-2 py-0.5 bg-black/50 backdrop-blur-sm rounded text-xs text-zinc-300 font-medium">
+              {/* Dimension badge - visible on hover */}
+              <div className="absolute top-3 right-3 px-2 py-0.5 bg-black/50 backdrop-blur-sm rounded text-xs text-zinc-300 font-medium opacity-0 group-hover/image:opacity-100 transition-opacity duration-200">
                 {dimensions.width} × {dimensions.height}
               </div>
-              {/* Download button */}
+              {/* Download button - visible on hover */}
               <Button
                 variant="ghost"
                 size="icon-sm"
                 onClick={handleDownload}
-                className="absolute top-3 right-20 h-7 w-7 bg-black/50 backdrop-blur-sm text-zinc-300 hover:text-white hover:bg-black/70 rounded"
+                className="absolute top-3 left-3 h-8 w-8 bg-black/50 backdrop-blur-sm text-zinc-300 hover:text-white hover:bg-black/70 rounded-lg opacity-0 group-hover/image:opacity-100 transition-all duration-200 translate-y-1 group-hover/image:translate-y-0"
               >
-                <Download className="h-3.5 w-3.5" />
+                <Download className="h-4 w-4" />
               </Button>
-              {/* Prompt text overlay */}
-              <div className="absolute bottom-14 left-3 right-3">
-                <p className="text-white/60 text-sm">
-                  {connectedInputs.textContent ? 'Prompt (connected)' : data.prompt ? data.prompt.slice(0, 50) + (data.prompt.length > 50 ? '...' : '') : ''}
+              {/* Gradient overlay for better text visibility - visible on hover */}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover/image:opacity-100 transition-opacity duration-300 pointer-events-none" />
+              {/* Prompt text overlay - visible on hover */}
+              <div className="absolute bottom-16 left-3 right-3 opacity-0 group-hover/image:opacity-100 transition-all duration-200 translate-y-2 group-hover/image:translate-y-0">
+                <p className="text-white/80 text-sm font-medium drop-shadow-lg">
+                  {connectedInputs.textContent ? 'Prompt (connected)' : data.prompt ? data.prompt.slice(0, 60) + (data.prompt.length > 60 ? '...' : '') : ''}
                 </p>
               </div>
-              {/* Floating Toolbar - inside image at bottom */}
-              <div className="absolute bottom-3 left-3 right-3 flex items-center gap-1.5 px-2 py-2 bg-black/40 backdrop-blur-md rounded-xl">
-                <SearchableSelect
-                  value={data.model}
-                  onValueChange={handleModelChange}
-                  options={Object.entries(MODEL_CAPABILITIES).map(([key, cap]) => ({
-                    value: key,
-                    label: cap.label,
-                    description: cap.description,
-                  }))}
-                  placeholder="Select model"
-                  searchPlaceholder="Search models..."
-                  triggerClassName="max-w-[120px]"
-                />
-                <Select value={data.aspectRatio} onValueChange={handleAspectRatioChange}>
-                  <SelectTrigger className="h-7 w-auto bg-muted/80 border-0 text-xs text-foreground gap-1 px-2 rounded-md hover:bg-muted">
-                    <span className="flex items-center gap-1">
-                      <span className="w-2.5 h-2.5 border border-muted-foreground rounded-[2px]" />
-                      <SelectValue />
-                    </span>
-                  </SelectTrigger>
-                  <SelectContent className="bg-popover border-border">
-                    {modelCapabilities.aspectRatios.map((ratio) => (
-                      <SelectItem key={ratio} value={ratio} className="text-xs">{ratio}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <div className="flex items-center bg-muted/80 rounded-md h-7">
+              {/* Floating Toolbar - visible on hover with smooth animation */}
+              {!isReadOnly && (
+                <div className="absolute bottom-3 left-3 right-3 flex items-center gap-1.5 px-2.5 py-2 bg-black/50 backdrop-blur-xl rounded-xl border border-white/10 opacity-0 group-hover/image:opacity-100 transition-all duration-300 ease-out translate-y-2 group-hover/image:translate-y-0 shadow-xl">
+                  <SearchableSelect
+                    value={data.model}
+                    onValueChange={handleModelChange}
+                    options={Object.entries(MODEL_CAPABILITIES).map(([key, cap]) => ({
+                      value: key,
+                      label: cap.label,
+                      description: cap.description,
+                    }))}
+                    placeholder="Select model"
+                    searchPlaceholder="Search models..."
+                    triggerClassName="max-w-[120px] bg-white/10 hover:bg-white/20 border-0"
+                  />
+                  <Select value={data.aspectRatio} onValueChange={handleAspectRatioChange}>
+                    <SelectTrigger className="h-7 w-auto bg-white/10 hover:bg-white/20 border-0 text-xs text-white gap-1 px-2 rounded-md">
+                      <span className="flex items-center gap-1">
+                        <span className="w-2.5 h-2.5 border border-white/50 rounded-[2px]" />
+                        <SelectValue />
+                      </span>
+                    </SelectTrigger>
+                    <SelectContent className="bg-popover border-border">
+                      {modelCapabilities.aspectRatios.map((ratio) => (
+                        <SelectItem key={ratio} value={ratio} className="text-xs">{ratio}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="flex items-center bg-white/10 rounded-md h-7">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="h-7 w-5 text-white/70 hover:text-white hover:bg-transparent p-0"
+                      onClick={() => updateNodeData(id, { imageCount: Math.max(1, (data.imageCount || 1) - 1) })}
+                    >
+                      <Minus className="h-3 w-3" />
+                    </Button>
+                    <span className="text-xs text-white w-3 text-center">{data.imageCount || 1}</span>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="h-7 w-5 text-white/70 hover:text-white hover:bg-transparent p-0"
+                      onClick={() => updateNodeData(id, { imageCount: Math.min(modelCapabilities.maxImages, (data.imageCount || 1) + 1) })}
+                    >
+                      <Plus className="h-3 w-3" />
+                    </Button>
+                  </div>
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    className="h-7 w-5 text-muted-foreground hover:text-foreground hover:bg-transparent p-0"
-                    onClick={() => updateNodeData(id, { imageCount: Math.max(1, (data.imageCount || 1) - 1) })}
+                    onClick={handleOpenSettings}
+                    className="h-7 w-7 text-white/70 hover:text-white hover:bg-white/10 shrink-0"
                   >
-                    <Minus className="h-3 w-3" />
+                    <Settings className="h-3.5 w-3.5" />
                   </Button>
-                  <span className="text-xs text-foreground w-3 text-center">{data.imageCount || 1}</span>
+                  <div className="flex-1" />
                   <Button
-                    variant="ghost"
+                    onClick={handleGenerate}
+                    disabled={!hasValidPrompt || data.isGenerating}
                     size="icon-sm"
-                    className="h-7 w-5 text-muted-foreground hover:text-foreground hover:bg-transparent p-0"
-                    onClick={() => updateNodeData(id, { imageCount: Math.min(modelCapabilities.maxImages, (data.imageCount || 1) + 1) })}
+                    className="h-8 w-8 min-w-8 bg-teal-500 hover:bg-teal-400 text-white rounded-full disabled:opacity-40 shrink-0 shadow-lg hover:shadow-teal-500/25 transition-all duration-200 hover:scale-105"
                   >
-                    <Plus className="h-3 w-3" />
+                    <RefreshCw className="h-4 w-4" />
                   </Button>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={handleOpenSettings}
-                  className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50 shrink-0"
-                >
-                  <Settings className="h-3.5 w-3.5" />
-                </Button>
-                <div className="flex-1" />
-                <Button
-                  onClick={handleGenerate}
-                  disabled={!hasValidPrompt || data.isGenerating}
-                  size="icon-sm"
-                  className="h-8 w-8 min-w-8 bg-teal-500 hover:bg-teal-400 text-white rounded-full disabled:opacity-40 shrink-0"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                </Button>
-              </div>
+              )}
             </div>
           ) : (
-            /* Prompt Input - Dark card style */
+            /* Prompt Input - Freepik style with inner content area */
             <>
-              <div className="p-4 min-h-[220px]">
-                <textarea
-                  value={data.prompt}
-                  onChange={handlePromptChange}
-                  placeholder="Describe the image you want to generate..."
-                  className="w-full h-[180px] bg-transparent border-none text-sm resize-none focus:outline-none node-input"
-                  style={{ color: 'var(--text-secondary)' }}
-                />
+              <div className="p-3">
+                <div className="node-content-area p-3 min-h-[200px]">
+                  <textarea
+                    value={data.prompt}
+                    onChange={handlePromptChange}
+                    placeholder="Describe the image you want to generate..."
+                    className="w-full h-[170px] bg-transparent border-none text-sm resize-none focus:outline-none"
+                    style={{ color: 'var(--text-secondary)' }}
+                    disabled={isReadOnly}
+                  />
+                </div>
               </div>
               {/* Error Display */}
               {data.error && (
                 <p className="text-xs text-red-400 px-4 pb-2">{data.error}</p>
               )}
-              {/* Bottom Toolbar */}
+              {/* Bottom Toolbar - visible on hover or selected */}
+              {!isReadOnly && (selected || isHovered) && (
               <div className="flex items-center flex-wrap gap-1.5 px-3 py-2.5 node-bottom-toolbar">
                 <SearchableSelect
                   value={data.model}
@@ -582,6 +641,7 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
                   <Play className="h-4 w-4" />
                 </Button>
               </div>
+              )}
             </>
           )}
         </div>
@@ -589,7 +649,10 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
 
       {/* Input Handles - Left side */}
       {/* Text Input */}
-      <div className="absolute -left-3 group" style={{ top: modelCapabilities.inputType !== 'text-only' ? '110px' : '50%', transform: modelCapabilities.inputType === 'text-only' ? 'translateY(-50%)' : undefined }}>
+      <div
+        className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
+        style={{ top: modelCapabilities.inputType !== 'text-only' ? '110px' : '50%', transform: modelCapabilities.inputType === 'text-only' ? 'translateY(-50%)' : undefined }}
+      >
         <div className="relative">
           <Handle
             type="target"
@@ -612,7 +675,11 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
             const spacing = 40; // 40px spacing between handles
             const top = baseTop + index * spacing;
             return (
-              <div key={`ref-${index}`} className="absolute -left-3 group" style={{ top: `${top}px` }}>
+              <div
+                key={`ref-${index}`}
+                className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
+                style={{ top: `${top}px` }}
+              >
                 <div className="relative">
                   <Handle
                     type="target"
@@ -628,9 +695,9 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
               </div>
             );
           })}
-          {/* Add/Remove ref buttons - only for multi-ref models */}
-          {maxRefs > 1 && (
-            <div className="absolute -left-3 flex flex-col gap-0.5" style={{ top: `${160 + refHandleCount * 40 + 10}px` }}>
+          {/* Add/Remove ref buttons - only for multi-ref models, visible on hover/select */}
+          {maxRefs > 1 && (selected || isHovered) && (
+            <div className="absolute -left-3 flex flex-col gap-0.5 transition-opacity duration-200" style={{ top: `${160 + refHandleCount * 40 + 10}px` }}>
               {refHandleCount < maxRefs && (
                 <button
                   onClick={handleAddRefHandle}
@@ -657,7 +724,10 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
       )}
 
       {/* Output Handle - Right side */}
-      <div className="absolute -right-3 group" style={{ top: '50%', transform: 'translateY(-50%)' }}>
+      <div
+        className={`absolute -right-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
+        style={{ top: '50%', transform: 'translateY(-50%)' }}
+      >
         <div className="relative">
           <Handle
             type="source"

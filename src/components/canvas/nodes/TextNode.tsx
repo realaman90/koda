@@ -13,6 +13,7 @@ const EXPANDED_HEIGHT = 300;
 
 function TextNodeComponent({ id, data, selected }: NodeProps<TextNodeType>) {
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
+  const isReadOnly = useCanvasStore((state) => state.isReadOnly);
   const edges = useEdges();
   const [isEditingName, setIsEditingName] = useState(false);
   const [nodeName, setNodeName] = useState(data.name || 'Text');
@@ -20,9 +21,10 @@ function TextNodeComponent({ id, data, selected }: NodeProps<TextNodeType>) {
   const nameInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<RichTextEditorRef>(null);
 
-  // Use CSS variable as default, or custom bgColor if set
-  const bgColor = data.bgColor || 'var(--node-card-bg)';
+  // Use yellow/beige as default for text nodes (Freepik style), or custom bgColor if set
+  const bgColor = data.bgColor || 'var(--node-bg-text)';
   const isExpanded = data.isExpanded || false;
+  const isTransparent = bgColor === 'transparent';
 
   // Check if this node has any connections
   const isConnected = edges.some(edge => edge.source === id || edge.target === id);
@@ -90,19 +92,21 @@ function TextNodeComponent({ id, data, selected }: NodeProps<TextNodeType>) {
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Node Resizer - invisible handles, resize from edges */}
-      <NodeResizer
-        isVisible={selected}
-        minWidth={200}
-        minHeight={120}
-        lineClassName="!border-transparent"
-        handleClassName="!opacity-0 !w-4 !h-4"
-        onResizeEnd={handleResizeEnd}
-      />
+      {/* Node Resizer - invisible handles, resize from edges (hidden in read-only) */}
+      {!isReadOnly && (
+        <NodeResizer
+          isVisible={selected}
+          minWidth={200}
+          minHeight={120}
+          lineClassName="!border-transparent"
+          handleClassName="!opacity-0 !w-4 !h-4"
+          onResizeEnd={handleResizeEnd}
+        />
+      )}
 
-      {/* Floating Toolbar - appears above node when selected */}
-      {selected && (
-        <div className="absolute -top-12 left-1/2 -translate-x-1/2 z-10">
+      {/* Floating Toolbar - appears above node when selected (hidden in read-only) */}
+      {selected && !isReadOnly && (
+        <div className="absolute -top-12 left-1/2 -translate-x-1/2 z-10 node-toolbar-floating rounded-lg">
           <EditorToolbar
             editor={editor}
             isExpanded={isExpanded}
@@ -117,7 +121,7 @@ function TextNodeComponent({ id, data, selected }: NodeProps<TextNodeType>) {
       {/* Node Title */}
       <div className="flex items-center gap-2 mb-2 text-sm font-medium" style={{ color: 'var(--node-title-text)' }}>
         <Type className="h-4 w-4" />
-        {isEditingName ? (
+        {isEditingName && !isReadOnly ? (
           <input
             ref={nameInputRef}
             type="text"
@@ -136,8 +140,8 @@ function TextNodeComponent({ id, data, selected }: NodeProps<TextNodeType>) {
           />
         ) : (
           <span
-            onDoubleClick={() => setIsEditingName(true)}
-            className="cursor-text transition-colors hover:opacity-80"
+            onDoubleClick={() => !isReadOnly && setIsEditingName(true)}
+            className={`transition-colors hover:opacity-80 ${isReadOnly ? 'cursor-default' : 'cursor-text'}`}
           >
             {nodeName}
           </span>
@@ -149,19 +153,20 @@ function TextNodeComponent({ id, data, selected }: NodeProps<TextNodeType>) {
         <div
           className={`
             min-w-[280px] rounded-2xl overflow-hidden
-            transition-[box-shadow,ring-color] duration-200 ring-1
-            ${selected
-              ? 'ring-[2.5px] ring-blue-500 shadow-lg shadow-blue-500/10'
-              : ''
+            transition-all duration-150
+            ${isTransparent
+              ? (selected ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-transparent' : '')
+              : (selected ? 'node-card-selected' : '')
             }
           `}
           style={{
-            backgroundColor: bgColor === 'transparent' ? 'transparent' : bgColor,
+            backgroundColor: isTransparent ? 'transparent' : bgColor,
             width: data.width || 280,
             height: data.height || DEFAULT_HEIGHT,
-            ...(!selected && {
-              '--tw-ring-color': 'var(--node-ring)',
-            } as React.CSSProperties),
+            ...(!isTransparent && !selected && {
+              border: '1px solid var(--node-bg-text-border)',
+              boxShadow: 'var(--node-card-shadow)',
+            }),
           }}
         >
           {/* Content Area */}
@@ -173,23 +178,26 @@ function TextNodeComponent({ id, data, selected }: NodeProps<TextNodeType>) {
               placeholder="Enter your text..."
               minHeight={80}
               isExpanded={isExpanded}
+              editable={!isReadOnly}
             />
           </div>
         </div>
 
-        {/* Resize Handle - bottom-right corner of card */}
-        <div className="absolute -bottom-2 -right-2 z-10">
-          <ResizeHandle
-            onResize={handleResize}
-            visible={isHovered || selected}
-            currentWidth={data.width || 280}
-            currentHeight={data.height || DEFAULT_HEIGHT}
-            minWidth={200}
-            minHeight={100}
-            maxWidth={600}
-            maxHeight={500}
-          />
-        </div>
+        {/* Resize Handle - bottom-right corner of card (hidden in read-only) */}
+        {!isReadOnly && (
+          <div className="absolute -bottom-2 -right-2 z-10">
+            <ResizeHandle
+              onResize={handleResize}
+              visible={isHovered || selected}
+              currentWidth={data.width || 280}
+              currentHeight={data.height || DEFAULT_HEIGHT}
+              minWidth={200}
+              minHeight={100}
+              maxWidth={600}
+              maxHeight={500}
+            />
+          </div>
+        )}
 
         {/* Output Handle - Right side, centered on card */}
         <div
