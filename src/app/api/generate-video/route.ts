@@ -25,6 +25,14 @@ export async function POST(request: Request) {
     } = body;
 
     const modelType = model as VideoModelType;
+
+    // Debug: Log received model
+    console.log('Received model from request:', { model, modelType, isValidKey: modelType in FAL_VIDEO_MODELS });
+
+    if (!model || !(model in FAL_VIDEO_MODELS)) {
+      console.warn(`Invalid or missing model: "${model}". Falling back to veo-3.`);
+    }
+
     const modelId = FAL_VIDEO_MODELS[modelType] || FAL_VIDEO_MODELS['veo-3'];
 
     // Validate input - at least prompt or some image reference is needed
@@ -53,7 +61,15 @@ export async function POST(request: Request) {
     const adapter = getVideoModelAdapter(modelType);
     const input = adapter.buildInput(generateRequest);
 
-    console.log('Video generation request:', { modelId, input });
+    console.log('Video generation request:', {
+      modelId,
+      receivedModel: model,
+      hasReferenceUrl: !!referenceUrl,
+      hasFirstFrameUrl: !!firstFrameUrl,
+      hasLastFrameUrl: !!lastFrameUrl,
+      referenceUrlsCount: referenceUrls?.length || 0,
+      input,
+    });
 
     // Call Fal API with queue subscription for long-running video generation
     const result = await fal.subscribe(modelId, {

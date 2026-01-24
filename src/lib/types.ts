@@ -355,6 +355,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
 export type VideoModelType =
   | 'veo-3'
   | 'veo-3.1-i2v'
+  | 'veo-3.1-fast-i2v'
   | 'veo-3.1-ref'
   | 'veo-3.1-flf'
   | 'veo-3.1-fast-flf'
@@ -433,6 +434,17 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     resolutions: ['720p', '1080p'],
     supportsAudio: true,
     description: 'Animate a single image',
+  },
+  'veo-3.1-fast-i2v': {
+    label: 'Veo 3.1 Fast Image',
+    inputType: 'text-and-image',
+    inputMode: 'single-image',
+    durations: [4, 6, 8],
+    defaultDuration: 8,
+    aspectRatios: ['16:9', '9:16'],
+    resolutions: ['720p', '1080p'],
+    supportsAudio: true,
+    description: 'Fast image-to-video',
   },
   'veo-3.1-ref': {
     label: 'Veo 3.1 Multi-Ref',
@@ -523,6 +535,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
 export const FAL_VIDEO_MODELS: Record<VideoModelType, string> = {
   'veo-3': 'fal-ai/veo3',
   'veo-3.1-i2v': 'fal-ai/veo3.1/image-to-video',
+  'veo-3.1-fast-i2v': 'fal-ai/veo3.1/fast/image-to-video',
   'veo-3.1-ref': 'fal-ai/veo3.1/reference-to-video',
   'veo-3.1-flf': 'fal-ai/veo3.1/first-last-frame-to-video',
   'veo-3.1-fast-flf': 'fal-ai/veo3.1/fast/first-last-frame-to-video',
