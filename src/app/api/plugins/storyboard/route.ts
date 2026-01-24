@@ -17,10 +17,13 @@ import {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
+    console.log('\n========== STORYBOARD GENERATION START ==========');
+    console.log('[Storyboard] Input received:', JSON.stringify(body, null, 2));
 
     // Validate input
     const parseResult = StoryboardInputSchema.safeParse(body);
     if (!parseResult.success) {
+      console.log('[Storyboard] Validation failed:', parseResult.error.flatten().fieldErrors);
       return NextResponse.json(
         {
           success: false,
@@ -32,20 +35,31 @@ export async function POST(request: Request) {
     }
 
     const input = parseResult.data;
+    console.log('[Storyboard] Validated input:', JSON.stringify(input, null, 2));
 
     // Build the prompt
     const prompt = buildStoryboardPrompt(input);
+    console.log('[Storyboard] Built prompt:\n', prompt);
+    console.log('[Storyboard] System prompt:\n', STORYBOARD_SYSTEM_PROMPT);
 
     // Generate using AI service
+    console.log('[Storyboard] Calling AI service (Gemini 3 Pro with thinking)...');
+    const startTime = Date.now();
+
     const aiService = new AIService();
     const result = await aiService.generateStructured(
       prompt,
       StoryboardOutputSchema,
       {
         systemPrompt: STORYBOARD_SYSTEM_PROMPT,
-        temperature: 0.7,
+        temperature: 0.1,
       }
     );
+
+    const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+    console.log(`[Storyboard] AI response received in ${duration}s`);
+    console.log('[Storyboard] Generated result:', JSON.stringify(result, null, 2));
+    console.log('========== STORYBOARD GENERATION END ==========\n');
 
     return NextResponse.json({
       success: true,
