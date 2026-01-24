@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   useCanvasStore,
@@ -11,6 +11,9 @@ import {
   createStickyNoteNode,
   createStickerNode,
   createGroupNode,
+  createMusicGeneratorNode,
+  createSpeechNode,
+  createVideoAudioNode,
 } from '@/stores/canvas-store';
 import {
   Plus,
@@ -20,6 +23,7 @@ import {
   Scissors,
   Settings,
   MousePointer2,
+  Puzzle,
   Image as ImageIcon,
   Video,
   Type,
@@ -27,7 +31,13 @@ import {
   Smile,
   Group,
   Sparkle,
+  Music,
+  Mic,
+  Film,
 } from 'lucide-react';
+import { PluginLauncher } from '@/components/plugins/PluginLauncher';
+// Import official plugins to register them
+import '@/lib/plugins/official/storyboard-generator';
 import {
   Tooltip,
   TooltipContent,
@@ -35,7 +45,11 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 
-export function NodeToolbar() {
+interface NodeToolbarProps {
+  onPluginLaunch?: (pluginId: string) => void;
+}
+
+export function NodeToolbar({ onPluginLaunch }: NodeToolbarProps) {
   const nodes = useCanvasStore((state) => state.nodes);
   const addNode = useCanvasStore((state) => state.addNode);
   const undo = useCanvasStore((state) => state.undo);
@@ -48,6 +62,16 @@ export function NodeToolbar() {
   const setActiveTool = useCanvasStore((state) => state.setActiveTool);
   const getViewportCenter = useCanvasStore((state) => state.getViewportCenter);
 
+  // Plugin launcher state
+  const [showPluginLauncher, setShowPluginLauncher] = useState(false);
+  const pluginButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Check if there are any generators with prompts
+  const hasRunnableGenerators = nodes.some((n) => {
+    if (n.type !== 'imageGenerator') return false;
+    const data = n.data as { prompt?: string };
+    return !!data.prompt;
+  });
   const [showAddMenu, setShowAddMenu] = useState(false);
   const addMenuRef = useRef<HTMLDivElement>(null);
 
@@ -109,6 +133,26 @@ export function NodeToolbar() {
       ],
     },
     {
+      section: 'AUDIO',
+      items: [
+        {
+          icon: <Music className="h-4 w-4 text-orange-400" />,
+          label: 'Music Generator',
+          onClick: () => handleAddNode(createMusicGeneratorNode, 'Music Generator'),
+        },
+        {
+          icon: <Mic className="h-4 w-4 text-cyan-400" />,
+          label: 'Speech',
+          onClick: () => handleAddNode(createSpeechNode, 'Speech'),
+        },
+        {
+          icon: <Film className="h-4 w-4 text-pink-400" />,
+          label: 'Video Audio',
+          onClick: () => handleAddNode(createVideoAudioNode, 'Video Audio'),
+        },
+      ],
+    },
+    {
       section: 'UTILITIES',
       items: [
         {
@@ -135,7 +179,7 @@ export function NodeToolbar() {
       <div className="absolute left-4 top-1/2 -translate-y-1/2 z-10 flex flex-col gap-2">
         {/* Add Button */}
         <div className="relative" ref={addMenuRef}>
-          <div className="bg-zinc-900/95 backdrop-blur border border-zinc-800 rounded-xl p-1">
+          <div className="bg-popover/95 backdrop-blur border border-border rounded-xl p-1">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -145,15 +189,15 @@ export function NodeToolbar() {
                   className={`
                     h-9 w-9 rounded-lg
                     ${showAddMenu
-                      ? 'bg-zinc-700 text-white'
-                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                      ? 'bg-muted text-foreground'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                     }
                   `}
                 >
                   <Plus className="h-5 w-5" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="right" className="bg-zinc-800 border-zinc-700 text-zinc-200">
+              <TooltipContent side="right" className="bg-popover border-border text-popover-foreground">
                 Add Node
               </TooltipContent>
             </Tooltip>
@@ -161,18 +205,18 @@ export function NodeToolbar() {
 
           {/* Add Menu Dropdown */}
           {showAddMenu && (
-            <div className="absolute top-0 left-full ml-2 w-[180px] bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl overflow-hidden z-50 animate-in fade-in slide-in-from-left-2 duration-150">
+            <div className="absolute top-0 left-full ml-2 w-[180px] bg-popover border border-border rounded-xl shadow-xl overflow-hidden z-50 animate-in fade-in slide-in-from-left-2 duration-150">
               {addMenuItems.map((section, idx) => (
                 <div key={section.section}>
-                  {idx > 0 && <div className="border-t border-zinc-800" />}
-                  <div className="px-3 py-1.5 text-[10px] font-medium text-zinc-500 uppercase tracking-wider">
+                  {idx > 0 && <div className="border-t border-border" />}
+                  <div className="px-3 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
                     {section.section}
                   </div>
                   {section.items.map((item) => (
                     <button
                       key={item.label}
                       onClick={item.onClick}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 cursor-pointer transition-colors"
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-muted cursor-pointer transition-colors"
                     >
                       {item.icon}
                       <span>{item.label}</span>
@@ -185,7 +229,7 @@ export function NodeToolbar() {
         </div>
 
         {/* Main Toolbar */}
-        <div className="bg-zinc-900/95 backdrop-blur border border-zinc-800 rounded-xl p-1 flex flex-col gap-0.5">
+        <div className="bg-popover/95 backdrop-blur border border-border rounded-xl p-1 flex flex-col gap-0.5">
           {/* Select Tool */}
           <Tooltip>
             <TooltipTrigger asChild>
@@ -196,18 +240,18 @@ export function NodeToolbar() {
                 className={`
                   h-9 w-9 rounded-lg relative
                   ${activeTool === 'select'
-                    ? 'bg-zinc-800 text-white'
-                    : 'text-zinc-500 hover:text-white hover:bg-zinc-800'
+                    ? 'bg-muted text-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                   }
                 `}
               >
                 <MousePointer2 className="h-[18px] w-[18px]" />
                 {activeTool === 'select' && (
-                  <div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-white rounded-full" />
+                  <div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-foreground rounded-full" />
                 )}
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="right" className="bg-zinc-800 border-zinc-700 text-zinc-200">
+            <TooltipContent side="right" className="bg-popover border-border text-popover-foreground">
               Select (V)
             </TooltipContent>
           </Tooltip>
@@ -222,18 +266,18 @@ export function NodeToolbar() {
                 className={`
                   h-9 w-9 rounded-lg relative
                   ${activeTool === 'pan'
-                    ? 'bg-zinc-800 text-white'
-                    : 'text-zinc-500 hover:text-white hover:bg-zinc-800'
+                    ? 'bg-muted text-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                   }
                 `}
               >
                 <Hand className="h-[18px] w-[18px]" />
                 {activeTool === 'pan' && (
-                  <div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-white rounded-full" />
+                  <div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-foreground rounded-full" />
                 )}
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="right" className="bg-zinc-800 border-zinc-700 text-zinc-200">
+            <TooltipContent side="right" className="bg-popover border-border text-popover-foreground">
               Pan (H)
             </TooltipContent>
           </Tooltip>
@@ -248,24 +292,24 @@ export function NodeToolbar() {
                 className={`
                   h-9 w-9 rounded-lg relative
                   ${activeTool === 'scissors'
-                    ? 'bg-zinc-800 text-white'
-                    : 'text-zinc-500 hover:text-white hover:bg-zinc-800'
+                    ? 'bg-muted text-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                   }
                 `}
               >
                 <Scissors className="h-[18px] w-[18px]" />
                 {activeTool === 'scissors' && (
-                  <div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-white rounded-full" />
+                  <div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-foreground rounded-full" />
                 )}
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="right" className="bg-zinc-800 border-zinc-700 text-zinc-200">
+            <TooltipContent side="right" className="bg-popover border-border text-popover-foreground">
               Scissors (X)
             </TooltipContent>
           </Tooltip>
 
           {/* Divider */}
-          <div className="h-px bg-zinc-800 my-1" />
+          <div className="h-px bg-border my-1" />
 
           {/* Undo */}
           <Tooltip>
@@ -278,15 +322,15 @@ export function NodeToolbar() {
                 className={`
                   h-9 w-9 rounded-lg
                   ${!canUndo()
-                    ? 'text-zinc-700 cursor-not-allowed'
-                    : 'text-zinc-500 hover:text-white hover:bg-zinc-800'
+                    ? 'text-muted-foreground/30 cursor-not-allowed'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                   }
                 `}
               >
                 <Undo2 className="h-[18px] w-[18px]" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="right" className="bg-zinc-800 border-zinc-700 text-zinc-200">
+            <TooltipContent side="right" className="bg-popover border-border text-popover-foreground">
               Undo (⌘Z)
             </TooltipContent>
           </Tooltip>
@@ -302,21 +346,21 @@ export function NodeToolbar() {
                 className={`
                   h-9 w-9 rounded-lg
                   ${!canRedo()
-                    ? 'text-zinc-700 cursor-not-allowed'
-                    : 'text-zinc-500 hover:text-white hover:bg-zinc-800'
+                    ? 'text-muted-foreground/30 cursor-not-allowed'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                   }
                 `}
               >
                 <Redo2 className="h-[18px] w-[18px]" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="right" className="bg-zinc-800 border-zinc-700 text-zinc-200">
+            <TooltipContent side="right" className="bg-popover border-border text-popover-foreground">
               Redo (⌘⇧Z)
             </TooltipContent>
           </Tooltip>
 
           {/* Divider */}
-          <div className="h-px bg-zinc-800 my-1" />
+          <div className="h-px bg-border my-1" />
 
           {/* Settings/Shortcuts */}
           <Tooltip>
@@ -328,20 +372,60 @@ export function NodeToolbar() {
                 className={`
                   h-9 w-9 rounded-lg
                   ${showShortcuts
-                    ? 'bg-zinc-800 text-white'
-                    : 'text-zinc-500 hover:text-white hover:bg-zinc-800'
+                    ? 'bg-muted text-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                   }
                 `}
               >
                 <Settings className="h-[18px] w-[18px]" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="right" className="bg-zinc-800 border-zinc-700 text-zinc-200">
+            <TooltipContent side="right" className="bg-popover border-border text-popover-foreground">
               Shortcuts (?)
+            </TooltipContent>
+          </Tooltip>
+
+          {/* Divider */}
+          <div className="h-px bg-border my-1" />
+
+          {/* Plugins */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                ref={pluginButtonRef}
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setShowPluginLauncher(!showPluginLauncher)}
+                className={`
+                  h-9 w-9 rounded-lg
+                  ${showPluginLauncher
+                    ? 'bg-muted text-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                  }
+                `}
+              >
+                <Puzzle className="h-[18px] w-[18px]" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right" className="bg-popover border-border text-popover-foreground">
+              Plugins
             </TooltipContent>
           </Tooltip>
         </div>
       </div>
+
+      {/* Plugin Launcher Dropdown */}
+      <PluginLauncher
+        isOpen={showPluginLauncher}
+        onClose={() => setShowPluginLauncher(false)}
+        onLaunch={(pluginId) => {
+          if (onPluginLaunch) {
+            onPluginLaunch(pluginId);
+          }
+          setShowPluginLauncher(false);
+        }}
+        anchorRef={pluginButtonRef}
+      />
     </TooltipProvider>
   );
 }

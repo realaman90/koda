@@ -36,10 +36,17 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
   const openSettingsPanel = useCanvasStore((state) => state.openSettingsPanel);
   const getConnectedInputs = useCanvasStore((state) => state.getConnectedInputs);
   const addNode = useCanvasStore((state) => state.addNode);
+  const isReadOnly = useCanvasStore((state) => state.isReadOnly);
+  const edges = useCanvasStore((state) => state.edges);
   const updateNodeInternals = useUpdateNodeInternals();
   const [isEditingName, setIsEditingName] = useState(false);
   const [nodeName, setNodeName] = useState(data.name || 'Image Generator');
+  const [isHovered, setIsHovered] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
+
+  // Check if this node has any connections
+  const isConnected = edges.some(edge => edge.source === id || edge.target === id);
+  const showHandles = selected || isHovered || isConnected;
 
   const modelCapabilities = MODEL_CAPABILITIES[data.model];
   const maxRefs = modelCapabilities.maxReferences || 1;
@@ -124,14 +131,43 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
     // Get connected inputs from TextNode and MediaNode
     const connectedInputs = getConnectedInputs(id);
 
-    // Merge connected text with prompt (connected text takes priority, or append if prompt exists)
-    let finalPrompt = data.prompt || '';
-    if (connectedInputs.textContent) {
-      finalPrompt = connectedInputs.textContent + (data.prompt ? `\n${data.prompt}` : '');
+    // Build final prompt with preset modifiers (matching SettingsPanel behavior)
+    const promptParts: string[] = [];
+
+    // Add character modifier
+    if (data.selectedCharacter?.type === 'preset' && data.selectedCharacter.promptModifier) {
+      promptParts.push(data.selectedCharacter.promptModifier);
     }
 
+    // Add style preset modifier
+    if (data.selectedStyle?.promptModifier) {
+      promptParts.push(data.selectedStyle.promptModifier);
+    }
+
+    // Add camera angle modifier
+    if (data.selectedCameraAngle?.promptModifier) {
+      promptParts.push(data.selectedCameraAngle.promptModifier);
+    }
+
+    // Add camera lens modifier
+    if (data.selectedCameraLens?.promptModifier) {
+      promptParts.push(data.selectedCameraLens.promptModifier);
+    }
+
+    // Add connected text content
+    if (connectedInputs.textContent) {
+      promptParts.push(connectedInputs.textContent);
+    }
+
+    // Add user prompt
+    if (data.prompt) {
+      promptParts.push(data.prompt);
+    }
+
+    const finalPrompt = promptParts.join(', ');
+
     if (!finalPrompt) {
-      toast.error('Please enter a prompt or connect a text node');
+      toast.error('Please enter a prompt, connect a text node, or select presets');
       return;
     }
 
@@ -206,7 +242,7 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
       });
       toast.error(`Generation failed: ${errorMessage}`);
     }
-  }, [id, data.prompt, data.model, data.aspectRatio, data.imageCount, updateNodeData, getConnectedInputs, addNode, positionAbsoluteX, positionAbsoluteY]);
+  }, [id, data.prompt, data.model, data.aspectRatio, data.imageCount, data.selectedCharacter, data.selectedStyle, data.selectedCameraAngle, data.selectedCameraLens, data.imageSize, data.resolution, data.style, data.magicPrompt, data.cfgScale, data.steps, data.strength, updateNodeData, getConnectedInputs, addNode, positionAbsoluteX, positionAbsoluteY]);
 
   const handleDelete = useCallback(() => {
     deleteNode(id);
@@ -245,52 +281,66 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
   // Get dimensions for badge
   const dimensions = getApproxDimensions(data.aspectRatio, data.model, data.resolution);
 
-  // Check if we have a valid prompt (either direct or from connected TextNode)
+  // Check if we have a valid prompt (direct, connected, or from presets)
   const connectedInputs = getConnectedInputs(id);
-  const hasValidPrompt = !!(data.prompt || connectedInputs.textContent);
+  const hasPresetSelected = !!(
+    data.selectedCharacter ||
+    data.selectedStyle ||
+    data.selectedCameraAngle ||
+    data.selectedCameraLens
+  );
+  const hasValidPrompt = !!(data.prompt || connectedInputs.textContent || hasPresetSelected);
 
   return (
-    <div className="relative">
-      {/* Floating Toolbar - appears above node when selected */}
+    <div
+      className="relative"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      {/* Floating Toolbar - appears above node when selected (hidden in read-only except download) */}
       {selected && (
-        <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-zinc-800/90 backdrop-blur rounded-lg px-2 py-1.5 border border-zinc-700/50 shadow-xl z-10">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="h-7 w-7 text-zinc-400 hover:text-white hover:bg-zinc-700/50"
-            onClick={handleGenerate}
-            disabled={!hasValidPrompt || data.isGenerating}
-          >
-            <Play className="h-3.5 w-3.5" />
-          </Button>
+        <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1 rounded-lg px-2 py-1.5 z-10 node-toolbar-floating">
+          {!isReadOnly && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              onClick={handleGenerate}
+              disabled={!hasValidPrompt || data.isGenerating}
+            >
+              <Play className="h-3.5 w-3.5" />
+            </Button>
+          )}
           {data.outputUrl && (
             <Button
               variant="ghost"
               size="icon-sm"
-              className="h-7 w-7 text-zinc-400 hover:text-white hover:bg-zinc-700/50"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
               onClick={handleDownload}
             >
               <Download className="h-3.5 w-3.5" />
             </Button>
           )}
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="h-7 w-7 text-zinc-400 hover:text-red-400 hover:bg-zinc-700/50"
-            onClick={handleDelete}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          {!isReadOnly && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="h-7 w-7 text-muted-foreground hover:text-red-400 hover:bg-muted/50"
+              onClick={handleDelete}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
         </div>
       )}
 
       {/* Node Title */}
-      <div className="flex items-center gap-2 mb-2 text-zinc-400 text-sm font-medium">
+      <div className="flex items-center gap-2 mb-2 text-sm font-medium" style={{ color: 'var(--node-title-image)' }}>
         <div className="relative h-4 w-4">
           <ImageIcon className="h-4 w-4" />
           <Sparkle className="h-2 w-2 absolute -top-0.5 -right-0.5 fill-current" />
         </div>
-        {isEditingName ? (
+        {isEditingName && !isReadOnly ? (
           <input
             ref={nameInputRef}
             type="text"
@@ -304,12 +354,13 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
                 setIsEditingName(false);
               }
             }}
-            className="bg-transparent border-b border-zinc-600 outline-none text-zinc-300 px-0.5 min-w-[100px]"
+            className="bg-transparent border-b outline-none px-0.5 min-w-[100px]"
+            style={{ borderColor: 'var(--input-border)', color: 'var(--text-secondary)' }}
           />
         ) : (
           <span
-            onDoubleClick={() => setIsEditingName(true)}
-            className="cursor-text hover:text-zinc-300 transition-colors"
+            onDoubleClick={() => !isReadOnly && setIsEditingName(true)}
+            className={`transition-colors hover:opacity-80 ${isReadOnly ? 'cursor-default' : 'cursor-text'}`}
           >
             {data.name || 'Image Generator'}
           </span>
@@ -321,15 +372,11 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
         className={`
           w-[420px] rounded-2xl overflow-hidden
           transition-all duration-150
-          ${data.isGenerating
-            ? 'ring-[2.5px] ring-teal-500 shadow-lg shadow-teal-500/20 animate-pulse-glow-teal'
-            : selected
-              ? 'ring-[2.5px] ring-blue-500 shadow-lg shadow-blue-500/10'
-              : 'ring-1 ring-zinc-800 hover:ring-zinc-700'
-          }
+          ${data.isGenerating ? 'animate-pulse-glow-teal generating-border-teal' : ''}
+          ${!data.isGenerating && !data.outputUrl ? (selected ? 'node-card node-card-selected' : 'node-card') : ''}
         `}
         style={{
-          backgroundColor: '#1a1a1c',
+          backgroundColor: data.outputUrl ? 'transparent' : undefined,
           minHeight: refHandleCount > 1 ? `${280 + (refHandleCount - 1) * 45}px` : undefined,
         }}
       >
@@ -337,218 +384,285 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
         <div className="relative">
           {/* Loading State */}
           {data.isGenerating ? (
-            <div className="p-4 min-h-[200px] flex flex-col items-center justify-center gap-4">
+            <div className="p-4 min-h-[200px] flex flex-col items-center justify-center gap-4" style={{ backgroundColor: 'var(--node-card-bg)' }}>
               <div className="relative">
-                <div className="w-16 h-16 rounded-full border-4 border-zinc-700 border-t-teal-500 animate-spin" />
+                <div className="w-16 h-16 rounded-full border-4 border-border border-t-teal-500 animate-spin" />
                 <Loader2 className="absolute inset-0 m-auto h-6 w-6 text-teal-500 animate-pulse" />
               </div>
               <div className="text-center">
-                <p className="text-zinc-300 text-sm font-medium">Generating...</p>
-                <p className="text-zinc-500 text-xs mt-1">This may take a moment</p>
+                <p className="text-foreground text-sm font-medium">Generating...</p>
+                <p className="text-muted-foreground text-xs mt-1">This may take a moment</p>
               </div>
-              {/* Shimmer effect */}
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-zinc-800/20 to-transparent animate-shimmer" />
             </div>
           ) : data.outputUrl ? (
-            /* Generated Image */
-            <div className="relative">
+            /* Generated Image - Freepik Style with hover toolbar */
+            <div
+              className={`group/image relative rounded-2xl overflow-hidden ${selected ? 'node-card-selected' : ''}`}
+              style={{
+                border: selected ? undefined : '1px solid var(--node-card-border)',
+                boxShadow: selected ? undefined : 'var(--node-card-shadow)',
+              }}
+            >
               <img
                 src={data.outputUrl}
                 alt="Generated"
                 className="w-full h-auto"
               />
-              {/* Dimension badge */}
-              <div className="absolute top-2 right-2 px-2 py-0.5 bg-black/60 backdrop-blur-sm rounded text-xs text-zinc-300 font-medium">
+              {/* Dimension badge - visible on hover */}
+              <div className="absolute top-3 right-3 px-2 py-0.5 bg-black/50 backdrop-blur-sm rounded text-xs text-zinc-300 font-medium opacity-0 group-hover/image:opacity-100 transition-opacity duration-200">
                 {dimensions.width} × {dimensions.height}
               </div>
-              {/* Prompt overlay on image */}
-              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 pt-8">
-                <p className="text-white text-sm line-clamp-2">{data.prompt}</p>
+              {/* Download button - visible on hover */}
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={handleDownload}
+                className="absolute top-3 left-3 h-8 w-8 bg-black/50 backdrop-blur-sm text-zinc-300 hover:text-white hover:bg-black/70 rounded-lg opacity-0 group-hover/image:opacity-100 transition-all duration-200 translate-y-1 group-hover/image:translate-y-0"
+              >
+                <Download className="h-4 w-4" />
+              </Button>
+              {/* Gradient overlay for better text visibility - visible on hover */}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover/image:opacity-100 transition-opacity duration-300 pointer-events-none" />
+              {/* Prompt text overlay - visible on hover */}
+              <div className="absolute bottom-16 left-3 right-3 opacity-0 group-hover/image:opacity-100 transition-all duration-200 translate-y-2 group-hover/image:translate-y-0">
+                <p className="text-white/80 text-sm font-medium drop-shadow-lg">
+                  {connectedInputs.textContent ? 'Prompt (connected)' : data.prompt ? data.prompt.slice(0, 60) + (data.prompt.length > 60 ? '...' : '') : ''}
+                </p>
               </div>
+              {/* Floating Toolbar - visible on hover with smooth animation */}
+              {!isReadOnly && (
+                <div className="absolute bottom-3 left-3 right-3 flex items-center gap-1.5 px-2.5 py-2 bg-black/50 backdrop-blur-xl rounded-xl border border-white/10 opacity-0 group-hover/image:opacity-100 transition-all duration-300 ease-out translate-y-2 group-hover/image:translate-y-0 shadow-xl">
+                  <SearchableSelect
+                    value={data.model}
+                    onValueChange={handleModelChange}
+                    options={Object.entries(MODEL_CAPABILITIES).map(([key, cap]) => ({
+                      value: key,
+                      label: cap.label,
+                      description: cap.description,
+                    }))}
+                    placeholder="Select model"
+                    searchPlaceholder="Search models..."
+                    triggerClassName="max-w-[120px] bg-white/10 hover:bg-white/20 border-0"
+                  />
+                  <Select value={data.aspectRatio} onValueChange={handleAspectRatioChange}>
+                    <SelectTrigger className="h-7 w-auto bg-white/10 hover:bg-white/20 border-0 text-xs text-white gap-1 px-2 rounded-md">
+                      <span className="flex items-center gap-1">
+                        <span className="w-2.5 h-2.5 border border-white/50 rounded-[2px]" />
+                        <SelectValue />
+                      </span>
+                    </SelectTrigger>
+                    <SelectContent className="bg-popover border-border">
+                      {modelCapabilities.aspectRatios.map((ratio) => (
+                        <SelectItem key={ratio} value={ratio} className="text-xs">{ratio}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="flex items-center bg-white/10 rounded-md h-7">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="h-7 w-5 text-white/70 hover:text-white hover:bg-transparent p-0"
+                      onClick={() => updateNodeData(id, { imageCount: Math.max(1, (data.imageCount || 1) - 1) })}
+                    >
+                      <Minus className="h-3 w-3" />
+                    </Button>
+                    <span className="text-xs text-white w-3 text-center">{data.imageCount || 1}</span>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="h-7 w-5 text-white/70 hover:text-white hover:bg-transparent p-0"
+                      onClick={() => updateNodeData(id, { imageCount: Math.min(modelCapabilities.maxImages, (data.imageCount || 1) + 1) })}
+                    >
+                      <Plus className="h-3 w-3" />
+                    </Button>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={handleOpenSettings}
+                    className="h-7 w-7 text-white/70 hover:text-white hover:bg-white/10 shrink-0"
+                  >
+                    <Settings className="h-3.5 w-3.5" />
+                  </Button>
+                  <div className="flex-1" />
+                  <Button
+                    onClick={handleGenerate}
+                    disabled={!hasValidPrompt || data.isGenerating}
+                    size="icon-sm"
+                    className="h-8 w-8 min-w-8 bg-teal-500 hover:bg-teal-400 text-white rounded-full disabled:opacity-40 shrink-0 shadow-lg hover:shadow-teal-500/25 transition-all duration-200 hover:scale-105"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
             </div>
           ) : (
-            /* Prompt Input */
-            <div className="p-4 min-h-[220px]">
-              <textarea
-                value={data.prompt}
-                onChange={handlePromptChange}
-                placeholder="Describe the image you want to generate..."
-                className="w-full h-[180px] bg-transparent border-none text-zinc-300 text-sm placeholder:text-zinc-600 resize-none focus:outline-none"
-              />
-            </div>
+            /* Prompt Input - Freepik style with inner content area */
+            <>
+              <div className="p-3">
+                <div className="node-content-area p-3 min-h-[200px]">
+                  <textarea
+                    value={data.prompt}
+                    onChange={handlePromptChange}
+                    placeholder="Describe the image you want to generate..."
+                    className="w-full h-[170px] bg-transparent border-none text-sm resize-none focus:outline-none"
+                    style={{ color: 'var(--text-secondary)' }}
+                    disabled={isReadOnly}
+                  />
+                </div>
+              </div>
+              {/* Error Display */}
+              {data.error && (
+                <p className="text-xs text-red-400 px-4 pb-2">{data.error}</p>
+              )}
+              {/* Bottom Toolbar - visible on hover or selected */}
+              {!isReadOnly && (selected || isHovered) && (
+              <div className="flex items-center flex-wrap gap-1.5 px-3 py-2.5 node-bottom-toolbar">
+                <SearchableSelect
+                  value={data.model}
+                  onValueChange={handleModelChange}
+                  options={Object.entries(MODEL_CAPABILITIES).map(([key, cap]) => ({
+                    value: key,
+                    label: cap.label,
+                    description: cap.description,
+                  }))}
+                  placeholder="Select model"
+                  searchPlaceholder="Search models..."
+                  triggerClassName="max-w-[120px]"
+                />
+                <Select value={data.aspectRatio} onValueChange={handleAspectRatioChange}>
+                  <SelectTrigger className="h-7 w-auto bg-muted/80 border-0 text-xs text-foreground gap-1 px-2 rounded-md hover:bg-muted">
+                    <span className="flex items-center gap-1">
+                      <span className="w-2.5 h-2.5 border border-muted-foreground rounded-[2px]" />
+                      <SelectValue />
+                    </span>
+                  </SelectTrigger>
+                  <SelectContent className="bg-popover border-border">
+                    {modelCapabilities.aspectRatios.map((ratio) => (
+                      <SelectItem key={ratio} value={ratio} className="text-xs">{ratio}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {modelCapabilities.resolutions && (
+                  <Select value={data.resolution || '1K'} onValueChange={handleResolutionChange}>
+                    <SelectTrigger className="h-7 w-auto bg-muted/80 border-0 text-xs text-foreground gap-1 px-2 rounded-md hover:bg-muted">
+                      <SelectValue>{data.resolution || '1K'}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent className="bg-popover border-border">
+                      {modelCapabilities.resolutions.map((res) => (
+                        <SelectItem key={res} value={res} className="text-xs">{res}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {modelCapabilities.imageSizes && (
+                  <Select value={data.imageSize || 'square_hd'} onValueChange={handleImageSizeChange}>
+                    <SelectTrigger className="h-7 w-auto max-w-[90px] bg-muted/80 border-0 text-xs text-foreground gap-1 px-2 rounded-md hover:bg-muted [&>span]:truncate">
+                      <SelectValue>{FLUX_IMAGE_SIZES[data.imageSize || 'square_hd'].label}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent className="bg-popover border-border">
+                      {modelCapabilities.imageSizes.map((size) => (
+                        <SelectItem key={size} value={size} className="text-xs">{FLUX_IMAGE_SIZES[size].label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {modelCapabilities.styles && (
+                  <Select value={data.style || (modelCapabilities.styles[0] as string)} onValueChange={handleStyleChange}>
+                    <SelectTrigger className="h-7 w-auto max-w-[90px] bg-muted/80 border-0 text-xs text-foreground gap-1 px-2 rounded-md hover:bg-muted [&>span]:truncate">
+                      <SelectValue>
+                        {data.model === 'recraft-v3'
+                          ? RECRAFT_STYLE_LABELS[(data.style as RecraftStyle) || 'realistic_image']
+                          : IDEOGRAM_STYLE_LABELS[(data.style as IdeogramStyle) || 'auto']
+                        }
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent className="bg-popover border-border">
+                      {modelCapabilities.styles.map((style) => (
+                        <SelectItem key={style} value={style} className="text-xs">
+                          {data.model === 'recraft-v3'
+                            ? RECRAFT_STYLE_LABELS[style as RecraftStyle]
+                            : IDEOGRAM_STYLE_LABELS[style as IdeogramStyle]
+                          }
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {modelCapabilities.supportsMagicPrompt && (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={handleMagicPromptToggle}
+                    className={`h-7 w-7 shrink-0 ${
+                      data.magicPrompt
+                        ? 'text-purple-400 bg-purple-500/20 hover:bg-purple-500/30'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                    }`}
+                    title={data.magicPrompt ? 'Magic Prompt ON' : 'Magic Prompt OFF'}
+                  >
+                    <Wand2 className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+                <div className="flex items-center bg-muted/80 rounded-md h-7">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="h-7 w-5 text-muted-foreground hover:text-foreground hover:bg-transparent p-0"
+                    onClick={() => updateNodeData(id, { imageCount: Math.max(1, (data.imageCount || 1) - 1) })}
+                  >
+                    <Minus className="h-3 w-3" />
+                  </Button>
+                  <span className="text-xs text-foreground w-3 text-center">{data.imageCount || 1}</span>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="h-7 w-5 text-muted-foreground hover:text-foreground hover:bg-transparent p-0"
+                    onClick={() => updateNodeData(id, { imageCount: Math.min(modelCapabilities.maxImages, (data.imageCount || 1) + 1) })}
+                  >
+                    <Plus className="h-3 w-3" />
+                  </Button>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={handleOpenSettings}
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50 shrink-0 cursor-pointer"
+                >
+                  <Settings className="h-3.5 w-3.5" />
+                </Button>
+                <div className="flex-1 min-w-0" />
+                <Button
+                  onClick={handleGenerate}
+                  disabled={!hasValidPrompt || data.isGenerating}
+                  size="icon-sm"
+                  className="h-8 w-8 min-w-8 bg-teal-500 hover:bg-teal-400 text-white rounded-full disabled:opacity-40 shrink-0"
+                >
+                  <Play className="h-4 w-4" />
+                </Button>
+              </div>
+              )}
+            </>
           )}
-
-          {/* Error Display */}
-          {data.error && (
-            <p className="text-xs text-red-400 px-4 pb-2">{data.error}</p>
-          )}
-        </div>
-
-        {/* Bottom Toolbar */}
-        <div className="flex items-center flex-wrap gap-1.5 px-3 py-2.5 bg-zinc-900/50">
-          {/* Model Selector */}
-          <SearchableSelect
-            value={data.model}
-            onValueChange={handleModelChange}
-            options={Object.entries(MODEL_CAPABILITIES).map(([key, cap]) => ({
-              value: key,
-              label: cap.label,
-              description: cap.description,
-            }))}
-            placeholder="Select model"
-            searchPlaceholder="Search models..."
-            triggerClassName="max-w-[120px]"
-          />
-
-          {/* Aspect Ratio - only show supported ratios */}
-          <Select value={data.aspectRatio} onValueChange={handleAspectRatioChange}>
-            <SelectTrigger className="h-7 w-auto bg-zinc-800/80 border-0 text-xs text-zinc-300 gap-1 px-2 rounded-md hover:bg-zinc-700/80">
-              <span className="flex items-center gap-1">
-                <span className="w-2.5 h-2.5 border border-zinc-500 rounded-[2px]" />
-                <SelectValue />
-              </span>
-            </SelectTrigger>
-            <SelectContent className="bg-zinc-800 border-zinc-700">
-              {modelCapabilities.aspectRatios.map((ratio) => (
-                <SelectItem key={ratio} value={ratio} className="text-xs">{ratio}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {/* Resolution - for Nano Banana */}
-          {modelCapabilities.resolutions && (
-            <Select value={data.resolution || '1K'} onValueChange={handleResolutionChange}>
-              <SelectTrigger className="h-7 w-auto bg-zinc-800/80 border-0 text-xs text-zinc-300 gap-1 px-2 rounded-md hover:bg-zinc-700/80">
-                <SelectValue>{data.resolution || '1K'}</SelectValue>
-              </SelectTrigger>
-              <SelectContent className="bg-zinc-800 border-zinc-700">
-                {modelCapabilities.resolutions.map((res) => (
-                  <SelectItem key={res} value={res} className="text-xs">{res}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-
-          {/* Image Size - for Flux models */}
-          {modelCapabilities.imageSizes && (
-            <Select value={data.imageSize || 'square_hd'} onValueChange={handleImageSizeChange}>
-              <SelectTrigger className="h-7 w-auto max-w-[90px] bg-zinc-800/80 border-0 text-xs text-zinc-300 gap-1 px-2 rounded-md hover:bg-zinc-700/80 [&>span]:truncate">
-                <SelectValue>{FLUX_IMAGE_SIZES[data.imageSize || 'square_hd'].label}</SelectValue>
-              </SelectTrigger>
-              <SelectContent className="bg-zinc-800 border-zinc-700">
-                {modelCapabilities.imageSizes.map((size) => (
-                  <SelectItem key={size} value={size} className="text-xs">{FLUX_IMAGE_SIZES[size].label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-
-          {/* Style Selector - for Recraft and Ideogram */}
-          {modelCapabilities.styles && (
-            <Select value={data.style || (modelCapabilities.styles[0] as string)} onValueChange={handleStyleChange}>
-              <SelectTrigger className="h-7 w-auto max-w-[90px] bg-zinc-800/80 border-0 text-xs text-zinc-300 gap-1 px-2 rounded-md hover:bg-zinc-700/80 [&>span]:truncate">
-                <SelectValue>
-                  {data.model === 'recraft-v3'
-                    ? RECRAFT_STYLE_LABELS[(data.style as RecraftStyle) || 'realistic_image']
-                    : IDEOGRAM_STYLE_LABELS[(data.style as IdeogramStyle) || 'auto']
-                  }
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent className="bg-zinc-800 border-zinc-700">
-                {modelCapabilities.styles.map((style) => (
-                  <SelectItem key={style} value={style} className="text-xs">
-                    {data.model === 'recraft-v3'
-                      ? RECRAFT_STYLE_LABELS[style as RecraftStyle]
-                      : IDEOGRAM_STYLE_LABELS[style as IdeogramStyle]
-                    }
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-
-          {/* Magic Prompt Toggle - for Ideogram */}
-          {modelCapabilities.supportsMagicPrompt && (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={handleMagicPromptToggle}
-              className={`h-7 w-7 shrink-0 ${
-                data.magicPrompt
-                  ? 'text-purple-400 bg-purple-500/20 hover:bg-purple-500/30'
-                  : 'text-zinc-500 hover:text-white hover:bg-zinc-700/50'
-              }`}
-              title={data.magicPrompt ? 'Magic Prompt ON' : 'Magic Prompt OFF'}
-            >
-              <Wand2 className="h-3.5 w-3.5" />
-            </Button>
-          )}
-
-          {/* Image Count */}
-          <div className="flex items-center bg-zinc-800/80 rounded-md h-7">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="h-7 w-5 text-zinc-400 hover:text-white hover:bg-transparent p-0"
-              onClick={() => updateNodeData(id, { imageCount: Math.max(1, (data.imageCount || 1) - 1) })}
-            >
-              <Minus className="h-3 w-3" />
-            </Button>
-            <span className="text-xs text-zinc-300 w-3 text-center">{data.imageCount || 1}</span>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="h-7 w-5 text-zinc-400 hover:text-white hover:bg-transparent p-0"
-              onClick={() => updateNodeData(id, { imageCount: Math.min(modelCapabilities.maxImages, (data.imageCount || 1) + 1) })}
-            >
-              <Plus className="h-3 w-3" />
-            </Button>
-          </div>
-
-          {/* Settings */}
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={handleOpenSettings}
-            className="h-7 w-7 text-zinc-500 hover:text-white hover:bg-zinc-700/50 shrink-0 cursor-pointer"
-          >
-            <Settings className="h-3.5 w-3.5" />
-          </Button>
-
-          {/* Spacer */}
-          <div className="flex-1 min-w-0" />
-
-          {/* Generate/Refresh Button */}
-          <Button
-            onClick={handleGenerate}
-            disabled={!hasValidPrompt || data.isGenerating}
-            size="icon-sm"
-            className="h-8 w-8 min-w-8 bg-teal-500 hover:bg-teal-400 text-white rounded-full disabled:opacity-40 shrink-0"
-          >
-            {data.isGenerating ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : data.outputUrl ? (
-              <RefreshCw className="h-4 w-4" />
-            ) : (
-              <Play className="h-4 w-4" />
-            )}
-          </Button>
         </div>
       </div>
 
       {/* Input Handles - Left side */}
       {/* Text Input */}
-      <div className="absolute -left-3 group" style={{ top: modelCapabilities.inputType !== 'text-only' ? '110px' : '50%', transform: modelCapabilities.inputType === 'text-only' ? 'translateY(-50%)' : undefined }}>
+      <div
+        className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
+        style={{ top: modelCapabilities.inputType !== 'text-only' ? '110px' : '50%', transform: modelCapabilities.inputType === 'text-only' ? 'translateY(-50%)' : undefined }}
+      >
         <div className="relative">
           <Handle
             type="target"
             position={Position.Left}
             id="text"
-            className="!relative !transform-none !w-6 !h-6 !bg-zinc-800 !border-2 !border-zinc-600 !rounded-md hover:!border-blue-500 hover:!bg-zinc-700"
+            className="!relative !transform-none !w-6 !h-6 !border-2 !rounded-md node-handle hover:!border-blue-500"
           />
-          <Type className="absolute inset-0 m-auto h-3.5 w-3.5 text-zinc-500 pointer-events-none" />
+          <Type className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none" style={{ color: 'var(--text-muted)' }} />
         </div>
-        <span className="absolute left-8 top-1/2 -translate-y-1/2 px-2 py-1 bg-zinc-800 text-zinc-300 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border border-zinc-700">
+        <span className="absolute left-8 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
           Text
         </span>
       </div>
@@ -561,29 +675,34 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
             const spacing = 40; // 40px spacing between handles
             const top = baseTop + index * spacing;
             return (
-              <div key={`ref-${index}`} className="absolute -left-3 group" style={{ top: `${top}px` }}>
+              <div
+                key={`ref-${index}`}
+                className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
+                style={{ top: `${top}px` }}
+              >
                 <div className="relative">
                   <Handle
                     type="target"
                     position={Position.Left}
                     id={index === 0 ? 'reference' : `ref${index + 1}`}
-                    className="!relative !transform-none !w-6 !h-6 !bg-zinc-800 !border-2 !border-zinc-600 !rounded-md hover:!border-blue-500 hover:!bg-zinc-700"
+                    className="!relative !transform-none !w-6 !h-6 !border-2 !rounded-md node-handle hover:!border-blue-500"
                   />
-                  <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 text-zinc-500 pointer-events-none" />
+                  <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none" style={{ color: 'var(--text-muted)' }} />
                 </div>
-                <span className="absolute left-8 top-1/2 -translate-y-1/2 px-2 py-1 bg-zinc-800 text-zinc-300 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border border-zinc-700">
+                <span className="absolute left-8 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
                   {refHandleCount > 1 ? `Ref ${index + 1}` : 'Reference'}
                 </span>
               </div>
             );
           })}
-          {/* Add/Remove ref buttons - only for multi-ref models */}
-          {maxRefs > 1 && (
-            <div className="absolute -left-3 flex flex-col gap-0.5" style={{ top: `${160 + refHandleCount * 40 + 10}px` }}>
+          {/* Add/Remove ref buttons - only for multi-ref models, visible on hover/select */}
+          {maxRefs > 1 && (selected || isHovered) && (
+            <div className="absolute -left-3 flex flex-col gap-0.5 transition-opacity duration-200" style={{ top: `${160 + refHandleCount * 40 + 10}px` }}>
               {refHandleCount < maxRefs && (
                 <button
                   onClick={handleAddRefHandle}
-                  className="w-6 h-5 bg-zinc-800 border border-zinc-600 rounded text-zinc-400 hover:text-white hover:bg-zinc-700 hover:border-blue-500 flex items-center justify-center transition-colors"
+                  className="w-6 h-5 rounded flex items-center justify-center transition-colors hover:border-blue-500"
+                  style={{ backgroundColor: 'var(--handle-bg)', borderWidth: '1px', borderColor: 'var(--handle-border)', color: 'var(--text-muted)' }}
                   title={`Add reference (${refHandleCount}/${maxRefs})`}
                 >
                   <Plus className="h-3 w-3" />
@@ -592,7 +711,8 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
               {refHandleCount > 1 && (
                 <button
                   onClick={handleRemoveRefHandle}
-                  className="w-6 h-5 bg-zinc-800 border border-zinc-600 rounded text-zinc-400 hover:text-white hover:bg-zinc-700 hover:border-red-500 flex items-center justify-center transition-colors"
+                  className="w-6 h-5 rounded flex items-center justify-center transition-colors hover:border-red-500"
+                  style={{ backgroundColor: 'var(--handle-bg)', borderWidth: '1px', borderColor: 'var(--handle-border)', color: 'var(--text-muted)' }}
                   title="Remove reference"
                 >
                   <Minus className="h-3 w-3" />
@@ -604,17 +724,20 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
       )}
 
       {/* Output Handle - Right side */}
-      <div className="absolute -right-3 group" style={{ top: '50%', transform: 'translateY(-50%)' }}>
+      <div
+        className={`absolute -right-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
+        style={{ top: '50%', transform: 'translateY(-50%)' }}
+      >
         <div className="relative">
           <Handle
             type="source"
             position={Position.Right}
             id="output"
-            className="!relative !transform-none !w-6 !h-6 !bg-zinc-800 !border-2 !border-zinc-600 !rounded-md hover:!border-green-500 hover:!bg-zinc-700"
+            className="!relative !transform-none !w-6 !h-6 !border-2 !rounded-md node-handle hover:!border-green-500"
           />
-          <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 text-zinc-500 pointer-events-none" />
+          <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none" style={{ color: 'var(--text-muted)' }} />
         </div>
-        <span className="absolute right-8 top-1/2 -translate-y-1/2 px-2 py-1 bg-zinc-800 text-zinc-300 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border border-zinc-700">
+        <span className="absolute right-8 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
           Generated image
         </span>
       </div>

@@ -378,7 +378,7 @@ function StickyNoteNodeComponent({ id, data, selected }: NodeProps<StickyNoteNod
         className={`
           rounded-lg overflow-hidden shadow-lg
           ${colorConfig.bg} ${colorConfig.border} border-2
-          transition-all duration-150
+          transition-[box-shadow,ring-color] duration-150
           ${selected ? 'ring-2 ring-blue-500 shadow-xl' : ''}
         `}
         style={{

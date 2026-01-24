@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useState } from 'react';
+import { memo, useState, useMemo } from 'react';
 import {
   BaseEdge,
   EdgeLabelRenderer,
@@ -10,6 +10,24 @@ import {
 } from '@xyflow/react';
 import { X } from 'lucide-react';
 import { useCanvasStore } from '@/stores/canvas-store';
+
+// Get edge color based on source/target handle types
+function getEdgeColor(sourceHandleId?: string | null, targetHandleId?: string | null): string {
+  // Text connections (text output to text input)
+  if (targetHandleId === 'text') {
+    return 'var(--edge-text)'; // Blue
+  }
+  // Image/reference connections
+  if (targetHandleId === 'reference' || targetHandleId?.startsWith('ref')) {
+    return 'var(--edge-image)'; // Orange/Amber
+  }
+  // Video connections
+  if (targetHandleId === 'video' || sourceHandleId === 'video') {
+    return 'var(--edge-video)'; // Purple
+  }
+  // Default
+  return 'var(--edge-default)'; // Indigo
+}
 
 function DeletableEdgeComponent({
   id,
@@ -22,6 +40,8 @@ function DeletableEdgeComponent({
   style = {},
   markerEnd,
   selected,
+  sourceHandleId,
+  targetHandleId,
 }: EdgeProps) {
   const { setEdges } = useReactFlow();
   const [isHovered, setIsHovered] = useState(false);
@@ -29,6 +49,9 @@ function DeletableEdgeComponent({
   const selectedEdgeIds = useCanvasStore((state) => state.selectedEdgeIds);
 
   const isSelected = selected || selectedEdgeIds.includes(id);
+
+  // Get the edge color based on connection type
+  const edgeColor = useMemo(() => getEdgeColor(sourceHandleId, targetHandleId), [sourceHandleId, targetHandleId]);
 
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX,
@@ -80,9 +103,10 @@ function DeletableEdgeComponent({
         markerEnd={markerEnd}
         style={{
           ...style,
-          stroke: isSelected ? '#f472b6' : isHovered ? '#818cf8' : '#6366f1',
-          strokeWidth: isSelected ? 3 : isHovered ? 3 : 2,
-          transition: 'stroke 0.15s, stroke-width 0.15s',
+          stroke: isSelected ? '#f472b6' : isHovered ? edgeColor : edgeColor,
+          strokeWidth: isSelected ? 3 : isHovered ? 2.5 : 2,
+          opacity: isHovered ? 1 : 0.85,
+          transition: 'stroke 0.15s, stroke-width 0.15s, opacity 0.15s',
         }}
       />
 
@@ -104,11 +128,15 @@ function DeletableEdgeComponent({
             className={`
               flex items-center justify-center
               w-6 h-6 rounded-full cursor-pointer
-              bg-zinc-800 border border-zinc-600
-              text-zinc-400 hover:text-white hover:bg-red-500 hover:border-red-500
-              transition-all duration-150 shadow-lg
+              border transition-all duration-150 shadow-lg
+              hover:text-white hover:bg-red-500 hover:border-red-500
               ${isHovered || isSelected ? 'opacity-100 scale-100' : 'opacity-0 scale-75 pointer-events-none'}
             `}
+            style={{
+              backgroundColor: 'var(--tooltip-bg)',
+              borderColor: 'var(--tooltip-border)',
+              color: 'var(--text-muted)',
+            }}
           >
             <X className="h-3.5 w-3.5" />
           </button>

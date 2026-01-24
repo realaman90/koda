@@ -1,18 +1,28 @@
 'use client';
 
-import { ReactFlowProvider } from '@xyflow/react';
-import { Canvas } from '@/components/canvas/Canvas';
-import { Header } from '@/components/layout/Header';
+import { Suspense } from 'react';
+import { AppShell } from '@/components/layout';
+import { DashboardPage } from '@/components/dashboard';
+import { Loader2 } from 'lucide-react';
+
+function DashboardContent() {
+  return (
+    <AppShell mode="dashboard">
+      <DashboardPage />
+    </AppShell>
+  );
+}
 
 export default function Home() {
   return (
-    <ReactFlowProvider>
-      <div className="flex flex-col h-screen">
-        <Header />
-        <div className="flex-1">
-          <Canvas />
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center h-screen bg-background">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
-      </div>
-    </ReactFlowProvider>
+      }
+    >
+      <DashboardContent />
+    </Suspense>
   );
 }

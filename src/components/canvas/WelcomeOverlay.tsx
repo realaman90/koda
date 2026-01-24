@@ -1,12 +1,11 @@
 'use client';
 
 import { useCallback } from 'react';
-import { useCanvasStore, createImageGeneratorNode, createTextNode, createMediaNode } from '@/stores/canvas-store';
+import { useCanvasStore, createImageGeneratorNode, createVideoGeneratorNode, createTextNode, createMediaNode } from '@/stores/canvas-store';
 import {
   ImageIcon,
   Type,
   Video,
-  Sparkles,
   FileImage,
 } from 'lucide-react';
 
@@ -16,7 +15,6 @@ interface NodeTypeCard {
   icon: React.ReactNode;
   color: string;
   onClick: () => void;
-  disabled?: boolean;
 }
 
 export function WelcomeOverlay() {
@@ -38,6 +36,10 @@ export function WelcomeOverlay() {
 
   const handleAddMedia = useCallback(() => {
     addNode(createMediaNode(getCenterPosition()));
+  }, [addNode, getCenterPosition]);
+
+  const handleAddVideoGenerator = useCallback(() => {
+    addNode(createVideoGeneratorNode(getCenterPosition()));
   }, [addNode, getCenterPosition]);
 
   // Don't show if there are nodes
@@ -70,31 +72,22 @@ export function WelcomeOverlay() {
       label: 'Video Generator',
       icon: <Video className="h-6 w-6" />,
       color: 'text-pink-400',
-      onClick: () => {},
-      disabled: true,
-    },
-    {
-      id: 'assistant',
-      label: 'Assistant',
-      icon: <Sparkles className="h-6 w-6" />,
-      color: 'text-emerald-400',
-      onClick: () => {},
-      disabled: true,
+      onClick: handleAddVideoGenerator,
     },
   ];
 
   return (
     <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
       {/* Decorative dotted arc */}
-      <div className="absolute w-[600px] h-[300px] border-2 border-dashed border-zinc-700/50 rounded-full -translate-y-8" />
+      <div className="absolute w-[600px] h-[300px] border-2 border-dashed border-zinc-300 dark:border-zinc-700/50 rounded-full -translate-y-8" />
 
       <div className="relative flex flex-col items-center gap-8 pointer-events-auto">
         {/* Title */}
         <div className="text-center">
-          <h1 className="text-2xl font-semibold text-zinc-100 mb-2">
-            Your space is ready
+          <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-100 mb-2">
+            Your canvas is ready
           </h1>
-          <p className="text-zinc-500">
+          <p className="text-zinc-500 dark:text-zinc-500">
             Choose your first node and start creating
           </p>
         </div>
@@ -105,23 +98,12 @@ export function WelcomeOverlay() {
             <button
               key={nodeType.id}
               onClick={nodeType.onClick}
-              disabled={nodeType.disabled}
-              className={`
-                group flex flex-col items-center justify-center
-                w-[120px] h-[100px] rounded-xl
-                bg-zinc-900/80 backdrop-blur
-                border border-zinc-700/50
-                transition-all duration-200
-                ${nodeType.disabled
-                  ? 'opacity-50 cursor-not-allowed'
-                  : 'hover:border-zinc-600 hover:bg-zinc-800/80 hover:scale-105 cursor-pointer'
-                }
-              `}
+              className="group flex flex-col items-center justify-center w-[120px] h-[100px] rounded-xl bg-white/80 dark:bg-zinc-900/80 backdrop-blur border border-zinc-300 dark:border-zinc-700/50 transition-all duration-200 hover:border-zinc-400 dark:hover:border-zinc-600 hover:bg-zinc-100/80 dark:hover:bg-zinc-800/80 hover:scale-105 cursor-pointer"
             >
               <div className={`mb-3 ${nodeType.color} transition-transform group-hover:scale-110`}>
                 {nodeType.icon}
               </div>
-              <span className="text-sm text-zinc-300">{nodeType.label}</span>
+              <span className="text-sm text-zinc-700 dark:text-zinc-300">{nodeType.label}</span>
             </button>
           ))}
         </div>

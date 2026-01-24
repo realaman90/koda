@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
+import { ThemeProvider } from "@/components/providers/ThemeProvider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -14,8 +15,17 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Spaces - AI Image Generation Canvas",
-  description: "Create and connect AI-powered image generation nodes",
+  title: "Koda.video - AI Video & Image Generation",
+  description: "Create stunning AI-powered videos and images with a visual node-based workflow",
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/favicon-96x96.png', sizes: '96x96', type: 'image/png' },
+    ],
+    apple: '/apple-touch-icon.png',
+  },
+  manifest: '/site.webmanifest',
 };
 
 export default function RootLayout({
@@ -24,18 +34,21 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className="dark" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {children}
+        <ThemeProvider>
+          {children}
+        </ThemeProvider>
         <Toaster
           position="bottom-right"
           toastOptions={{
+            className: 'sonner-toast',
             style: {
-              background: '#18181b',
-              border: '1px solid #27272a',
-              color: '#fafafa',
+              background: 'var(--toast-bg, #18181b)',
+              border: '1px solid var(--toast-border, #27272a)',
+              color: 'var(--toast-text, #fafafa)',
             },
           }}
         />

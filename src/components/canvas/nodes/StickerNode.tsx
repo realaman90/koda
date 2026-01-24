@@ -254,7 +254,7 @@ function StickerNodeComponent({ id, data, selected }: NodeProps<StickerNodeType>
       <div
         className={`
           cursor-pointer select-none
-          transition-all duration-150
+          transition-[filter] duration-150
           ${selected ? 'drop-shadow-lg' : 'drop-shadow-md'}
         `}
         onDoubleClick={() => setShowPicker(true)}

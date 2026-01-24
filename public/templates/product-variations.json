@@ -1,0 +1,81 @@
+{
+  "id": "product-variations",
+  "name": "Product Variations",
+  "description": "Create product variations in different contexts and backgrounds",
+  "thumbnail": "/templates/product-variations.jpg",
+  "category": "showcase",
+  "readOnly": true,
+  "tags": ["featured", "branding", "photography"],
+  "nodes": [
+    {
+      "id": "media_product",
+      "type": "media",
+      "position": { "x": 100, "y": 150 },
+      "data": {
+        "url": "/templates/assets/product-variations/product-original.jpg",
+        "type": "image"
+      }
+    },
+    {
+      "id": "text_prompt",
+      "type": "text",
+      "position": { "x": 100, "y": 350 },
+      "data": {
+        "content": "Young man wearing the hoodie, standing on a scenic coastal cliff overlooking the ocean at sunset, golden hour lighting, professional fashion photography"
+      }
+    },
+    {
+      "id": "img_gen_1",
+      "type": "imageGenerator",
+      "position": { "x": 450, "y": 100 },
+      "data": {
+        "name": "Beach Scene",
+        "prompt": "",
+        "model": "nanobanana-pro",
+        "aspectRatio": "4:5",
+        "resolution": "2K",
+        "isGenerating": false,
+        "outputUrl": "/templates/assets/product-variations/variation-1.jpg",
+        "outputUrls": ["/templates/assets/product-variations/variation-1.jpg"]
+      }
+    },
+    {
+      "id": "img_gen_2",
+      "type": "imageGenerator",
+      "position": { "x": 450, "y": 400 },
+      "data": {
+        "name": "Urban Scene",
+        "prompt": "Young man wearing the hoodie, walking through a modern city street at dusk, neon signs reflecting, urban fashion photography",
+        "model": "nanobanana-pro",
+        "aspectRatio": "4:5",
+        "resolution": "2K",
+        "isGenerating": false,
+        "outputUrl": "/templates/assets/product-variations/variation-2.jpg",
+        "outputUrls": ["/templates/assets/product-variations/variation-2.jpg"]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge_1",
+      "source": "media_product",
+      "target": "img_gen_1",
+      "sourceHandle": "image",
+      "targetHandle": "reference"
+    },
+    {
+      "id": "edge_2",
+      "source": "text_prompt",
+      "target": "img_gen_1",
+      "sourceHandle": "text",
+      "targetHandle": "text"
+    },
+    {
+      "id": "edge_3",
+      "source": "media_product",
+      "target": "img_gen_2",
+      "sourceHandle": "image",
+      "targetHandle": "reference"
+    }
+  ]
+}

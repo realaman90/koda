@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useCallback, useState, useRef, useEffect } from 'react';
+import { memo, useCallback, useState, useRef, useEffect, useMemo } from 'react';
 import { type NodeProps, NodeResizer } from '@xyflow/react';
 import { Button } from '@/components/ui/button';
 import { useCanvasStore } from '@/stores/canvas-store';
@@ -28,6 +28,14 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<GroupNodeType>) {
   const nameInputRef = useRef<HTMLInputElement>(null);
 
   const borderColor = data.color || '#6366f1';
+
+  const containerStyle = useMemo(() => ({
+    width: data.width || 400,
+    height: data.height || 280,
+    backgroundColor: `${borderColor}15`,
+    border: `2px solid ${borderColor}${selected ? '' : '80'}`,
+    boxShadow: selected ? `0 0 20px ${borderColor}30` : undefined,
+  }), [data.width, data.height, borderColor, selected]);
 
   useEffect(() => {
     if (isEditingName && nameInputRef.current) {
@@ -59,7 +67,7 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<GroupNodeType>) {
     deleteNode(id);
   }, [id, deleteNode]);
 
-  const handleResize = useCallback(
+  const handleResizeEnd = useCallback(
     (_: unknown, params: { width: number; height: number }) => {
       updateNodeData(id, { width: params.width, height: params.height });
     },
@@ -67,20 +75,23 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<GroupNodeType>) {
   );
 
   return (
-    <>
-      {/* Node Resizer */}
+    <div
+      className="relative rounded-2xl"
+      style={containerStyle}
+    >
+      {/* Node Resizer - invisible handles, resize from edges */}
       <NodeResizer
         minWidth={200}
         minHeight={150}
         isVisible={selected}
-        lineClassName="!border-blue-500"
-        handleClassName="!w-3 !h-3 !bg-blue-500 !border-white"
-        onResize={handleResize}
+        lineClassName="!border-transparent"
+        handleClassName="!opacity-0 !w-4 !h-4"
+        onResizeEnd={handleResizeEnd}
       />
 
       {/* Floating Toolbar - appears above node when selected */}
       {selected && (
-        <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-zinc-800/90 backdrop-blur rounded-lg px-2 py-1.5 border border-zinc-700/50 shadow-xl z-10">
+        <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1 backdrop-blur rounded-lg px-2 py-1.5 border node-toolbar-floating shadow-xl z-10">
           {/* Color picker */}
           <div className="relative">
             <Button
@@ -119,56 +130,70 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<GroupNodeType>) {
         </div>
       )}
 
-      {/* Main Group Container */}
-      <div
-        className="rounded-xl overflow-hidden"
-        style={{
-          width: data.width || 300,
-          height: data.height || 200,
-          backgroundColor: 'rgba(39, 39, 42, 0.5)',
-          border: `2px dashed ${borderColor}`,
-        }}
-      >
-        {/* Title Bar */}
-        <div
-          className="px-3 py-2 border-b flex items-center gap-2"
-          style={{
-            borderColor: `${borderColor}40`,
-            backgroundColor: `${borderColor}15`,
-          }}
-        >
-          {isEditingName ? (
-            <input
-              ref={nameInputRef}
-              type="text"
-              value={data.name}
-              onChange={handleNameChange}
-              onBlur={handleNameSubmit}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleNameSubmit();
-                if (e.key === 'Escape') {
-                  setIsEditingName(false);
-                }
-              }}
-              className="bg-transparent border-b border-zinc-600 outline-none text-zinc-200 text-sm font-medium px-0.5 min-w-[60px]"
-            />
-          ) : (
-            <span
-              onDoubleClick={() => setIsEditingName(true)}
-              className="text-sm font-medium cursor-text hover:text-zinc-100 transition-colors"
-              style={{ color: borderColor }}
-            >
-              {data.name || 'Group'}
-            </span>
-          )}
-        </div>
-
-        {/* Content Area */}
-        <div className="flex items-center justify-center h-[calc(100%-40px)] text-zinc-500 text-sm">
-          Drag elements here
-        </div>
+      {/* Title - Inside top-left of container */}
+      <div className="absolute top-3 left-4">
+        {isEditingName ? (
+          <input
+            ref={nameInputRef}
+            type="text"
+            value={data.name}
+            onChange={handleNameChange}
+            onBlur={handleNameSubmit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleNameSubmit();
+              if (e.key === 'Escape') {
+                setIsEditingName(false);
+              }
+            }}
+            className="bg-transparent border-b border-zinc-600 outline-none text-sm font-medium px-0.5 min-w-[60px]"
+            style={{ color: borderColor }}
+          />
+        ) : (
+          <span
+            onDoubleClick={() => setIsEditingName(true)}
+            className="text-sm font-medium cursor-text hover:opacity-80 transition-opacity"
+            style={{ color: borderColor }}
+          >
+            {data.name || 'New group'}
+          </span>
+        )}
       </div>
-    </>
+
+      {/* Content Area - centered placeholder text */}
+      <div className="flex items-center justify-center h-full text-zinc-500 text-sm">
+        Drag elements here
+      </div>
+
+      {/* Custom Resize Handle Indicator (bottom-right corner) */}
+      {selected && (
+        <div className="absolute bottom-1 right-1 w-4 h-4 pointer-events-none">
+          <svg
+            viewBox="0 0 16 16"
+            fill="none"
+            className="w-full h-full"
+          >
+            <path
+              d="M14 16C14 16 16 16 16 14"
+              stroke={borderColor}
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+            <path
+              d="M10 16C10 16 16 16 16 10"
+              stroke={borderColor}
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+            <path
+              d="M6 16C6 16 16 16 16 6"
+              stroke={borderColor}
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+          </svg>
+        </div>
+      )}
+    </div>
   );
 }
 

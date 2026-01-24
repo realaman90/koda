@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useMemo } from 'react';
-import { useCanvasStore, createImageGeneratorNode, createVideoGeneratorNode, createTextNode, createMediaNode, createStickyNoteNode, createStickerNode, createGroupNode } from '@/stores/canvas-store';
+import { useCanvasStore, createImageGeneratorNode, createVideoGeneratorNode, createTextNode, createMediaNode, createStickyNoteNode, createStickerNode, createGroupNode, createMusicGeneratorNode, createSpeechNode, createVideoAudioNode } from '@/stores/canvas-store';
 import { useReactFlow } from '@xyflow/react';
 import {
   Copy,
@@ -21,7 +21,14 @@ import {
   Sparkle,
   ChevronDown,
   ChevronUp,
+  Puzzle,
+  Music,
+  Mic,
+  Film,
 } from 'lucide-react';
+import { pluginRegistry } from '@/lib/plugins/registry';
+// Import official plugins to register them
+import '@/lib/plugins/official/storyboard-generator';
 
 interface MenuItem {
   id: string;
@@ -37,7 +44,11 @@ interface MenuSection {
   collapsible?: boolean;
 }
 
-export function ContextMenu() {
+interface ContextMenuProps {
+  onPluginLaunch?: (pluginId: string) => void;
+}
+
+export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
   const contextMenu = useCanvasStore((state) => state.contextMenu);
   const hideContextMenu = useCanvasStore((state) => state.hideContextMenu);
   const copySelected = useCanvasStore((state) => state.copySelected);
@@ -56,6 +67,7 @@ export function ContextMenu() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [utilitiesExpanded, setUtilitiesExpanded] = useState(false);
+  const [pluginsExpanded, setPluginsExpanded] = useState(false);
 
   // Focus search input when menu opens
   useEffect(() => {
@@ -64,6 +76,7 @@ export function ContextMenu() {
     }
     setSearchQuery('');
     setUtilitiesExpanded(false);
+    setPluginsExpanded(false);
   }, [contextMenu]);
 
   // Close on outside click
@@ -192,6 +205,32 @@ export function ContextMenu() {
       ],
     },
     {
+      title: 'AUDIO',
+      items: [
+        {
+          id: 'musicGenerator',
+          icon: <Music className="h-4 w-4 text-orange-400" />,
+          label: 'Music Generator',
+          action: () => handleAddNode(createMusicGeneratorNode, 'Music Generator'),
+          keywords: ['music', 'audio', 'sound', 'song', 'generate'],
+        },
+        {
+          id: 'speech',
+          icon: <Mic className="h-4 w-4 text-cyan-400" />,
+          label: 'Speech',
+          action: () => handleAddNode(createSpeechNode, 'Speech'),
+          keywords: ['speech', 'voice', 'tts', 'text-to-speech', 'narration'],
+        },
+        {
+          id: 'videoAudio',
+          icon: <Film className="h-4 w-4 text-pink-400" />,
+          label: 'Video Audio',
+          action: () => handleAddNode(createVideoAudioNode, 'Video Audio'),
+          keywords: ['video', 'audio', 'sync', 'sound', 'foley'],
+        },
+      ],
+    },
+    {
       title: 'UTILITIES',
       collapsible: true,
       items: [
@@ -231,7 +270,23 @@ export function ContextMenu() {
         },
       ],
     },
-  ], [addNode, hideContextMenu, handleUpload, nodes]);
+    {
+      title: 'PLUGINS',
+      collapsible: true,
+      items: pluginRegistry.getAll().map((plugin) => ({
+        id: plugin.id,
+        icon: <span className="text-base leading-none">{plugin.icon}</span>,
+        label: plugin.name,
+        action: () => {
+          if (onPluginLaunch) {
+            onPluginLaunch(plugin.id);
+          }
+          hideContextMenu();
+        },
+        keywords: [plugin.name.toLowerCase(), plugin.category, 'plugin'],
+      })),
+    },
+  ], [addNode, hideContextMenu, handleUpload, nodes, onPluginLaunch]);
 
   // Filter sections based on search query
   const filteredSections = useMemo(() => {
@@ -257,12 +312,12 @@ export function ContextMenu() {
     return (
       <div
         ref={menuRef}
-        className="fixed z-[100] min-w-[180px] bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl py-1 animate-in fade-in zoom-in-95 duration-100"
+        className="fixed z-[100] min-w-[180px] bg-popover border border-border rounded-lg shadow-xl py-1 animate-in fade-in zoom-in-95 duration-100"
         style={{ left: contextMenu.x, top: contextMenu.y }}
       >
         {nodeMenuItems.map((item) => {
           if ('divider' in item && item.divider) {
-            return <div key={item.id} className="my-1 border-t border-zinc-700" />;
+            return <div key={item.id} className="my-1 border-t border-border" />;
           }
 
           const isDisabled = 'disabled' in item && item.disabled;
@@ -276,10 +331,10 @@ export function ContextMenu() {
               className={`
                 w-full flex items-center gap-3 px-3 py-2 text-sm cursor-pointer
                 ${isDisabled
-                  ? 'text-zinc-600 cursor-not-allowed'
+                  ? 'text-muted-foreground/50 cursor-not-allowed'
                   : isDanger
                     ? 'text-red-400 hover:bg-red-500/10'
-                    : 'text-zinc-300 hover:bg-zinc-800'
+                    : 'text-foreground hover:bg-muted'
                 }
                 transition-colors
               `}
@@ -287,7 +342,7 @@ export function ContextMenu() {
               {item.icon}
               <span className="flex-1 text-left">{item.label}</span>
               {'shortcut' in item && item.shortcut && (
-                <span className="text-xs text-zinc-500">{item.shortcut}</span>
+                <span className="text-xs text-muted-foreground">{item.shortcut}</span>
               )}
             </button>
           );
@@ -300,38 +355,38 @@ export function ContextMenu() {
   return (
     <div
       ref={menuRef}
-      className="fixed z-[100] w-[220px] bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-100"
+      className="fixed z-[100] w-[220px] bg-popover border border-border rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-100"
       style={{ left: contextMenu.x, top: contextMenu.y }}
     >
       {/* Search Input */}
-      <div className="p-2 border-b border-zinc-800">
-        <div className="flex items-center gap-2 px-2 py-1.5 bg-zinc-800/50 rounded-lg">
-          <Search className="h-4 w-4 text-zinc-500" />
+      <div className="p-2 border-b border-border">
+        <div className="flex items-center gap-2 px-2 py-1.5 bg-muted/50 rounded-lg">
+          <Search className="h-4 w-4 text-muted-foreground" />
           <input
             ref={searchInputRef}
             type="text"
             placeholder="Search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="flex-1 bg-transparent text-sm text-zinc-300 placeholder-zinc-500 outline-none"
+            className="flex-1 bg-transparent text-sm text-foreground placeholder-muted-foreground outline-none"
           />
         </div>
       </div>
 
       {/* Paste option if clipboard has content */}
       {clipboard && clipboard.nodes.length > 0 && !searchQuery && (
-        <div className="border-b border-zinc-800">
+        <div className="border-b border-border">
           <button
             onClick={() => {
               const position = getNodePosition();
               paste(position);
               hideContextMenu();
             }}
-            className="w-full flex items-center gap-3 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 cursor-pointer transition-colors"
+            className="w-full flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-muted cursor-pointer transition-colors"
           >
             <ClipboardPaste className="h-4 w-4" />
             <span className="flex-1 text-left">Paste</span>
-            <span className="text-xs text-zinc-500">⌘V</span>
+            <span className="text-xs text-muted-foreground">⌘V</span>
           </button>
         </div>
       )}
@@ -340,18 +395,30 @@ export function ContextMenu() {
       <div className="py-1 max-h-[400px] overflow-y-auto">
         {filteredSections.map((section, sectionIndex) => {
           const isUtilities = section.title === 'UTILITIES';
-          const shouldShowItems = !isUtilities || utilitiesExpanded || searchQuery;
+          const isPlugins = section.title === 'PLUGINS';
+          const isCollapsible = isUtilities || isPlugins;
+          const isExpanded = isUtilities ? utilitiesExpanded : isPlugins ? pluginsExpanded : true;
+          const shouldShowItems = !isCollapsible || isExpanded || searchQuery;
+
+          // Skip plugins section if no plugins available
+          if (isPlugins && section.items.length === 0) return null;
 
           return (
             <div key={section.title || sectionIndex}>
               {section.title && (
                 <div
-                  className={`px-4 py-1.5 text-[10px] font-medium text-zinc-500 uppercase tracking-wider flex items-center justify-between ${isUtilities ? 'cursor-pointer hover:bg-zinc-800/50' : ''}`}
-                  onClick={() => isUtilities && setUtilitiesExpanded(!utilitiesExpanded)}
+                  className={`px-4 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider flex items-center justify-between ${isCollapsible ? 'cursor-pointer hover:bg-muted/50' : ''}`}
+                  onClick={() => {
+                    if (isUtilities) setUtilitiesExpanded(!utilitiesExpanded);
+                    if (isPlugins) setPluginsExpanded(!pluginsExpanded);
+                  }}
                 >
-                  {section.title}
-                  {isUtilities && !searchQuery && (
-                    utilitiesExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                  <span className="flex items-center gap-1.5">
+                    {isPlugins && <Puzzle className="h-3 w-3" />}
+                    {section.title}
+                  </span>
+                  {isCollapsible && !searchQuery && (
+                    isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
                   )}
                 </div>
               )}
@@ -359,7 +426,7 @@ export function ContextMenu() {
                 <button
                   key={item.id}
                   onClick={item.action}
-                  className="w-full flex items-center gap-3 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 cursor-pointer transition-colors"
+                  className="w-full flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-muted cursor-pointer transition-colors"
                 >
                   {item.icon}
                   <span>{item.label}</span>
@@ -370,7 +437,7 @@ export function ContextMenu() {
         })}
 
         {filteredSections.length === 0 && (
-          <div className="px-4 py-6 text-sm text-zinc-500 text-center">
+          <div className="px-4 py-6 text-sm text-muted-foreground text-center">
             No results found
           </div>
         )}
