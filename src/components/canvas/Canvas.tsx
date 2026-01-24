@@ -70,7 +70,7 @@ export function Canvas() {
         const node = createStoryboardNode(position, 'Storyboard');
         addNode(node);
       } else {
-        // Other plugins still open as modals
+        // Other plugins still open as modals. Maybe not needed anymore. We'll see.
         openSandbox(pluginId);
       }
     },

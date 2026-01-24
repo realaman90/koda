@@ -20,7 +20,7 @@ export const storyboardGeneratorPlugin: AgentPlugin = {
   category: 'planning',
   author: {
     type: 'official',
-    name: 'GenFlow',
+    name: 'Koda',
     verified: true,
   },
   version: '1.0.0',

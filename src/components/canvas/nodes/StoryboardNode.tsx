@@ -466,8 +466,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
       >
         {/* Header */}
         <div className="px-4 py-3 border-b border-border flex items-center gap-2">
-          <Clapperboard className="w-4 h-4 text-indigo-400" />
-          <span className="text-sm font-medium text-foreground">Create Storyboard</span>
+          <span className="text-sm font-medium text-foreground">Create</span>
         </div>
 
         {/* Content */}
@@ -486,9 +485,8 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
                 type="target"
                 position={Position.Left}
                 id="productImage"
-                className={`!relative !transform-none !w-6 !h-6 !rounded-md !border-2 node-handle hover:!border-indigo-500 ${
-                  hasProductImage ? '!border-green-500' : ''
-                }`}
+                className={`!relative !transform-none !w-6 !h-6 !rounded-md !border-2 node-handle hover:!border-indigo-500 ${hasProductImage ? '!border-green-500' : ''
+                  }`}
               />
               <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none" style={{ color: hasProductImage ? '#4ade80' : 'var(--text-muted)' }} />
             </div>
@@ -504,9 +502,8 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
                 type="target"
                 position={Position.Left}
                 id="characterImage"
-                className={`!relative !transform-none !w-6 !h-6 !rounded-md !border-2 node-handle hover:!border-indigo-500 ${
-                  hasCharacterImage ? '!border-green-500' : ''
-                }`}
+                className={`!relative !transform-none !w-6 !h-6 !rounded-md !border-2 node-handle hover:!border-indigo-500 ${hasCharacterImage ? '!border-green-500' : ''
+                  }`}
               />
               <User className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none" style={{ color: hasCharacterImage ? '#4ade80' : 'var(--text-muted)' }} />
             </div>
