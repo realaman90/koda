@@ -10,7 +10,7 @@ import { AIService } from '@/lib/plugins/ai-service';
 import {
   StoryboardInputSchema,
   StoryboardOutputSchema,
-  STORYBOARD_SYSTEM_PROMPT,
+  getSystemPrompt,
   buildStoryboardPrompt,
 } from '@/lib/plugins/official/storyboard-generator/schema';
 
@@ -39,8 +39,10 @@ export async function POST(request: Request) {
 
     // Build the prompt
     const prompt = buildStoryboardPrompt(input);
+    const systemPrompt = getSystemPrompt(input.mode);
     console.log('[Storyboard] Built prompt:\n', prompt);
-    console.log('[Storyboard] System prompt:\n', STORYBOARD_SYSTEM_PROMPT);
+    console.log('[Storyboard] Mode:', input.mode);
+    console.log('[Storyboard] System prompt:\n', systemPrompt);
 
     // Generate using AI service
     console.log('[Storyboard] Calling AI service (Gemini 3 Pro with thinking)...');
@@ -51,7 +53,7 @@ export async function POST(request: Request) {
       prompt,
       StoryboardOutputSchema,
       {
-        systemPrompt: STORYBOARD_SYSTEM_PROMPT,
+        systemPrompt,
         temperature: 0.1,
       }
     );

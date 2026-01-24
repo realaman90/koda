@@ -537,6 +537,9 @@ export const FAL_VIDEO_MODELS: Record<VideoModelType, string> = {
 // STORYBOARD NODE TYPES
 // ============================================
 
+// Storyboard mode
+export type StoryboardMode = 'transition' | 'single-shot';
+
 // Storyboard visual style
 export type StoryboardStyle = 'cinematic' | 'anime' | 'photorealistic' | 'illustrated' | 'commercial';
 
@@ -551,7 +554,8 @@ export interface StoryboardSceneData {
   prompt: string;
   camera: string;
   mood: string;
-  transition?: string;
+  transition?: string;  // For transition mode (motion between scenes)
+  motion?: string;      // For single-shot mode (motion within scene)
 }
 
 // Storyboard Node Data
@@ -563,6 +567,7 @@ export interface StoryboardNodeData extends Record<string, unknown> {
   concept: string;
   sceneCount: number;
   style: StoryboardStyle;
+  mode: StoryboardMode;  // 'transition' for N-1 videos between frames, 'single-shot' for N independent videos
   // UI state
   viewState: StoryboardViewState;
   error?: string;

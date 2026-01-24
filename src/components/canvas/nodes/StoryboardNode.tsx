@@ -12,9 +12,9 @@ import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { Button } from '@/components/ui/button';
 import { useCanvasStore } from '@/stores/canvas-store';
 import { useCanvasAPI } from '@/lib/plugins/canvas-api';
-import type { StoryboardNode as StoryboardNodeType, StoryboardNodeData, StoryboardSceneData, StoryboardStyle } from '@/lib/types';
+import type { StoryboardNode as StoryboardNodeType, StoryboardNodeData, StoryboardSceneData, StoryboardStyle, StoryboardMode } from '@/lib/types';
 import type { CreateNodeInput } from '@/lib/plugins/types';
-import { Clapperboard, Trash2, Loader2, Sparkles, Grid3X3, ChevronRight, Image as ImageIcon, User } from 'lucide-react';
+import { Clapperboard, Trash2, Loader2, Sparkles, Grid3X3, ChevronRight, Image as ImageIcon, User, ArrowLeftRight, LayoutGrid } from 'lucide-react';
 import { toast } from 'sonner';
 
 // Style options
@@ -85,6 +85,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
         concept: data.concept.trim(),
         sceneCount: data.sceneCount,
         style: data.style,
+        mode: data.mode || 'transition',
       };
 
       const response = await fetch('/api/plugins/storyboard', {
@@ -109,16 +110,23 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
         error: err instanceof Error ? err.message : 'Generation failed',
       });
     }
-  }, [id, data.product, data.character, data.concept, data.sceneCount, data.style, isValid, updateNodeData]);
+  }, [id, data.product, data.character, data.concept, data.sceneCount, data.style, data.mode, isValid, updateNodeData]);
 
   // Helper function to generate fallback transition prompt
   const generateFallbackTransition = (fromScene: StoryboardSceneData, toScene: StoryboardSceneData): string => {
     return `Cinematic transition from "${fromScene.title}" to "${toScene.title}". ${fromScene.camera} transitioning smoothly, maintaining ${fromScene.mood} atmosphere.`;
   };
 
+  // Helper function to generate fallback motion prompt for single-shot mode
+  const generateFallbackMotion = (scene: StoryboardSceneData): string => {
+    return `${scene.description} ${scene.camera}, ${scene.mood} atmosphere.`;
+  };
+
   // Create nodes on canvas
   const handleCreateOnCanvas = useCallback(async () => {
     if (!data.result) return;
+
+    const mode = data.mode || 'transition';
 
     try {
       // Get connected product/character images
@@ -129,123 +137,239 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
       const viewportCenter = canvas.getViewportCenter();
       const nodeInputs: CreateNodeInput[] = [];
 
-      // Track the starting index for image nodes
-      const imageNodeStartIndex = nodeInputs.length;
-
       // Layout constants
       const IMAGE_NODE_WIDTH = 280;
       const VIDEO_NODE_WIDTH = 420;
-      const IMAGE_SPACING = 380;
-      const VIDEO_Y_OFFSET = 450;
-
-      // Calculate starting X to center the layout
-      const totalImageWidth = (data.result.scenes.length - 1) * IMAGE_SPACING + IMAGE_NODE_WIDTH;
-      const imageStartX = viewportCenter.x - totalImageWidth / 2;
-      const imageStartY = viewportCenter.y - 200;
-
-      // Store image positions for video node placement
-      const imagePositions: { x: number; y: number }[] = [];
 
       // Build reference URLs for the first scene
       const firstSceneReferenceUrls = [productImageUrl, characterImageUrl].filter((url): url is string => !!url);
 
-      // Create image generator nodes in a horizontal row
-      data.result.scenes.forEach((scene, index) => {
-        const position = {
-          x: imageStartX + index * IMAGE_SPACING,
-          y: imageStartY,
-        };
-        imagePositions.push(position);
+      if (mode === 'single-shot') {
+        // ==================== SINGLE-SHOT MODE ====================
+        // Grid layout: N images in grid, N videos below each image
 
-        // Only the first scene gets the product/character image references
-        // Subsequent scenes will get their reference from the previous scene via chain connections
-        const isFirstScene = index === 0;
+        // Calculate grid dimensions
+        const sceneCount = data.result.scenes.length;
+        let columns: number;
+        if (sceneCount <= 4) {
+          columns = 2;
+        } else if (sceneCount <= 6) {
+          columns = 3;
+        } else {
+          columns = 4;
+        }
+        const rows = Math.ceil(sceneCount / columns);
 
-        nodeInputs.push({
-          type: 'imageGenerator',
-          position,
-          name: `Scene ${scene.number}: ${scene.title}`,
-          data: {
-            prompt: scene.prompt,
-            model: 'nanobanana-pro',
-            // Pass reference images to first scene only
-            ...(isFirstScene && firstSceneReferenceUrls.length > 0 && {
-              referenceUrl: firstSceneReferenceUrls[0],
-              referenceUrls: firstSceneReferenceUrls.length > 1 ? firstSceneReferenceUrls : undefined,
-            }),
-          },
+        // Grid spacing
+        const HORIZONTAL_SPACING = 350;
+        const VERTICAL_SPACING = 500; // Image + video + gap
+
+        // Calculate starting position to center the grid
+        const totalGridWidth = (columns - 1) * HORIZONTAL_SPACING + IMAGE_NODE_WIDTH;
+        const gridStartX = viewportCenter.x - totalGridWidth / 2;
+        const gridStartY = viewportCenter.y - (rows * VERTICAL_SPACING) / 2;
+
+        // Store image positions for video node placement
+        const imagePositions: { x: number; y: number }[] = [];
+
+        // Track starting indices
+        const imageNodeStartIndex = nodeInputs.length;
+
+        // Create image generator nodes in a grid
+        data.result.scenes.forEach((scene, index) => {
+          const col = index % columns;
+          const row = Math.floor(index / columns);
+
+          const position = {
+            x: gridStartX + col * HORIZONTAL_SPACING,
+            y: gridStartY + row * VERTICAL_SPACING,
+          };
+          imagePositions.push(position);
+
+          // Only the first scene gets the product/character image references
+          const isFirstScene = index === 0;
+
+          nodeInputs.push({
+            type: 'imageGenerator',
+            position,
+            name: `Scene ${scene.number}: ${scene.title}`,
+            data: {
+              prompt: scene.prompt,
+              model: 'nanobanana-pro',
+              ...(isFirstScene && firstSceneReferenceUrls.length > 0 && {
+                referenceUrl: firstSceneReferenceUrls[0],
+                referenceUrls: firstSceneReferenceUrls.length > 1 ? firstSceneReferenceUrls : undefined,
+              }),
+            },
+          });
         });
-      });
 
-      // Track the starting index for video nodes
-      const videoNodeStartIndex = nodeInputs.length;
+        // Track video node start index
+        const videoNodeStartIndex = nodeInputs.length;
 
-      // Create video generator nodes between consecutive image pairs
-      for (let i = 0; i < data.result.scenes.length - 1; i++) {
-        const sourcePos = imagePositions[i];
-        const targetPos = imagePositions[i + 1];
-        const currentScene = data.result.scenes[i];
-        const nextScene = data.result.scenes[i + 1];
+        // Create video generator node for EACH image (N videos)
+        data.result.scenes.forEach((scene, index) => {
+          const imagePos = imagePositions[index];
 
-        // Position video node below and centered between source and target image nodes
-        const videoPosition = {
-          x: (sourcePos.x + targetPos.x) / 2 + (IMAGE_NODE_WIDTH - VIDEO_NODE_WIDTH) / 2,
-          y: imageStartY + VIDEO_Y_OFFSET,
-        };
+          // Position video node below its image with 50px gap
+          const videoPosition = {
+            x: imagePos.x + (IMAGE_NODE_WIDTH - VIDEO_NODE_WIDTH) / 2,
+            y: imagePos.y + 300, // Below the image node
+          };
 
-        // Use AI-generated transition or fallback
-        const transitionPrompt = currentScene.transition || generateFallbackTransition(currentScene, nextScene);
+          // Use AI-generated motion or fallback
+          const motionPrompt = scene.motion || generateFallbackMotion(scene);
 
-        nodeInputs.push({
-          type: 'videoGenerator',
-          position: videoPosition,
-          name: `Transition ${i + 1}`,
-          data: {
-            prompt: transitionPrompt,
-            model: 'veo-3.1-flf',
-            aspectRatio: '16:9',
-            duration: 4,
-            resolution: '720p',
-            generateAudio: true,
-          },
+          nodeInputs.push({
+            type: 'videoGenerator',
+            position: videoPosition,
+            name: `Video ${scene.number}: ${scene.title}`,
+            data: {
+              prompt: motionPrompt,
+              model: 'veo-3.1-i2v', // Single image input model
+              aspectRatio: '16:9',
+              duration: 8,
+              resolution: '720p',
+              generateAudio: true,
+            },
+          });
         });
+
+        // Create all nodes
+        const nodeIds = await canvas.createNodes(nodeInputs);
+
+        // NO image-to-image chaining in single-shot mode
+
+        // Create edges connecting each image to its video via 'reference' handle
+        for (let i = 0; i < data.result.scenes.length; i++) {
+          const imageNodeId = nodeIds[imageNodeStartIndex + i];
+          const videoNodeId = nodeIds[videoNodeStartIndex + i];
+          await canvas.createEdge(imageNodeId, 'output', videoNodeId, 'reference');
+        }
+
+        // Fit view to show all nodes
+        canvas.fitView();
+
+        // Notify success
+        toast.success(
+          `Created ${data.result.scenes.length} scene nodes and ${data.result.scenes.length} video nodes in grid layout. Click "Run All" to generate.`
+        );
+      } else {
+        // ==================== TRANSITION MODE (existing logic) ====================
+        // Horizontal row: N images, N-1 videos between pairs
+
+        const IMAGE_SPACING = 380;
+        const VIDEO_Y_OFFSET = 450;
+
+        // Track the starting index for image nodes
+        const imageNodeStartIndex = nodeInputs.length;
+
+        // Calculate starting X to center the layout
+        const totalImageWidth = (data.result.scenes.length - 1) * IMAGE_SPACING + IMAGE_NODE_WIDTH;
+        const imageStartX = viewportCenter.x - totalImageWidth / 2;
+        const imageStartY = viewportCenter.y - 200;
+
+        // Store image positions for video node placement
+        const imagePositions: { x: number; y: number }[] = [];
+
+        // Create image generator nodes in a horizontal row
+        data.result.scenes.forEach((scene, index) => {
+          const position = {
+            x: imageStartX + index * IMAGE_SPACING,
+            y: imageStartY,
+          };
+          imagePositions.push(position);
+
+          // Only the first scene gets the product/character image references
+          // Subsequent scenes will get their reference from the previous scene via chain connections
+          const isFirstScene = index === 0;
+
+          nodeInputs.push({
+            type: 'imageGenerator',
+            position,
+            name: `Scene ${scene.number}: ${scene.title}`,
+            data: {
+              prompt: scene.prompt,
+              model: 'nanobanana-pro',
+              // Pass reference images to first scene only
+              ...(isFirstScene && firstSceneReferenceUrls.length > 0 && {
+                referenceUrl: firstSceneReferenceUrls[0],
+                referenceUrls: firstSceneReferenceUrls.length > 1 ? firstSceneReferenceUrls : undefined,
+              }),
+            },
+          });
+        });
+
+        // Track the starting index for video nodes
+        const videoNodeStartIndex = nodeInputs.length;
+
+        // Create video generator nodes between consecutive image pairs
+        for (let i = 0; i < data.result.scenes.length - 1; i++) {
+          const sourcePos = imagePositions[i];
+          const targetPos = imagePositions[i + 1];
+          const currentScene = data.result.scenes[i];
+          const nextScene = data.result.scenes[i + 1];
+
+          // Position video node below and centered between source and target image nodes
+          const videoPosition = {
+            x: (sourcePos.x + targetPos.x) / 2 + (IMAGE_NODE_WIDTH - VIDEO_NODE_WIDTH) / 2,
+            y: imageStartY + VIDEO_Y_OFFSET,
+          };
+
+          // Use AI-generated transition or fallback
+          const transitionPrompt = currentScene.transition || generateFallbackTransition(currentScene, nextScene);
+
+          nodeInputs.push({
+            type: 'videoGenerator',
+            position: videoPosition,
+            name: `Transition ${i + 1}`,
+            data: {
+              prompt: transitionPrompt,
+              model: 'veo-3.1-flf',
+              aspectRatio: '16:9',
+              duration: 4,
+              resolution: '720p',
+              generateAudio: true,
+            },
+          });
+        }
+
+        // Create all nodes
+        const nodeIds = await canvas.createNodes(nodeInputs);
+
+        // Create edges connecting image nodes in a chain (for style reference)
+        for (let i = 0; i < data.result.scenes.length - 1; i++) {
+          const sourceImageId = nodeIds[imageNodeStartIndex + i];
+          const targetImageId = nodeIds[imageNodeStartIndex + i + 1];
+          await canvas.createEdge(sourceImageId, 'output', targetImageId, 'reference');
+        }
+
+        // Create edges connecting image nodes to video nodes
+        const videoNodeCount = data.result.scenes.length - 1;
+        for (let i = 0; i < videoNodeCount; i++) {
+          const sourceImageId = nodeIds[imageNodeStartIndex + i];
+          const targetImageId = nodeIds[imageNodeStartIndex + i + 1];
+          const videoNodeId = nodeIds[videoNodeStartIndex + i];
+
+          // Source image -> firstFrame
+          await canvas.createEdge(sourceImageId, 'output', videoNodeId, 'firstFrame');
+          // Target image -> lastFrame
+          await canvas.createEdge(targetImageId, 'output', videoNodeId, 'lastFrame');
+        }
+
+        // Fit view to show all nodes
+        canvas.fitView();
+
+        // Notify success
+        const videoCount = data.result.scenes.length - 1;
+        toast.success(
+          `Created ${data.result.scenes.length} scene nodes and ${videoCount} video nodes. Click "Run All" to generate images, then videos.`
+        );
       }
-
-      // Create all nodes
-      const nodeIds = await canvas.createNodes(nodeInputs);
-
-      // Create edges connecting image nodes in a chain (for style reference)
-      for (let i = 0; i < data.result.scenes.length - 1; i++) {
-        const sourceImageId = nodeIds[imageNodeStartIndex + i];
-        const targetImageId = nodeIds[imageNodeStartIndex + i + 1];
-        await canvas.createEdge(sourceImageId, 'output', targetImageId, 'reference');
-      }
-
-      // Create edges connecting image nodes to video nodes
-      const videoNodeCount = data.result.scenes.length - 1;
-      for (let i = 0; i < videoNodeCount; i++) {
-        const sourceImageId = nodeIds[imageNodeStartIndex + i];
-        const targetImageId = nodeIds[imageNodeStartIndex + i + 1];
-        const videoNodeId = nodeIds[videoNodeStartIndex + i];
-
-        // Source image -> firstFrame
-        await canvas.createEdge(sourceImageId, 'output', videoNodeId, 'firstFrame');
-        // Target image -> lastFrame
-        await canvas.createEdge(targetImageId, 'output', videoNodeId, 'lastFrame');
-      }
-
-      // Fit view to show all nodes
-      canvas.fitView();
-
-      // Notify success
-      const videoCount = data.result.scenes.length - 1;
-      toast.success(
-        `Created ${data.result.scenes.length} scene nodes and ${videoCount} video nodes. Click "Run All" to generate images, then videos.`
-      );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create nodes');
     }
-  }, [data.result, canvas]);
+  }, [data.result, data.mode, canvas, id, generateFallbackTransition, generateFallbackMotion]);
 
   // Render form view
   const renderForm = () => (
@@ -330,6 +454,43 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
         </div>
       </div>
 
+      {/* Mode Toggle */}
+      {!isReadOnly && (
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-muted-foreground">Video Mode</label>
+          <div className="flex gap-1 p-0.5 bg-muted rounded-lg">
+            <button
+              onClick={() => updateField('mode', 'transition')}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-md text-xs font-medium transition-colors nodrag ${
+                (data.mode || 'transition') === 'transition'
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <ArrowLeftRight className="w-3.5 h-3.5" />
+              Transition
+            </button>
+            <button
+              onClick={() => updateField('mode', 'single-shot')}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-md text-xs font-medium transition-colors nodrag ${
+                data.mode === 'single-shot'
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              Single Shot
+            </button>
+          </div>
+          <p className="text-[10px] text-muted-foreground/80">
+            {(data.mode || 'transition') === 'transition'
+              ? 'Video transitions between consecutive scenes'
+              : 'Each scene generates its own video clip'
+            }
+          </p>
+        </div>
+      )}
+
       {/* Error message */}
       {data.error && (
         <div className="p-2 bg-red-900/30 border border-red-700 rounded-lg text-red-200 text-xs">
@@ -363,8 +524,27 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
   const renderPreview = () => {
     if (!data.result) return null;
 
+    const mode = data.mode || 'transition';
+    const sceneCount = data.result.scenes.length;
+    const videoCount = mode === 'single-shot' ? sceneCount : sceneCount - 1;
+
     return (
       <div className="p-4 space-y-3">
+        {/* Mode indicator */}
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          {mode === 'single-shot' ? (
+            <>
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span>Grid layout ({sceneCount} images → {videoCount} videos)</span>
+            </>
+          ) : (
+            <>
+              <ArrowLeftRight className="w-3.5 h-3.5" />
+              <span>Horizontal layout ({sceneCount} images → {videoCount} transitions)</span>
+            </>
+          )}
+        </div>
+
         {/* Summary */}
         <div className="p-2 bg-muted rounded-lg">
           <h3 className="text-xs font-medium text-muted-foreground mb-1">Summary</h3>

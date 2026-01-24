@@ -241,6 +241,7 @@ export const createStoryboardNode = (position: { x: number; y: number }, name?: 
     concept: '',
     sceneCount: 4,
     style: 'cinematic',
+    mode: 'transition',
     viewState: 'form',
   } as StoryboardNodeData,
 });
