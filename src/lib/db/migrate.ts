@@ -11,6 +11,9 @@
  * STANDALONE: This script does not import from ./index to avoid server-only restrictions
  */
 
+// Load environment variables from .env file
+import 'dotenv/config';
+
 import * as fs from 'fs';
 import * as path from 'path';
 

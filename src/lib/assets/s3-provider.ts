@@ -41,6 +41,12 @@ function getS3Config(type: AssetStorageType): S3Config | null {
       return null;
     }
 
+    // Allow custom endpoint for jurisdiction-specific URLs (e.g., EU)
+    // Default: https://{accountId}.r2.cloudflarestorage.com
+    // EU example: https://{accountId}.eu.r2.cloudflarestorage.com
+    const defaultEndpoint = `https://${accountId}.r2.cloudflarestorage.com`;
+    const endpoint = process.env.R2_ENDPOINT || defaultEndpoint;
+
     return {
       type: 'r2',
       accountId,
@@ -48,7 +54,7 @@ function getS3Config(type: AssetStorageType): S3Config | null {
       secretAccessKey,
       bucket,
       region: 'auto',
-      endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+      endpoint,
       publicUrl: process.env.R2_PUBLIC_URL,
     };
   }
