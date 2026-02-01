@@ -486,13 +486,11 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
                 type="target"
                 position={Position.Left}
                 id="productImage"
-                className={`!relative !transform-none !w-6 !h-6 !rounded-md !border-2 node-handle hover:!border-indigo-500 ${
-                  hasProductImage ? '!border-green-500' : ''
-                }`}
+                className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-red-400 !border-zinc-900 hover:!border-zinc-700"
               />
-              <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none" style={{ color: hasProductImage ? '#4ade80' : 'var(--text-muted)' }} />
+              <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
             </div>
-            <span className="absolute left-8 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
+            <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
               {hasProductImage ? 'Product Image (connected)' : 'Product Image'}
             </span>
           </div>
@@ -504,13 +502,11 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
                 type="target"
                 position={Position.Left}
                 id="characterImage"
-                className={`!relative !transform-none !w-6 !h-6 !rounded-md !border-2 node-handle hover:!border-indigo-500 ${
-                  hasCharacterImage ? '!border-green-500' : ''
-                }`}
+                className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-indigo-400 !border-zinc-900 hover:!border-zinc-700"
               />
-              <User className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none" style={{ color: hasCharacterImage ? '#4ade80' : 'var(--text-muted)' }} />
+              <User className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
             </div>
-            <span className="absolute left-8 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
+            <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
               {hasCharacterImage ? 'Character Image (connected)' : 'Character Image'}
             </span>
           </div>

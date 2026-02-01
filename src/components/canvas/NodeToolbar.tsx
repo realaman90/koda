@@ -107,26 +107,38 @@ export function NodeToolbar({ onPluginLaunch }: NodeToolbarProps) {
       items: [
         {
           icon: (
-            <div className="relative h-4 w-4">
-              <ImageIcon className="h-4 w-4 text-emerald-400" />
-              <Sparkle className="h-2 w-2 absolute -top-0.5 -right-0.5 fill-emerald-400 text-emerald-400" />
+            <div className="h-5 w-5 rounded-full bg-teal-500/20 ring-2 ring-teal-500 flex items-center justify-center relative">
+              <ImageIcon className="h-3 w-3 text-teal-500" />
+              <Sparkle className="h-2 w-2 absolute -top-0.5 -right-0.5 fill-teal-400 text-teal-400" />
             </div>
           ),
           label: 'Image Generator',
           onClick: () => handleAddNode(createImageGeneratorNode, 'Image Generator'),
         },
         {
-          icon: <Video className="h-4 w-4 text-blue-400" />,
+          icon: (
+            <div className="h-5 w-5 rounded-full bg-purple-500/20 ring-2 ring-purple-500 flex items-center justify-center">
+              <Video className="h-3 w-3 text-purple-500" />
+            </div>
+          ),
           label: 'Video Generator',
           onClick: () => handleAddNode(createVideoGeneratorNode, 'Video Generator'),
         },
         {
-          icon: <Type className="h-4 w-4 text-zinc-400" />,
+          icon: (
+            <div className="h-5 w-5 rounded-full bg-yellow-400/20 ring-2 ring-yellow-400 flex items-center justify-center">
+              <Type className="h-3 w-3 text-yellow-400" />
+            </div>
+          ),
           label: 'Text',
           onClick: () => handleAddNode(createTextNode as any),
         },
         {
-          icon: <ImageIcon className="h-4 w-4 text-zinc-400" />,
+          icon: (
+            <div className="h-5 w-5 rounded-full bg-red-400/20 ring-2 ring-red-400 flex items-center justify-center">
+              <ImageIcon className="h-3 w-3 text-red-400" />
+            </div>
+          ),
           label: 'Media',
           onClick: () => handleAddNode(createMediaNode as any),
         },
@@ -136,17 +148,29 @@ export function NodeToolbar({ onPluginLaunch }: NodeToolbarProps) {
       section: 'AUDIO',
       items: [
         {
-          icon: <Music className="h-4 w-4 text-orange-400" />,
+          icon: (
+            <div className="h-5 w-5 rounded-full bg-orange-400/20 ring-2 ring-orange-400 flex items-center justify-center">
+              <Music className="h-3 w-3 text-orange-400" />
+            </div>
+          ),
           label: 'Music Generator',
           onClick: () => handleAddNode(createMusicGeneratorNode, 'Music Generator'),
         },
         {
-          icon: <Mic className="h-4 w-4 text-cyan-400" />,
+          icon: (
+            <div className="h-5 w-5 rounded-full bg-cyan-400/20 ring-2 ring-cyan-400 flex items-center justify-center">
+              <Mic className="h-3 w-3 text-cyan-400" />
+            </div>
+          ),
           label: 'Speech',
           onClick: () => handleAddNode(createSpeechNode, 'Speech'),
         },
         {
-          icon: <Film className="h-4 w-4 text-pink-400" />,
+          icon: (
+            <div className="h-5 w-5 rounded-full bg-indigo-400/20 ring-2 ring-indigo-400 flex items-center justify-center">
+              <Film className="h-3 w-3 text-indigo-400" />
+            </div>
+          ),
           label: 'Video Audio',
           onClick: () => handleAddNode(createVideoAudioNode, 'Video Audio'),
         },
@@ -156,17 +180,29 @@ export function NodeToolbar({ onPluginLaunch }: NodeToolbarProps) {
       section: 'UTILITIES',
       items: [
         {
-          icon: <StickyNote className="h-4 w-4 text-yellow-400" />,
+          icon: (
+            <div className="h-5 w-5 rounded-full bg-amber-400/20 ring-2 ring-amber-400 flex items-center justify-center">
+              <StickyNote className="h-3 w-3 text-amber-400" />
+            </div>
+          ),
           label: 'Sticky Note',
           onClick: () => handleAddNode(createStickyNoteNode as any),
         },
         {
-          icon: <Smile className="h-4 w-4 text-zinc-400" />,
+          icon: (
+            <div className="h-5 w-5 rounded-full bg-zinc-400/20 ring-2 ring-zinc-500 flex items-center justify-center">
+              <Smile className="h-3 w-3 text-zinc-400" />
+            </div>
+          ),
           label: 'Sticker',
           onClick: () => handleAddNode(createStickerNode as any),
         },
         {
-          icon: <Group className="h-4 w-4 text-indigo-400" />,
+          icon: (
+            <div className="h-5 w-5 rounded-full bg-blue-500/20 ring-2 ring-blue-500 flex items-center justify-center">
+              <Group className="h-3 w-3 text-blue-500" />
+            </div>
+          ),
           label: 'Group',
           onClick: () => handleAddNode(createGroupNode, 'Group'),
         },
