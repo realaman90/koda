@@ -123,6 +123,26 @@ async function getSignatureKey(
 }
 
 /**
+ * URI encode a string for S3 signing (RFC 3986)
+ */
+function uriEncode(str: string, encodeSlash = true): string {
+  return str.split('').map(char => {
+    if (
+      (char >= 'A' && char <= 'Z') ||
+      (char >= 'a' && char <= 'z') ||
+      (char >= '0' && char <= '9') ||
+      char === '_' || char === '-' || char === '~' || char === '.'
+    ) {
+      return char;
+    }
+    if (char === '/' && !encodeSlash) {
+      return char;
+    }
+    return '%' + char.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0');
+  }).join('');
+}
+
+/**
  * Sign an S3 request with AWS Signature V4
  */
 async function signRequest(
@@ -144,9 +164,12 @@ async function signRequest(
     host = `${config.bucket}.s3.${region}.amazonaws.com`;
   }
 
+  // URI encode the key (but not the slashes)
+  const encodedKey = uriEncode(key, false);
+
   const endpoint = config.endpoint 
-    ? `${config.endpoint}/${config.bucket}/${key}`
-    : `https://${host}/${key}`;
+    ? `${config.endpoint}/${config.bucket}/${encodedKey}`
+    : `https://${host}/${encodedKey}`;
 
   const now = new Date();
   const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
@@ -167,15 +190,20 @@ async function signRequest(
     headers['content-type'] = contentType;
   }
 
+  if (body) {
+    headers['content-length'] = body.length.toString();
+  }
+
   const signedHeaders = Object.keys(headers).sort().join(';');
   const canonicalHeaders = Object.keys(headers)
     .sort()
     .map(k => `${k}:${headers[k]}\n`)
     .join('');
 
+  // Canonical URI must be URI-encoded
   const canonicalUri = config.endpoint 
-    ? `/${config.bucket}/${key}`
-    : `/${key}`;
+    ? `/${config.bucket}/${encodedKey}`
+    : `/${encodedKey}`;
 
   const canonicalRequest = [
     method,
