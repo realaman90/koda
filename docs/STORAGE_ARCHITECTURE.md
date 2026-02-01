@@ -9,8 +9,40 @@ Support multiple storage backends for open-source flexibility:
 | **localStorage** | Browser | Quick demo, single device | ❌ |
 | **SQLite (local)** | File | Self-hosters, offline-first | ❌ |
 | **Turso** | libSQL Cloud | Free cloud sync, serverless | ✅ |
-| **PostgreSQL (local)** | Server | Enterprise, existing infra | ❌ |
-| **PostgreSQL (cloud)** | Supabase/Neon | Hosted version, teams | ✅ |
+| **PostgreSQL** | Server | Enterprise, existing infra | ✅ |
+
+## Design Decisions
+
+### 1. JSON Blob Storage (Chosen)
+
+Store nodes and edges as JSON blobs rather than normalized tables:
+
+```sql
+CREATE TABLE canvases (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  nodes TEXT,           -- JSON: '[{id, type, position, data}, ...]'
+  edges TEXT,           -- JSON: '[{id, source, target}, ...]'
+  thumbnail TEXT,
+  created_at INTEGER,
+  updated_at INTEGER
+);
+```
+
+**Rationale**:
+- Zero schema changes when node types evolve
+- Single query loads entire canvas (fast)
+- Direct compatibility with existing localStorage format
+- Simpler migration path
+
+### 2. Environment-Based Configuration
+
+Self-hosters configure storage via environment variables:
+
+```bash
+STORAGE_BACKEND=sqlite
+SQLITE_PATH=/path/to/koda.db
+```
 
 ---
 
@@ -71,164 +103,58 @@ Asset Storage (blobs):
 
 ---
 
-## Database Schema
+## Database Schema (JSON Blob Approach)
 
-### Tables
+### SQLite Tables
 
 ```sql
--- Users (for hosted version, optional for self-hosted)
-CREATE TABLE users (
-  id TEXT PRIMARY KEY,
-  email TEXT UNIQUE,
-  name TEXT,
-  avatar_url TEXT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Canvases (projects)
+-- Canvases (projects) - nodes/edges stored as JSON
 CREATE TABLE canvases (
   id TEXT PRIMARY KEY,
-  user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
-  description TEXT,
+  nodes TEXT,              -- JSON blob: '[{id, type, position, data}, ...]'
+  edges TEXT,              -- JSON blob: '[{id, source, target}, ...]'
   thumbnail TEXT,
-  is_template BOOLEAN DEFAULT FALSE,
-  is_public BOOLEAN DEFAULT FALSE,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
 );
 
--- Canvas Nodes (stored separately for better querying)
-CREATE TABLE canvas_nodes (
-  id TEXT PRIMARY KEY,
-  canvas_id TEXT NOT NULL REFERENCES canvases(id) ON DELETE CASCADE,
-  type TEXT NOT NULL,
-  position_x REAL NOT NULL,
-  position_y REAL NOT NULL,
-  width REAL,
-  height REAL,
-  data JSON NOT NULL,
-  z_index INTEGER DEFAULT 0,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Canvas Edges (connections)
-CREATE TABLE canvas_edges (
-  id TEXT PRIMARY KEY,
-  canvas_id TEXT NOT NULL REFERENCES canvases(id) ON DELETE CASCADE,
-  source_node_id TEXT NOT NULL,
-  source_handle TEXT,
-  target_node_id TEXT NOT NULL,
-  target_handle TEXT,
-  type TEXT DEFAULT 'default'
-);
-
--- Assets (generated images/videos metadata)
-CREATE TABLE assets (
-  id TEXT PRIMARY KEY,
-  canvas_id TEXT REFERENCES canvases(id) ON DELETE CASCADE,
-  node_id TEXT,
-  type TEXT NOT NULL,           -- 'image' | 'video' | 'audio'
-  filename TEXT,
-  mime_type TEXT,
-  size_bytes INTEGER,
-  url TEXT,                      -- Remote URL (S3, fal.ai CDN, etc.)
-  local_blob_key TEXT,           -- IndexedDB key for local storage
-  metadata JSON,                 -- Model used, prompt, etc.
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Generation History (for analytics & retry)
-CREATE TABLE generations (
-  id TEXT PRIMARY KEY,
-  canvas_id TEXT REFERENCES canvases(id) ON DELETE CASCADE,
-  node_id TEXT,
-  user_id TEXT REFERENCES users(id),
-  model TEXT NOT NULL,
-  prompt TEXT,
-  parameters JSON,
-  status TEXT DEFAULT 'pending', -- pending, processing, completed, failed
-  result_asset_id TEXT REFERENCES assets(id),
-  error_message TEXT,
-  duration_ms INTEGER,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- User Settings/Preferences
-CREATE TABLE user_settings (
-  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-  theme TEXT DEFAULT 'dark',
-  default_model TEXT,
-  api_keys_encrypted JSON,       -- Encrypted user API keys
-  preferences JSON,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Indexes
-CREATE INDEX idx_canvases_user ON canvases(user_id);
+-- Index for listing by updated time
 CREATE INDEX idx_canvases_updated ON canvases(updated_at DESC);
-CREATE INDEX idx_nodes_canvas ON canvas_nodes(canvas_id);
-CREATE INDEX idx_edges_canvas ON canvas_edges(canvas_id);
-CREATE INDEX idx_assets_canvas ON assets(canvas_id);
-CREATE INDEX idx_generations_canvas ON generations(canvas_id);
 ```
 
 ### Drizzle Schema
 
 ```typescript
-// src/lib/db/schema/canvases.ts
-import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
+// src/lib/db/schema.ts
+import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
 
 export const canvases = sqliteTable('canvases', {
   id: text('id').primaryKey(),
-  userId: text('user_id'),
   name: text('name').notNull(),
-  description: text('description'),
+  nodes: text('nodes'),      // JSON string
+  edges: text('edges'),      // JSON string
   thumbnail: text('thumbnail'),
-  isTemplate: integer('is_template', { mode: 'boolean' }).default(false),
-  isPublic: integer('is_public', { mode: 'boolean' }).default(false),
-  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
 });
+```
 
-export const canvasNodes = sqliteTable('canvas_nodes', {
-  id: text('id').primaryKey(),
-  canvasId: text('canvas_id').notNull().references(() => canvases.id, { onDelete: 'cascade' }),
-  type: text('type').notNull(),
-  positionX: real('position_x').notNull(),
-  positionY: real('position_y').notNull(),
-  width: real('width'),
-  height: real('height'),
-  data: text('data', { mode: 'json' }).notNull(),
-  zIndex: integer('z_index').default(0),
-  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
-});
+### Future Tables (Hosted Version)
 
-export const canvasEdges = sqliteTable('canvas_edges', {
-  id: text('id').primaryKey(),
-  canvasId: text('canvas_id').notNull().references(() => canvases.id, { onDelete: 'cascade' }),
-  sourceNodeId: text('source_node_id').notNull(),
-  sourceHandle: text('source_handle'),
-  targetNodeId: text('target_node_id').notNull(),
-  targetHandle: text('target_handle'),
-  type: text('type').default('default'),
-});
+These will be added later for the hosted/paid version:
 
-export const assets = sqliteTable('assets', {
-  id: text('id').primaryKey(),
-  canvasId: text('canvas_id').references(() => canvases.id, { onDelete: 'cascade' }),
-  nodeId: text('node_id'),
-  type: text('type').notNull(),
-  filename: text('filename'),
-  mimeType: text('mime_type'),
-  sizeBytes: integer('size_bytes'),
-  url: text('url'),
-  localBlobKey: text('local_blob_key'),
-  metadata: text('metadata', { mode: 'json' }),
-  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
-});
+```sql
+-- Users (hosted only)
+CREATE TABLE users (
+  id TEXT PRIMARY KEY,
+  email TEXT UNIQUE NOT NULL,
+  name TEXT,
+  created_at INTEGER NOT NULL
+);
+
+-- Add user_id to canvases for multi-user
+ALTER TABLE canvases ADD COLUMN user_id TEXT REFERENCES users(id);
 ```
 
 ---
@@ -282,254 +208,128 @@ src/lib/
 # STORAGE CONFIGURATION
 # ============================================
 
-# Storage backend: 'localStorage' | 'sqlite' | 'postgres'
+# Storage backend: 'localStorage' | 'sqlite'
+# - localStorage: Browser storage (default, no setup)
+# - sqlite: SQLite database (local file or Turso cloud)
 NEXT_PUBLIC_STORAGE_BACKEND=localStorage
 
 # ============================================
-# SQLite / libSQL Configuration
+# SQLite Configuration (when STORAGE_BACKEND=sqlite)
 # ============================================
 
-# Local SQLite file (for sqlite backend)
+# Local SQLite file path
 # Examples:
-#   file:./data/koda.db       - Local file in project
-#   file:/path/to/koda.db     - Absolute path
+#   ./data/koda.db            - Relative to project root
+#   /home/user/koda/koda.db   - Absolute path
 #   :memory:                  - In-memory (lost on restart)
-SQLITE_URL=file:./data/koda.db
+SQLITE_PATH=./data/koda.db
 
-# Turso Cloud (optional, for cloud sync)
+# Turso Cloud (optional, overrides SQLITE_PATH)
 # Get these from https://turso.tech
 TURSO_DATABASE_URL=
 TURSO_AUTH_TOKEN=
-
-# ============================================
-# PostgreSQL Configuration
-# ============================================
-
-# PostgreSQL connection string (for postgres backend)
-# Examples:
-#   postgres://user:pass@localhost:5432/koda       - Local
-#   postgres://user:pass@db.supabase.co:5432/koda  - Supabase
-#   postgres://user:pass@ep-xxx.neon.tech/koda     - Neon
-DATABASE_URL=
-
-# ============================================
-# Asset Storage (for generated images/videos)
-# ============================================
-
-# Asset storage: 'local' | 's3' | 'r2' | 'supabase'
-ASSET_STORAGE=local
-
-# S3-compatible storage (S3, R2, Supabase Storage)
-S3_BUCKET=
-S3_REGION=
-S3_ACCESS_KEY=
-S3_SECRET_KEY=
-S3_ENDPOINT=              # For R2: https://xxx.r2.cloudflarestorage.com
-
-# ============================================
-# Feature Flags
-# ============================================
-
-# Enable hosted-only features (auth, teams, etc.)
-HOSTED_MODE=false
-```
-
-### Configuration Module
-
-```typescript
-// src/lib/config/storage.ts
-export type StorageBackend = 'localStorage' | 'sqlite' | 'postgres';
-export type AssetStorage = 'local' | 's3' | 'r2' | 'supabase';
-
-export interface StorageConfig {
-  backend: StorageBackend;
-  sqlite?: {
-    url: string;
-    authToken?: string;
-  };
-  postgres?: {
-    url: string;
-  };
-  assets: {
-    storage: AssetStorage;
-    s3?: {
-      bucket: string;
-      region: string;
-      accessKey: string;
-      secretKey: string;
-      endpoint?: string;
-    };
-  };
-  hostedMode: boolean;
-}
-
-export function getStorageConfig(): StorageConfig {
-  const backend = (process.env.NEXT_PUBLIC_STORAGE_BACKEND || 'localStorage') as StorageBackend;
-  
-  return {
-    backend,
-    sqlite: backend === 'sqlite' ? {
-      url: process.env.TURSO_DATABASE_URL || process.env.SQLITE_URL || 'file:./data/koda.db',
-      authToken: process.env.TURSO_AUTH_TOKEN,
-    } : undefined,
-    postgres: backend === 'postgres' ? {
-      url: process.env.DATABASE_URL || '',
-    } : undefined,
-    assets: {
-      storage: (process.env.ASSET_STORAGE || 'local') as AssetStorage,
-      s3: process.env.S3_BUCKET ? {
-        bucket: process.env.S3_BUCKET,
-        region: process.env.S3_REGION || 'auto',
-        accessKey: process.env.S3_ACCESS_KEY || '',
-        secretKey: process.env.S3_SECRET_KEY || '',
-        endpoint: process.env.S3_ENDPOINT,
-      } : undefined,
-    },
-    hostedMode: process.env.HOSTED_MODE === 'true',
-  };
-}
 ```
 
 ---
 
 ## Implementation Phases
 
-### Phase 1: Foundation (Week 1)
-- [ ] Add Drizzle ORM + dependencies
-- [ ] Create database schema (SQLite version)
-- [ ] Create `DatabaseStorageProvider` implementing existing interface
-- [ ] Add configuration module
-- [ ] Update provider factory to support sqlite
+### Phase 1: SQLite Foundation ✅ IN PROGRESS
+- [x] Add Drizzle ORM + libSQL dependencies
+- [x] Create database schema (JSON blob style)
+- [x] Create `SQLiteStorageProvider` implementing existing interface
+- [x] Add environment-based configuration
+- [x] Update provider factory to support sqlite
+- [x] Add migration script
 
-**Files to create/modify:**
+**Files:**
 - `package.json` - Add dependencies
-- `src/lib/db/schema/*.ts` - Database schema
+- `src/lib/db/schema.ts` - Database schema
 - `src/lib/db/index.ts` - Client factory
-- `src/lib/storage/database-provider.ts` - New provider
+- `src/lib/db/migrate.ts` - Migration script
+- `src/lib/storage/sqlite-provider.ts` - SQLite provider
 - `src/lib/storage/index.ts` - Update factory
-- `src/lib/config/storage.ts` - Configuration
+- `.env.example` - Document variables
 
-### Phase 2: Local SQLite (Week 2)
-- [ ] Implement SQLite adapter with libSQL
-- [ ] Add migration system
-- [ ] Add data migration from localStorage
-- [ ] Test offline functionality
-- [ ] Add database scripts to package.json
-
-**New scripts:**
-```json
-{
-  "scripts": {
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx src/lib/db/migrate.ts",
-    "db:studio": "drizzle-kit studio"
-  }
-}
-```
-
-### Phase 3: PostgreSQL Support (Week 3)
-- [ ] Create PostgreSQL schema variant
-- [ ] Implement Postgres adapter
-- [ ] Test with local PostgreSQL
-- [ ] Test with Supabase
-- [ ] Add Docker Compose for local Postgres
-
-### Phase 4: Asset Storage (Week 4)
-- [ ] Implement IndexedDB for local blob storage
-- [ ] Implement S3-compatible storage module
-- [ ] Update nodes to use asset storage
-- [ ] Add asset cleanup on canvas delete
-
-### Phase 5: Migration & Polish (Week 5)
-- [ ] localStorage → Database migration flow
-- [ ] Error handling and retry logic
-- [ ] Loading states during migration
+### Phase 2: Testing & Polish
+- [ ] Test localStorage → SQLite migration
+- [ ] Add Drizzle Studio for debugging
 - [ ] Self-hosting documentation
-- [ ] Docker images
+- [ ] Docker support
+
+### Phase 3: PostgreSQL (Future)
+- [ ] Add PostgreSQL adapter
+- [ ] Test with Supabase/Neon
+- [ ] Docker Compose for local Postgres
+
+### Phase 4: Hosted Features (Future)
+- [ ] User authentication
+- [ ] Multi-user canvases
+- [ ] Cloud asset storage
 
 ---
 
-## Database Provider Implementation
+## SQLite Provider Implementation
 
 ```typescript
-// src/lib/storage/database-provider.ts
-import { eq } from 'drizzle-orm';
+// src/lib/storage/sqlite-provider.ts
+import { eq, desc } from 'drizzle-orm';
 import type { StorageProvider, StoredCanvas, CanvasMetadata } from './types';
-import { canvasToMetadata } from './types';
 import { getDatabase } from '../db';
-import { canvases, canvasNodes, canvasEdges } from '../db/schema';
+import { canvases } from '../db/schema';
 
-export class DatabaseStorageProvider implements StorageProvider {
-  private db = getDatabase();
-
+export class SQLiteStorageProvider implements StorageProvider {
   async listCanvases(): Promise<CanvasMetadata[]> {
-    const results = await this.db
+    const db = getDatabase();
+    const results = await db
       .select()
       .from(canvases)
-      .orderBy(canvases.updatedAt);
+      .orderBy(desc(canvases.updatedAt));
 
-    return results.map(c => ({
-      id: c.id,
-      name: c.name,
-      thumbnail: c.thumbnail || undefined,
-      createdAt: c.createdAt?.getTime() || Date.now(),
-      updatedAt: c.updatedAt?.getTime() || Date.now(),
-      nodeCount: 0, // TODO: Add count query
-    }));
+    return results.map(c => {
+      const nodes = c.nodes ? JSON.parse(c.nodes) : [];
+      return {
+        id: c.id,
+        name: c.name,
+        thumbnail: c.thumbnail || undefined,
+        createdAt: c.createdAt.getTime(),
+        updatedAt: c.updatedAt.getTime(),
+        nodeCount: nodes.length,
+      };
+    });
   }
 
   async getCanvas(id: string): Promise<StoredCanvas | null> {
-    const [canvas] = await this.db
+    const db = getDatabase();
+    const [canvas] = await db
       .select()
       .from(canvases)
       .where(eq(canvases.id, id));
 
     if (!canvas) return null;
 
-    const nodes = await this.db
-      .select()
-      .from(canvasNodes)
-      .where(eq(canvasNodes.canvasId, id));
-
-    const edges = await this.db
-      .select()
-      .from(canvasEdges)
-      .where(eq(canvasEdges.canvasId, id));
-
     return {
       id: canvas.id,
       name: canvas.name,
       thumbnail: canvas.thumbnail || undefined,
-      createdAt: canvas.createdAt?.getTime() || Date.now(),
-      updatedAt: canvas.updatedAt?.getTime() || Date.now(),
-      nodes: nodes.map(n => ({
-        id: n.id,
-        type: n.type,
-        position: { x: n.positionX, y: n.positionY },
-        data: n.data as any,
-        width: n.width || undefined,
-        height: n.height || undefined,
-      })),
-      edges: edges.map(e => ({
-        id: e.id,
-        source: e.sourceNodeId,
-        sourceHandle: e.sourceHandle || undefined,
-        target: e.targetNodeId,
-        targetHandle: e.targetHandle || undefined,
-        type: e.type || 'default',
-      })),
+      createdAt: canvas.createdAt.getTime(),
+      updatedAt: canvas.updatedAt.getTime(),
+      nodes: canvas.nodes ? JSON.parse(canvas.nodes) : [],
+      edges: canvas.edges ? JSON.parse(canvas.edges) : [],
     };
   }
 
   async saveCanvas(canvas: StoredCanvas): Promise<void> {
+    const db = getDatabase();
     const now = new Date();
 
-    // Upsert canvas
-    await this.db
+    await db
       .insert(canvases)
       .values({
         id: canvas.id,
         name: canvas.name,
+        nodes: JSON.stringify(canvas.nodes),
+        edges: JSON.stringify(canvas.edges),
         thumbnail: canvas.thumbnail,
         createdAt: new Date(canvas.createdAt),
         updatedAt: now,
@@ -538,56 +338,22 @@ export class DatabaseStorageProvider implements StorageProvider {
         target: canvases.id,
         set: {
           name: canvas.name,
+          nodes: JSON.stringify(canvas.nodes),
+          edges: JSON.stringify(canvas.edges),
           thumbnail: canvas.thumbnail,
           updatedAt: now,
         },
       });
-
-    // Delete existing nodes and edges
-    await this.db.delete(canvasNodes).where(eq(canvasNodes.canvasId, canvas.id));
-    await this.db.delete(canvasEdges).where(eq(canvasEdges.canvasId, canvas.id));
-
-    // Insert nodes
-    if (canvas.nodes.length > 0) {
-      await this.db.insert(canvasNodes).values(
-        canvas.nodes.map(n => ({
-          id: n.id,
-          canvasId: canvas.id,
-          type: n.type || 'unknown',
-          positionX: n.position.x,
-          positionY: n.position.y,
-          width: n.width,
-          height: n.height,
-          data: n.data,
-          createdAt: now,
-          updatedAt: now,
-        }))
-      );
-    }
-
-    // Insert edges
-    if (canvas.edges.length > 0) {
-      await this.db.insert(canvasEdges).values(
-        canvas.edges.map(e => ({
-          id: e.id,
-          canvasId: canvas.id,
-          sourceNodeId: e.source,
-          sourceHandle: e.sourceHandle,
-          targetNodeId: e.target,
-          targetHandle: e.targetHandle,
-          type: e.type,
-        }))
-      );
-    }
   }
 
   async deleteCanvas(id: string): Promise<void> {
-    // Cascading delete handles nodes and edges
-    await this.db.delete(canvases).where(eq(canvases.id, id));
+    const db = getDatabase();
+    await db.delete(canvases).where(eq(canvases.id, id));
   }
 
   async canvasExists(id: string): Promise<boolean> {
-    const [result] = await this.db
+    const db = getDatabase();
+    const [result] = await db
       .select({ id: canvases.id })
       .from(canvases)
       .where(eq(canvases.id, id));
@@ -621,7 +387,7 @@ Better for multiple projects and data persistence.
 \`\`\`bash
 # .env.local
 NEXT_PUBLIC_STORAGE_BACKEND=sqlite
-SQLITE_URL=file:./data/koda.db
+SQLITE_PATH=./data/koda.db
 \`\`\`
 
 \`\`\`bash
@@ -644,44 +410,6 @@ TURSO_DATABASE_URL=libsql://your-db.turso.io
 TURSO_AUTH_TOKEN=your-token
 \`\`\`
 
-## Option 3: PostgreSQL
-
-For teams or existing PostgreSQL infrastructure.
-
-### Local PostgreSQL
-
-\`\`\`bash
-# Start PostgreSQL with Docker
-docker-compose up -d postgres
-
-# Or use existing PostgreSQL
-# .env.local
-NEXT_PUBLIC_STORAGE_BACKEND=postgres
-DATABASE_URL=postgres://user:pass@localhost:5432/koda
-\`\`\`
-
-### Supabase (Hosted PostgreSQL)
-
-1. Create project at https://supabase.com
-2. Get connection string from Settings → Database
-
-\`\`\`bash
-# .env.local
-NEXT_PUBLIC_STORAGE_BACKEND=postgres
-DATABASE_URL=postgres://postgres:xxx@db.xxx.supabase.co:5432/postgres
-\`\`\`
-
-### Neon (Serverless PostgreSQL)
-
-1. Create project at https://neon.tech
-2. Get connection string
-
-\`\`\`bash
-# .env.local
-NEXT_PUBLIC_STORAGE_BACKEND=postgres
-DATABASE_URL=postgres://user:pass@ep-xxx.neon.tech/koda
-\`\`\`
-
 ## Docker Deployment
 
 \`\`\`yaml
@@ -694,12 +422,9 @@ services:
       - "3000:3000"
     environment:
       - NEXT_PUBLIC_STORAGE_BACKEND=sqlite
-      - SQLITE_URL=file:/data/koda.db
+      - SQLITE_PATH=/data/koda.db
     volumes:
-      - koda-data:/data
-
-volumes:
-  koda-data:
+      - ./data:/data
 \`\`\`
 
 ## Comparison
@@ -709,20 +434,69 @@ volumes:
 | localStorage | None | Browser only | ❌ | Free |
 | SQLite (local) | 1 env var | File | ❌ | Free |
 | Turso | Account | Cloud | ✅ | Free tier |
-| PostgreSQL | Server | Server | ✅ | Varies |
-| Supabase | Account | Cloud | ✅ | Free tier |
 ```
 
 ---
 
-## Next Steps
+## Asset Storage
 
-1. **Review this plan** - Any changes to schema or approach?
-2. **Start Phase 1** - Add dependencies and basic schema
-3. **Test with SQLite first** - Simplest path to validate architecture
-4. **Add PostgreSQL** - After SQLite works
+Generated images, videos, and audio are stored separately from canvas data.
 
-Questions to decide:
-- [ ] Do you want users table for self-hosted (local auth) or hosted-only?
-- [ ] Should we store nodes/edges as JSON blob or normalized tables?
-- [ ] Which cloud asset storage for hosted version (S3, R2, Supabase)?
+### Asset Storage Options
+
+| Backend | Best For | Cost | Free Tier |
+|---------|----------|------|-----------|
+| **local** | Self-hosting | Free | ∞ |
+| **r2** | Cloud (recommended) | $0.015/GB | 10GB/month |
+| **s3** | Enterprise/AWS | $0.023/GB + egress | 5GB (12mo) |
+
+### Why R2 over S3?
+
+- **Zero egress fees** - S3 charges $0.09/GB when users download images
+- **Permanent free tier** - 10GB free forever (S3 expires after 12 months)
+- **Same API** - S3-compatible, same code works for both
+
+### Configuration
+
+```bash
+# Local storage (default for self-hosting)
+ASSET_STORAGE=local
+ASSET_LOCAL_PATH=./data/generations
+
+# Cloudflare R2 (recommended for cloud)
+ASSET_STORAGE=r2
+R2_ACCOUNT_ID=your-account-id
+R2_ACCESS_KEY_ID=your-key
+R2_SECRET_ACCESS_KEY=your-secret
+R2_BUCKET_NAME=koda-assets
+R2_PUBLIC_URL=https://assets.yourdomain.com
+
+# AWS S3 (enterprise)
+ASSET_STORAGE=s3
+S3_ACCESS_KEY_ID=your-key
+S3_SECRET_ACCESS_KEY=your-secret
+S3_BUCKET_NAME=koda-assets
+S3_REGION=us-east-1
+```
+
+### How It Works
+
+1. User generates an image/video/audio
+2. Fal.ai returns a temporary URL (expires in 24-48h)
+3. If asset storage is configured:
+   - Download the file from fal.ai
+   - Save to local filesystem or cloud bucket
+   - Return the permanent local/cloud URL
+4. Node stores the permanent URL
+
+### File Structure (Local)
+
+```
+./data/
+├── koda.db                    # SQLite database
+└── generations/
+    ├── manifest.json          # Asset metadata
+    ├── img_abc123.png         # Generated images
+    ├── vid_def456.mp4         # Generated videos
+    └── aud_ghi789.mp3         # Generated audio
+```

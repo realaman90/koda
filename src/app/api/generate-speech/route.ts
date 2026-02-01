@@ -1,11 +1,62 @@
 import { NextResponse } from 'next/server';
 import { fal } from '@fal-ai/client';
 import { FAL_AUDIO_MODELS, type ElevenLabsVoice } from '@/lib/types';
+import { getAssetStorageType, getExtensionFromUrl, type AssetStorageProvider } from '@/lib/assets';
 
 // Configure Fal client
 fal.config({
   credentials: process.env.FAL_KEY,
 });
+
+/**
+ * Get the asset storage provider (server-side only)
+ */
+async function getProvider(): Promise<AssetStorageProvider> {
+  const storageType = getAssetStorageType();
+  
+  if (storageType === 'r2' || storageType === 's3') {
+    const { getS3AssetProvider } = await import('@/lib/assets/s3-provider');
+    return getS3AssetProvider(storageType);
+  }
+  
+  const { getLocalAssetProvider } = await import('@/lib/assets/local-provider');
+  return getLocalAssetProvider();
+}
+
+/**
+ * Save generated audio to configured asset storage
+ */
+async function saveGeneratedAudio(
+  url: string,
+  options: { text: string; model: string; canvasId?: string; nodeId?: string }
+): Promise<string> {
+  const storageType = getAssetStorageType();
+  
+  if (storageType === 'local' && !process.env.ASSET_STORAGE) {
+    return url;
+  }
+
+  const provider = await getProvider();
+
+  try {
+    const extension = getExtensionFromUrl(url) || 'mp3';
+    const asset = await provider.saveFromUrl(url, {
+      type: 'audio',
+      extension,
+      metadata: {
+        mimeType: `audio/${extension === 'mp3' ? 'mpeg' : extension}`,
+        prompt: options.text,
+        model: options.model,
+        canvasId: options.canvasId,
+        nodeId: options.nodeId,
+      },
+    });
+    return asset.url;
+  } catch (error) {
+    console.error('Failed to save audio asset:', error);
+    return url;
+  }
+}
 
 export async function POST(request: Request) {
   try {
@@ -56,9 +107,19 @@ export async function POST(request: Request) {
       throw new Error('No audio generated');
     }
 
+    // Save audio to configured asset storage
+    const { canvasId, nodeId } = body;
+    const savedUrl = await saveGeneratedAudio(audioUrl, {
+      text,
+      model: modelId,
+      canvasId,
+      nodeId,
+    });
+
     return NextResponse.json({
       success: true,
-      audioUrl,
+      audioUrl: savedUrl,
+      originalUrl: audioUrl,
       model: modelId,
     });
   } catch (error) {

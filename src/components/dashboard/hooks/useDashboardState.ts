@@ -65,6 +65,7 @@ export function useDashboardState(): DashboardState {
   const duplicateCanvas = useAppStore((state) => state.duplicateCanvas);
   const deleteCanvas = useAppStore((state) => state.deleteCanvas);
   const migrateLegacyData = useAppStore((state) => state.migrateLegacyData);
+  const initializeSync = useAppStore((state) => state.initializeSync);
 
   const templates = getTemplateList();
 
@@ -82,14 +83,19 @@ export function useDashboardState(): DashboardState {
 
   useEffect(() => {
     async function init() {
+      // Initialize sync with SQLite (if configured)
+      await initializeSync();
+
+      // Migrate legacy localStorage data
       const migratedId = await migrateLegacyData();
       if (migratedId) {
         toast.success('Migrated your existing canvas');
       }
+      
       await loadCanvasList();
     }
     init();
-  }, [loadCanvasList, migrateLegacyData]);
+  }, [loadCanvasList, migrateLegacyData, initializeSync]);
 
   const handleCreateCanvas = useCallback(async () => {
     setIsCreating(true);

@@ -2,11 +2,70 @@ import { NextResponse } from 'next/server';
 import { fal } from '@fal-ai/client';
 import { FAL_MODELS, type ImageModelType } from '@/lib/types';
 import { getModelAdapter, type GenerateRequest } from '@/lib/model-adapters';
+import { getAssetStorageType, getExtensionFromUrl, type AssetStorageProvider } from '@/lib/assets';
 
 // Configure Fal client
 fal.config({
   credentials: process.env.FAL_KEY,
 });
+
+/**
+ * Get the asset storage provider (server-side only)
+ */
+async function getProvider(): Promise<AssetStorageProvider> {
+  const storageType = getAssetStorageType();
+  
+  if (storageType === 'r2' || storageType === 's3') {
+    const { getS3AssetProvider } = await import('@/lib/assets/s3-provider');
+    return getS3AssetProvider(storageType);
+  }
+  
+  const { getLocalAssetProvider } = await import('@/lib/assets/local-provider');
+  return getLocalAssetProvider();
+}
+
+/**
+ * Save generated images to configured asset storage
+ * Returns local URLs if storage is configured, otherwise returns original URLs
+ */
+async function saveGeneratedImages(
+  urls: string[],
+  options: { prompt: string; model: string; canvasId?: string; nodeId?: string }
+): Promise<string[]> {
+  const storageType = getAssetStorageType();
+  
+  // If using default (no storage configured), return original URLs
+  if (storageType === 'local' && !process.env.ASSET_STORAGE) {
+    return urls;
+  }
+
+  const provider = await getProvider();
+  const savedUrls: string[] = [];
+
+  for (const url of urls) {
+    try {
+      const extension = getExtensionFromUrl(url) || 'png';
+      const asset = await provider.saveFromUrl(url, {
+        type: 'image',
+        extension,
+        metadata: {
+          mimeType: `image/${extension}`,
+          prompt: options.prompt,
+          model: options.model,
+          canvasId: options.canvasId,
+          nodeId: options.nodeId,
+        },
+      });
+      savedUrls.push(asset.url);
+    } catch (error) {
+      console.error('Failed to save image asset:', error);
+      // Fall back to original URL if save fails
+      savedUrls.push(url);
+    }
+  }
+
+  return savedUrls;
+}
 
 export async function POST(request: Request) {
   try {
@@ -82,10 +141,20 @@ export async function POST(request: Request) {
       throw new Error('No images generated');
     }
 
+    // Save images to configured asset storage (local filesystem, R2, or S3)
+    const { canvasId, nodeId } = body;
+    const savedUrls = await saveGeneratedImages(imageUrls, {
+      prompt,
+      model: modelId,
+      canvasId,
+      nodeId,
+    });
+
     return NextResponse.json({
       success: true,
-      imageUrl: imageUrls[0], // For backwards compatibility
-      imageUrls, // Array of all generated images
+      imageUrl: savedUrls[0], // For backwards compatibility
+      imageUrls: savedUrls, // Array of all generated images (now local URLs if storage configured)
+      originalUrls: imageUrls, // Keep original fal.ai URLs as backup
       model: modelId,
     });
   } catch (error) {
