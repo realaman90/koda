@@ -1,7 +1,7 @@
 import type { Node, Edge } from '@xyflow/react';
 
 // Node Types
-export type NodeType = 'imageGenerator' | 'videoGenerator' | 'text' | 'media' | 'stickyNote' | 'sticker' | 'group' | 'storyboard' | 'musicGenerator' | 'speech' | 'videoAudio';
+export type NodeType = 'imageGenerator' | 'videoGenerator' | 'text' | 'media' | 'stickyNote' | 'sticker' | 'group' | 'storyboard' | 'musicGenerator' | 'speech' | 'videoAudio' | 'pluginNode';
 
 // ============================================
 // PRESET TYPES (for Settings Panel)
@@ -178,8 +178,17 @@ export interface GroupNodeData extends Record<string, unknown> {
 
 export type GroupNode = Node<GroupNodeData, 'group'>;
 
+// Plugin Node - Dynamic node rendered by plugins
+export interface PluginNodeData extends Record<string, unknown> {
+  pluginId: string;
+  name?: string;
+  state: Record<string, unknown>;
+}
+
+export type PluginNode = Node<PluginNodeData, 'pluginNode'>;
+
 // Union of all node types
-export type AppNode = ImageGeneratorNode | VideoGeneratorNode | TextNode | MediaNode | StickyNoteNode | StickerNode | GroupNode | StoryboardNode | MusicGeneratorNode | SpeechNode | VideoAudioNode;
+export type AppNode = ImageGeneratorNode | VideoGeneratorNode | TextNode | MediaNode | StickyNoteNode | StickerNode | GroupNode | StoryboardNode | MusicGeneratorNode | SpeechNode | VideoAudioNode | PluginNode;
 export type AppEdge = Edge;
 
 // Fal API types

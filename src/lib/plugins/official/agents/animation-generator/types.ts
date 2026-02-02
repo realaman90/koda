@@ -1,0 +1,214 @@
+/**
+ * Animation Generator Plugin Types
+ * 
+ * Plugin-specific type definitions based on ANIMATION_PLUGIN.md Part 9.4
+ */
+
+// ============================================
+// PHASE TYPES
+// ============================================
+
+export type AnimationPhase = 
+  | 'idle' 
+  | 'question' 
+  | 'plan' 
+  | 'executing' 
+  | 'preview' 
+  | 'complete' 
+  | 'error';
+
+// ============================================
+// QUESTION PHASE TYPES
+// ============================================
+
+export interface AnimationStyleOption {
+  id: string;
+  label: string;
+  description?: string;
+}
+
+export interface AnimationQuestion {
+  text: string;
+  options: AnimationStyleOption[];
+  customInput?: boolean;
+}
+
+// ============================================
+// PLAN PHASE TYPES
+// ============================================
+
+export interface AnimationScene {
+  number: number;
+  title: string;
+  duration: number;
+  description: string;
+  animationNotes?: string;
+}
+
+export interface AnimationPlan {
+  scenes: AnimationScene[];
+  totalDuration: number;
+  style: string;
+  fps: number;
+}
+
+// ============================================
+// EXECUTION PHASE TYPES
+// ============================================
+
+export interface AnimationTodo {
+  id: string;
+  label: string;
+  status: 'pending' | 'active' | 'done';
+}
+
+export interface AnimationMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp?: string;
+}
+
+export interface AnimationExecution {
+  todos: AnimationTodo[];
+  thinking: string;
+  messages: AnimationMessage[];
+  files: string[];
+  /** Accumulated agent text output (streamed in real-time) */
+  streamingText?: string;
+  /** Accumulated extended thinking / reasoning from the model */
+  reasoning?: string;
+}
+
+// ============================================
+// PREVIEW PHASE TYPES
+// ============================================
+
+export interface AnimationPreview {
+  videoUrl: string;
+  streamUrl?: string;
+  duration: number;
+}
+
+// ============================================
+// OUTPUT TYPES
+// ============================================
+
+export interface AnimationOutput {
+  videoUrl: string;
+  thumbnailUrl: string;
+  duration: number;
+  resolution?: string;
+  fileSize?: number;
+}
+
+// ============================================
+// ERROR TYPES
+// ============================================
+
+export interface AnimationError {
+  message: string;
+  code: string;
+  canRetry: boolean;
+  details?: string;
+}
+
+// ============================================
+// NODE STATE (from Spec 9.4)
+// ============================================
+
+export interface AnimationNodeState {
+  // Core state
+  nodeId: string;
+  phase: AnimationPhase;
+
+  // Phase-specific data
+  question?: AnimationQuestion;
+  selectedStyle?: string;
+  plan?: AnimationPlan;
+  execution?: AnimationExecution;
+  preview?: AnimationPreview;
+  output?: AnimationOutput;
+  error?: AnimationError;
+
+  // Sandbox state
+  sandboxId?: string;
+  sandboxStatus?: 'creating' | 'ready' | 'busy' | 'destroyed';
+  lastCheckpoint?: string;
+
+  // Timestamps
+  createdAt: string;
+  updatedAt: string;
+  startedAt?: string;
+  completedAt?: string;
+}
+
+// ============================================
+// REFERENCE HANDLE TYPES
+// ============================================
+
+export interface AnimationAttachment {
+  id: string;
+  type: 'image' | 'video';
+  url: string;
+  name?: string;
+  nodeId?: string;  // If referencing another node's output
+}
+
+// ============================================
+// NODE DATA (for React Flow)
+// ============================================
+
+export interface AnimationNodeData extends Record<string, unknown> {
+  name?: string;
+  prompt: string;
+  state: AnimationNodeState;
+  
+  // Dynamic handle counts
+  imageRefCount?: number;  // Number of image reference handles (default 1)
+  videoRefCount?: number;  // Number of video reference handles (default 1)
+  
+  // Attachments for chat input
+  attachments?: AnimationAttachment[];
+  
+  // Selected model
+  model?: string;
+}
+
+// ============================================
+// API TYPES
+// ============================================
+
+export type AnimationAction =
+  | 'analyze'
+  | 'generatePlan'
+  | 'revisePlan'
+  | 'execute'
+  | 'regenerate'
+  | 'finalize'
+  | 'cleanup';
+
+export interface AnimationAPIRequest {
+  nodeId: string;
+  action: AnimationAction;
+  prompt?: string;
+  selectedStyle?: string;
+  plan?: AnimationPlan;
+  feedback?: string;
+  currentPlan?: AnimationPlan;
+  previewUrl?: string;
+  sandboxId?: string;
+  duration?: number;
+  resolution?: '720p' | '1080p' | '4k';
+}
+
+export interface AnimationAPIResponse {
+  success: boolean;
+  needsClarification?: boolean;
+  question?: AnimationQuestion;
+  plan?: AnimationPlan;
+  phase?: AnimationPhase;
+  error?: string;
+  outputUrl?: string;
+  thumbnailUrl?: string;
+}

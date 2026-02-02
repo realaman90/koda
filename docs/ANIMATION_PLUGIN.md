@@ -15,6 +15,8 @@
 7. [Rendering Pipeline](#part-7-rendering-pipeline)
 8. [Session, Persistence & Checkpointing](#part-8-session-persistence--checkpointing)
 9. [Plugin Integration](#part-9-plugin-integration)
+10. [Mastra Agent Implementation](#part-10-mastra-agent-implementation)
+10. [Mastra Agent Implementation](#part-10-mastra-agent-implementation)
 
 ---
 
@@ -2985,6 +2987,1413 @@ The Animation Generator is the most complex plugin type in the system, combining
 - Full state restoration on reconnect
 
 This serves as the reference implementation for other complex agent plugins that require long-running sandboxes and stateful workflows.
+
+---
+
+# Part 10: Mastra Agent Implementation
+
+This section details the agent implementation using [Mastra](https://mastra.ai/docs/), including the two-agent architecture pattern, system instructions, tool definitions, and subagent streaming.
+
+## 10.1 Two-Agent Architecture Pattern
+
+### Why Two Agents?
+
+The Animation Generator has two distinct concerns:
+
+| Concern | Knowledge Required | Complexity |
+|---------|-------------------|------------|
+| **Workflow orchestration** | Phases, user interaction, decisions | Low-medium |
+| **Theatre.js code generation** | API details, patterns, React Three Fiber | **Heavy** |
+
+Combining these into a single agent creates problems:
+- Bloated system prompt (~20k+ tokens)
+- Agent loses focus on workflow when generating code
+- Hard to improve code generation without affecting orchestration
+- Difficult to swap models for different tasks
+
+### The Solution: Orchestrator + Code Generator
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    ORCHESTRATOR AGENT                            │
+│                       (~4k tokens)                               │
+│                                                                 │
+│  "I manage the workflow, talk to the user, and coordinate"      │
+│                                                                 │
+│  Knows:                                                         │
+│  • Phases and transitions                                       │
+│  • When to ask questions vs proceed                             │
+│  • How to interpret user feedback                               │
+│  • Animation timing principles (for planning)                   │
+│                                                                 │
+│  Does NOT know:                                                 │
+│  • Theatre.js API details                                       │
+│  • React Three Fiber specifics                                  │
+│  • Specific code patterns                                       │
+│                                                                 │
+│  Tools:                                                         │
+│  ├── generate_code ──────────────────────┐ (subagent-as-tool)   │
+│  ├── sandbox_write_file                  │                      │
+│  ├── sandbox_run_command                 │                      │
+│  ├── render_preview                      │                      │
+│  ├── update_todo                         │                      │
+│  └── set_thinking                        │                      │
+└──────────────────────────────────────────│──────────────────────┘
+                                           │
+                                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                  CODE GENERATOR SUBAGENT                         │
+│                     (~12-15k tokens)                             │
+│                                                                 │
+│  "I am a Theatre.js expert. Give me specs, I return code."      │
+│                                                                 │
+│  Knows:                                                         │
+│  • Theatre.js API (sequences, keyframes, sheets)                │
+│  • React Three Fiber integration (@theatre/r3f)                 │
+│  • Easing functions and animation math                          │
+│  • File structure conventions                                   │
+│  • Export/render patterns for video output                      │
+│                                                                 │
+│  Does NOT know:                                                 │
+│  • User context or conversation history                         │
+│  • Phase management                                             │
+│  • What to do next                                              │
+│                                                                 │
+│  Input: Structured task description                             │
+│  Output: Complete file contents (streamed JSON)                 │
+│  No tools — pure generation                                     │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Benefits
+
+| Benefit | Explanation |
+|---------|-------------|
+| **Separation of concerns** | Orchestrator stays focused on workflow, code generator on code |
+| **Smaller prompts** | Each agent has only what it needs |
+| **Streaming code** | Subagent output streams to UI for live feedback |
+| **Independent improvement** | Can upgrade code generator without touching orchestration |
+| **Model flexibility** | Could use different models for each task |
+| **Clean iteration** | Orchestrator decides **what** to change, code generator knows **how** |
+
+---
+
+## 10.2 Orchestrator Agent
+
+### Definition
+
+```typescript
+// src/lib/agents/orchestrator-agent.ts
+
+import { Agent } from '@mastra/core';
+import { anthropic } from '@mastra/anthropic';
+
+import { ORCHESTRATOR_INSTRUCTIONS } from './instructions/orchestrator';
+import { generateCodeTool } from './tools/generate-code';
+import { sandboxTools } from './tools/sandbox';
+import { renderTools } from './tools/render';
+import { uiTools } from './tools/ui';
+
+export const orchestratorAgent = new Agent({
+  name: 'animation-orchestrator',
+  model: anthropic('claude-sonnet-4-20250514'),
+  instructions: ORCHESTRATOR_INSTRUCTIONS,
+  tools: {
+    // Subagent as tool (streams code generation)
+    generate_code: generateCodeTool,
+    
+    // Sandbox tools
+    ...sandboxTools,
+    
+    // Render tools
+    ...renderTools,
+    
+    // UI communication tools
+    ...uiTools,
+  },
+});
+```
+
+### System Instructions
+
+```typescript
+// src/lib/agents/instructions/orchestrator.ts
+
+export const ORCHESTRATOR_INSTRUCTIONS = `
+# Animation Orchestrator
+
+You coordinate the animation creation workflow. You manage phases, interact with users, and delegate code generation to a specialized tool.
+
+## Your Role
+
+- Guide users through the animation creation process
+- Make decisions about workflow (skip questions? need more info?)
+- Create animation plans with timing and scene breakdowns
+- Delegate ALL code generation to the \`generate_code\` tool
+- Handle user feedback and determine what needs to change
+- You do NOT write Theatre.js code yourself — always use generate_code
+
+## Workflow Phases
+
+### PHASE: question
+**When**: Style is ambiguous or unspecified.
+
+Decide:
+- If prompt says "smooth", "bouncy", "cinematic" → style is clear, skip to plan
+- If prompt is generic like "animate a logo" → ask ONE question
+
+Question format:
+\`\`\`
+What animation style fits your vision?
+
+1. **Playful & Bouncy** — Overshoots, elastic motion, energetic feel
+2. **Smooth & Minimal** — Subtle, flowing, sophisticated movements
+3. **Cinematic & Dramatic** — Building tension, camera-like motion
+4. **Custom** — Describe your own style
+\`\`\`
+
+Use \`request_approval\` with type: "question" and the options.
+
+### PHASE: plan
+**When**: Style is known, ready to plan scenes.
+
+Create a scene breakdown:
+- 3-7 scenes for short animations (5-15s)
+- 5-12 scenes for longer animations (15-60s)
+- Minimum 1.5 seconds per scene
+- Each scene: title, duration, description, animation notes
+
+Plan format:
+\`\`\`
+**Animation Plan** (Total: Xs)
+
+**Scene 1: [Title]** (0:00–0:02)
+What happens: [description]
+Animation: [techniques, easing, movements]
+
+**Scene 2: [Title]** (0:02–0:04)
+...
+\`\`\`
+
+Use \`request_approval\` with type: "plan" and the plan content.
+
+### PHASE: executing
+**When**: User approved the plan.
+
+Execution steps:
+1. Create todo list from plan scenes
+2. For each todo:
+   a. \`update_todo(id, "active")\`
+   b. \`set_thinking("Creating [description]...")\`
+   c. Call \`generate_code\` with task specification
+   d. Write each returned file with \`sandbox_write_file\`
+   e. \`update_todo(id, "done")\`
+3. After all code: \`sandbox_run_command("bun run dev")\`
+4. \`render_preview({ duration })\`
+5. Show preview to user
+
+CRITICAL:
+- ALWAYS use generate_code for any code — never write code yourself
+- Update thinking frequently so user sees progress
+- If generate_code returns an error, report it and retry
+
+### PHASE: preview
+**When**: Preview video is ready.
+
+- Preview displays automatically
+- Wait for user response
+- If approved: render final quality
+- If rejected with feedback: go to iteration
+
+### PHASE: iteration
+**When**: User gives feedback on preview.
+
+Steps:
+1. Analyze feedback: What needs to change?
+2. Identify affected files (usually 1-2, not all)
+3. Call \`generate_code\` with:
+   - task: "modify_existing"
+   - file path
+   - current content
+   - change description
+4. Write updated file(s)
+5. Re-render preview
+
+Examples:
+- "Make it faster" → Adjust timing in project.ts
+- "Ball should be red" → Modify Ball.tsx color prop
+- "Add more bounce" → Adjust easing in component
+- "Different layout" → Modify scene composition
+
+## Style-to-Animation Mapping
+
+When planning, use these guidelines:
+
+| Style | Easing | Motion | Timing |
+|-------|--------|--------|--------|
+| Playful | easeOutBack, easeOutElastic | Overshoot, squash-stretch | Fast, snappy |
+| Smooth | easeInOutCubic, easeOutQuint | Subtle, flowing | Slower, deliberate |
+| Cinematic | easeInOutQuart, custom bezier | Camera moves, depth | Building tension |
+
+## Communication
+
+- Be concise in thinking messages (under 50 chars)
+- Explain changes clearly when iterating
+- If something fails, tell the user what happened
+- Don't apologize excessively — just fix and move on
+
+## What You Do NOT Do
+
+- Write Theatre.js or React code (use generate_code)
+- Know Theatre.js API details (generate_code knows)
+- Generate file contents directly
+- Skip the generate_code tool for "small" changes
+`;
+```
+
+---
+
+## 10.3 Code Generator Subagent
+
+### Definition
+
+```typescript
+// src/lib/agents/code-generator-agent.ts
+
+import { Agent } from '@mastra/core';
+import { anthropic } from '@mastra/anthropic';
+
+import { CODE_GENERATOR_INSTRUCTIONS } from './instructions/code-generator';
+
+export const codeGeneratorAgent = new Agent({
+  name: 'theatre-code-generator',
+  model: anthropic('claude-sonnet-4-20250514'),
+  instructions: CODE_GENERATOR_INSTRUCTIONS,
+  // No tools — pure generation
+});
+```
+
+### System Instructions
+
+```typescript
+// src/lib/agents/instructions/code-generator.ts
+
+export const CODE_GENERATOR_INSTRUCTIONS = `
+# Theatre.js Code Generator
+
+You are a specialist in Theatre.js animation code. You receive structured task descriptions and return complete, working code files.
+
+## Your Role
+
+- Generate production-quality Theatre.js code
+- Return complete files (never placeholders or TODOs)
+- Follow Theatre.js patterns exactly
+- Output valid JSON with file contents
+
+## Output Format
+
+ALWAYS return valid JSON in this exact structure:
+
+\`\`\`json
+{
+  "files": [
+    {
+      "path": "src/theatre/project.ts",
+      "content": "// Complete file content here..."
+    },
+    {
+      "path": "src/components/Ball.tsx",
+      "content": "// Complete file content here..."
+    }
+  ],
+  "summary": "Brief description of what was created"
+}
+\`\`\`
+
+## Theatre.js Knowledge
+
+### Project Setup
+
+\`\`\`typescript
+// src/theatre/project.ts
+import { getProject } from '@theatre/core';
+
+export const project = getProject('Animation');
+export const sheet = project.sheet('Main');
+
+export const SEQUENCE_TIMINGS = {
+  duration: 5,    // seconds
+  fps: 60,
+};
+
+// Position for sequencer
+export const sequence = sheet.sequence;
+\`\`\`
+
+### Animated Component Pattern
+
+\`\`\`typescript
+// src/components/Ball.tsx
+import { useRef } from 'react';
+import { useCurrentFrame } from '../hooks/useCurrentFrame';
+import { SEQUENCE_TIMINGS } from '../theatre/project';
+import { easeOutBack } from '../utils/easing';
+
+interface BallProps {
+  color?: string;
+  size?: number;
+}
+
+export function Ball({ color = '#3B82F6', size = 1 }: BallProps) {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const frame = useCurrentFrame();
+  
+  // Calculate animation progress
+  const time = frame / SEQUENCE_TIMINGS.fps;
+  const duration = SEQUENCE_TIMINGS.duration;
+  
+  // Animation logic
+  const bounceProgress = Math.min(time / 2, 1); // First 2 seconds
+  const y = easeOutBack(bounceProgress) * 2;
+  
+  return (
+    <mesh ref={meshRef} position={[0, y, 0]}>
+      <sphereGeometry args={[size, 32, 32]} />
+      <meshStandardMaterial color={color} />
+    </mesh>
+  );
+}
+\`\`\`
+
+### useCurrentFrame Hook (CRITICAL)
+
+\`\`\`typescript
+// src/hooks/useCurrentFrame.ts
+import { useEffect, useState } from 'react';
+import { sequence } from '../theatre/project';
+
+export function useCurrentFrame(): number {
+  const [frame, setFrame] = useState(0);
+  
+  useEffect(() => {
+    // For export mode (controlled externally)
+    const handleSeek = (e: CustomEvent) => {
+      setFrame(e.detail.frame);
+    };
+    window.addEventListener('theatre-seek', handleSeek as EventListener);
+    
+    // For preview mode (auto-play)
+    let rafId: number;
+    const startTime = performance.now();
+    
+    const tick = () => {
+      const elapsed = (performance.now() - startTime) / 1000;
+      const currentFrame = Math.floor(elapsed * 60) % (SEQUENCE_TIMINGS.duration * 60);
+      setFrame(currentFrame);
+      rafId = requestAnimationFrame(tick);
+    };
+    
+    if (!window.__EXPORT_MODE__) {
+      rafId = requestAnimationFrame(tick);
+    }
+    
+    return () => {
+      window.removeEventListener('theatre-seek', handleSeek as EventListener);
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, []);
+  
+  return frame;
+}
+\`\`\`
+
+### Easing Functions
+
+\`\`\`typescript
+// src/utils/easing.ts
+
+export function easeOutBack(t: number): number {
+  const c1 = 1.70158;
+  const c3 = c1 + 1;
+  return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+}
+
+export function easeOutElastic(t: number): number {
+  const c4 = (2 * Math.PI) / 3;
+  return t === 0 ? 0 : t === 1 ? 1 :
+    Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1;
+}
+
+export function easeInOutCubic(t: number): number {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+export function easeOutQuint(t: number): number {
+  return 1 - Math.pow(1 - t, 5);
+}
+
+export function easeInOutQuart(t: number): number {
+  return t < 0.5 ? 8 * t * t * t * t : 1 - Math.pow(-2 * t + 2, 4) / 2;
+}
+
+// For custom bezier curves
+export function cubicBezier(p1x: number, p1y: number, p2x: number, p2y: number) {
+  return function(t: number): number {
+    // Simplified cubic bezier implementation
+    const cx = 3 * p1x;
+    const bx = 3 * (p2x - p1x) - cx;
+    const ax = 1 - cx - bx;
+    return ((ax * t + bx) * t + cx) * t;
+  };
+}
+\`\`\`
+
+### App.tsx Pattern
+
+\`\`\`typescript
+// src/App.tsx
+import { Canvas } from '@react-three/fiber';
+import { OrbitControls, Environment } from '@react-three/drei';
+import { MainScene } from './scenes/MainScene';
+import './styles.css';
+
+// Export mode flag
+declare global {
+  interface Window {
+    __EXPORT_MODE__?: boolean;
+    __EXPORT_SEEK_TO__?: (frame: number) => void;
+  }
+}
+
+export default function App() {
+  return (
+    <div className="w-full h-screen bg-black">
+      <Canvas camera={{ position: [0, 2, 5], fov: 50 }}>
+        <Environment preset="studio" />
+        <ambientLight intensity={0.5} />
+        <directionalLight position={[10, 10, 5]} intensity={1} />
+        
+        <MainScene />
+        
+        {!window.__EXPORT_MODE__ && <OrbitControls />}
+      </Canvas>
+    </div>
+  );
+}
+\`\`\`
+
+### Scene Compositor
+
+\`\`\`typescript
+// src/scenes/MainScene.tsx
+import { Ball } from '../components/Ball';
+import { useCurrentFrame } from '../hooks/useCurrentFrame';
+import { SEQUENCE_TIMINGS } from '../theatre/project';
+
+export function MainScene() {
+  const frame = useCurrentFrame();
+  const time = frame / SEQUENCE_TIMINGS.fps;
+  
+  return (
+    <group>
+      {/* Scene 1: Ball enters */}
+      <Ball color="#3B82F6" />
+      
+      {/* Add more elements based on scenes */}
+    </group>
+  );
+}
+\`\`\`
+
+### Export Script
+
+\`\`\`javascript
+// scripts/export-video.cjs
+const puppeteer = require('puppeteer');
+const { execSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+
+const FPS = 60;
+const DURATION = 5; // seconds
+const WIDTH = 1920;
+const HEIGHT = 1080;
+
+async function exportVideo() {
+  // Ensure exports directory
+  const exportsDir = path.join(__dirname, '../exports');
+  if (!fs.existsSync(exportsDir)) {
+    fs.mkdirSync(exportsDir, { recursive: true });
+  }
+  
+  // Launch browser
+  const browser = await puppeteer.launch({
+    headless: 'new',
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  });
+  
+  const page = await browser.newPage();
+  await page.setViewport({ width: WIDTH, height: HEIGHT });
+  
+  // Set export mode
+  await page.evaluateOnNewDocument(() => {
+    window.__EXPORT_MODE__ = true;
+  });
+  
+  await page.goto('http://localhost:5173', { waitUntil: 'networkidle0' });
+  await page.waitForTimeout(2000); // Let scene initialize
+  
+  const totalFrames = FPS * DURATION;
+  
+  for (let frame = 0; frame < totalFrames; frame++) {
+    // Seek to frame
+    await page.evaluate((f) => {
+      window.dispatchEvent(new CustomEvent('theatre-seek', { detail: { frame: f } }));
+    }, frame);
+    
+    // Wait for render
+    await page.waitForTimeout(16);
+    
+    // Screenshot
+    const framePath = path.join(exportsDir, \`frame_\${String(frame).padStart(5, '0')}.png\`);
+    await page.screenshot({ path: framePath });
+    
+    if (frame % 60 === 0) {
+      console.log(\`Frame \${frame}/\${totalFrames}\`);
+    }
+  }
+  
+  await browser.close();
+  
+  // Encode with FFmpeg
+  const outputPath = path.join(__dirname, '../output.mp4');
+  execSync(\`ffmpeg -y -framerate \${FPS} -i \${exportsDir}/frame_%05d.png -c:v libx264 -pix_fmt yuv420p -crf 18 \${outputPath}\`);
+  
+  // Cleanup frames
+  fs.readdirSync(exportsDir).forEach(file => {
+    fs.unlinkSync(path.join(exportsDir, file));
+  });
+  
+  console.log(\`Video exported to \${outputPath}\`);
+}
+
+exportVideo().catch(console.error);
+\`\`\`
+
+## Task Types
+
+### initial_setup
+Create the foundational project files.
+
+Input:
+\`\`\`json
+{
+  "task": "initial_setup",
+  "style": "playful",
+  "plan": {
+    "scenes": [...],
+    "duration": 5,
+    "fps": 60
+  }
+}
+\`\`\`
+
+Output files:
+- src/theatre/project.ts
+- src/utils/easing.ts
+- src/hooks/useCurrentFrame.ts
+- src/App.tsx
+- src/main.tsx
+
+### create_component
+Create an animated component.
+
+Input:
+\`\`\`json
+{
+  "task": "create_component",
+  "name": "BouncingBall",
+  "description": "A ball that bounces with playful overshoot",
+  "animations": [
+    { "property": "position.y", "from": 0, "to": 2, "easing": "easeOutBack" }
+  ],
+  "timing": { "start": 0, "duration": 2 }
+}
+\`\`\`
+
+Output files:
+- src/components/[Name].tsx
+
+### create_scene
+Create a scene compositor.
+
+Input:
+\`\`\`json
+{
+  "task": "create_scene",
+  "scenes": [
+    { "start": 0, "end": 2, "description": "Ball enters" },
+    { "start": 2, "end": 4, "description": "Ball bounces" }
+  ],
+  "components": ["Ball", "Shadow"]
+}
+\`\`\`
+
+Output files:
+- src/scenes/MainScene.tsx
+
+### modify_existing
+Modify an existing file.
+
+Input:
+\`\`\`json
+{
+  "task": "modify_existing",
+  "file": "src/components/Ball.tsx",
+  "currentContent": "// existing code...",
+  "change": "Change ball color from blue to red"
+}
+\`\`\`
+
+Output files:
+- The modified file only
+
+## Rules
+
+1. ALWAYS return valid JSON with "files" array
+2. NEVER include placeholder comments like "// add code here"
+3. ALWAYS include all imports
+4. Code must work without modification
+5. Follow the exact patterns shown above
+6. For modify_existing: return the COMPLETE updated file, not a diff
+`;
+```
+
+---
+
+## 10.4 Subagent-as-Tool Implementation
+
+The orchestrator calls the code generator as a tool, with streaming support:
+
+```typescript
+// src/lib/agents/tools/generate-code.ts
+
+import { createTool } from '@mastra/core';
+import { z } from 'zod';
+import { codeGeneratorAgent } from '../code-generator-agent';
+
+// Input schema
+const GenerateCodeInputSchema = z.object({
+  task: z.enum(['initial_setup', 'create_component', 'create_scene', 'modify_existing']),
+  
+  // For initial_setup
+  style: z.string().optional(),
+  plan: z.object({
+    scenes: z.array(z.object({
+      title: z.string(),
+      start: z.number(),
+      end: z.number(),
+      description: z.string(),
+    })),
+    duration: z.number(),
+    fps: z.number(),
+  }).optional(),
+  
+  // For create_component
+  name: z.string().optional(),
+  description: z.string().optional(),
+  animations: z.array(z.object({
+    property: z.string(),
+    from: z.any(),
+    to: z.any(),
+    easing: z.string(),
+  })).optional(),
+  timing: z.object({
+    start: z.number(),
+    duration: z.number(),
+  }).optional(),
+  
+  // For create_scene
+  scenes: z.array(z.object({
+    start: z.number(),
+    end: z.number(),
+    description: z.string(),
+  })).optional(),
+  components: z.array(z.string()).optional(),
+  
+  // For modify_existing
+  file: z.string().optional(),
+  currentContent: z.string().optional(),
+  change: z.string().optional(),
+});
+
+// Output schema
+interface GenerateCodeOutput {
+  files: {
+    path: string;
+    content: string;
+  }[];
+  summary: string;
+}
+
+export const generateCodeTool = createTool({
+  id: 'generate_code',
+  description: `Generate Theatre.js animation code. This tool calls a specialized code generation agent.
+  
+Use this for ALL code generation tasks:
+- initial_setup: Create foundational project files
+- create_component: Create an animated component
+- create_scene: Create a scene compositor
+- modify_existing: Modify an existing file
+
+Returns an array of files with their complete contents.`,
+
+  inputSchema: GenerateCodeInputSchema,
+  outputSchema: z.object({
+    files: z.array(z.object({
+      path: z.string(),
+      content: z.string(),
+    })),
+    summary: z.string(),
+  }),
+
+  execute: async ({ context, params }) => {
+    // Format the request for the code generator
+    const prompt = formatCodeGenerationPrompt(params);
+    
+    // Stream from the subagent
+    const stream = await codeGeneratorAgent.stream({
+      messages: [{ role: 'user', content: prompt }],
+    });
+    
+    let fullResponse = '';
+    
+    for await (const chunk of stream) {
+      fullResponse += chunk.text || '';
+      
+      // Emit chunk to UI for live code preview
+      if (context.emitEvent) {
+        context.emitEvent('code_chunk', { 
+          content: chunk.text,
+          accumulated: fullResponse,
+        });
+      }
+    }
+    
+    // Parse the JSON response
+    try {
+      // Extract JSON from response (may have markdown code blocks)
+      const jsonMatch = fullResponse.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('No JSON found in response');
+      }
+      
+      const result: GenerateCodeOutput = JSON.parse(jsonMatch[0]);
+      
+      // Validate structure
+      if (!result.files || !Array.isArray(result.files)) {
+        throw new Error('Invalid response structure: missing files array');
+      }
+      
+      return result;
+      
+    } catch (error) {
+      // If parsing fails, report error
+      console.error('Failed to parse code generator response:', error);
+      console.error('Raw response:', fullResponse);
+      
+      throw new Error(`Code generation failed: ${error.message}`);
+    }
+  },
+});
+
+function formatCodeGenerationPrompt(params: z.infer<typeof GenerateCodeInputSchema>): string {
+  return `Generate Theatre.js code for the following task:
+
+Task Type: ${params.task}
+
+${JSON.stringify(params, null, 2)}
+
+Return ONLY valid JSON with the files array. No explanation text before or after.`;
+}
+```
+
+---
+
+## 10.5 Other Tool Definitions
+
+### Sandbox Tools
+
+```typescript
+// src/lib/agents/tools/sandbox.ts
+
+import { createTool } from '@mastra/core';
+import { z } from 'zod';
+
+export const sandboxWriteFileTool = createTool({
+  id: 'sandbox_write_file',
+  description: 'Write a file to the sandbox filesystem',
+  inputSchema: z.object({
+    path: z.string().describe('Relative path, e.g., "src/App.tsx"'),
+    content: z.string().describe('Complete file content'),
+  }),
+  execute: async ({ context, params }) => {
+    const { sandboxService } = context.services;
+    await sandboxService.writeFile(params.path, params.content);
+    
+    // Emit for UI update
+    context.emitEvent?.('file_written', { path: params.path });
+    
+    return { success: true, path: params.path };
+  },
+});
+
+export const sandboxRunCommandTool = createTool({
+  id: 'sandbox_run_command',
+  description: 'Run a shell command in the sandbox',
+  inputSchema: z.object({
+    command: z.string().describe('Shell command to run'),
+    background: z.boolean().default(false).describe('Run in background (for servers)'),
+    timeout: z.number().default(30000).describe('Timeout in milliseconds'),
+  }),
+  execute: async ({ context, params }) => {
+    const { sandboxService } = context.services;
+    
+    if (params.background) {
+      const { pid } = await sandboxService.runBackground(params.command);
+      return { success: true, pid, background: true };
+    }
+    
+    const result = await sandboxService.runCommand(params.command, {
+      timeout: params.timeout,
+    });
+    
+    return {
+      success: result.exitCode === 0,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      exitCode: result.exitCode,
+    };
+  },
+});
+
+export const sandboxReadFileTool = createTool({
+  id: 'sandbox_read_file',
+  description: 'Read a file from the sandbox filesystem',
+  inputSchema: z.object({
+    path: z.string().describe('Relative path to read'),
+  }),
+  execute: async ({ context, params }) => {
+    const { sandboxService } = context.services;
+    const content = await sandboxService.readFile(params.path);
+    return { content };
+  },
+});
+
+export const sandboxTools = {
+  sandbox_write_file: sandboxWriteFileTool,
+  sandbox_run_command: sandboxRunCommandTool,
+  sandbox_read_file: sandboxReadFileTool,
+};
+```
+
+### Render Tools
+
+```typescript
+// src/lib/agents/tools/render.ts
+
+import { createTool } from '@mastra/core';
+import { z } from 'zod';
+
+export const renderPreviewTool = createTool({
+  id: 'render_preview',
+  description: 'Render a preview quality video',
+  inputSchema: z.object({
+    duration: z.number().describe('Video duration in seconds'),
+  }),
+  execute: async ({ context, params }) => {
+    const { renderService, sandboxService, storageService } = context.services;
+    
+    context.emitEvent?.('render_start', { quality: 'preview' });
+    
+    const result = await renderService.renderPreview({
+      sandboxId: context.sandboxId,
+      duration: params.duration,
+      onProgress: (percent, stage) => {
+        context.emitEvent?.('render_progress', { percent, stage });
+      },
+    });
+    
+    // Upload to storage
+    const videoUrl = await storageService.upload(result.videoBuffer, {
+      filename: `preview-${Date.now()}.mp4`,
+      contentType: 'video/mp4',
+    });
+    
+    const thumbnailUrl = await storageService.upload(result.thumbnailBuffer, {
+      filename: `thumb-${Date.now()}.jpg`,
+      contentType: 'image/jpeg',
+    });
+    
+    context.emitEvent?.('render_complete', { videoUrl, thumbnailUrl });
+    
+    return { videoUrl, thumbnailUrl, duration: params.duration };
+  },
+});
+
+export const renderFinalTool = createTool({
+  id: 'render_final',
+  description: 'Render final high-quality video',
+  inputSchema: z.object({
+    duration: z.number(),
+    resolution: z.enum(['720p', '1080p', '4k']).default('1080p'),
+    fps: z.enum(['30', '60']).default('60'),
+  }),
+  execute: async ({ context, params }) => {
+    const { renderService, storageService } = context.services;
+    
+    context.emitEvent?.('render_start', { quality: 'final' });
+    
+    const result = await renderService.renderFinal({
+      sandboxId: context.sandboxId,
+      duration: params.duration,
+      resolution: params.resolution,
+      fps: parseInt(params.fps),
+      onProgress: (percent, stage) => {
+        context.emitEvent?.('render_progress', { percent, stage });
+      },
+    });
+    
+    const videoUrl = await storageService.upload(result.videoBuffer, {
+      filename: `final-${Date.now()}.mp4`,
+      contentType: 'video/mp4',
+    });
+    
+    const thumbnailUrl = await storageService.upload(result.thumbnailBuffer, {
+      filename: `thumb-${Date.now()}.jpg`,
+      contentType: 'image/jpeg',
+    });
+    
+    context.emitEvent?.('render_complete', { videoUrl, thumbnailUrl, quality: 'final' });
+    
+    return { videoUrl, thumbnailUrl, duration: params.duration };
+  },
+});
+
+export const renderTools = {
+  render_preview: renderPreviewTool,
+  render_final: renderFinalTool,
+};
+```
+
+### UI Tools
+
+```typescript
+// src/lib/agents/tools/ui.ts
+
+import { createTool } from '@mastra/core';
+import { z } from 'zod';
+
+export const updateTodoTool = createTool({
+  id: 'update_todo',
+  description: 'Update the status of a todo item',
+  inputSchema: z.object({
+    todoId: z.string(),
+    status: z.enum(['pending', 'active', 'done']),
+  }),
+  execute: async ({ context, params }) => {
+    context.emitEvent?.('todo_update', {
+      todoId: params.todoId,
+      status: params.status,
+    });
+    return { success: true };
+  },
+});
+
+export const setThinkingTool = createTool({
+  id: 'set_thinking',
+  description: 'Update the thinking/status message shown to user (keep under 50 chars)',
+  inputSchema: z.object({
+    message: z.string().max(100),
+  }),
+  execute: async ({ context, params }) => {
+    context.emitEvent?.('thinking', { message: params.message });
+    return { success: true };
+  },
+});
+
+export const requestApprovalTool = createTool({
+  id: 'request_approval',
+  description: 'Request user approval for a question, plan, or preview',
+  inputSchema: z.object({
+    type: z.enum(['question', 'plan', 'preview']),
+    content: z.string().describe('The question, plan, or message to show'),
+    options: z.array(z.object({
+      id: z.string(),
+      label: z.string(),
+      description: z.string().optional(),
+    })).optional().describe('Options for question type'),
+  }),
+  execute: async ({ context, params }) => {
+    context.emitEvent?.('approval_requested', {
+      type: params.type,
+      content: params.content,
+      options: params.options,
+    });
+    
+    // This pauses execution until user responds
+    // The response comes through context.waitForApproval()
+    const response = await context.waitForApproval();
+    
+    return response;
+  },
+});
+
+export const sendMessageTool = createTool({
+  id: 'send_message',
+  description: 'Send a message to the user in the chat thread',
+  inputSchema: z.object({
+    content: z.string(),
+  }),
+  execute: async ({ context, params }) => {
+    context.emitEvent?.('message', {
+      role: 'assistant',
+      content: params.content,
+    });
+    return { success: true };
+  },
+});
+
+export const uiTools = {
+  update_todo: updateTodoTool,
+  set_thinking: setThinkingTool,
+  request_approval: requestApprovalTool,
+  send_message: sendMessageTool,
+};
+```
+
+---
+
+## 10.6 Agent Execution Flow
+
+### Starting Execution
+
+```typescript
+// src/lib/agents/execute-animation.ts
+
+import { orchestratorAgent } from './orchestrator-agent';
+import { createExecutionContext } from './context';
+
+export async function executeAnimation(params: {
+  nodeId: string;
+  projectId: string;
+  prompt: string;
+  style?: string;
+  onEvent: (event: AnimationEvent) => void;
+}) {
+  // Create execution context with services
+  const context = await createExecutionContext({
+    nodeId: params.nodeId,
+    projectId: params.projectId,
+    onEvent: params.onEvent,
+  });
+  
+  // Build initial message
+  const initialMessage = buildInitialMessage(params);
+  
+  // Start the agent
+  const stream = await orchestratorAgent.stream({
+    messages: [{ role: 'user', content: initialMessage }],
+    context,
+  });
+  
+  // Process stream
+  for await (const chunk of stream) {
+    if (chunk.type === 'tool_call') {
+      params.onEvent({
+        type: 'tool_call',
+        tool: chunk.toolName,
+        input: chunk.input,
+      });
+    }
+    
+    if (chunk.type === 'tool_result') {
+      params.onEvent({
+        type: 'tool_result',
+        tool: chunk.toolName,
+        output: chunk.output,
+      });
+    }
+    
+    if (chunk.type === 'text') {
+      params.onEvent({
+        type: 'agent_text',
+        content: chunk.text,
+      });
+    }
+  }
+}
+
+function buildInitialMessage(params: { prompt: string; style?: string }): string {
+  let message = `Create an animation: ${params.prompt}`;
+  
+  if (params.style) {
+    message += `\n\nStyle: ${params.style}`;
+  }
+  
+  return message;
+}
+```
+
+### Handling User Input Mid-Execution
+
+```typescript
+// src/lib/agents/continue-execution.ts
+
+export async function continueExecution(params: {
+  nodeId: string;
+  userMessage: string;
+  context: ExecutionContext;
+  onEvent: (event: AnimationEvent) => void;
+}) {
+  const stream = await orchestratorAgent.stream({
+    messages: [
+      ...params.context.messageHistory,
+      { role: 'user', content: params.userMessage },
+    ],
+    context: params.context,
+  });
+  
+  for await (const chunk of stream) {
+    // Same processing as above
+  }
+}
+```
+
+---
+
+## 10.7 Context Management
+
+### Execution Context
+
+```typescript
+// src/lib/agents/context.ts
+
+export interface ExecutionContext {
+  // Identifiers
+  nodeId: string;
+  projectId: string;
+  sandboxId?: string;
+  
+  // Services
+  services: {
+    sandboxService: SandboxService;
+    storageService: StorageService;
+    renderService: RenderService;
+  };
+  
+  // State
+  phase: AnimationPhase;
+  plan?: AnimationPlan;
+  todos: Todo[];
+  files: Map<string, string>;  // path -> content
+  messageHistory: Message[];
+  
+  // Event emission
+  emitEvent?: (type: string, payload: any) => void;
+  
+  // Approval handling
+  waitForApproval: () => Promise<ApprovalResponse>;
+}
+
+export async function createExecutionContext(params: {
+  nodeId: string;
+  projectId: string;
+  onEvent: (event: AnimationEvent) => void;
+}): Promise<ExecutionContext> {
+  // Get or create sandbox
+  const sandboxService = await getSandboxService();
+  const sandboxId = await sandboxService.getOrCreate(params.projectId);
+  
+  // Load existing state if resuming
+  const existingState = await loadProjectState(params.projectId);
+  
+  return {
+    nodeId: params.nodeId,
+    projectId: params.projectId,
+    sandboxId,
+    
+    services: {
+      sandboxService,
+      storageService: getStorageService(),
+      renderService: getRenderService(),
+    },
+    
+    phase: existingState?.phase || 'idle',
+    plan: existingState?.plan,
+    todos: existingState?.todos || [],
+    files: new Map(Object.entries(existingState?.files || {})),
+    messageHistory: existingState?.messages || [],
+    
+    emitEvent: (type, payload) => {
+      params.onEvent({ type, ...payload });
+    },
+    
+    waitForApproval: createApprovalWaiter(params.nodeId),
+  };
+}
+```
+
+### Injecting Context into Agent
+
+```typescript
+// When calling the orchestrator, include relevant context
+
+function buildContextMessage(ctx: ExecutionContext): string {
+  const parts: string[] = [];
+  
+  // Current phase
+  parts.push(`Current phase: ${ctx.phase}`);
+  
+  // Plan if exists
+  if (ctx.plan) {
+    parts.push(`\nAccepted plan:\n${formatPlan(ctx.plan)}`);
+  }
+  
+  // Todos if in executing phase
+  if (ctx.todos.length > 0) {
+    parts.push(`\nTodos:\n${ctx.todos.map(t => 
+      `- [${t.status}] ${t.label}`
+    ).join('\n')}`);
+  }
+  
+  // Current files if iterating
+  if (ctx.files.size > 0) {
+    parts.push(`\nGenerated files:\n${Array.from(ctx.files.keys()).join('\n')}`);
+  }
+  
+  return parts.join('\n');
+}
+```
+
+---
+
+## 10.8 Streaming from Subagent to UI
+
+### Event Flow
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   Orchestrator  │────▶│  generate_code  │────▶│ Code Generator  │
+│      Agent      │     │     (tool)      │     │    Subagent     │
+└────────┬────────┘     └────────┬────────┘     └────────┬────────┘
+         │                       │                       │
+         │                       │  for await (chunk)    │
+         │                       │◀──────────────────────│
+         │                       │                       │
+         │   emitEvent           │                       │
+         │   ('code_chunk')      │                       │
+         │◀──────────────────────│                       │
+         │                       │                       │
+         ▼                       │                       │
+┌─────────────────┐              │                       │
+│    Frontend     │              │                       │
+│                 │              │                       │
+│ Live code       │              │                       │
+│ preview updates │              │                       │
+└─────────────────┘              │                       │
+                                 │                       │
+                                 │  return { files }     │
+                                 │◀──────────────────────│
+                                 │                       │
+```
+
+### Frontend Handling
+
+```typescript
+// src/hooks/useAnimationAgent.ts
+
+export function useAnimationAgent(nodeId: string) {
+  const [codePreview, setCodePreview] = useState<string>('');
+  const [currentFile, setCurrentFile] = useState<string>('');
+  
+  useEffect(() => {
+    const eventSource = new EventSource(`/api/nodes/${nodeId}/events`);
+    
+    eventSource.addEventListener('code_chunk', (e) => {
+      const { content, accumulated } = JSON.parse(e.data);
+      
+      // Try to extract current file being generated
+      const fileMatch = accumulated.match(/"path":\s*"([^"]+)"/);
+      if (fileMatch) {
+        setCurrentFile(fileMatch[1]);
+      }
+      
+      // Show accumulated code
+      setCodePreview(accumulated);
+    });
+    
+    eventSource.addEventListener('file_written', (e) => {
+      const { path } = JSON.parse(e.data);
+      // Clear preview, file is complete
+      setCodePreview('');
+      setCurrentFile('');
+    });
+    
+    return () => eventSource.close();
+  }, [nodeId]);
+  
+  return { codePreview, currentFile };
+}
+```
+
+---
+
+## 10.9 Summary
+
+| Component | Role | Prompt Size | Tools |
+|-----------|------|-------------|-------|
+| **Orchestrator Agent** | Workflow, decisions, user interaction | ~4k tokens | Yes (incl. subagent-as-tool) |
+| **Code Generator Subagent** | Theatre.js code generation | ~12-15k tokens | None (pure generation) |
+
+### Key Design Decisions
+
+1. **Two-agent pattern**: Separates workflow logic from code generation expertise
+2. **Subagent-as-tool**: Code generator invoked via `generate_code` tool
+3. **Streaming**: Code chunks stream to UI for live feedback
+4. **Complete files**: Subagent always returns complete, working files
+5. **Orchestrator decides, subagent executes**: Clean separation of what vs how
+
+### Execution Flow
+
+```
+1. User prompt → Orchestrator
+2. Orchestrator: Analyze → Question needed?
+   └── If yes: request_approval(question)
+   └── If no: Generate plan
+3. Orchestrator: Present plan → request_approval(plan)
+4. User approves → Orchestrator: Execute
+5. For each todo:
+   a. update_todo(active)
+   b. set_thinking(...)
+   c. generate_code(...) → Streams from Code Generator
+   d. sandbox_write_file(...)
+   e. update_todo(done)
+6. render_preview() → Show to user
+7. User feedback → Orchestrator: Iterate
+   └── generate_code(modify_existing, ...) → Update specific file
+   └── Re-render
+8. User approves → render_final()
+9. Complete
+```
+
+### Benefits Recap
+
+- **Smaller, focused prompts**: Each agent knows only what it needs
+- **Live code streaming**: Users see code appearing in real-time
+- **Independent improvement**: Can upgrade code generator without touching orchestration
+- **Clean iteration**: Orchestrator decides what to change, code generator knows how
+- **Model flexibility**: Could use different models for different tasks
 
 ---
 

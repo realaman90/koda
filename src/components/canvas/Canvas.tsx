@@ -12,7 +12,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
-import { useCanvasStore, createStoryboardNode } from '@/stores/canvas-store';
+import { useCanvasStore, createStoryboardNode, createPluginNode } from '@/stores/canvas-store';
 import type { AppNode, ImageGeneratorNodeData, VideoGeneratorNodeData, ImageModelType, VideoModelType } from '@/lib/types';
 import { MODEL_CAPABILITIES, VIDEO_MODEL_CAPABILITIES } from '@/lib/types';
 import { nodeTypes } from './nodes';
@@ -52,25 +52,31 @@ export function Canvas() {
   const addNode = useCanvasStore((state) => state.addNode);
   const reactFlowInstance = useCanvasStore((state) => state.reactFlowInstance);
 
-  // Handle plugin launch - create node for storyboard, open sandbox for others
+  // Handle plugin launch - create node for node-based plugins, open sandbox for others
   const handlePluginLaunch = useCallback(
     (pluginId: string) => {
+      // Calculate viewport center position
+      let position = { x: 400, y: 300 };
+      if (reactFlowInstance) {
+        const viewport = reactFlowInstance.getViewport();
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        position = {
+          x: (-viewport.x + width / 2 - 200) / viewport.zoom,
+          y: (-viewport.y + height / 2 - 200) / viewport.zoom,
+        };
+      }
+
+      // Handle specific plugins that render as nodes
       if (pluginId === 'storyboard-generator') {
-        // Create a storyboard node at viewport center
-        let position = { x: 400, y: 300 };
-        if (reactFlowInstance) {
-          const viewport = reactFlowInstance.getViewport();
-          const width = window.innerWidth;
-          const height = window.innerHeight;
-          position = {
-            x: (-viewport.x + width / 2 - 200) / viewport.zoom,
-            y: (-viewport.y + height / 2 - 200) / viewport.zoom,
-          };
-        }
         const node = createStoryboardNode(position, 'Storyboard');
         addNode(node);
+      } else if (pluginId === 'animation-generator') {
+        // Animation Generator uses the pluginNode type
+        const node = createPluginNode(position, pluginId, 'Animation Generator');
+        addNode(node);
       } else {
-        // Other plugins still open as modals
+        // Other plugins open as modals
         openSandbox(pluginId);
       }
     },

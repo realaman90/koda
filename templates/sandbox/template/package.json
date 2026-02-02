@@ -1,0 +1,30 @@
+{
+  "name": "koda-animation-sandbox",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview",
+    "export": "node export-video.cjs"
+  },
+  "dependencies": {
+    "@theatre/core": "^0.7.2",
+    "@theatre/studio": "^0.7.2",
+    "@theatre/r3f": "^0.7.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "three": "^0.169.0",
+    "@react-three/fiber": "^8.17.0",
+    "@react-three/drei": "^9.114.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "typescript": "^5.5.0",
+    "vite": "^5.4.0",
+    "puppeteer-core": "^23.0.0"
+  }
+}

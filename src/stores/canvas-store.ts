@@ -8,7 +8,7 @@ import {
   type Connection,
   type ReactFlowInstance,
 } from '@xyflow/react';
-import type { AppNode, AppEdge, ImageGeneratorNodeData, VideoGeneratorNodeData, TextNodeData, MediaNodeData, StickyNoteNodeData, StickerNodeData, GroupNodeData, StoryboardNodeData, MusicGeneratorNodeData, SpeechNodeData, VideoAudioNodeData } from '@/lib/types';
+import type { AppNode, AppEdge, ImageGeneratorNodeData, VideoGeneratorNodeData, TextNodeData, MediaNodeData, StickyNoteNodeData, StickerNodeData, GroupNodeData, StoryboardNodeData, MusicGeneratorNodeData, SpeechNodeData, VideoAudioNodeData, PluginNodeData } from '@/lib/types';
 
 // History snapshot type
 interface HistorySnapshot {
@@ -284,6 +284,26 @@ export const createVideoAudioNode = (position: { x: number; y: number }, name?: 
     cfgStrength: 4.5,
     isGenerating: false,
   } as VideoAudioNodeData,
+});
+
+/**
+ * Create a plugin node with initial state
+ * Used for plugin-defined nodes like Animation Generator
+ */
+export const createPluginNode = (
+  position: { x: number; y: number },
+  pluginId: string,
+  name?: string,
+  initialState?: Record<string, unknown>
+): AppNode => ({
+  id: generateId(),
+  type: 'pluginNode',
+  position,
+  data: {
+    pluginId,
+    name,
+    state: initialState || {},
+  } as PluginNodeData,
 });
 
 export const useCanvasStore = create<CanvasState>()(

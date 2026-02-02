@@ -214,6 +214,7 @@
   --node-title-speech: #0891b2;
   --node-title-music: #ea580c;
   --node-title-storyboard: #7c3aed;
+  --node-title-animation: #2563eb;
 
   /* Inputs */
   --input-bg: #f9fafb;
@@ -300,6 +301,7 @@
   --node-title-speech: #22d3ee;
   --node-title-music: #fb923c;
   --node-title-storyboard: #a78bfa;
+  --node-title-animation: #3B82F6;
 
   /* Inputs */
   --input-bg: transparent;
@@ -670,6 +672,11 @@
 
 .generating-border-teal {
   border: 2.5px solid #14b8a6;
+  background-color: var(--node-card-bg);
+}
+
+.generating-border-blue {
+  border: 2.5px solid #3B82F6;
   background-color: var(--node-card-bg);
 }
 
