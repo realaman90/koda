@@ -2,15 +2,16 @@
 
 /**
  * ChatInput Component
- * 
- * Rich chat input with model selector, attachment button, node reference picker.
- * Based on Pencil design: animator plugin node Thinking and todo UI
+ *
+ * Rich chat input matching the Pencil design spec exactly:
+ * - Rounded box (10px) with #27272a fill and #3f3f46 stroke
+ * - Textarea with placeholder
+ * - Bottom bar: model selector (left) + paperclip + send button (right)
+ * - Send button: 28px blue circle with arrow-up icon
  */
 
 import { useState, useCallback, useRef, useEffect, KeyboardEvent } from 'react';
-import { Send, Square, Paperclip, ChevronDown, Image, Video, Link2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
+import { ArrowUp, Square, Paperclip, ChevronDown, Image, Video, Link2 } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,11 +22,10 @@ import {
 } from '@/components/ui/dropdown-menu';
 import type { AnimationAttachment } from '../types';
 
-// Available models (Mastra provider/model-name format)
 const MODELS = [
-  { id: 'anthropic/claude-sonnet-4-5', label: 'Claude Sonnet 4.5', description: 'Fast & smart' },
-  { id: 'anthropic/claude-haiku-3-5', label: 'Claude Haiku 3.5', description: 'Fastest' },
-  { id: 'anthropic/claude-opus-4', label: 'Claude Opus 4', description: 'Most capable' },
+  { id: 'anthropic/claude-sonnet-4-5', label: 'Claude Sonnet 4.5' },
+  { id: 'anthropic/claude-haiku-3-5', label: 'Claude Haiku 3.5' },
+  { id: 'anthropic/claude-opus-4', label: 'Claude Opus 4' },
 ] as const;
 
 interface ChatInputProps {
@@ -65,7 +65,6 @@ export function ChatInput({
       onStop();
       return;
     }
-
     const trimmedMessage = message.trim();
     if (trimmedMessage && !disabled) {
       onSubmit(trimmedMessage, attachments.length > 0 ? attachments : undefined);
@@ -75,7 +74,6 @@ export function ChatInput({
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
-      // Submit on Enter (without shift)
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         handleSubmit();
@@ -84,34 +82,28 @@ export function ChatInput({
     [handleSubmit]
   );
 
-  const handleFileSelect = useCallback(
-    (type: 'image' | 'video') => {
-      if (fileInputRef.current) {
-        fileInputRef.current.accept = type === 'image' ? 'image/*' : 'video/*';
-        fileInputRef.current.click();
-      }
-    },
-    []
-  );
+  const handleFileSelect = useCallback((type: 'image' | 'video') => {
+    if (fileInputRef.current) {
+      fileInputRef.current.accept = type === 'image' ? 'image/*' : 'video/*';
+      fileInputRef.current.click();
+    }
+  }, []);
 
   const handleFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files;
       if (!files || files.length === 0) return;
-
       const file = files[0];
       const isVideo = file.type.startsWith('video/');
       const url = URL.createObjectURL(file);
-
       const newAttachment: AnimationAttachment = {
         id: `attach_${Date.now()}`,
         type: isVideo ? 'video' : 'image',
         url,
         name: file.name,
       };
-
       onAttachmentsChange?.([...attachments, newAttachment]);
-      e.target.value = ''; // Reset input
+      e.target.value = '';
     },
     [attachments, onAttachmentsChange]
   );
@@ -125,7 +117,6 @@ export function ChatInput({
         name: node.name,
         nodeId: node.nodeId,
       };
-
       onAttachmentsChange?.([...attachments, newAttachment]);
       setShowAttachMenu(false);
     },
@@ -135,7 +126,6 @@ export function ChatInput({
   const handleRemoveAttachment = useCallback(
     (attachmentId: string) => {
       const removed = attachments.find((a) => a.id === attachmentId);
-      // Revoke blob URL if it's a local file (not a node reference)
       if (removed && !removed.nodeId && removed.url.startsWith('blob:')) {
         URL.revokeObjectURL(removed.url);
       }
@@ -153,66 +143,78 @@ export function ChatInput({
         }
       });
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Auto-resize textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 100) + 'px';
+    }
+  }, [message]);
+
+  const canSend = !disabled && (isGenerating || message.trim().length > 0);
+
   return (
-    <div className="space-y-2">
-      {/* Attachments preview */}
+    <div className="px-3 pt-2 pb-2.5 border-t border-[#27272a]">
+      {/* Attachment previews */}
       {attachments.length > 0 && (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1.5 mb-2">
           {attachments.map((attachment) => (
             <div
               key={attachment.id}
-              className="relative group flex items-center gap-1.5 px-2 py-1 rounded-lg bg-zinc-800 border border-zinc-700 text-xs"
+              className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#27272a] border border-[#3f3f46] text-[10px]"
             >
               {attachment.type === 'image' ? (
-                <Image className="h-3 w-3 text-teal-400" />
+                <Image className="h-2.5 w-2.5 text-teal-400" />
               ) : (
-                <Video className="h-3 w-3 text-purple-400" />
+                <Video className="h-2.5 w-2.5 text-purple-400" />
               )}
-              <span className="text-zinc-300 max-w-[100px] truncate">
+              <span className="text-[#A1A1AA] max-w-[80px] truncate">
                 {attachment.name || (attachment.nodeId ? 'Node output' : 'File')}
               </span>
-              {attachment.nodeId && <Link2 className="h-3 w-3 text-zinc-500" />}
+              {attachment.nodeId && <Link2 className="h-2.5 w-2.5 text-[#52525B]" />}
               <button
                 onClick={() => handleRemoveAttachment(attachment.id)}
-                className="ml-1 text-zinc-500 hover:text-red-400 transition-colors"
+                className="text-[#52525B] hover:text-[#EF4444] transition-colors ml-0.5"
               >
-                ×
+                &times;
               </button>
             </div>
           ))}
         </div>
       )}
 
-      {/* Input area */}
-      <div className="relative rounded-xl border border-zinc-700 bg-zinc-800/50 focus-within:border-zinc-600 transition-colors">
-        <Textarea
-          ref={textareaRef}
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={placeholder}
-          disabled={disabled}
-          className="min-h-[60px] max-h-[120px] resize-none border-0 bg-transparent text-zinc-100 placeholder:text-zinc-500 focus-visible:ring-0 pr-24"
-          rows={2}
-        />
+      {/* Input box */}
+      <div className="rounded-[10px] bg-[#27272a] border border-[#3f3f46] overflow-hidden">
+        {/* Textarea area */}
+        <div className="px-3 pt-2.5 pb-1.5">
+          <textarea
+            ref={textareaRef}
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={placeholder}
+            disabled={disabled}
+            rows={1}
+            className="w-full resize-none bg-transparent text-[13px] text-[#FAFAFA] placeholder:text-[#52525B] outline-none leading-[1.4]"
+            style={{ minHeight: '20px', maxHeight: '100px' }}
+          />
+        </div>
 
-        {/* Bottom toolbar */}
-        <div className="flex items-center justify-between px-3 py-2 border-t border-zinc-700/50">
+        {/* Bottom bar */}
+        <div className="flex items-center justify-between px-2 py-1 pb-2">
           {/* Model selector */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2 text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700/50"
+              <button
+                className="flex items-center gap-1 px-1.5 py-1 rounded text-[11px] text-[#71717A] hover:text-[#A1A1AA] transition-colors"
                 disabled={disabled || isGenerating}
               >
                 {selectedModel.label}
-                <ChevronDown className="ml-1 h-3 w-3" />
-              </Button>
+                <ChevronDown className="w-2.5 h-2.5 text-[#52525B]" />
+              </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-48">
               <DropdownMenuLabel className="text-xs text-zinc-500">Select Model</DropdownMenuLabel>
@@ -223,28 +225,23 @@ export function ChatInput({
                   onClick={() => onModelChange?.(m.id)}
                   className={model === m.id ? 'bg-zinc-800' : ''}
                 >
-                  <div>
-                    <div className="text-sm">{m.label}</div>
-                    <div className="text-xs text-zinc-500">{m.description}</div>
-                  </div>
+                  <span className="text-sm">{m.label}</span>
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
 
           {/* Action buttons */}
-          <div className="flex items-center gap-1">
-            {/* Attachment menu */}
+          <div className="flex items-center gap-1.5">
+            {/* Paperclip / Attach */}
             <DropdownMenu open={showAttachMenu} onOpenChange={setShowAttachMenu}>
               <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 w-7 p-0 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700/50"
+                <button
+                  className="flex items-center justify-center w-7 h-7 rounded-md text-[#52525B] hover:text-[#71717A] transition-colors"
                   disabled={disabled || isGenerating}
                 >
-                  <Paperclip className="h-4 w-4" />
-                </Button>
+                  <Paperclip className="w-4 h-4" />
+                </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel className="text-xs text-zinc-500">Add Reference</DropdownMenuLabel>
@@ -277,23 +274,24 @@ export function ChatInput({
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {/* Send/Stop button */}
-            <Button
+            {/* Send / Stop button */}
+            <button
               onClick={handleSubmit}
-              disabled={disabled || (!isGenerating && !message.trim())}
-              size="sm"
-              className={`h-7 w-7 p-0 rounded-full ${
+              disabled={!canSend}
+              className={`flex items-center justify-center w-7 h-7 rounded-full transition-colors ${
                 isGenerating
-                  ? 'bg-zinc-600 hover:bg-zinc-500'
-                  : 'bg-blue-600 hover:bg-blue-700'
+                  ? 'bg-[#52525B] hover:bg-[#71717A]'
+                  : canSend
+                  ? 'bg-[#3B82F6] hover:bg-[#2563EB]'
+                  : 'bg-[#3B82F6] opacity-40 cursor-not-allowed'
               }`}
             >
               {isGenerating ? (
-                <Square className="h-3 w-3 text-white" />
+                <Square className="w-3 h-3 text-white" />
               ) : (
-                <Send className="h-3.5 w-3.5 text-white" />
+                <ArrowUp className="w-3.5 h-3.5 text-white" />
               )}
-            </Button>
+            </button>
           </div>
         </div>
       </div>

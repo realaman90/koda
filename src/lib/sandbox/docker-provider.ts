@@ -32,11 +32,15 @@ let networkEnsured = false;
  */
 async function ensureNetwork(): Promise<void> {
   if (networkEnsured) return;
-  try {
-    await execAsync('docker', ['network', 'inspect', DOCKER_NETWORK], 5_000);
-  } catch {
+  // Use execCommand (not execAsync) because execAsync resolves even on
+  // non-zero exit codes, so a try/catch would never detect a missing network.
+  const inspect = await execCommand('docker', ['network', 'inspect', DOCKER_NETWORK], 5_000);
+  if (!inspect.success) {
     // Network doesn't exist — create it
-    await execAsync('docker', ['network', 'create', DOCKER_NETWORK], 10_000);
+    const create = await execCommand('docker', ['network', 'create', DOCKER_NETWORK], 10_000);
+    if (!create.success) {
+      throw new Error(`Failed to create Docker network ${DOCKER_NETWORK}: ${create.stderr}`);
+    }
   }
   networkEnsured = true;
 }
@@ -390,9 +394,43 @@ startIdleCleanup();
 
 /**
  * Look up a sandbox instance by ID. Used by API routes for proxying/file serving.
+ *
+ * Falls back to Docker inspect + port detection if the in-memory map is empty
+ * (e.g. after a dev server restart / HMR module reload).
  */
-export function getSandboxInstance(sandboxId: string): SandboxInstance | undefined {
-  return activeSandboxes.get(sandboxId);
+export async function getSandboxInstance(sandboxId: string): Promise<SandboxInstance | undefined> {
+  const cached = activeSandboxes.get(sandboxId);
+  if (cached) return cached;
+
+  // Fallback: the container may still be running but the in-memory map was lost.
+  // Ask Docker for its status and published port.
+  try {
+    const { stdout } = await execAsync(
+      'docker',
+      ['inspect', '--format', '{{.State.Status}}||{{(index (index .NetworkSettings.Ports "5173/tcp") 0).HostPort}}', sandboxId],
+      5_000
+    );
+    const [status, portStr] = stdout.trim().split('||');
+    if (status !== 'running') return undefined;
+
+    const port = parseInt(portStr, 10);
+    if (isNaN(port)) return undefined;
+
+    const now = new Date().toISOString();
+    const recovered: SandboxInstance = {
+      id: sandboxId,
+      projectId: 'recovered',
+      status: 'ready',
+      createdAt: now,
+      lastActivityAt: now,
+      port,
+    };
+    activeSandboxes.set(sandboxId, recovered);
+    usedPorts.add(port);
+    return recovered;
+  } catch {
+    return undefined;
+  }
 }
 
 /**

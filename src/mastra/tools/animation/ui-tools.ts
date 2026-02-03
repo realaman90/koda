@@ -9,25 +9,43 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 
 /**
- * update_todo - Update the status of a todo item
+ * update_todo - Manage the todo list: update status, add new items, or remove stale ones.
+ *
+ * Actions:
+ *   "update" (default) — change the status of an existing todo
+ *   "add"              — append a new todo to the list
+ *   "remove"           — remove a todo that is no longer relevant
  */
 export const updateTodoTool = createTool({
   id: 'update_todo',
-  description: 'Update the status of a todo item in the UI. Call this when starting or completing a task.',
+  description: `Manage the todo list shown to the user. Supports three actions:
+- "update" (default): Change the status of an existing todo (pending → active → done).
+- "add": Append a new todo item when the plan evolves or new work is discovered.
+- "remove": Remove a todo that is no longer relevant or was superseded.
+
+Always call with action "update" + status "active" before starting a task, and "done" after completing it.
+Use "add" when you discover extra work not in the original list.
+Use "remove" to clean up stale items the user no longer needs to see.`,
   inputSchema: z.object({
-    todoId: z.string().describe('ID of the todo item (e.g., "setup", "scene-1", "render")'),
-    status: z.enum(['pending', 'active', 'done']).describe('New status'),
+    action: z.enum(['update', 'add', 'remove']).default('update').describe('What to do'),
+    todoId: z.string().describe('ID of the todo (existing for update/remove, new for add)'),
+    label: z.string().optional().describe('Label for a new todo (required for "add")'),
+    status: z.enum(['pending', 'active', 'done']).optional().describe('New status (required for "update")'),
   }),
   outputSchema: z.object({
     success: z.boolean(),
+    action: z.string(),
     todoId: z.string(),
-    status: z.string(),
+    status: z.string().optional(),
+    label: z.string().optional(),
   }),
   execute: async ({ context }) => {
     return {
       success: true,
+      action: context.action,
       todoId: context.todoId,
       status: context.status,
+      label: context.label,
     };
   },
 });

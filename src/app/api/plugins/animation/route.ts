@@ -33,7 +33,7 @@ export async function POST(request: Request) {
       case 'finalize': {
         // If we have a sandboxId, render final quality in the container
         if (sandboxId) {
-          const instance = getSandboxInstance(sandboxId);
+          const instance = await getSandboxInstance(sandboxId);
           if (!instance || instance.status === 'destroyed' || instance.status === 'error') {
             return NextResponse.json(
               { success: false, error: 'Sandbox not found or not running' },
@@ -130,7 +130,7 @@ export async function GET(request: Request) {
 
   // If a sandboxId is provided, check actual container status
   if (sandboxId) {
-    const instance = getSandboxInstance(sandboxId);
+    const instance = await getSandboxInstance(sandboxId);
     if (instance) {
       return NextResponse.json({
         success: true,

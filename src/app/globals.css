@@ -614,6 +614,27 @@
   color: #71717a !important;
 }
 
+/* Think shimmer animation for ThinkingBlock gradient text */
+@keyframes think-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Hidden scrollbar utility — !important to override global ::-webkit-scrollbar */
+.scrollbar-hidden {
+  scrollbar-width: none !important; /* Firefox */
+  -ms-overflow-style: none !important; /* IE/Edge */
+}
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none !important; /* Chrome/Safari/Opera */
+  width: 0 !important;
+  height: 0 !important;
+}
+
 /* Shimmer animation for loading states */
 @keyframes shimmer {
   0% {

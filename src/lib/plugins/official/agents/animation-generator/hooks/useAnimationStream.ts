@@ -24,6 +24,7 @@ interface StreamContext {
   plan?: AnimationPlan;
   todos?: AnimationTodo[];
   attachments?: AnimationAttachment[];
+  sandboxId?: string;
 }
 
 interface ToolCallEvent {

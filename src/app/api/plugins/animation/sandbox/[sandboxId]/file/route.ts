@@ -47,7 +47,7 @@ export async function GET(
   }
 
   // Verify sandbox exists
-  const instance = getSandboxInstance(sandboxId);
+  const instance = await getSandboxInstance(sandboxId);
   if (!instance || instance.status === 'destroyed' || instance.status === 'error') {
     return NextResponse.json({ error: 'Sandbox not found or not running' }, { status: 404 });
   }

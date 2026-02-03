@@ -43,7 +43,7 @@ import {
 export const animationAgent = new Agent({
   name: 'animation-agent',
   instructions: ANIMATION_AGENT_INSTRUCTIONS,
-  model: 'anthropic/claude-3-7-sonnet',
+  model: 'anthropic/claude-sonnet-4-5',
   tools: {
     // UI Tools
     update_todo: updateTodoTool,

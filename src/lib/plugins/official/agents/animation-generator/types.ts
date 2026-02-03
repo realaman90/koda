@@ -69,10 +69,32 @@ export interface AnimationMessage {
   timestamp?: string;
 }
 
+export interface ToolCallItem {
+  id: string;
+  toolCallId: string;
+  toolName: string;
+  displayName: string;
+  status: 'running' | 'done' | 'failed';
+  output?: string;
+  error?: string;
+  timestamp: string;
+}
+
+export interface ThinkingBlockItem {
+  id: string;
+  label: string;
+  reasoning?: string;
+  startedAt: string;
+  endedAt?: string;
+}
+
+/**
+ * Active execution state (todos, thinking, streaming).
+ * Conversation history (messages, toolCalls) lives on AnimationNodeState.
+ */
 export interface AnimationExecution {
   todos: AnimationTodo[];
   thinking: string;
-  messages: AnimationMessage[];
   files: string[];
   /** Accumulated agent text output (streamed in real-time) */
   streamingText?: string;
@@ -122,10 +144,17 @@ export interface AnimationNodeState {
   nodeId: string;
   phase: AnimationPhase;
 
+  // Conversation history (persists across phases)
+  messages: AnimationMessage[];
+  toolCalls: ToolCallItem[];
+  thinkingBlocks: ThinkingBlockItem[];
+
   // Phase-specific data
   question?: AnimationQuestion;
   selectedStyle?: string;
   plan?: AnimationPlan;
+  planTimestamp?: string;
+  planAccepted?: boolean;
   execution?: AnimationExecution;
   preview?: AnimationPreview;
   output?: AnimationOutput;
@@ -135,6 +164,9 @@ export interface AnimationNodeState {
   sandboxId?: string;
   sandboxStatus?: 'creating' | 'ready' | 'busy' | 'destroyed';
   lastCheckpoint?: string;
+
+  // Live preview (iframe to sandbox dev server)
+  previewUrl?: string;
 
   // Timestamps
   createdAt: string;

@@ -21,6 +21,7 @@ interface StreamRequestBody {
     plan?: unknown;
     todos?: Array<{ id: string; label: string; status: string }>;
     attachments?: Array<{ type: string; url: string }>;
+    sandboxId?: string;
   };
 }
 
@@ -46,6 +47,9 @@ export async function POST(request: Request) {
     // Prepend context as a system-style user message if provided
     if (context) {
       const contextParts: string[] = [];
+      if (context.sandboxId) {
+        contextParts.push(`Active sandbox ID: ${context.sandboxId}`);
+      }
       if (context.phase) {
         contextParts.push(`Current phase: ${context.phase}`);
       }
@@ -92,14 +96,35 @@ export async function POST(request: Request) {
     // Create encoder for SSE streaming
     const encoder = new TextEncoder();
 
+    // Track closed state for the stream controller
+    let closed = false;
+
     const readable = new ReadableStream({
       async start(controller) {
+        const safeEnqueue = (data: Uint8Array) => {
+          if (!closed) {
+            try { controller.enqueue(data); } catch { closed = true; }
+          }
+        };
+        const safeClose = () => {
+          if (!closed) {
+            closed = true;
+            try { controller.close(); } catch { /* already closed */ }
+          }
+        };
+
+        // Close early when the client disconnects
+        request.signal.addEventListener('abort', () => {
+          closed = true;
+          safeClose();
+        });
+
         try {
           const reader = result.fullStream.getReader();
 
-          while (true) {
+          while (!closed) {
             const { done, value: chunk } = await reader.read();
-            if (done) break;
+            if (done || closed) break;
 
             let sseData: string | null = null;
 
@@ -183,41 +208,48 @@ export async function POST(request: Request) {
                     });
                   }
                 }
-                // Other chunk types (raw, text-start, text-end, etc.) are ignored
                 break;
               }
             }
 
             if (sseData) {
-              controller.enqueue(encoder.encode(`data: ${sseData}\n\n`));
+              safeEnqueue(encoder.encode(`data: ${sseData}\n\n`));
             }
           }
 
-          // Send final complete event with aggregated data
-          const [text, usage, finishReason] = await Promise.all([
-            result.text,
-            result.usage,
-            result.finishReason,
-          ]);
+          // Send final complete event (skip if client disconnected)
+          if (!closed) {
+            try {
+              const [text, usage, finishReason] = await Promise.all([
+                result.text,
+                result.usage,
+                result.finishReason,
+              ]);
 
-          const completeData = JSON.stringify({
-            type: 'complete',
-            text,
-            usage,
-            finishReason,
-          });
-          controller.enqueue(encoder.encode(`data: ${completeData}\n\n`));
-
-          controller.close();
+              safeEnqueue(encoder.encode(`data: ${JSON.stringify({
+                type: 'complete',
+                text,
+                usage,
+                finishReason,
+              })}\n\n`));
+            } catch {
+              // Aggregation failed after stream ended — skip complete event
+            }
+          }
+          safeClose();
         } catch (error) {
-          console.error('Stream processing error:', error);
-          const errorData = JSON.stringify({
-            type: 'error',
-            error: error instanceof Error ? error.message : 'Stream error',
-          });
-          controller.enqueue(encoder.encode(`data: ${errorData}\n\n`));
-          controller.close();
+          if (!closed) {
+            console.error('Stream processing error:', error);
+            safeEnqueue(encoder.encode(`data: ${JSON.stringify({
+              type: 'error',
+              error: error instanceof Error ? error.message : 'Stream error',
+            })}\n\n`));
+          }
+          safeClose();
         }
+      },
+      cancel() {
+        closed = true;
       },
     });
 

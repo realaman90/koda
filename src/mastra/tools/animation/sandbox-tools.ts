@@ -238,31 +238,101 @@ This tool kills any existing dev server, starts a new one, and waits until it's 
     try {
       // Kill any existing dev server
       await dockerProvider.runCommand(context.sandboxId, 'pkill -f "vite" || true', { timeout: 5_000 });
+      // Small delay to let the process die
+      await new Promise((r) => setTimeout(r, 500));
 
-      // Start dev server in background
-      await dockerProvider.runCommand(context.sandboxId, 'cd /app && bun run dev', { background: true });
+      // Check that package.json exists
+      const pkgCheck = await dockerProvider.runCommand(
+        context.sandboxId,
+        'test -f /app/package.json && echo "OK" || echo "MISSING"',
+        { timeout: 5_000 }
+      );
+      if (pkgCheck.stdout.trim() === 'MISSING') {
+        return {
+          success: false,
+          previewUrl: '',
+          message: 'Cannot start dev server: /app/package.json is missing. Write project files first.',
+        };
+      }
 
-      // Poll until the server is ready (max 15 seconds)
-      const maxAttempts = 30;
+      // Ensure dependencies are installed
+      const nodeModulesCheck = await dockerProvider.runCommand(
+        context.sandboxId,
+        'test -d /app/node_modules && echo "OK" || echo "MISSING"',
+        { timeout: 5_000 }
+      );
+      if (nodeModulesCheck.stdout.trim() === 'MISSING') {
+        // Install deps before starting
+        const installResult = await dockerProvider.runCommand(
+          context.sandboxId,
+          'cd /app && bun install 2>&1',
+          { timeout: 60_000 }
+        );
+        if (!installResult.success) {
+          return {
+            success: false,
+            previewUrl: '',
+            message: `Failed to install dependencies: ${installResult.stderr || installResult.stdout}`,
+          };
+        }
+      }
+
+      // Start dev server in background, redirect output to a log file for debugging
+      await dockerProvider.runCommand(
+        context.sandboxId,
+        'cd /app && nohup bun run dev > /tmp/vite.log 2>&1 &',
+        { background: true }
+      );
+
+      // Poll until the server is ready (max 20 seconds)
+      const maxAttempts = 40;
       let ready = false;
+      let lastCheckOutput = '';
       for (let i = 0; i < maxAttempts; i++) {
         await new Promise((r) => setTimeout(r, 500));
+        // Use wget as fallback if curl isn't available
         const check = await dockerProvider.runCommand(
           context.sandboxId,
-          'curl -s -o /dev/null -w "%{http_code}" http://localhost:5173/ 2>/dev/null || echo "000"',
+          '(curl -s -o /dev/null -w "%{http_code}" http://localhost:5173/ 2>/dev/null || wget -q -O /dev/null --server-response http://localhost:5173/ 2>&1 | grep "HTTP/" | tail -1 | awk "{print \\$2}" || echo "000")',
           { timeout: 5_000 }
         );
-        if (check.stdout.trim().startsWith('200') || check.stdout.trim().startsWith('304')) {
+        lastCheckOutput = check.stdout.trim();
+        if (lastCheckOutput.startsWith('200') || lastCheckOutput.startsWith('304')) {
           ready = true;
           break;
         }
       }
 
       if (!ready) {
+        // Grab the vite log for diagnostics
+        const viteLog = await dockerProvider.runCommand(
+          context.sandboxId,
+          'tail -30 /tmp/vite.log 2>/dev/null || echo "No log available"',
+          { timeout: 5_000 }
+        );
+        // Also check if any process is listening on 5173
+        const portCheck = await dockerProvider.runCommand(
+          context.sandboxId,
+          'ss -tlnp 2>/dev/null | grep 5173 || netstat -tlnp 2>/dev/null | grep 5173 || echo "No listener on 5173"',
+          { timeout: 5_000 }
+        );
+        const logSnippet = viteLog.stdout.trim().slice(0, 500);
+        const portInfo = portCheck.stdout.trim();
         return {
           success: false,
           previewUrl: '',
-          message: 'Dev server failed to start within 15 seconds',
+          message: [
+            `Dev server failed to start within 20 seconds.`,
+            `Last check: ${lastCheckOutput}`,
+            `Port 5173: ${portInfo}`,
+            `Vite log:\n${logSnippet}`,
+            ``,
+            `ACTION REQUIRED: Do NOT skip this step. Diagnose using:`,
+            `1. Read /tmp/vite.log via sandbox_read_file for the full error`,
+            `2. If error mentions missing modules, run "bun install" then retry`,
+            `3. If Vite config has issues, read and fix vite.config.ts, then retry`,
+            `4. If port is in use, run "pkill -f vite" then retry sandbox_start_preview`,
+          ].join('\n'),
         };
       }
 
