@@ -6,6 +6,7 @@
  */
 
 export type SandboxStatus = 'creating' | 'ready' | 'busy' | 'destroyed' | 'error';
+export type SandboxTemplate = 'theatre' | 'remotion';
 
 export interface SandboxInstance {
   id: string;
@@ -15,6 +16,7 @@ export interface SandboxInstance {
   createdAt: string;
   lastActivityAt: string;
   port?: number;
+  template?: SandboxTemplate;
 }
 
 export interface SandboxFile {
@@ -32,7 +34,7 @@ export interface CommandResult {
 
 export interface SandboxProvider {
   /** Create a new sandbox for a project */
-  create(projectId: string): Promise<SandboxInstance>;
+  create(projectId: string, template?: SandboxTemplate): Promise<SandboxInstance>;
 
   /** Destroy a sandbox */
   destroy(sandboxId: string): Promise<void>;
@@ -48,6 +50,9 @@ export interface SandboxProvider {
 
   /** Run a command in the sandbox */
   runCommand(sandboxId: string, command: string, options?: { background?: boolean; timeout?: number }): Promise<CommandResult>;
+
+  /** Upload media (image/video) from a URL to the sandbox */
+  uploadMedia(sandboxId: string, mediaUrl: string, destPath: string): Promise<{ success: boolean; path: string; size?: number; error?: string }>;
 
   /** Get sandbox status */
   getStatus(sandboxId: string): Promise<SandboxInstance | null>;

@@ -15,6 +15,6 @@ export const codeGeneratorAgent = new Agent({
   id: 'theatre-code-generator',
   name: 'theatre-code-generator',
   instructions: CODE_GENERATOR_INSTRUCTIONS,
-  model: 'anthropic/claude-opus-4-5',
+  model: 'anthropic/claude-sonnet-4-5', //anthropic/claude-opus-4-5',
   // No tools — pure generation
 });

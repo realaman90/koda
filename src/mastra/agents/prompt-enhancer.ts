@@ -24,5 +24,5 @@ Guidelines:
 5. Use comma-separated descriptors for better model understanding
 
 Output ONLY the enhanced prompt, nothing else.`,
-  model: 'anthropic/claude-sonnet-4-20250514',
+  model: 'anthropic/claude-sonnet-4-5', //anthropic/claude-opus-4-5',
 });

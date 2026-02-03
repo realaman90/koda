@@ -12,7 +12,12 @@ import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import type { SandboxProvider, SandboxInstance, SandboxFile, CommandResult } from './types';
 
-const SANDBOX_IMAGE = process.env.SANDBOX_IMAGE || 'koda/animation-sandbox';
+// Docker images for each animation framework
+const SANDBOX_IMAGES = {
+  theatre: process.env.SANDBOX_IMAGE_THEATRE || 'koda/animation-sandbox',
+  remotion: process.env.SANDBOX_IMAGE_REMOTION || 'koda/remotion-sandbox',
+} as const;
+type SandboxTemplate = keyof typeof SANDBOX_IMAGES;
 const CONTAINER_PREFIX = 'koda-sandbox-';
 const DOCKER_NETWORK = 'koda-sandbox-net';
 const DEFAULT_TIMEOUT = 30_000; // 30 seconds
@@ -128,10 +133,14 @@ function execCommand(
 export const dockerProvider: SandboxProvider = {
   /**
    * Create a new sandbox container
+   *
+   * @param projectId - Unique project identifier
+   * @param template - Animation framework template ('theatre' or 'remotion')
    */
-  async create(projectId: string): Promise<SandboxInstance> {
+  async create(projectId: string, template: SandboxTemplate = 'theatre'): Promise<SandboxInstance> {
     const sandboxId = `${CONTAINER_PREFIX}${projectId}-${randomUUID().slice(0, 8)}`;
     const hostPort = allocatePort();
+    const image = SANDBOX_IMAGES[template];
 
     const now = new Date().toISOString();
     const instance: SandboxInstance = {
@@ -141,6 +150,7 @@ export const dockerProvider: SandboxProvider = {
       createdAt: now,
       lastActivityAt: now,
       port: hostPort,
+      template,
     };
     activeSandboxes.set(sandboxId, instance);
 
@@ -163,7 +173,7 @@ export const dockerProvider: SandboxProvider = {
         '--network', DOCKER_NETWORK,
         // Expose the Vite dev server on a host port for proxying
         '-p', `${hostPort}:5173`,
-        SANDBOX_IMAGE,
+        image,
         // Keep container running
         'tail', '-f', '/dev/null',
       ]);
@@ -329,6 +339,57 @@ export const dockerProvider: SandboxProvider = {
         exitCode: 1,
       };
     }
+  },
+
+  /**
+   * Upload media (image/video) to the sandbox by downloading from a URL.
+   * Uses curl inside the container to fetch the file directly.
+   */
+  async uploadMedia(
+    sandboxId: string,
+    mediaUrl: string,
+    destPath: string
+  ): Promise<{ success: boolean; path: string; size?: number; error?: string }> {
+    validatePath(destPath);
+    touchActivity(sandboxId);
+
+    const containerPath = resolveContainerPath(destPath);
+
+    // Ensure parent directory exists
+    const dir = containerPath.substring(0, containerPath.lastIndexOf('/'));
+    if (dir) {
+      await execAsync('docker', ['exec', sandboxId, 'mkdir', '-p', dir]);
+    }
+
+    // Use curl to download the file directly into the container
+    // -L follows redirects, -s is silent, -o specifies output file
+    const result = await execCommand(
+      'docker',
+      ['exec', sandboxId, 'curl', '-L', '-s', '-o', containerPath, mediaUrl],
+      60_000 // 60 second timeout for large files
+    );
+
+    if (!result.success) {
+      return {
+        success: false,
+        path: destPath,
+        error: `Failed to download media: ${result.stderr}`,
+      };
+    }
+
+    // Get file size
+    const sizeResult = await execCommand(
+      'docker',
+      ['exec', sandboxId, 'stat', '-c', '%s', containerPath],
+      5_000
+    );
+    const size = parseInt(sizeResult.stdout.trim(), 10) || undefined;
+
+    return {
+      success: true,
+      path: destPath,
+      size,
+    };
   },
 
   /**

@@ -25,8 +25,18 @@ export {
   TodoSchema,
 } from './planning-tools';
 
-// Code Generation Tool (subagent-as-tool)
+// Code Generation Tools (subagent-as-tool)
 export { generateCodeTool } from './generate-code-tool';
+export { generateRemotionCodeTool } from './generate-remotion-code-tool';
+
+// Documentation Tool (self-healing)
+export { fetchDocsTool } from './fetch-docs-tool';
+
+// Prompt Enhancement Tool
+export { enhanceAnimationPromptTool } from './enhance-prompt-tool';
+
+// Media Analysis Tool
+export { analyzeMediaTool, SceneAnalysisSchema, MediaAnalysisResultSchema } from './analyze-media-tool';
 
 // Sandbox Tools
 export {
@@ -36,6 +46,7 @@ export {
   sandboxReadFileTool,
   sandboxRunCommandTool,
   sandboxListFilesTool,
+  sandboxUploadMediaTool,
   sandboxStartPreviewTool,
   sandboxScreenshotTool,
   renderPreviewTool,

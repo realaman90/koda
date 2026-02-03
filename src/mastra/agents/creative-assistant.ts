@@ -29,5 +29,5 @@ When suggesting prompts, format them as:
 **Prompt:** [the actual prompt]
 **Style:** [recommended style]
 **Mood:** [intended mood/atmosphere]`,
-  model: 'anthropic/claude-sonnet-4-20250514',
+  model: 'anthropic/claude-sonnet-4-5', //anthropic/claude-opus-4-5',
 });

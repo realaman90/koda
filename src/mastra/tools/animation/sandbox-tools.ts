@@ -26,27 +26,34 @@ export const sandboxCreateTool = createTool({
   id: 'sandbox_create',
   description: `Create a new isolated Docker sandbox for animation development.
 
-The sandbox comes pre-installed with Node.js, Bun, Theatre.js, React, Vite, Chromium, and FFmpeg.
+Choose a template based on the selected framework:
+- "theatre" (default): Theatre.js + React Three Fiber for 3D animations
+- "remotion": Remotion for 2D motion graphics and text animations
+
 Call this before writing any files or running commands.`,
   inputSchema: z.object({
     projectId: z.string().describe('Unique project identifier for this animation'),
+    template: z.enum(['theatre', 'remotion']).default('theatre').describe('Animation framework template to use'),
   }),
   outputSchema: z.object({
     success: z.boolean(),
     sandboxId: z.string(),
     status: z.string(),
     previewUrl: z.string(),
+    template: z.string(),
     message: z.string(),
   }),
   execute: async (inputData) => {
     try {
-      const instance = await dockerProvider.create(inputData.projectId);
+      const template = inputData.template || 'theatre';
+      const instance = await dockerProvider.create(inputData.projectId, template);
       return {
         success: true,
         sandboxId: instance.id,
         status: instance.status,
         previewUrl: `/api/plugins/animation/sandbox/${instance.id}/proxy`,
-        message: `Sandbox created: ${instance.id}`,
+        template,
+        message: `Sandbox created with ${template} template: ${instance.id}`,
       };
     } catch (error) {
       return {
@@ -54,6 +61,7 @@ Call this before writing any files or running commands.`,
         sandboxId: '',
         status: 'error',
         previewUrl: '',
+        template: inputData.template || 'theatre',
         message: error instanceof Error ? error.message : 'Failed to create sandbox',
       };
     }
@@ -228,6 +236,65 @@ export const sandboxListFilesTool = createTool({
       return {
         success: false,
         files: [],
+      };
+    }
+  },
+});
+
+/**
+ * sandbox_upload_media - Upload image/video to sandbox
+ */
+export const sandboxUploadMediaTool = createTool({
+  id: 'sandbox_upload_media',
+  description: `Upload an image or video to the sandbox for use in animations.
+
+Use this when:
+- User provides an image they want to animate (Ken Burns effect, parallax, etc.)
+- User provides a video they want to add overlays/effects to
+- Animation code needs to reference user-provided media
+
+The media is downloaded directly into the sandbox container.
+Common destination paths:
+- public/assets/image.png - For images
+- public/assets/video.mp4 - For videos
+
+After uploading, reference in code as '/assets/image.png' or '/assets/video.mp4'.`,
+  inputSchema: z.object({
+    sandboxId: z.string().describe('Sandbox ID'),
+    mediaUrl: z.string().describe('URL of the media to upload'),
+    destPath: z.string().describe('Destination path in sandbox (e.g., public/assets/image.png)'),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    path: z.string(),
+    size: z.number().optional(),
+    message: z.string(),
+  }),
+  execute: async (inputData) => {
+    try {
+      const result = await dockerProvider.uploadMedia(
+        inputData.sandboxId,
+        inputData.mediaUrl,
+        inputData.destPath
+      );
+      if (!result.success) {
+        return {
+          success: false,
+          path: inputData.destPath,
+          message: result.error || 'Failed to upload media',
+        };
+      }
+      return {
+        success: true,
+        path: result.path,
+        size: result.size,
+        message: `Media uploaded: ${result.path} (${result.size ? Math.round(result.size / 1024) + ' KB' : 'unknown size'})`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        path: inputData.destPath,
+        message: error instanceof Error ? error.message : 'Failed to upload media',
       };
     }
   },
