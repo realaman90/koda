@@ -1,7 +1,7 @@
 import type { Node, Edge } from '@xyflow/react';
 
 // Node Types
-export type NodeType = 'imageGenerator' | 'videoGenerator' | 'text' | 'media' | 'stickyNote' | 'sticker' | 'group' | 'storyboard' | 'musicGenerator' | 'speech' | 'videoAudio';
+export type NodeType = 'imageGenerator' | 'videoGenerator' | 'text' | 'media' | 'stickyNote' | 'sticker' | 'group' | 'storyboard' | 'productShot' | 'musicGenerator' | 'speech' | 'videoAudio';
 
 // ============================================
 // PRESET TYPES (for Settings Panel)
@@ -179,7 +179,7 @@ export interface GroupNodeData extends Record<string, unknown> {
 export type GroupNode = Node<GroupNodeData, 'group'>;
 
 // Union of all node types
-export type AppNode = ImageGeneratorNode | VideoGeneratorNode | TextNode | MediaNode | StickyNoteNode | StickerNode | GroupNode | StoryboardNode | MusicGeneratorNode | SpeechNode | VideoAudioNode;
+export type AppNode = ImageGeneratorNode | VideoGeneratorNode | TextNode | MediaNode | StickyNoteNode | StickerNode | GroupNode | StoryboardNode | ProductShotNode | MusicGeneratorNode | SpeechNode | VideoAudioNode;
 export type AppEdge = Edge;
 
 // Fal API types
@@ -592,6 +592,51 @@ export interface StoryboardNodeData extends Record<string, unknown> {
 }
 
 export type StoryboardNode = Node<StoryboardNodeData, 'storyboard'>;
+
+// ============================================
+// PRODUCT SHOT NODE TYPES
+// ============================================
+
+// Product shot background preset
+export type ProductShotBackground = 'studio-white' | 'gradient' | 'lifestyle' | 'outdoor' | 'dark-moody';
+
+// Product shot lighting preset
+export type ProductShotLighting = 'soft' | 'dramatic' | 'natural' | 'rim-light';
+
+// Product shot view state
+export type ProductShotViewState = 'form' | 'loading' | 'preview';
+
+// Single shot data structure (matches schema.ts)
+export interface ProductShotShotData {
+  number: number;
+  angleName: string;
+  description: string;
+  prompt: string;
+  camera: string;
+  composition: string;
+  enabled: boolean;
+}
+
+// Product Shot Node Data
+export interface ProductShotNodeData extends Record<string, unknown> {
+  name?: string;
+  // Form fields
+  productName: string;
+  shotCount: number;
+  background: ProductShotBackground;
+  lighting: ProductShotLighting;
+  additionalNotes?: string;
+  // UI state
+  viewState: ProductShotViewState;
+  error?: string;
+  // Generated result (stored for persistence)
+  result?: {
+    shots: ProductShotShotData[];
+    summary: string;
+  };
+}
+
+export type ProductShotNode = Node<ProductShotNodeData, 'productShot'>;
 
 // ============================================
 // AUDIO GENERATION TYPES

@@ -29,6 +29,7 @@ import {
 import { pluginRegistry } from '@/lib/plugins/registry';
 // Import official plugins to register them
 import '@/lib/plugins/official/storyboard-generator';
+import '@/lib/plugins/official/product-shot';
 
 interface MenuItem {
   id: string;

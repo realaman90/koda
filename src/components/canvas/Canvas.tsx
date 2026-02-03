@@ -12,7 +12,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
-import { useCanvasStore, createStoryboardNode } from '@/stores/canvas-store';
+import { useCanvasStore, createStoryboardNode, createProductShotNode } from '@/stores/canvas-store';
 import type { AppNode, ImageGeneratorNodeData, VideoGeneratorNodeData, ImageModelType, VideoModelType } from '@/lib/types';
 import { MODEL_CAPABILITIES, VIDEO_MODEL_CAPABILITIES } from '@/lib/types';
 import { nodeTypes } from './nodes';
@@ -55,8 +55,8 @@ export function Canvas() {
   // Handle plugin launch - create node for storyboard, open sandbox for others
   const handlePluginLaunch = useCallback(
     (pluginId: string) => {
-      if (pluginId === 'storyboard-generator') {
-        // Create a storyboard node at viewport center
+      if (pluginId === 'storyboard-generator' || pluginId === 'product-shot') {
+        // Create a canvas node at viewport center
         let position = { x: 400, y: 300 };
         if (reactFlowInstance) {
           const viewport = reactFlowInstance.getViewport();
@@ -67,7 +67,9 @@ export function Canvas() {
             y: (-viewport.y + height / 2 - 200) / viewport.zoom,
           };
         }
-        const node = createStoryboardNode(position, 'Storyboard');
+        const node = pluginId === 'product-shot'
+          ? createProductShotNode(position, 'Product Shots')
+          : createStoryboardNode(position, 'Storyboard');
         addNode(node);
       } else {
         // Other plugins still open as modals. Maybe not needed anymore. We'll see.

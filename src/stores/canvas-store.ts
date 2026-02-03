@@ -8,7 +8,7 @@ import {
   type Connection,
   type ReactFlowInstance,
 } from '@xyflow/react';
-import type { AppNode, AppEdge, ImageGeneratorNodeData, VideoGeneratorNodeData, TextNodeData, MediaNodeData, StickyNoteNodeData, StickerNodeData, GroupNodeData, StoryboardNodeData, MusicGeneratorNodeData, SpeechNodeData, VideoAudioNodeData } from '@/lib/types';
+import type { AppNode, AppEdge, ImageGeneratorNodeData, VideoGeneratorNodeData, TextNodeData, MediaNodeData, StickyNoteNodeData, StickerNodeData, GroupNodeData, StoryboardNodeData, ProductShotNodeData, MusicGeneratorNodeData, SpeechNodeData, VideoAudioNodeData } from '@/lib/types';
 
 // History snapshot type
 interface HistorySnapshot {
@@ -244,6 +244,20 @@ export const createStoryboardNode = (position: { x: number; y: number }, name?: 
     mode: 'transition',
     viewState: 'form',
   } as StoryboardNodeData,
+});
+
+export const createProductShotNode = (position: { x: number; y: number }, name?: string): AppNode => ({
+  id: generateId(),
+  type: 'productShot',
+  position,
+  data: {
+    name: name || 'Product Shots',
+    productName: '',
+    shotCount: 4,
+    background: 'studio-white',
+    lighting: 'soft',
+    viewState: 'form',
+  } as ProductShotNodeData,
 });
 
 export const createMusicGeneratorNode = (position: { x: number; y: number }, name?: string): AppNode => ({

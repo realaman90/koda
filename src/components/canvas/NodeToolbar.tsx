@@ -38,6 +38,7 @@ import {
 import { PluginLauncher } from '@/components/plugins/PluginLauncher';
 // Import official plugins to register them
 import '@/lib/plugins/official/storyboard-generator';
+import '@/lib/plugins/official/product-shot';
 import {
   Tooltip,
   TooltipContent,
