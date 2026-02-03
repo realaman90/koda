@@ -75,6 +75,7 @@ export interface ToolCallItem {
   toolName: string;
   displayName: string;
   status: 'running' | 'done' | 'failed';
+  args?: Record<string, unknown>;  // Tool arguments for showing context
   output?: string;
   error?: string;
   timestamp: string;
@@ -157,6 +158,7 @@ export interface AnimationNodeState {
   planAccepted?: boolean;
   execution?: AnimationExecution;
   preview?: AnimationPreview;
+  previewTimestamp?: string;
   output?: AnimationOutput;
   error?: AnimationError;
 
@@ -167,6 +169,7 @@ export interface AnimationNodeState {
 
   // Live preview (iframe to sandbox dev server)
   previewUrl?: string;
+  previewUrlTimestamp?: string;
 
   // Timestamps
   createdAt: string;

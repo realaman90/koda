@@ -39,13 +39,13 @@ Use "remove" to clean up stale items the user no longer needs to see.`,
     status: z.string().optional(),
     label: z.string().optional(),
   }),
-  execute: async ({ context }) => {
+  execute: async (inputData) => {
     return {
       success: true,
-      action: context.action,
-      todoId: context.todoId,
-      status: context.status,
-      label: context.label,
+      action: inputData.action,
+      todoId: inputData.todoId,
+      status: inputData.status,
+      label: inputData.label,
     };
   },
 });
@@ -117,15 +117,15 @@ The frontend will show the appropriate UI and pause until the user responds.`,
     type: z.string(),
     content: z.string(),
   }),
-  execute: async ({ context }) => {
+  execute: async (inputData) => {
     // The tool itself just returns the approval request data.
     // The frontend intercepts this tool-call event via SSE and shows
     // the appropriate approval UI. The user's response comes back as
     // a new message in the next stream call.
     return {
       success: true,
-      type: context.type,
-      content: context.content,
+      type: inputData.type,
+      content: inputData.content,
     };
   },
 });

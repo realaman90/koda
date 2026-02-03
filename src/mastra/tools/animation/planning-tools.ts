@@ -79,18 +79,18 @@ The frontend uses this structured output to show the right UI (question phase vs
     question: QuestionSchema.optional(),
     inferredStyle: z.string().optional(),
   }),
-  execute: async ({ context }) => {
+  execute: async (inputData) => {
     // Pass through the agent's analysis — the agent does the reasoning,
     // this tool just structures it for the frontend.
     return {
-      needsClarification: context.needsClarification,
-      reason: context.reason,
-      question: context.needsClarification ? (context.question || {
+      needsClarification: inputData.needsClarification,
+      reason: inputData.reason,
+      question: inputData.needsClarification ? (inputData.question || {
         text: DEFAULT_STYLE_QUESTION.text,
         options: DEFAULT_STYLE_QUESTION.options,
         customInput: true,
       }) : undefined,
-      inferredStyle: context.inferredStyle,
+      inferredStyle: inputData.inferredStyle,
     };
   },
 });
@@ -145,12 +145,12 @@ This tool validates your plan and generates the todo list for execution.`,
     plan: PlanSchema,
     todos: z.array(TodoSchema),
   }),
-  execute: async ({ context }) => {
+  execute: async (inputData) => {
     const plan = {
-      scenes: context.scenes,
-      totalDuration: context.totalDuration,
-      style: context.style,
-      fps: context.fps || 60,
+      scenes: inputData.scenes,
+      totalDuration: inputData.totalDuration,
+      style: inputData.style,
+      fps: inputData.fps || 60,
     };
 
     return { plan, todos: generateTodosFromPlan(plan) };

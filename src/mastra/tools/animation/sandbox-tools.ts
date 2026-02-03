@@ -9,6 +9,16 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { dockerProvider } from '@/lib/sandbox/docker-provider';
 
+// ── Token-saving helpers ──────────────────────────────────────────
+/** Max chars for command output to keep token usage manageable */
+const MAX_OUTPUT_CHARS = 3000;
+
+function truncateOutput(text: string, max = MAX_OUTPUT_CHARS): string {
+  if (text.length <= max) return text;
+  const half = Math.floor(max / 2) - 30;
+  return text.slice(0, half) + `\n\n... [truncated ${text.length - max} chars] ...\n\n` + text.slice(-half);
+}
+
 /**
  * sandbox_create - Create a new sandbox container
  */
@@ -28,9 +38,9 @@ Call this before writing any files or running commands.`,
     previewUrl: z.string(),
     message: z.string(),
   }),
-  execute: async ({ context }) => {
+  execute: async (inputData) => {
     try {
-      const instance = await dockerProvider.create(context.projectId);
+      const instance = await dockerProvider.create(inputData.projectId);
       return {
         success: true,
         sandboxId: instance.id,
@@ -63,12 +73,12 @@ export const sandboxDestroyTool = createTool({
     success: z.boolean(),
     message: z.string(),
   }),
-  execute: async ({ context }) => {
+  execute: async (inputData) => {
     try {
-      await dockerProvider.destroy(context.sandboxId);
+      await dockerProvider.destroy(inputData.sandboxId);
       return {
         success: true,
-        message: `Sandbox destroyed: ${context.sandboxId}`,
+        message: `Sandbox destroyed: ${inputData.sandboxId}`,
       };
     } catch (error) {
       return {
@@ -101,19 +111,19 @@ Common files:
     path: z.string(),
     message: z.string(),
   }),
-  execute: async ({ context }) => {
+  execute: async (inputData) => {
     try {
-      await dockerProvider.writeFile(context.sandboxId, context.path, context.content);
+      await dockerProvider.writeFile(inputData.sandboxId, inputData.path, inputData.content);
       return {
         success: true,
-        path: context.path,
-        message: `File written: ${context.path}`,
+        path: inputData.path,
+        message: `File written: ${inputData.path}`,
       };
     } catch (error) {
       return {
         success: false,
-        path: context.path,
-        message: error instanceof Error ? error.message : `Failed to write: ${context.path}`,
+        path: inputData.path,
+        message: error instanceof Error ? error.message : `Failed to write: ${inputData.path}`,
       };
     }
   },
@@ -133,14 +143,15 @@ export const sandboxReadFileTool = createTool({
     success: z.boolean(),
     content: z.string(),
   }),
-  execute: async ({ context }) => {
+  execute: async (inputData) => {
     try {
-      const content = await dockerProvider.readFile(context.sandboxId, context.path);
-      return { success: true, content };
+      const content = await dockerProvider.readFile(inputData.sandboxId, inputData.path);
+      // Cap file content to save tokens — agent can request specific sections if needed
+      return { success: true, content: truncateOutput(content, 5000) };
     } catch (error) {
       return {
         success: false,
-        content: error instanceof Error ? error.message : `Failed to read: ${context.path}`,
+        content: error instanceof Error ? error.message : `Failed to read: ${inputData.path}`,
       };
     }
   },
@@ -169,12 +180,17 @@ Common commands:
     stderr: z.string(),
     exitCode: z.number(),
   }),
-  execute: async ({ context }) => {
+  execute: async (inputData) => {
     try {
-      return await dockerProvider.runCommand(context.sandboxId, context.command, {
-        background: context.background,
-        timeout: context.timeout,
+      const result = await dockerProvider.runCommand(inputData.sandboxId, inputData.command, {
+        background: inputData.background,
+        timeout: inputData.timeout,
       });
+      return {
+        ...result,
+        stdout: truncateOutput(result.stdout),
+        stderr: truncateOutput(result.stderr),
+      };
     } catch (error) {
       return {
         success: false,
@@ -204,9 +220,9 @@ export const sandboxListFilesTool = createTool({
       type: z.enum(['file', 'directory']),
     })),
   }),
-  execute: async ({ context }) => {
+  execute: async (inputData) => {
     try {
-      const files = await dockerProvider.listFiles(context.sandboxId, context.path, context.recursive);
+      const files = await dockerProvider.listFiles(inputData.sandboxId, inputData.path, inputData.recursive);
       return { success: true, files };
     } catch (error) {
       return {
@@ -234,16 +250,16 @@ This tool kills any existing dev server, starts a new one, and waits until it's 
     previewUrl: z.string(),
     message: z.string(),
   }),
-  execute: async ({ context }) => {
+  execute: async (inputData) => {
     try {
       // Kill any existing dev server
-      await dockerProvider.runCommand(context.sandboxId, 'pkill -f "vite" || true', { timeout: 5_000 });
+      await dockerProvider.runCommand(inputData.sandboxId, 'pkill -f "vite" || true', { timeout: 5_000 });
       // Small delay to let the process die
       await new Promise((r) => setTimeout(r, 500));
 
       // Check that package.json exists
       const pkgCheck = await dockerProvider.runCommand(
-        context.sandboxId,
+        inputData.sandboxId,
         'test -f /app/package.json && echo "OK" || echo "MISSING"',
         { timeout: 5_000 }
       );
@@ -257,14 +273,14 @@ This tool kills any existing dev server, starts a new one, and waits until it's 
 
       // Ensure dependencies are installed
       const nodeModulesCheck = await dockerProvider.runCommand(
-        context.sandboxId,
+        inputData.sandboxId,
         'test -d /app/node_modules && echo "OK" || echo "MISSING"',
         { timeout: 5_000 }
       );
       if (nodeModulesCheck.stdout.trim() === 'MISSING') {
         // Install deps before starting
         const installResult = await dockerProvider.runCommand(
-          context.sandboxId,
+          inputData.sandboxId,
           'cd /app && bun install 2>&1',
           { timeout: 60_000 }
         );
@@ -279,7 +295,7 @@ This tool kills any existing dev server, starts a new one, and waits until it's 
 
       // Start dev server in background, redirect output to a log file for debugging
       await dockerProvider.runCommand(
-        context.sandboxId,
+        inputData.sandboxId,
         'cd /app && nohup bun run dev > /tmp/vite.log 2>&1 &',
         { background: true }
       );
@@ -292,7 +308,7 @@ This tool kills any existing dev server, starts a new one, and waits until it's 
         await new Promise((r) => setTimeout(r, 500));
         // Use wget as fallback if curl isn't available
         const check = await dockerProvider.runCommand(
-          context.sandboxId,
+          inputData.sandboxId,
           '(curl -s -o /dev/null -w "%{http_code}" http://localhost:5173/ 2>/dev/null || wget -q -O /dev/null --server-response http://localhost:5173/ 2>&1 | grep "HTTP/" | tail -1 | awk "{print \\$2}" || echo "000")',
           { timeout: 5_000 }
         );
@@ -306,13 +322,13 @@ This tool kills any existing dev server, starts a new one, and waits until it's 
       if (!ready) {
         // Grab the vite log for diagnostics
         const viteLog = await dockerProvider.runCommand(
-          context.sandboxId,
+          inputData.sandboxId,
           'tail -30 /tmp/vite.log 2>/dev/null || echo "No log available"',
           { timeout: 5_000 }
         );
         // Also check if any process is listening on 5173
         const portCheck = await dockerProvider.runCommand(
-          context.sandboxId,
+          inputData.sandboxId,
           'ss -tlnp 2>/dev/null | grep 5173 || netstat -tlnp 2>/dev/null | grep 5173 || echo "No listener on 5173"',
           { timeout: 5_000 }
         );
@@ -338,8 +354,8 @@ This tool kills any existing dev server, starts a new one, and waits until it's 
 
       return {
         success: true,
-        previewUrl: `/api/plugins/animation/sandbox/${context.sandboxId}/proxy`,
-        message: 'Dev server running — preview ready',
+        previewUrl: `/api/plugins/animation/sandbox/${inputData.sandboxId}/proxy`,
+        message: 'Dev server running — preview ready. NEXT STEP: Call sandbox_screenshot with timestamps=[0, 0.5, 1, 1.5, 2, ...] (batch mode, ~10 frames spread across your animation duration) to verify the animation renders AND animates before proceeding.',
       };
     } catch (error) {
       return {
@@ -356,30 +372,54 @@ This tool kills any existing dev server, starts a new one, and waits until it's 
  */
 export const sandboxScreenshotTool = createTool({
   id: 'sandbox_screenshot',
-  description: `Capture a screenshot of the animation at a specific point in time.
+  description: `Capture one or more screenshots of the animation at specific points in time.
 
-Uses Puppeteer inside the sandbox to navigate to the dev server, seek to the specified time, and capture a screenshot.
-Useful for debugging, progress verification, and thumbnail generation.`,
+Uses Puppeteer inside the sandbox to navigate to the dev server, seek to specified times, and capture screenshots.
+
+**Single mode**: Pass \`seekTo\` for one screenshot.
+**Batch mode**: Pass \`timestamps\` array (e.g. [0, 1, 2, 3, 4]) to capture multiple frames in one call. Much more efficient than calling this tool multiple times.
+
+**IMPORTANT — Verification workflow**: After starting the preview, ALWAYS use batch mode with ~10 evenly spaced timestamps across the animation duration. This proves the animation is actually playing and not a static image. Example for a 5s animation: timestamps=[0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5]`,
   inputSchema: z.object({
     sandboxId: z.string().describe('Sandbox ID'),
-    seekTo: z.number().optional().describe('Seek animation to this time (seconds) before capture'),
+    seekTo: z.number().optional().describe('Single screenshot: seek to this time (seconds)'),
+    timestamps: z.array(z.number()).optional().describe('Batch mode: array of timestamps (seconds) for multiple screenshots in one call'),
     width: z.number().optional().describe('Screenshot width (default: 1920)'),
     height: z.number().optional().describe('Screenshot height (default: 1080)'),
   }),
   outputSchema: z.object({
     success: z.boolean(),
-    imageUrl: z.string(),
-    timestamp: z.number(),
+    screenshots: z.array(z.object({
+      imageUrl: z.string(),
+      timestamp: z.number(),
+    })),
     message: z.string(),
   }),
-  execute: async ({ context }) => {
-    const width = context.width || 1920;
-    const height = context.height || 1080;
-    const seekTo = context.seekTo || 0;
-
-    // Write a Puppeteer script that uses the same seek API as useCurrentFrame
+  execute: async (inputData) => {
+    const width = inputData.width || 1920;
+    const height = inputData.height || 1080;
     const fps = 60;
-    const seekFrame = Math.round(seekTo * fps);
+
+    // Determine which timestamps to capture
+    let timestamps: number[];
+    if (inputData.timestamps && inputData.timestamps.length > 0) {
+      timestamps = inputData.timestamps;
+    } else {
+      timestamps = [inputData.seekTo || 0];
+    }
+
+    // Cap at 20 screenshots per call
+    if (timestamps.length > 20) {
+      timestamps = timestamps.slice(0, 20);
+    }
+
+    // Build a Puppeteer script that captures all timestamps in a single browser session
+    const captureEntries = timestamps.map((t, i) => {
+      const frame = Math.round(t * fps);
+      const filename = `screenshot-${i}-${t.toFixed(2).replace('.', '_')}s.png`;
+      return { t, frame, filename };
+    });
+
     const screenshotScript = `
 const puppeteer = require('puppeteer-core');
 (async () => {
@@ -402,54 +442,67 @@ const puppeteer = require('puppeteer-core');
   // Wait for React to mount
   await new Promise(r => setTimeout(r, 500));
 
-  // Seek via theatre-seek event (matches useCurrentFrame hook)
-  await page.evaluate((frame) => {
-    window.dispatchEvent(new CustomEvent('theatre-seek', { detail: { frame } }));
-  }, ${seekFrame});
+  const captures = ${JSON.stringify(captureEntries)};
+  const results = [];
 
-  // Wait for React to re-render
-  await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
+  for (const cap of captures) {
+    // Seek via theatre-seek event (matches useCurrentFrame hook)
+    await page.evaluate((frame) => {
+      window.dispatchEvent(new CustomEvent('theatre-seek', { detail: { frame } }));
+    }, cap.frame);
 
-  await page.screenshot({ path: '/app/output/screenshot.png', type: 'png' });
+    // Wait for React to re-render
+    await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
+    // Extra settle time for complex animations
+    await new Promise(r => setTimeout(r, 100));
+
+    await page.screenshot({ path: '/app/output/' + cap.filename, type: 'png' });
+    results.push({ filename: cap.filename, timestamp: cap.t });
+  }
+
   await browser.close();
-  console.log('OK');
+  console.log(JSON.stringify(results));
 })();
 `;
 
     try {
       // Ensure output directory
-      await dockerProvider.runCommand(context.sandboxId, 'mkdir -p /app/output');
+      await dockerProvider.runCommand(inputData.sandboxId, 'mkdir -p /app/output');
 
       // Write the screenshot script
-      await dockerProvider.writeFile(context.sandboxId, 'screenshot.cjs', screenshotScript);
+      await dockerProvider.writeFile(inputData.sandboxId, 'screenshot.cjs', screenshotScript);
 
-      // Run it
+      // Run it (longer timeout for batch mode)
+      const timeoutMs = Math.max(30_000, timestamps.length * 5_000);
       const result = await dockerProvider.runCommand(
-        context.sandboxId,
+        inputData.sandboxId,
         'node screenshot.cjs',
-        { timeout: 30_000 }
+        { timeout: timeoutMs }
       );
 
       if (!result.success) {
         return {
           success: false,
-          imageUrl: '',
-          timestamp: seekTo,
+          screenshots: [],
           message: `Screenshot failed: ${result.stderr}`,
         };
       }
 
+      // Build the response with image URLs
+      const screenshots = captureEntries.map((cap) => ({
+        imageUrl: `/api/plugins/animation/sandbox/${inputData.sandboxId}/file?path=output/${cap.filename}`,
+        timestamp: cap.t,
+      }));
+
       return {
         success: true,
-        imageUrl: `/api/plugins/animation/sandbox/${context.sandboxId}/file?path=output/screenshot.png`,
-        timestamp: seekTo,
-        message: `Screenshot captured at t=${seekTo}s`,
+        screenshots,
+        message: `Captured ${screenshots.length} screenshot(s) at t=${timestamps.map(t => t + 's').join(', ')}`,
       };
     } catch (error) {
       return {
         success: false,
-        imageUrl: '',
-        timestamp: seekTo,
+        screenshots: [],
         message: error instanceof Error ? error.message : 'Screenshot failed',
       };
     }
@@ -475,12 +528,12 @@ which uses Puppeteer + FFmpeg to capture the animation.`,
     thumbnailUrl: z.string(),
     duration: z.number(),
   }),
-  execute: async ({ context }) => {
+  execute: async (inputData) => {
     try {
       // Run the export script in the container
       const result = await dockerProvider.runCommand(
-        context.sandboxId,
-        `node export-video.cjs --duration ${context.duration} --quality preview --output /app/output/preview.mp4`,
+        inputData.sandboxId,
+        `node export-video.cjs --duration ${inputData.duration} --quality preview --output /app/output/preview.mp4`,
         { timeout: 120_000 }
       );
 
@@ -489,7 +542,7 @@ which uses Puppeteer + FFmpeg to capture the animation.`,
           success: false,
           videoUrl: '',
           thumbnailUrl: '',
-          duration: context.duration,
+          duration: inputData.duration,
         };
       }
 
@@ -497,16 +550,16 @@ which uses Puppeteer + FFmpeg to capture the animation.`,
       // TODO: Upload to storage and return a real URL
       return {
         success: true,
-        videoUrl: `/api/plugins/animation/sandbox/${context.sandboxId}/file?path=output/preview.mp4`,
-        thumbnailUrl: `/api/plugins/animation/sandbox/${context.sandboxId}/file?path=output/preview-thumb.jpg`,
-        duration: context.duration,
+        videoUrl: `/api/plugins/animation/sandbox/${inputData.sandboxId}/file?path=output/preview.mp4`,
+        thumbnailUrl: `/api/plugins/animation/sandbox/${inputData.sandboxId}/file?path=output/preview-thumb.jpg`,
+        duration: inputData.duration,
       };
     } catch (error) {
       return {
         success: false,
         videoUrl: '',
         thumbnailUrl: '',
-        duration: context.duration,
+        duration: inputData.duration,
       };
     }
   },
@@ -530,13 +583,13 @@ export const renderFinalTool = createTool({
     duration: z.number(),
     resolution: z.string(),
   }),
-  execute: async ({ context }) => {
-    const resolution = context.resolution || '1080p';
+  execute: async (inputData) => {
+    const resolution = inputData.resolution || '1080p';
 
     try {
       const result = await dockerProvider.runCommand(
-        context.sandboxId,
-        `node export-video.cjs --duration ${context.duration} --quality final --resolution ${resolution} --output /app/output/final.mp4`,
+        inputData.sandboxId,
+        `node export-video.cjs --duration ${inputData.duration} --quality final --resolution ${resolution} --output /app/output/final.mp4`,
         { timeout: 300_000 }
       );
 
@@ -545,16 +598,16 @@ export const renderFinalTool = createTool({
           success: false,
           videoUrl: '',
           thumbnailUrl: '',
-          duration: context.duration,
+          duration: inputData.duration,
           resolution,
         };
       }
 
       return {
         success: true,
-        videoUrl: `/api/plugins/animation/sandbox/${context.sandboxId}/file?path=output/final.mp4`,
-        thumbnailUrl: `/api/plugins/animation/sandbox/${context.sandboxId}/file?path=output/final-thumb.jpg`,
-        duration: context.duration,
+        videoUrl: `/api/plugins/animation/sandbox/${inputData.sandboxId}/file?path=output/final.mp4`,
+        thumbnailUrl: `/api/plugins/animation/sandbox/${inputData.sandboxId}/file?path=output/final-thumb.jpg`,
+        duration: inputData.duration,
         resolution,
       };
     } catch (error) {
@@ -562,7 +615,7 @@ export const renderFinalTool = createTool({
         success: false,
         videoUrl: '',
         thumbnailUrl: '',
-        duration: context.duration,
+        duration: inputData.duration,
         resolution,
       };
     }

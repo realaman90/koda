@@ -11,10 +11,15 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { codeGeneratorAgent } from '../../agents/code-generator-agent';
+import { dockerProvider } from '@/lib/sandbox/docker-provider';
 
 const GenerateCodeInputSchema = z.object({
   task: z.enum(['initial_setup', 'create_component', 'create_scene', 'modify_existing'])
     .describe('Type of code generation task'),
+
+  // Sandbox ID — when provided, files are written directly to the sandbox
+  // and ONLY paths/sizes are returned (saves tokens)
+  sandboxId: z.string().optional().describe('Sandbox ID to write generated files directly (recommended — saves tokens)'),
 
   // For initial_setup
   style: z.string().optional().describe('Animation style (e.g. playful, smooth, cinematic)'),
@@ -67,20 +72,23 @@ Use this for ALL code generation tasks:
 - create_scene: Create/update the scene compositor (MainScene.tsx)
 - modify_existing: Modify an existing file based on feedback
 
-Returns an array of files with their complete contents. The orchestrator should then write each file to the sandbox with sandbox_write_file.`,
+IMPORTANT: Always pass sandboxId so files are written directly to the sandbox.
+This avoids passing large file contents through the conversation and saves tokens.
+You do NOT need to call sandbox_write_file after generate_code when sandboxId is provided.`,
 
   inputSchema: GenerateCodeInputSchema,
   outputSchema: z.object({
     files: z.array(z.object({
       path: z.string(),
-      content: z.string(),
+      size: z.number(),
     })),
     summary: z.string(),
+    writtenToSandbox: z.boolean(),
   }),
 
-  execute: async ({ context }) => {
+  execute: async (inputData) => {
     // Format the request for the code generator subagent
-    const prompt = formatCodeGenerationPrompt(context);
+    const prompt = formatCodeGenerationPrompt(inputData);
 
     try {
       // Call the subagent (non-streaming for tool result)
@@ -99,7 +107,8 @@ Returns an array of files with their complete contents. The orchestrator should 
       }
 
       // Validate each file has path and content
-      for (const file of parsed.files) {
+      const files = parsed.files as Array<{ path: string; content: string }>;
+      for (const file of files) {
         if (!file.path || typeof file.content !== 'string') {
           throw new Error(`Invalid file entry: ${JSON.stringify(file).slice(0, 100)}`);
         }
@@ -113,9 +122,26 @@ Returns an array of files with their complete contents. The orchestrator should 
         }
       }
 
+      // If sandboxId is provided, write files directly to the sandbox
+      // and return only paths/sizes (saves massive token usage)
+      if (inputData.sandboxId) {
+        const writeResults: Array<{ path: string; size: number }> = [];
+        for (const file of files) {
+          await dockerProvider.writeFile(inputData.sandboxId, file.path, file.content);
+          writeResults.push({ path: file.path, size: file.content.length });
+        }
+        return {
+          files: writeResults,
+          summary: typeof parsed.summary === 'string' ? parsed.summary : 'Code generated and written to sandbox',
+          writtenToSandbox: true,
+        };
+      }
+
+      // No sandboxId — return paths and sizes only (content is too large for conversation)
       return {
-        files: parsed.files as Array<{ path: string; content: string }>,
-        summary: typeof parsed.summary === 'string' ? parsed.summary : 'Code generated successfully',
+        files: files.map(f => ({ path: f.path, size: f.content.length })),
+        summary: typeof parsed.summary === 'string' ? parsed.summary : 'Code generated (no sandbox — files not written)',
+        writtenToSandbox: false,
       };
     } catch (error) {
       if (error instanceof SyntaxError) {
@@ -214,7 +240,7 @@ function formatCodeGenerationPrompt(params: z.infer<typeof GenerateCodeInputSche
           parts.push(`  - "${scene.title}" (${scene.start}s–${scene.end}s): ${scene.description}`);
         }
       }
-      parts.push(``, `Create all foundational files: project.ts, useCurrentFrame.ts, App.tsx, and MainScene.tsx.`);
+      parts.push(``, `Create all foundational files: main.tsx (with @theatre/studio import FIRST), project.ts, useCurrentFrame.ts, App.tsx, and MainScene.tsx.`);
       break;
     }
 

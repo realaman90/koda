@@ -74,6 +74,8 @@ export function useAnimationStream(): UseAnimationStreamReturn {
   const [streamedText, setStreamedText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  // Track whether we've received a complete event to avoid double-firing onComplete
+  const completeFiredRef = useRef(false);
 
   const abort = useCallback(() => {
     if (abortControllerRef.current) {
@@ -94,6 +96,7 @@ export function useAnimationStream(): UseAnimationStreamReturn {
       setIsStreaming(true);
       setStreamedText('');
       setError(null);
+      completeFiredRef.current = false;
 
       let fullText = '';
 
@@ -198,6 +201,7 @@ export function useAnimationStream(): UseAnimationStreamReturn {
                 case 'complete': {
                   fullText = data.text || fullText;
                   setStreamedText(fullText);
+                  completeFiredRef.current = true;
                   callbacks?.onComplete?.(fullText);
                   break;
                 }
@@ -218,6 +222,14 @@ export function useAnimationStream(): UseAnimationStreamReturn {
               console.warn('[useAnimationStream] Failed to parse SSE event:', dataPayload.slice(0, 200), parseErr);
             }
           }
+        }
+
+        // Fallback: If we didn't receive a 'complete' event (stream ended unexpectedly),
+        // fire onComplete anyway to ensure the UI knows the stream is done.
+        // This handles edge cases where the server crashes or disconnects without sending 'complete'.
+        if (!completeFiredRef.current) {
+          completeFiredRef.current = true;
+          callbacks?.onComplete?.(fullText);
         }
 
         setIsStreaming(false);

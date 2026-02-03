@@ -76,12 +76,28 @@ export async function POST(request: Request) {
       }
     }
 
+    // ── Message windowing ──────────────────────────────────────────
+    // Only keep the last N messages to prevent token overflow.
+    // The system context (prepended to first user message) provides
+    // enough state for the agent to continue coherently.
+    const MAX_MESSAGES = 10;
+    if (agentMessages.length > MAX_MESSAGES) {
+      agentMessages = agentMessages.slice(-MAX_MESSAGES);
+    }
+
     // Stream the response using Mastra's agent.stream()
     // Type assertion needed: our {role, content}[] is a valid CoreMessage[] but
     // TypeScript can't narrow the MessageListInput union (string | string[] | MessageInput[])
+    //
+    // CRITICAL: maxSteps controls how many tool-call rounds the agent can do.
+    // Default is 1, which stops after the first tool call!
+    // Animation generation needs many steps: create sandbox, generate code,
+    // run commands, start preview, take screenshots, render, etc.
+    // Set to 30 to allow for complex animations with retries.
     const result = await animationAgent.stream(
       agentMessages as Parameters<typeof animationAgent.stream>[0],
       {
+        maxSteps: 30,
         providerOptions: {
           anthropic: {
             thinking: {
@@ -217,24 +233,30 @@ export async function POST(request: Request) {
             }
           }
 
-          // Send final complete event (skip if client disconnected)
+          // Send final complete event (ALWAYS — even if aggregation fails)
+          // This is critical: the client relies on 'complete' to know the stream ended
           if (!closed) {
+            let text = '';
+            let usage = undefined;
+            let finishReason = undefined;
             try {
-              const [text, usage, finishReason] = await Promise.all([
+              [text, usage, finishReason] = await Promise.all([
                 result.text,
                 result.usage,
                 result.finishReason,
               ]);
-
-              safeEnqueue(encoder.encode(`data: ${JSON.stringify({
-                type: 'complete',
-                text,
-                usage,
-                finishReason,
-              })}\n\n`));
-            } catch {
-              // Aggregation failed after stream ended — skip complete event
+            } catch (aggregationErr) {
+              // Aggregation failed — send complete with empty text
+              // This happens when agent only did tool calls without generating text
+              console.warn('Stream aggregation failed (likely tool-only response):', aggregationErr);
             }
+
+            safeEnqueue(encoder.encode(`data: ${JSON.stringify({
+              type: 'complete',
+              text: text || '',
+              usage,
+              finishReason,
+            })}\n\n`));
           }
           safeClose();
         } catch (error) {

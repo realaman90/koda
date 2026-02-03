@@ -1,7 +1,7 @@
 # Animation Sandbox Container
 #
 # Pre-installed with Node.js 20, Bun, Chromium, FFmpeg, and Theatre.js deps.
-# Template files are copied to /template and cloned into /app on sandbox creation.
+# Dependencies are pre-installed in /app so sandbox creation is instant.
 
 FROM node:20-slim
 
@@ -25,17 +25,22 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 # Create project directories
-RUN mkdir -p /template /app/output
+RUN mkdir -p /app/output /app/src/utils
 
-# Copy template files
-COPY template/ /template/
+# Copy template files directly to /app (working directory)
+COPY template/package.json /app/
+COPY template/tsconfig.json /app/
+COPY template/vite.config.ts /app/
+COPY template/index.html /app/
+COPY template/export-video.cjs /app/
+COPY template/src/ /app/src/
 
-# Install dependencies from template
-WORKDIR /template
+# Install dependencies in /app - this is cached in the Docker image
+WORKDIR /app
 RUN bun install
 
-# Working directory for the animation project
-WORKDIR /app
+# Pre-warm Vite by running a build check (caches internal deps)
+RUN bun run build 2>/dev/null || true
 
 # Default command (overridden by sandbox provider)
 CMD ["tail", "-f", "/dev/null"]

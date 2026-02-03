@@ -155,11 +155,10 @@ export interface PreviewReadyAppEvent {
   previewUrl: string;
 }
 
-/** Screenshot captured */
+/** Screenshot(s) captured — supports batch mode */
 export interface ScreenshotCapturedAppEvent {
   kind: 'screenshot_captured';
-  imageUrl: string;
-  timestamp: number;
+  screenshots: Array<{ imageUrl: string; timestamp: number }>;
 }
 
 /** Render completed (preview or final) */
@@ -310,8 +309,7 @@ export function toolResultToAppEvent(toolName: string, result: Record<string, un
     case 'sandbox_screenshot':
       return {
         kind: 'screenshot_captured',
-        imageUrl: result.imageUrl as string,
-        timestamp: result.timestamp as number,
+        screenshots: (result.screenshots as Array<{ imageUrl: string; timestamp: number }>) || [],
       };
     case 'render_preview':
       return {

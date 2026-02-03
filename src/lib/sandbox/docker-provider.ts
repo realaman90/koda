@@ -64,11 +64,25 @@ function releasePort(port: number): void {
   usedPorts.delete(port);
 }
 
-/** Validate that a sandbox file path is safe (no directory traversal or absolute paths) */
+/**
+ * Validate that a sandbox file path is safe (no directory traversal or null bytes).
+ * Absolute paths are allowed — they refer to locations inside the Docker container.
+ */
 function validatePath(path: string): void {
-  if (path.includes('..') || path.startsWith('/') || path.includes('\0')) {
+  if (path.includes('..') || path.includes('\0')) {
     throw new Error(`Invalid sandbox path: ${path}`);
   }
+}
+
+/**
+ * Resolve a path for use inside the container.
+ * - Absolute paths (e.g. /tmp/vite.log, /app/src/App.tsx) are used as-is
+ * - Relative paths (e.g. src/App.tsx) get prefixed with /app/
+ * - Paths starting with /app/ are used as-is (already fully qualified)
+ */
+function resolveContainerPath(path: string): string {
+  if (path.startsWith('/')) return path;
+  return `/app/${path}`;
 }
 
 /**
@@ -158,11 +172,8 @@ export const dockerProvider: SandboxProvider = {
       instance.status = 'ready';
       activeSandboxes.set(sandboxId, instance);
 
-      // Copy template files into the container
-      await execAsync('docker', [
-        'exec', sandboxId,
-        'sh', '-c', 'if [ -d /template ]; then cp -r /template/* /app/; fi',
-      ]);
+      // No need to copy template files - they're pre-installed in /app/ in the Docker image
+      // with node_modules already present, so sandbox creation is instant.
 
       return instance;
     } catch (error) {
@@ -198,17 +209,19 @@ export const dockerProvider: SandboxProvider = {
     validatePath(path);
     touchActivity(sandboxId);
 
+    const containerPath = resolveContainerPath(path);
+
     // Ensure parent directory exists
-    const dir = path.substring(0, path.lastIndexOf('/'));
+    const dir = containerPath.substring(0, containerPath.lastIndexOf('/'));
     if (dir) {
-      await execAsync('docker', ['exec', sandboxId, 'mkdir', '-p', `/app/${dir}`]);
+      await execAsync('docker', ['exec', sandboxId, 'mkdir', '-p', dir]);
     }
 
     // Write content via stdin pipe using docker exec
     await new Promise<void>((resolve, reject) => {
       const proc = execFile(
         'docker',
-        ['exec', '-i', sandboxId, 'sh', '-c', `cat > /app/${path}`],
+        ['exec', '-i', sandboxId, 'sh', '-c', `cat > ${containerPath}`],
         { timeout: DEFAULT_TIMEOUT },
         (error) => {
           if (error) reject(error);
@@ -226,7 +239,8 @@ export const dockerProvider: SandboxProvider = {
   async readFile(sandboxId: string, path: string): Promise<string> {
     validatePath(path);
     touchActivity(sandboxId);
-    const { stdout } = await execAsync('docker', ['exec', sandboxId, 'cat', `/app/${path}`]);
+    const containerPath = resolveContainerPath(path);
+    const { stdout } = await execAsync('docker', ['exec', sandboxId, 'cat', containerPath]);
     return stdout;
   },
 
@@ -236,10 +250,12 @@ export const dockerProvider: SandboxProvider = {
   async listFiles(sandboxId: string, path: string, recursive = false): Promise<SandboxFile[]> {
     validatePath(path);
 
+    const containerPath = resolveContainerPath(path);
+
     // Use sh -c to properly group the find expression with parentheses
     const findExpr = recursive
-      ? `find /app/${path} \\( -type f -o -type d \\)`
-      : `find /app/${path} -maxdepth 1 \\( -type f -o -type d \\)`;
+      ? `find ${containerPath} \\( -type f -o -type d \\)`
+      : `find ${containerPath} -maxdepth 1 \\( -type f -o -type d \\)`;
     const findArgs = ['exec', sandboxId, 'sh', '-c', findExpr];
 
     const { stdout } = await execAsync('docker', findArgs);
@@ -251,7 +267,7 @@ export const dockerProvider: SandboxProvider = {
       .map((line): SandboxFile => {
         const relativePath = line.startsWith(appPrefix) ? line.slice(appPrefix.length) : line;
         // Directories end with / from find, but we detect by checking if it's the queried path
-        const isDir = line.endsWith('/') || line === `/app/${path}`;
+        const isDir = line.endsWith('/') || line === containerPath;
         return {
           path: relativePath,
           type: isDir ? 'directory' : 'file',
@@ -442,10 +458,11 @@ export function readSandboxFileRaw(
   filePath: string
 ): Promise<Buffer> {
   validatePath(filePath);
+  const containerPath = resolveContainerPath(filePath);
   return new Promise((resolve, reject) => {
     execFile(
       'docker',
-      ['exec', sandboxId, 'cat', `/app/${filePath}`],
+      ['exec', sandboxId, 'cat', containerPath],
       { encoding: 'buffer' as unknown as string, maxBuffer: 100 * 1024 * 1024, timeout: 30_000 },
       (error, stdout) => {
         if (error) {

@@ -39,6 +39,23 @@ ALWAYS return valid JSON in this exact structure:
 
 ### Project Setup
 
+CRITICAL: For preview mode, you MUST import @theatre/studio in main.tsx:
+
+\`\`\`typescript
+// src/main.tsx
+import '@theatre/studio';  // MUST be imported BEFORE @theatre/core
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import './index.css';
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+\`\`\`
+
 \`\`\`typescript
 // src/theatre/project.ts
 import { getProject } from '@theatre/core';
@@ -198,6 +215,7 @@ export function MainScene() {
 
 ### initial_setup
 Create foundational project files:
+- src/main.tsx (MUST import @theatre/studio FIRST, before any @theatre/core usage)
 - src/theatre/project.ts
 - src/hooks/useCurrentFrame.ts
 - src/App.tsx (updated with proper scene import)

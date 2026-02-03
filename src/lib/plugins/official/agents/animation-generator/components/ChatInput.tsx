@@ -3,15 +3,12 @@
 /**
  * ChatInput Component
  *
- * Rich chat input matching the Pencil design spec exactly:
- * - Rounded box (10px) with #27272a fill and #3f3f46 stroke
- * - Textarea with placeholder
- * - Bottom bar: model selector (left) + paperclip + send button (right)
- * - Send button: 28px blue circle with arrow-up icon
+ * Rich chat input with queue support for messages while agent is busy.
+ * Design matches the reference with collapsible queue section.
  */
 
 import { useState, useCallback, useRef, useEffect, KeyboardEvent } from 'react';
-import { ArrowUp, Square, Paperclip, ChevronDown, Image, Video, Link2 } from 'lucide-react';
+import { ArrowUp, Square, Paperclip, ChevronDown, ChevronUp, Image, Video, Link2, Pencil, Trash2 } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,10 +25,17 @@ const MODELS = [
   { id: 'anthropic/claude-opus-4', label: 'Claude Opus 4' },
 ] as const;
 
+interface QueuedMessage {
+  id: string;
+  text: string;
+}
+
 interface ChatInputProps {
   onSubmit: (message: string, attachments?: AnimationAttachment[]) => void;
   onStop?: () => void;
   isGenerating?: boolean;
+  /** Tool calls are still running (more fine-grained than isGenerating) */
+  hasActiveTool?: boolean;
   disabled?: boolean;
   placeholder?: string;
   model?: string;
@@ -45,6 +49,7 @@ export function ChatInput({
   onSubmit,
   onStop,
   isGenerating,
+  hasActiveTool,
   disabled,
   placeholder = 'Describe the animation you want...',
   model = 'anthropic/claude-sonnet-4-5',
@@ -54,23 +59,86 @@ export function ChatInput({
   availableNodeOutputs = [],
 }: ChatInputProps) {
   const [message, setMessage] = useState('');
+  const [queue, setQueue] = useState<QueuedMessage[]>([]);
+  const [queueExpanded, setQueueExpanded] = useState(true);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const editInputRef = useRef<HTMLInputElement>(null);
 
   const selectedModel = MODELS.find((m) => m.id === model) || MODELS[0];
 
+  // Show busy state if streaming OR if tool is active
+  const isBusy = isGenerating || hasActiveTool;
+
+  // Dynamic placeholder
+  const inputPlaceholder = queue.length > 0 ? 'Add a follow-up...' : placeholder;
+
   const handleSubmit = useCallback(() => {
-    if (isGenerating && onStop) {
-      onStop();
-      return;
-    }
-    const trimmedMessage = message.trim();
-    if (trimmedMessage && !disabled) {
-      onSubmit(trimmedMessage, attachments.length > 0 ? attachments : undefined);
+    const trimmed = message.trim();
+    if (!trimmed || disabled) return;
+
+    if (isBusy) {
+      // Queue the message
+      setQueue((prev) => [...prev, { id: `q_${Date.now()}`, text: trimmed }]);
+      setMessage('');
+    } else {
+      // Send immediately
+      onSubmit(trimmed, attachments.length > 0 ? attachments : undefined);
       setMessage('');
     }
-  }, [message, isGenerating, disabled, onStop, onSubmit, attachments]);
+  }, [message, isBusy, disabled, onSubmit, attachments]);
+
+  const handleSendQueued = useCallback(
+    (item: QueuedMessage) => {
+      if (onStop) {
+        onStop();
+        // Small delay to ensure stream is aborted
+        setTimeout(() => {
+          onSubmit(item.text, attachments.length > 0 ? attachments : undefined);
+          setQueue((prev) => prev.filter((q) => q.id !== item.id));
+        }, 100);
+      }
+    },
+    [onStop, onSubmit, attachments]
+  );
+
+  const handleDeleteQueued = useCallback((id: string) => {
+    setQueue((prev) => prev.filter((q) => q.id !== id));
+    if (editingId === id) {
+      setEditingId(null);
+      setEditText('');
+    }
+  }, [editingId]);
+
+  const handleStartEdit = useCallback((item: QueuedMessage) => {
+    setEditingId(item.id);
+    setEditText(item.text);
+    setTimeout(() => editInputRef.current?.focus(), 0);
+  }, []);
+
+  const handleSaveEdit = useCallback(() => {
+    if (!editingId) return;
+    const trimmed = editText.trim();
+    if (trimmed) {
+      setQueue((prev) =>
+        prev.map((q) => (q.id === editingId ? { ...q, text: trimmed } : q))
+      );
+    }
+    setEditingId(null);
+    setEditText('');
+  }, [editingId, editText]);
+
+  const handleCancelEdit = useCallback(() => {
+    setEditingId(null);
+    setEditText('');
+  }, []);
+
+  const handleStop = useCallback(() => {
+    if (onStop) onStop();
+  }, [onStop]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -80,6 +148,18 @@ export function ChatInput({
       }
     },
     [handleSubmit]
+  );
+
+  const handleEditKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleSaveEdit();
+      } else if (e.key === 'Escape') {
+        handleCancelEdit();
+      }
+    },
+    [handleSaveEdit, handleCancelEdit]
   );
 
   const handleFileSelect = useCallback((type: 'image' | 'video') => {
@@ -154,10 +234,87 @@ export function ChatInput({
     }
   }, [message]);
 
-  const canSend = !disabled && (isGenerating || message.trim().length > 0);
+  const canSend = !disabled && message.trim().length > 0;
 
   return (
     <div className="px-3 pt-2 pb-2.5 border-t border-[#27272a]">
+      {/* Queued messages section */}
+      {queue.length > 0 && (
+        <div className="mb-2 rounded-lg bg-[#1e1e20] border border-[#3f3f46] overflow-hidden">
+          {/* Collapsible header */}
+          <button
+            onClick={() => setQueueExpanded(!queueExpanded)}
+            className="w-full flex items-center gap-1.5 px-3 py-2 text-[12px] text-[#71717A] hover:text-[#A1A1AA] transition-colors"
+          >
+            {queueExpanded ? (
+              <ChevronDown className="w-3.5 h-3.5" />
+            ) : (
+              <ChevronUp className="w-3.5 h-3.5" />
+            )}
+            <span>{queue.length} Queued</span>
+          </button>
+
+          {/* Queue items */}
+          {queueExpanded && (
+            <div className="px-3 pb-2 space-y-1">
+              {queue.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center gap-2 group"
+                >
+                  {/* Circle indicator */}
+                  <div className="w-4 h-4 rounded-full border border-[#52525B] shrink-0" />
+
+                  {/* Message text or edit input */}
+                  {editingId === item.id ? (
+                    <input
+                      ref={editInputRef}
+                      type="text"
+                      value={editText}
+                      onChange={(e) => setEditText(e.target.value)}
+                      onKeyDown={handleEditKeyDown}
+                      onBlur={handleSaveEdit}
+                      className="flex-1 bg-[#27272a] border border-[#3f3f46] rounded px-2 py-1 text-[12px] text-[#FAFAFA] outline-none focus:border-[#52525B]"
+                    />
+                  ) : (
+                    <span className="flex-1 text-[12px] text-[#A1A1AA] truncate">
+                      {item.text}
+                    </span>
+                  )}
+
+                  {/* Action buttons */}
+                  {editingId !== item.id && (
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => handleStartEdit(item)}
+                        className="p-1 text-[#52525B] hover:text-[#A1A1AA] transition-colors"
+                        title="Edit"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleSendQueued(item)}
+                        className="p-1 text-[#52525B] hover:text-[#A1A1AA] transition-colors"
+                        title="Stop current and send this"
+                      >
+                        <ArrowUp className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteQueued(item.id)}
+                        className="p-1 text-[#52525B] hover:text-[#EF4444] transition-colors"
+                        title="Delete"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Attachment previews */}
       {attachments.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-2">
@@ -195,7 +352,7 @@ export function ChatInput({
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={placeholder}
+            placeholder={inputPlaceholder}
             disabled={disabled}
             rows={1}
             className="w-full resize-none bg-transparent text-[13px] text-[#FAFAFA] placeholder:text-[#52525B] outline-none leading-[1.4]"
@@ -238,7 +395,7 @@ export function ChatInput({
               <DropdownMenuTrigger asChild>
                 <button
                   className="flex items-center justify-center w-7 h-7 rounded-md text-[#52525B] hover:text-[#71717A] transition-colors"
-                  disabled={disabled || isGenerating}
+                  disabled={disabled || isBusy}
                 >
                   <Paperclip className="w-4 h-4" />
                 </button>
@@ -274,23 +431,29 @@ export function ChatInput({
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {/* Send / Stop button */}
+            {/* Stop button (when busy) */}
+            {isBusy && (
+              <button
+                onClick={handleStop}
+                className="flex items-center justify-center w-7 h-7 rounded-full bg-zinc-700 hover:bg-zinc-600 transition-colors"
+                title="Stop generation"
+              >
+                <Square className="w-3 h-3 text-white" />
+              </button>
+            )}
+
+            {/* Send button */}
             <button
               onClick={handleSubmit}
               disabled={!canSend}
               className={`flex items-center justify-center w-7 h-7 rounded-full transition-colors ${
-                isGenerating
-                  ? 'bg-[#52525B] hover:bg-[#71717A]'
-                  : canSend
+                canSend
                   ? 'bg-[#3B82F6] hover:bg-[#2563EB]'
                   : 'bg-[#3B82F6] opacity-40 cursor-not-allowed'
               }`}
+              title={isBusy ? 'Queue message' : 'Send message'}
             >
-              {isGenerating ? (
-                <Square className="w-3 h-3 text-white" />
-              ) : (
-                <ArrowUp className="w-3.5 h-3.5 text-white" />
-              )}
+              <ArrowUp className="w-3.5 h-3.5 text-white" />
             </button>
           </div>
         </div>

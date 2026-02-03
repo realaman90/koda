@@ -12,7 +12,7 @@
 import { memo, useCallback, useMemo, useEffect, useState, useRef } from 'react';
 import type { NodeProps, Node } from '@xyflow/react';
 import { Handle, Position, useUpdateNodeInternals } from '@xyflow/react';
-import { Clapperboard, Plus, Minus, Image, Video, Check, RotateCcw, ExternalLink, RefreshCw, Maximize2 } from 'lucide-react';
+import { Clapperboard, Plus, Minus, Image, Video } from 'lucide-react';
 import { useCanvasStore } from '@/stores/canvas-store';
 
 // Chat components
@@ -24,9 +24,12 @@ import {
   PlanCard,
   QuestionOptions,
   StreamingText,
+  StreamingPlaceholder,
   ThinkingBlock,
   RetryButton,
   TodoSection,
+  VideoCard,
+  LivePreviewCard,
 } from './components/ChatMessages';
 
 // Hooks
@@ -52,24 +55,25 @@ const VIDEO_HANDLE_START_OFFSET = 20;
 
 /** Tool names that should appear as cards in the chat timeline */
 const TOOL_DISPLAY_NAMES: Record<string, string> = {
-  generate_code: 'Generating code',
-  sandbox_write_file: 'Writing file',
-  sandbox_read_file: 'Reading file',
-  sandbox_run_command: 'Running command',
-  sandbox_list_files: 'Listing files',
-  sandbox_start_preview: 'Starting preview',
-  sandbox_screenshot: 'Taking screenshot',
-  sandbox_create: 'Creating sandbox',
-  sandbox_destroy: 'Destroying sandbox',
-  render_preview: 'Rendering preview',
-  render_final: 'Final render',
-  generate_plan: 'Generating plan',
+  generate_code: 'Building animation',
+  sandbox_write_file: 'Saving changes',
+  sandbox_read_file: 'Checking file',
+  sandbox_run_command: 'Processing',
+  sandbox_list_files: 'Checking files',
+  sandbox_start_preview: 'Preparing preview',
+  sandbox_screenshot: 'Capturing frame',
+  sandbox_create: 'Setting up workspace',
+  sandbox_destroy: 'Cleaning up',
+  render_preview: 'Creating preview video',
+  render_final: 'Rendering final video',
+  generate_plan: 'Planning animation',
 };
 
 /** UI tools that update state silently — not shown in the timeline */
 const UI_TOOLS = new Set(['update_todo', 'set_thinking', 'add_message', 'request_approval', 'analyze_prompt']);
 
 // ─── Timeline item union ────────────────────────────────────────────────
+// Note: iframe and video are rendered separately at the end of the chat area
 type TimelineItem =
   | { kind: 'user'; id: string; content: string; ts: string }
   | { kind: 'assistant'; id: string; content: string; ts: string }
@@ -248,11 +252,31 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         const ls = getLatestState();
         const trimmed = fullText.trim();
         const updatedMessages = [...ls.messages];
+
+        // Check if stream completed without generating text (tool-only response)
+        // In this case, add a system message to inform the user
+        const hasRecentToolCalls = ls.toolCalls.some(tc => {
+          const tcTime = new Date(tc.timestamp).getTime();
+          const now = Date.now();
+          // Tool call within last 30 seconds is "recent"
+          return (now - tcTime) < 30000;
+        });
+        const isToolOnlyResponse = trimmed.length === 0 && hasRecentToolCalls;
+
         if (trimmed.length > 0) {
           updatedMessages.push({
             id: `msg_${Date.now()}`,
             role: 'assistant',
             content: trimmed,
+            timestamp: new Date().toISOString(),
+          });
+        } else if (isToolOnlyResponse && ls.phase === 'executing') {
+          // Agent did tool calls but didn't respond — add a subtle indicator
+          // that the user can send a message to continue
+          updatedMessages.push({
+            id: `msg_${Date.now()}`,
+            role: 'assistant',
+            content: '_(Waiting for your input to continue...)_',
             timestamp: new Date().toISOString(),
           });
         }
@@ -284,7 +308,22 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       },
 
       onToolCall: (event) => {
-        const ls = getLatestState();
+        let ls = getLatestState();
+
+        // When a tool call starts, the agent has finished thinking — close the active thinking block
+        // This ensures the timer stops when thinking ends, not when the entire stream completes
+        const thinkingBlocks = [...ls.thinkingBlocks];
+        const activeThinkingIdx = thinkingBlocks.findIndex((tb) => !tb.endedAt);
+        if (activeThinkingIdx >= 0) {
+          thinkingBlocks[activeThinkingIdx] = {
+            ...thinkingBlocks[activeThinkingIdx],
+            reasoning: reasoningTextRef.current || thinkingBlocks[activeThinkingIdx].reasoning,
+            endedAt: new Date().toISOString(),
+          };
+          ls = { ...ls, thinkingBlocks };
+          // Clear the reasoning ref since this thinking block is now closed
+          reasoningTextRef.current = '';
+        }
 
         // Track visible tools in state.toolCalls
         if (!UI_TOOLS.has(event.toolName)) {
@@ -294,11 +333,20 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
             toolName: event.toolName,
             displayName: TOOL_DISPLAY_NAMES[event.toolName] || event.toolName,
             status: 'running',
+            args: event.args,  // Capture args for showing context
             timestamp: new Date().toISOString(),
           };
           updateNodeData(id, {
             state: { ...ls, toolCalls: [...ls.toolCalls, tc], updatedAt: new Date().toISOString() },
           });
+          ls = { ...ls, toolCalls: [...ls.toolCalls, tc] };
+        } else {
+          // Still need to save the closed thinking block even for UI tools
+          if (activeThinkingIdx >= 0) {
+            updateNodeData(id, {
+              state: { ...ls, updatedAt: new Date().toISOString() },
+            });
+          }
         }
 
         // UI tool: update_todo (supports update / add / remove)
@@ -437,10 +485,14 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         if (event.toolName === 'sandbox_start_preview' && !event.isError) {
           const result = event.result as { previewUrl?: string };
           if (result.previewUrl) {
+            // Append cache-busting timestamp so the iframe actually reloads
+            // (same URL string = React skips re-render = browser shows stale/broken content)
+            const bustUrl = `${result.previewUrl}?t=${Date.now()}`;
+            const now = new Date().toISOString();
             updateNodeData(id, {
-              state: { ...ls, previewUrl: result.previewUrl, updatedAt: new Date().toISOString() },
+              state: { ...ls, previewUrl: bustUrl, previewUrlTimestamp: now, updatedAt: now },
             });
-            ls = { ...ls, previewUrl: result.previewUrl };
+            ls = { ...ls, previewUrl: bustUrl, previewUrlTimestamp: now };
           }
           // Mark post-processing done (preview means we're past it)
           autoMarkTodo('postprocess', 'done');
@@ -455,6 +507,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
                 ...ls,
                 phase: 'preview',
                 preview: { videoUrl: result.videoUrl, duration: result.duration || ls.plan?.totalDuration || 7 },
+                previewTimestamp: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
               },
             });
@@ -1064,6 +1117,9 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       items.push({ kind: 'plan', id: 'plan', ts: state.planTimestamp });
     }
 
+    // NOTE: Live preview iframe and rendered video are NOT in the timeline.
+    // They render at the END of the chat area (after streaming text) so users see them as the result.
+
     items.sort((a, b) => a.ts.localeCompare(b.ts));
     return items;
   }, [state.messages, state.toolCalls, state.thinkingBlocks, state.plan, state.planTimestamp, state.createdAt]);
@@ -1071,6 +1127,8 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
   const hasTimelineContent =
     timeline.length > 0 ||
     state.execution?.streamingText ||
+    state.previewUrl ||
+    state.preview?.videoUrl ||
     state.phase === 'question' ||
     state.phase === 'plan' ||
     state.phase === 'preview' ||
@@ -1259,52 +1317,56 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
                   />
                 );
               }
+              // Note: iframe and video are rendered at the end of the chat area, not in the timeline
               return null;
             })}
+
+            {/* Streaming placeholder (shown when streaming but no text yet) */}
+            {isStreaming && !state.execution?.streamingText && (
+              <StreamingPlaceholder
+                activeToolName={state.toolCalls.find((tc) => tc.status === 'running')?.toolName}
+              />
+            )}
 
             {/* Live streaming text */}
             {state.execution?.streamingText && (
               <StreamingText text={state.execution.streamingText} />
             )}
 
-            {/* Live sandbox preview (iframe) */}
-            {state.previewUrl && state.phase !== 'preview' && state.phase !== 'complete' && (
-              <div className="rounded-lg overflow-hidden bg-[#14161A] border border-[#3f3f46]">
-                <div className="flex items-center justify-between px-2.5 py-1.5 bg-[#1A1C20] border-b border-[#3f3f46]">
-                  <span className="text-[10px] text-[#A1A1AA] font-medium flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#22C55E] animate-pulse" />
-                    Live Preview
-                  </span>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => {
-                        const iframe = document.querySelector(`iframe[data-sandbox="${id}"]`) as HTMLIFrameElement;
-                        if (iframe) iframe.src = iframe.src;
-                      }}
-                      className="p-1 rounded hover:bg-[#27272a] text-[#71717A] hover:text-[#A1A1AA] transition-colors"
-                      title="Refresh preview"
-                    >
-                      <RefreshCw className="w-3 h-3" />
-                    </button>
-                    <button
-                      onClick={() => window.open(state.previewUrl!, '_blank')}
-                      className="p-1 rounded hover:bg-[#27272a] text-[#71717A] hover:text-[#A1A1AA] transition-colors"
-                      title="Open in new tab"
-                    >
-                      <Maximize2 className="w-3 h-3" />
-                    </button>
-                  </div>
-                </div>
-                <iframe
-                  data-sandbox={id}
-                  src={state.previewUrl}
-                  className="w-full bg-white"
-                  style={{ height: '200px', border: 'none' }}
-                  sandbox="allow-scripts allow-same-origin"
-                  title="Animation preview"
+            {/* Live preview iframe - shows at the end, after all messages */}
+            {state.previewUrl && state.phase !== 'complete' && (() => {
+              // Collapse if user sent a message after the preview appeared
+              const previewTs = state.previewUrlTimestamp;
+              const hasMessageAfter = previewTs ? state.messages.some(
+                (msg) => msg.role === 'user' && msg.timestamp && msg.timestamp > previewTs
+              ) : false;
+              return (
+                <LivePreviewCard
+                  previewUrl={state.previewUrl}
+                  nodeId={id}
+                  expanded={!hasMessageAfter}
                 />
-              </div>
-            )}
+              );
+            })()}
+
+            {/* Rendered preview video - shows after live preview */}
+            {state.preview?.videoUrl && state.phase !== 'complete' && (() => {
+              // Collapse if user sent a message after the video appeared
+              const videoTs = state.previewTimestamp;
+              const hasMessageAfter = videoTs ? state.messages.some(
+                (msg) => msg.role === 'user' && msg.timestamp && msg.timestamp > videoTs
+              ) : false;
+              return (
+                <VideoCard
+                  videoUrl={state.preview.videoUrl}
+                  duration={state.preview.duration}
+                  expanded={!hasMessageAfter}
+                  isActivePreview={state.phase === 'preview' && !hasMessageAfter}
+                  onAccept={handleAcceptPreview}
+                  onRegenerate={handleRegenerate}
+                />
+              );
+            })()}
 
             {/* Question options */}
             {state.phase === 'question' && state.question && (
@@ -1312,34 +1374,6 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
                 <AssistantText content={state.question.text} />
                 <QuestionOptions question={state.question} onSelect={handleSelectStyle} />
               </>
-            )}
-
-            {/* Rendered preview video */}
-            {state.phase === 'preview' && state.preview && (
-              <div className="rounded-lg overflow-hidden bg-[#14161A] border border-[#3f3f46]">
-                <video
-                  src={state.preview.videoUrl}
-                  controls
-                  className="w-full"
-                  style={{ maxHeight: '180px' }}
-                />
-                <div className="flex items-center gap-2 p-2">
-                  <button
-                    onClick={handleAcceptPreview}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md bg-[#14532D] text-[#4ADE80] text-[11px] font-medium hover:bg-[#166534] transition-colors"
-                  >
-                    <Check className="w-3 h-3" />
-                    Accept
-                  </button>
-                  <button
-                    onClick={handleRegenerate}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md bg-[#27272a] text-[#A1A1AA] text-[11px] font-medium hover:bg-[#3f3f46] transition-colors"
-                  >
-                    <RotateCcw className="w-3 h-3" />
-                    Regenerate
-                  </button>
-                </div>
-              </div>
             )}
 
             {/* Complete output */}
@@ -1387,10 +1421,11 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       )}
 
       {/* ── Chat input (always visible) ──────────────────────────────── */}
-      <div className="flex-shrink-0">
+      <div className="shrink-0">
         <ChatInput
           onSubmit={handleInputSubmit}
           isGenerating={isStreaming}
+          hasActiveTool={state.toolCalls.some((tc) => tc.status === 'running')}
           onStop={() => abortStream()}
           placeholder={inputPlaceholder}
           model={model}

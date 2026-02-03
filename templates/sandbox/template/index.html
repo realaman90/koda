@@ -9,6 +9,23 @@
       html, body, #root { width: 100%; height: 100%; overflow: hidden; }
       body { background: #000; }
     </style>
+    <script>
+      // Global error handler - reports errors to parent window for user-friendly display
+      window.onerror = function(message, source, lineno, colno, error) {
+        if (window.parent !== window) {
+          window.parent.postMessage({ type: 'animation-error', error: true, message: String(message) }, '*');
+        }
+        // Show a simple error indicator in the iframe too
+        document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#666;font-family:system-ui;font-size:14px;">Animation loading...</div>';
+        return true; // Prevent default error display
+      };
+      // Also catch unhandled promise rejections
+      window.onunhandledrejection = function(event) {
+        if (window.parent !== window) {
+          window.parent.postMessage({ type: 'animation-error', error: true, message: String(event.reason) }, '*');
+        }
+      };
+    </script>
   </head>
   <body>
     <div id="root"></div>

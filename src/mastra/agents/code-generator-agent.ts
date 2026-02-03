@@ -12,8 +12,9 @@ import { Agent } from '@mastra/core/agent';
 import { CODE_GENERATOR_INSTRUCTIONS } from './instructions/code-generator';
 
 export const codeGeneratorAgent = new Agent({
+  id: 'theatre-code-generator',
   name: 'theatre-code-generator',
   instructions: CODE_GENERATOR_INSTRUCTIONS,
-  model: 'anthropic/claude-sonnet-4-5',
+  model: 'anthropic/claude-opus-4-5',
   // No tools — pure generation
 });
