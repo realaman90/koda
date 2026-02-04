@@ -67,6 +67,8 @@ export interface AnimationMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp?: string;
+  /** Monotonically increasing sequence number for stable chronological ordering */
+  seq?: number;
 }
 
 export interface ToolCallItem {
@@ -79,6 +81,8 @@ export interface ToolCallItem {
   output?: string;
   error?: string;
   timestamp: string;
+  /** Monotonically increasing sequence number for stable chronological ordering */
+  seq?: number;
 }
 
 export interface ThinkingBlockItem {
@@ -87,6 +91,8 @@ export interface ThinkingBlockItem {
   reasoning?: string;
   startedAt: string;
   endedAt?: string;
+  /** Monotonically increasing sequence number for stable chronological ordering */
+  seq?: number;
 }
 
 /**
@@ -155,6 +161,8 @@ export interface AnimationNodeState {
   selectedStyle?: string;
   plan?: AnimationPlan;
   planTimestamp?: string;
+  /** Sequence number for plan for stable chronological ordering */
+  planSeq?: number;
   planAccepted?: boolean;
   execution?: AnimationExecution;
   preview?: AnimationPreview;

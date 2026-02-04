@@ -42,6 +42,7 @@ import type {
   AnimationNodeState,
   AnimationAttachment,
   AnimationPlan,
+  AnimationMessage,
   ToolCallItem,
   ThinkingBlockItem,
 } from './types';
@@ -75,11 +76,16 @@ const UI_TOOLS = new Set(['update_todo', 'set_thinking', 'add_message', 'request
 // ─── Timeline item union ────────────────────────────────────────────────
 // Note: iframe and video are rendered separately at the end of the chat area
 type TimelineItem =
-  | { kind: 'user'; id: string; content: string; ts: string }
-  | { kind: 'assistant'; id: string; content: string; ts: string }
-  | { kind: 'tool'; id: string; item: ToolCallItem; ts: string }
-  | { kind: 'thinking'; id: string; item: ThinkingBlockItem; ts: string }
-  | { kind: 'plan'; id: string; ts: string };
+  | { kind: 'user'; id: string; content: string; ts: string; seq: number }
+  | { kind: 'assistant'; id: string; content: string; ts: string; seq: number }
+  | { kind: 'tool'; id: string; item: ToolCallItem; ts: string; seq: number }
+  | { kind: 'thinking'; id: string; item: ThinkingBlockItem; ts: string; seq: number }
+  | { kind: 'plan'; id: string; ts: string; seq: number };
+
+// ─── Global sequence counter for stable chronological ordering ──────────
+// This ensures events are ordered correctly even when timestamps are identical
+let globalSeqCounter = 0;
+const getNextSeq = () => ++globalSeqCounter;
 
 // ─── Affirmative detection ──────────────────────────────────────────────
 const AFFIRMATIVE_RE = /^(y|ye|yes|yeah|yep|yea|ok|okay|sure|go|go ahead|proceed|do it|let'?s go|approve|accept|sounds good|looks good|lgtm|ship it|👍|✅)$/i;
@@ -269,6 +275,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
             role: 'assistant',
             content: trimmed,
             timestamp: new Date().toISOString(),
+            seq: getNextSeq(),
           });
         } else if (isToolOnlyResponse && ls.phase === 'executing') {
           // Agent did tool calls but didn't respond — add a subtle indicator
@@ -278,6 +285,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
             role: 'assistant',
             content: '_(Waiting for your input to continue...)_',
             timestamp: new Date().toISOString(),
+            seq: getNextSeq(),
           });
         }
 
@@ -335,6 +343,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
             status: 'running',
             args: event.args,  // Capture args for showing context
             timestamp: new Date().toISOString(),
+            seq: getNextSeq(),
           };
           updateNodeData(id, {
             state: { ...ls, toolCalls: [...ls.toolCalls, tc], updatedAt: new Date().toISOString() },
@@ -394,7 +403,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         // UI tool: add_message → state.messages
         if (event.toolName === 'add_message') {
           const { content } = event.args as { content: string };
-          const msg = { id: `msg_${Date.now()}`, role: 'assistant' as const, content, timestamp: new Date().toISOString() };
+          const msg = { id: `msg_${Date.now()}`, role: 'assistant' as const, content, timestamp: new Date().toISOString(), seq: getNextSeq() };
           updateNodeData(id, {
             state: { ...ls, messages: [...ls.messages, msg], updatedAt: new Date().toISOString() },
           });
@@ -460,10 +469,30 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           updateNodeData(id, { state: { ...ls, updatedAt: new Date().toISOString() } });
         };
 
+        // Helper to add an error message to the conversation
+        const addErrorMessage = (content: string) => {
+          const newMessage: AnimationMessage = {
+            id: `error-${Date.now()}`,
+            role: 'assistant',
+            content,
+            timestamp: new Date().toISOString(),
+            seq: getNextSeq(),
+          };
+          const updatedMessages = [...(ls.messages || []), newMessage];
+          updateNodeData(id, {
+            state: { ...ls, messages: updatedMessages, updatedAt: new Date().toISOString() },
+          });
+          ls = { ...ls, messages: updatedMessages };
+        };
+
         // Phase transitions from tool results
-        if (event.toolName === 'sandbox_create' && !event.isError) {
-          const result = event.result as { sandboxId?: string };
-          if (result.sandboxId) {
+        if (event.toolName === 'sandbox_create') {
+          const result = event.result as { success?: boolean; sandboxId?: string; message?: string };
+          if (result.success === false || event.isError) {
+            // Sandbox creation failed - this is critical!
+            console.error(`[AnimationNode] Sandbox creation failed:`, result.message);
+            addErrorMessage(`⚠️ Failed to create sandbox: ${result.message || 'Unknown error'}. Please try again.`);
+          } else if (result.sandboxId) {
             updateNodeData(id, {
               state: { ...ls, sandboxId: result.sandboxId, updatedAt: new Date().toISOString() },
             });
@@ -482,9 +511,27 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           }
         }
 
-        if (event.toolName === 'sandbox_start_preview' && !event.isError) {
-          const result = event.result as { previewUrl?: string };
-          if (result.previewUrl) {
+        // Code generation tools (generate_code / generate_remotion_code)
+        if ((event.toolName === 'generate_code' || event.toolName === 'generate_remotion_code') && !event.isError) {
+          const result = event.result as { files?: Array<{ path: string; size: number }>; writtenToSandbox?: boolean; summary?: string };
+          // Check if this was an error (summary starts with "ERROR:")
+          if (result.summary?.startsWith('ERROR:')) {
+            console.error(`[AnimationNode] Code generation failed:`, result.summary);
+            addErrorMessage(`⚠️ Code generation failed: ${result.summary}`);
+          } else if (result.files && result.files.length > 0 && result.writtenToSandbox) {
+            // Success - files were written to sandbox
+            console.log(`[AnimationNode] Code generated: ${result.files.length} files written to sandbox`);
+            autoMarkTodo('setup', 'done');
+          }
+        }
+
+        if (event.toolName === 'sandbox_start_preview') {
+          const result = event.result as { success?: boolean; previewUrl?: string; message?: string };
+          if (result.success === false || event.isError) {
+            // Preview failed - add error message
+            console.error(`[AnimationNode] Preview failed:`, result.message);
+            addErrorMessage(`⚠️ Dev server failed to start: ${result.message || 'Unknown error'}`);
+          } else if (result.previewUrl) {
             // Append cache-busting timestamp so the iframe actually reloads
             // (same URL string = React skips re-render = browser shows stale/broken content)
             const bustUrl = `${result.previewUrl}?t=${Date.now()}`;
@@ -493,15 +540,19 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
               state: { ...ls, previewUrl: bustUrl, previewUrlTimestamp: now, updatedAt: now },
             });
             ls = { ...ls, previewUrl: bustUrl, previewUrlTimestamp: now };
+            // Mark post-processing done (preview means we're past it)
+            autoMarkTodo('postprocess', 'done');
+            autoMarkTodo('render', 'active');
           }
-          // Mark post-processing done (preview means we're past it)
-          autoMarkTodo('postprocess', 'done');
-          autoMarkTodo('render', 'active');
         }
 
-        if (event.toolName === 'render_preview' && !event.isError) {
-          const result = event.result as { videoUrl?: string; duration?: number };
-          if (result.videoUrl) {
+        if (event.toolName === 'render_preview') {
+          const result = event.result as { success?: boolean; videoUrl?: string; duration?: number; message?: string };
+          if (result.success === false || event.isError) {
+            // Render failed - add error message
+            console.error(`[AnimationNode] Render failed:`, result.message);
+            addErrorMessage(`⚠️ Video render failed: ${result.message || 'Unknown error'}`);
+          } else if (result.videoUrl) {
             updateNodeData(id, {
               state: {
                 ...ls,
@@ -511,8 +562,8 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
                 updatedAt: new Date().toISOString(),
               },
             });
+            autoMarkTodo('render', 'done');
           }
-          autoMarkTodo('render', 'done');
         }
 
         if (event.toolName === 'generate_plan' && !event.isError) {
@@ -526,6 +577,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
                 planAccepted: false, // Always reset — new plan needs fresh approval
                 execution: undefined, // Clear execution state from previous run
                 planTimestamp: new Date().toISOString(),
+                planSeq: getNextSeq(),
                 updatedAt: new Date().toISOString(),
               },
             });
@@ -613,11 +665,12 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
   const handleAnalyzePrompt = useCallback(
     async (prompt: string, promptAttachments?: AnimationAttachment[]) => {
       const ls = getLatestState();
-      const userMsg = { id: `msg_${Date.now()}`, role: 'user' as const, content: prompt, timestamp: new Date().toISOString() };
+      const userMsg = { id: `msg_${Date.now()}`, role: 'user' as const, content: prompt, timestamp: new Date().toISOString(), seq: getNextSeq() };
       const thinkingBlock: ThinkingBlockItem = {
         id: `tb_${Date.now()}`,
         label: 'Analyzing your prompt...',
         startedAt: new Date().toISOString(),
+        seq: getNextSeq(),
       };
 
       updateNodeData(id, {
@@ -680,11 +733,13 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         role: 'user' as const,
         content: `Selected style: ${selectedStyle}`,
         timestamp: new Date().toISOString(),
+        seq: getNextSeq(),
       };
       const thinkingBlock: ThinkingBlockItem = {
         id: `tb_${Date.now()}`,
         label: 'Generating animation plan...',
         startedAt: new Date().toISOString(),
+        seq: getNextSeq(),
       };
 
       updateNodeData(id, {
@@ -754,6 +809,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       id: `tb_${Date.now()}`,
       label: 'Initializing animation sandbox...',
       startedAt: new Date().toISOString(),
+      seq: getNextSeq(),
     };
 
     updateNodeData(id, {
@@ -809,11 +865,12 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       const ls = getLatestState();
       if (!ls.plan) return;
 
-      const userMsg = { id: `msg_${Date.now()}`, role: 'user' as const, content: feedback, timestamp: new Date().toISOString() };
+      const userMsg = { id: `msg_${Date.now()}`, role: 'user' as const, content: feedback, timestamp: new Date().toISOString(), seq: getNextSeq() };
       const thinkingBlock: ThinkingBlockItem = {
         id: `tb_${Date.now()}`,
         label: 'Revising animation plan...',
         startedAt: new Date().toISOString(),
+        seq: getNextSeq(),
       };
       updateNodeData(id, {
         state: {
@@ -850,11 +907,12 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
   const handleSendMessage = useCallback(
     async (content: string) => {
       const ls = getLatestState();
-      const userMsg = { id: `msg_${Date.now()}`, role: 'user' as const, content, timestamp: new Date().toISOString() };
+      const userMsg = { id: `msg_${Date.now()}`, role: 'user' as const, content, timestamp: new Date().toISOString(), seq: getNextSeq() };
       const thinkingBlock: ThinkingBlockItem = {
         id: `tb_${Date.now()}`,
         label: 'Thinking...',
         startedAt: new Date().toISOString(),
+        seq: getNextSeq(),
       };
 
       // If there was an old execution with no streaming, start a fresh execution tracker
@@ -963,6 +1021,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       id: `tb_${Date.now()}`,
       label: 'Regenerating animation...',
       startedAt: new Date().toISOString(),
+      seq: getNextSeq(),
     };
 
     updateNodeData(id, {
@@ -1089,6 +1148,8 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
   }, [state.phase]);
 
   // ─── Timeline computation ───────────────────────────────────────────
+  // Uses sequence numbers (seq) for stable ordering when timestamps are identical.
+  // This fixes Issue #19: UI Events Not in Chronological Order
   const timeline = useMemo((): TimelineItem[] => {
     const items: TimelineItem[] = [];
 
@@ -1098,31 +1159,38 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         id: msg.id,
         content: msg.content,
         ts: msg.timestamp || state.createdAt,
+        seq: msg.seq ?? 0,
       });
     });
 
     state.toolCalls.forEach((tc) => {
       // Only show non-UI tools in timeline
       if (!UI_TOOLS.has(tc.toolName)) {
-        items.push({ kind: 'tool', id: tc.id, item: tc, ts: tc.timestamp });
+        items.push({ kind: 'tool', id: tc.id, item: tc, ts: tc.timestamp, seq: tc.seq ?? 0 });
       }
     });
 
     state.thinkingBlocks.forEach((tb) => {
-      items.push({ kind: 'thinking', id: tb.id, item: tb, ts: tb.startedAt });
+      items.push({ kind: 'thinking', id: tb.id, item: tb, ts: tb.startedAt, seq: tb.seq ?? 0 });
     });
 
     // Include plan card in timeline if it has a timestamp
     if (state.plan && state.planTimestamp) {
-      items.push({ kind: 'plan', id: 'plan', ts: state.planTimestamp });
+      items.push({ kind: 'plan', id: 'plan', ts: state.planTimestamp, seq: state.planSeq ?? 0 });
     }
 
     // NOTE: Live preview iframe and rendered video are NOT in the timeline.
     // They render at the END of the chat area (after streaming text) so users see them as the result.
 
-    items.sort((a, b) => a.ts.localeCompare(b.ts));
+    // Sort by timestamp first, then by sequence number for stable ordering
+    // This ensures events with identical timestamps maintain their arrival order
+    items.sort((a, b) => {
+      const tsCompare = a.ts.localeCompare(b.ts);
+      if (tsCompare !== 0) return tsCompare;
+      return a.seq - b.seq;
+    });
     return items;
-  }, [state.messages, state.toolCalls, state.thinkingBlocks, state.plan, state.planTimestamp, state.createdAt]);
+  }, [state.messages, state.toolCalls, state.thinkingBlocks, state.plan, state.planTimestamp, state.planSeq, state.createdAt]);
 
   const hasTimelineContent =
     timeline.length > 0 ||
