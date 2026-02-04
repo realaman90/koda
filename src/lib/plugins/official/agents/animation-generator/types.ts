@@ -178,6 +178,8 @@ export interface AnimationNodeState {
   // Live preview (iframe to sandbox dev server)
   previewUrl?: string;
   previewUrlTimestamp?: string;
+  /** Preview visibility state: 'active' (visible), 'stale' (updating), 'hidden' (collapsed during iteration) */
+  previewState?: 'active' | 'stale' | 'hidden';
 
   // Timestamps
   createdAt: string;

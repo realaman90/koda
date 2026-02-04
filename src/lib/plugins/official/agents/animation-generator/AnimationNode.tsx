@@ -469,12 +469,12 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           updateNodeData(id, { state: { ...ls, updatedAt: new Date().toISOString() } });
         };
 
-        // Helper to add an error message to the conversation
-        const addErrorMessage = (content: string) => {
+        // Helper to add a USER-FRIENDLY message (technical details logged to console only)
+        const addUserMessage = (message: string) => {
           const newMessage: AnimationMessage = {
-            id: `error-${Date.now()}`,
+            id: `msg-${Date.now()}`,
             role: 'assistant',
-            content,
+            content: message,
             timestamp: new Date().toISOString(),
             seq: getNextSeq(),
           };
@@ -489,9 +489,9 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         if (event.toolName === 'sandbox_create') {
           const result = event.result as { success?: boolean; sandboxId?: string; message?: string };
           if (result.success === false || event.isError) {
-            // Sandbox creation failed - this is critical!
+            // Log technical details, show friendly message
             console.error(`[AnimationNode] Sandbox creation failed:`, result.message);
-            addErrorMessage(`⚠️ Failed to create sandbox: ${result.message || 'Unknown error'}. Please try again.`);
+            addUserMessage('Having trouble setting up. Retrying...');
           } else if (result.sandboxId) {
             updateNodeData(id, {
               state: { ...ls, sandboxId: result.sandboxId, updatedAt: new Date().toISOString() },
@@ -517,7 +517,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           // Check if this was an error (summary starts with "ERROR:")
           if (result.summary?.startsWith('ERROR:')) {
             console.error(`[AnimationNode] Code generation failed:`, result.summary);
-            addErrorMessage(`⚠️ Code generation failed: ${result.summary}`);
+            // Don't show message to user - agent will handle retry
           } else if (result.files && result.files.length > 0 && result.writtenToSandbox) {
             // Success - files were written to sandbox
             console.log(`[AnimationNode] Code generated: ${result.files.length} files written to sandbox`);
@@ -528,18 +528,18 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         if (event.toolName === 'sandbox_start_preview') {
           const result = event.result as { success?: boolean; previewUrl?: string; message?: string };
           if (result.success === false || event.isError) {
-            // Preview failed - add error message
+            // Log technical details, show friendly message
             console.error(`[AnimationNode] Preview failed:`, result.message);
-            addErrorMessage(`⚠️ Dev server failed to start: ${result.message || 'Unknown error'}`);
+            addUserMessage('Preview is taking longer than expected. Retrying...');
           } else if (result.previewUrl) {
             // Append cache-busting timestamp so the iframe actually reloads
             // (same URL string = React skips re-render = browser shows stale/broken content)
             const bustUrl = `${result.previewUrl}?t=${Date.now()}`;
             const now = new Date().toISOString();
             updateNodeData(id, {
-              state: { ...ls, previewUrl: bustUrl, previewUrlTimestamp: now, updatedAt: now },
+              state: { ...ls, previewUrl: bustUrl, previewUrlTimestamp: now, previewState: 'active', updatedAt: now },
             });
-            ls = { ...ls, previewUrl: bustUrl, previewUrlTimestamp: now };
+            ls = { ...ls, previewUrl: bustUrl, previewUrlTimestamp: now, previewState: 'active' };
             // Mark post-processing done (preview means we're past it)
             autoMarkTodo('postprocess', 'done');
             autoMarkTodo('render', 'active');
@@ -549,9 +549,9 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         if (event.toolName === 'render_preview') {
           const result = event.result as { success?: boolean; videoUrl?: string; duration?: number; message?: string };
           if (result.success === false || event.isError) {
-            // Render failed - add error message
+            // Log technical details, show friendly message
             console.error(`[AnimationNode] Render failed:`, result.message);
-            addErrorMessage(`⚠️ Video render failed: ${result.message || 'Unknown error'}`);
+            addUserMessage('Video rendering encountered an issue. Retrying...');
           } else if (result.videoUrl) {
             updateNodeData(id, {
               state: {
@@ -932,6 +932,12 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         };
       }
 
+      // Mark live preview as stale when user sends feedback (Issue #22)
+      // This shows a visual indicator that the preview is being updated
+      if (ls.previewUrl) {
+        stateUpdate.previewState = 'stale';
+      }
+
       updateNodeData(id, { state: { ...ls, ...stateUpdate } });
 
       resetStreamingRefs();
@@ -1049,6 +1055,56 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     }
   }, [id, data.prompt, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
 
+  const handleExportVideo = useCallback(async () => {
+    const ls = getLatestState();
+    if (!ls.sandboxId) return;
+
+    const thinkingBlock: ThinkingBlockItem = {
+      id: `tb_${Date.now()}`,
+      label: 'Rendering final video...',
+      startedAt: new Date().toISOString(),
+      seq: getNextSeq(),
+    };
+
+    // Add or update render todo
+    const todos = ls.execution?.todos || [];
+    const renderTodo = todos.find(t => t.id === 'render');
+    const updatedTodos = renderTodo
+      ? todos.map(t => t.id === 'render' ? { ...t, status: 'active' as const } : t)
+      : [...todos, { id: 'render', label: 'Render video', status: 'active' as const }];
+
+    updateNodeData(id, {
+      state: {
+        ...ls,
+        thinkingBlocks: [...ls.thinkingBlocks, thinkingBlock],
+        execution: {
+          todos: updatedTodos,
+          thinking: 'Rendering final video...',
+          files: ls.execution?.files || [],
+        },
+        updatedAt: new Date().toISOString(),
+      },
+    });
+
+    resetStreamingRefs();
+    const callbacks = createStreamCallbacks();
+
+    try {
+      await streamToAgent(
+        [
+          'The user clicked Export. Render the final video now.',
+          '',
+          'Use render_preview to create the video.',
+          `Active sandbox: ${ls.sandboxId}`,
+        ].join('\n'),
+        { nodeId: id, phase: 'executing', plan: ls.plan, sandboxId: ls.sandboxId },
+        callbacks
+      );
+    } catch {
+      // Error handled by callback
+    }
+  }, [id, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
+
   const handleRetry = useCallback(() => {
     if (state.plan) {
       updateState({ phase: 'plan', planAccepted: false, error: undefined, execution: undefined });
@@ -1056,6 +1112,11 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       updateState({ phase: 'idle', error: undefined, execution: undefined });
     }
   }, [state.plan, updateState]);
+
+  // Handler to show hidden preview (Issue #22)
+  const handleShowPreview = useCallback(() => {
+    updateState({ previewState: 'active' });
+  }, [updateState]);
 
   const handleReset = useCallback(() => {
     abortStream();
@@ -1338,6 +1399,17 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
             {isStreaming && state.phase === 'executing' ? ' (streaming)' : ''}
           </p>
         </div>
+        {/* Floating preview button when preview is hidden (Issue #22) */}
+        {state.previewUrl && state.previewState === 'hidden' && state.phase !== 'complete' && (
+          <button
+            onClick={handleShowPreview}
+            className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-[#1E3A5F]/70 border border-[#3B82F6]/40 hover:bg-[#1E3A5F] hover:border-[#3B82F6]/60 transition-colors"
+            title="Show live preview"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-[#3B82F6] animate-pulse" />
+            <span className="text-[10px] font-medium text-[#93C5FD]">Preview</span>
+          </button>
+        )}
       </div>
 
       {/* ── Chat area (scrollable) ───────────────────────────────────── */}
@@ -1403,16 +1475,27 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
 
             {/* Live preview iframe - shows at the end, after all messages */}
             {state.previewUrl && state.phase !== 'complete' && (() => {
-              // Collapse if user sent a message after the preview appeared
+              // Determine preview visibility based on previewState (Issue #22)
+              // - 'hidden': show only a pill button to restore
+              // - 'stale': show with updating overlay
+              // - 'active' or undefined: show normally
               const previewTs = state.previewUrlTimestamp;
               const hasMessageAfter = previewTs ? state.messages.some(
                 (msg) => msg.role === 'user' && msg.timestamp && msg.timestamp > previewTs
               ) : false;
+              // Only show Export button if we don't already have a rendered video
+              const showExport = !state.preview?.videoUrl;
+              // Use previewState if set, otherwise fall back to legacy collapse behavior
+              const effectiveState = state.previewState || (hasMessageAfter ? 'stale' : 'active');
               return (
                 <LivePreviewCard
                   previewUrl={state.previewUrl}
                   nodeId={id}
-                  expanded={!hasMessageAfter}
+                  expanded={effectiveState !== 'hidden' && !hasMessageAfter}
+                  onExport={showExport ? handleExportVideo : undefined}
+                  isExporting={isStreaming}
+                  previewState={effectiveState}
+                  onShowPreview={handleShowPreview}
                 />
               );
             })()}

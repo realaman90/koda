@@ -30,6 +30,7 @@ import {
   Sparkles,
   Video,
   ExternalLink,
+  Download,
 } from 'lucide-react';
 import type {
   AnimationTodo,
@@ -654,12 +655,24 @@ interface LivePreviewCardProps {
   nodeId: string;
   /** Whether to show expanded or collapsed state */
   expanded?: boolean;
+  /** Called when Export is clicked to render the final video */
+  onExport?: () => void;
+  /** Whether export is in progress */
+  isExporting?: boolean;
+  /** Preview state: 'active' (normal), 'stale' (updating), 'hidden' (show pill only) */
+  previewState?: 'active' | 'stale' | 'hidden';
+  /** Called when user clicks to show hidden preview */
+  onShowPreview?: () => void;
 }
 
 export function LivePreviewCard({
   previewUrl,
   nodeId,
   expanded = true,
+  onExport,
+  isExporting = false,
+  previewState = 'active',
+  onShowPreview,
 }: LivePreviewCardProps) {
   const [isExpanded, setIsExpanded] = useState(expanded);
   const [hasError, setHasError] = useState(false);
@@ -713,6 +726,19 @@ export function LivePreviewCard({
     }
   }, []);
 
+  // Hidden state: show only a small pill button (Issue #22)
+  if (previewState === 'hidden') {
+    return (
+      <button
+        onClick={onShowPreview}
+        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-[#1E3A5F]/50 border border-[#3B82F6]/30 hover:bg-[#1E3A5F] hover:border-[#3B82F6]/50 transition-colors"
+      >
+        <span className="w-1.5 h-1.5 rounded-full bg-[#3B82F6] animate-pulse" />
+        <span className="text-[10px] font-medium text-[#93C5FD]">Show Preview</span>
+      </button>
+    );
+  }
+
   // Collapsed state: compact card
   if (!isExpanded) {
     return (
@@ -745,12 +771,33 @@ export function LivePreviewCard({
         <span className="text-[10px] text-[#A1A1AA] font-medium flex items-center gap-1.5">
           {hasError ? (
             <TriangleAlert className="w-3 h-3 text-[#EF4444]" />
+          ) : previewState === 'stale' ? (
+            <Loader2 className="w-3 h-3 text-[#FBBF24] animate-spin" />
           ) : (
             <span className="w-1.5 h-1.5 rounded-full bg-[#22C55E] animate-pulse" />
           )}
-          {hasError ? 'Preview Issue' : 'Live Preview'}
+          {hasError ? 'Preview Issue' : previewState === 'stale' ? 'Updating Preview...' : 'Live Preview'}
         </span>
         <div className="flex items-center gap-1">
+          {onExport && (
+            <button
+              onClick={onExport}
+              disabled={isExporting}
+              className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                isExporting
+                  ? 'bg-[#1E3A5F] text-[#93C5FD] cursor-not-allowed'
+                  : 'bg-[#14532D] text-[#4ADE80] hover:bg-[#166534]'
+              }`}
+              title="Export video"
+            >
+              {isExporting ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <Download className="w-3 h-3" />
+              )}
+              {isExporting ? 'Exporting...' : 'Export'}
+            </button>
+          )}
           <button
             onClick={handleRefresh}
             className="p-1 rounded hover:bg-[#27272a] text-[#71717A] hover:text-[#A1A1AA] transition-colors"
@@ -794,7 +841,7 @@ export function LivePreviewCard({
           </button>
         </div>
       ) : (
-        <>
+        <div className="relative">
           {/* Loading state */}
           {isLoading && (
             <div className="flex items-center justify-center py-8 bg-[#111318]">
@@ -813,7 +860,16 @@ export function LivePreviewCard({
             onLoad={handleIframeLoad}
             onError={handleIframeError}
           />
-        </>
+          {/* Stale overlay - shown when preview is being updated */}
+          {previewState === 'stale' && !isLoading && (
+            <div className="absolute inset-0 bg-[#18181b]/60 backdrop-blur-[1px] flex items-center justify-center">
+              <div className="flex flex-col items-center gap-2">
+                <Loader2 className="w-5 h-5 text-[#FBBF24] animate-spin" />
+                <span className="text-[10px] text-[#FBBF24] font-medium">Updating...</span>
+              </div>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
