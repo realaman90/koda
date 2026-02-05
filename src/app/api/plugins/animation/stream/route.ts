@@ -21,6 +21,7 @@ interface StreamRequestBody {
     plan?: unknown;
     todos?: Array<{ id: string; label: string; status: string }>;
     attachments?: Array<{ type: string; url: string }>;
+    media?: Array<{ id: string; source: string; name: string; type: string; dataUrl: string; duration?: number; mimeType?: string }>;
     sandboxId?: string;
     engine?: 'remotion' | 'theatre';
     aspectRatio?: '16:9' | '9:16' | '1:1' | '4:3' | '21:9';
@@ -71,6 +72,16 @@ export async function POST(request: Request) {
       }
       if (context.attachments && context.attachments.length > 0) {
         contextParts.push(`${context.attachments.length} reference files attached`);
+      }
+      if (context.media && context.media.length > 0) {
+        const mediaList = context.media.map(m =>
+          `- [${m.type}] "${m.name}" (${m.source}${m.duration ? `, ${m.duration}s` : ''}) URL: ${m.dataUrl.startsWith('data:') ? '[base64 data]' : m.dataUrl}`
+        ).join('\n');
+        contextParts.push(`User media files (upload to sandbox before use):\n${mediaList}`);
+        contextParts.push(
+          'IMPORTANT: For each media file, call sandbox_upload_media (if URL) or sandbox_write_binary (if base64) to write it to the sandbox at public/media/. ' +
+          'For videos, call analyze_media first for scene understanding, then extract_video_frames for key frame images.'
+        );
       }
 
       if (contextParts.length > 0) {

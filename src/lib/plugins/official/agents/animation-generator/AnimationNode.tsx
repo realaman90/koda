@@ -12,7 +12,7 @@
 import { memo, useCallback, useMemo, useEffect, useState, useRef } from 'react';
 import type { NodeProps, Node } from '@xyflow/react';
 import { Handle, Position, useUpdateNodeInternals } from '@xyflow/react';
-import { Clapperboard, Plus, Minus, Image, Video } from 'lucide-react';
+import { Clapperboard, Plus, Minus, Image, Video, Upload, X } from 'lucide-react';
 import { useCanvasStore } from '@/stores/canvas-store';
 
 // Chat components
@@ -43,6 +43,7 @@ import type {
   AspectRatio,
   ToolCallItem,
   ThinkingBlockItem,
+  MediaEntry,
 } from './types';
 
 // ─── Constants ──────────────────────────────────────────────────────────
@@ -128,6 +129,10 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
   // Scroll ref
   const chatScrollRef = useRef<HTMLDivElement>(null);
 
+  // File input ref for media uploads
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+
   // ─── Cleanup on unmount ─────────────────────────────────────────────
   useEffect(() => {
     return () => {
@@ -148,6 +153,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
   const imageRefCount = data.imageRefCount || 1;
   const videoRefCount = data.videoRefCount || 1;
   const attachments = data.attachments || [];
+  const media: MediaEntry[] = data.media || [];
   const engine: AnimationEngine = data.engine || 'remotion';
   const aspectRatio: AspectRatio = data.aspectRatio || '16:9';
 
@@ -195,6 +201,149 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     });
     return outputs;
   }, [nodes, id]);
+
+  // ─── Edge connection watcher ────────────────────────────────────────
+  // Watches incoming edges and syncs connected node outputs to media[]
+  const edges = useCanvasStore((s) => s.edges);
+  const incomingEdges = useMemo(
+    () => edges.filter((e) => e.target === id),
+    [edges, id]
+  );
+
+  useEffect(() => {
+    const currentMedia = data.media || [];
+    const edgeMedia = currentMedia.filter((m) => m.source === 'edge');
+    const uploadMedia = currentMedia.filter((m) => m.source === 'upload');
+    const currentEdgeIds = new Set(edgeMedia.map((m) => m.edgeId).filter(Boolean) as string[]);
+    const activeEdgeIds = new Set(incomingEdges.map((e) => e.id));
+
+    let changed = false;
+    let updatedEdgeMedia = [...edgeMedia];
+
+    // Remove media for disconnected edges
+    const removedIds = [...currentEdgeIds].filter((eid) => !activeEdgeIds.has(eid));
+    if (removedIds.length > 0) {
+      updatedEdgeMedia = updatedEdgeMedia.filter((m) => !removedIds.includes(m.edgeId!));
+      // Revoke blob URLs for removed media
+      edgeMedia.filter((m) => removedIds.includes(m.edgeId!) && m.dataUrl.startsWith('blob:')).forEach((m) => {
+        try { URL.revokeObjectURL(m.dataUrl); } catch { /* ignore */ }
+      });
+      changed = true;
+    }
+
+    // Add media for new edges
+    for (const edge of incomingEdges) {
+      if (currentEdgeIds.has(edge.id)) continue; // Already tracked
+
+      const sourceNode = nodes.find((n) => n.id === edge.source);
+      if (!sourceNode) continue;
+
+      const d = sourceNode.data as Record<string, unknown>;
+      let mediaUrl: string | undefined;
+      let mediaType: 'image' | 'video' = 'image';
+      let mediaName = (d.name as string) || sourceNode.type || 'Media';
+
+      if (sourceNode.type === 'imageGenerator' || sourceNode.type === 'media') {
+        mediaUrl = (d.outputUrl as string) || (d.imageUrl as string);
+        mediaType = 'image';
+      } else if (sourceNode.type === 'videoGenerator') {
+        mediaUrl = d.outputUrl as string;
+        mediaType = 'video';
+        mediaName = (d.name as string) || 'Video';
+      }
+
+      if (mediaUrl) {
+        updatedEdgeMedia.push({
+          id: `edge_${edge.id}`,
+          source: 'edge',
+          edgeId: edge.id,
+          sourceNodeId: edge.source,
+          name: mediaName,
+          type: mediaType,
+          dataUrl: mediaUrl,
+        });
+        changed = true;
+      }
+    }
+
+    // Check for updated source node outputs (re-generated images/videos)
+    for (const entry of updatedEdgeMedia) {
+      const sourceNode = nodes.find((n) => n.id === entry.sourceNodeId);
+      if (!sourceNode) continue;
+      const d = sourceNode.data as Record<string, unknown>;
+      const currentUrl = (d.outputUrl as string) || (d.imageUrl as string) || '';
+      if (currentUrl && currentUrl !== entry.dataUrl) {
+        entry.dataUrl = currentUrl;
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      updateNodeData(id, { media: [...uploadMedia, ...updatedEdgeMedia] });
+    }
+  }, [id, incomingEdges, nodes, data.media, updateNodeData]);
+
+  // ─── Media upload handler ─────────────────────────────────────────
+  const handleMediaUpload = useCallback(
+    (files: FileList) => {
+      const currentMedia = data.media || [];
+      const newEntries: MediaEntry[] = [];
+
+      Array.from(files).forEach((file) => {
+        const isVideo = file.type.startsWith('video/');
+        const isImage = file.type.startsWith('image/');
+        if (!isVideo && !isImage) return;
+
+        // For videos, we validate duration client-side after creating the blob
+        const blobUrl = URL.createObjectURL(file);
+        const entry: MediaEntry = {
+          id: `upload_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          source: 'upload',
+          name: file.name,
+          type: isVideo ? 'video' : 'image',
+          dataUrl: blobUrl,
+          mimeType: file.type,
+        };
+
+        if (isVideo) {
+          // Validate video duration (max 10s) via hidden <video> element
+          const video = document.createElement('video');
+          video.preload = 'metadata';
+          video.onloadedmetadata = () => {
+            URL.revokeObjectURL(video.src);
+            if (video.duration > 10) {
+              URL.revokeObjectURL(blobUrl);
+              // Could use toast here but keeping it simple
+              console.warn(`[AnimationNode] Video "${file.name}" is ${video.duration.toFixed(1)}s — max 10s allowed`);
+              return;
+            }
+            entry.duration = video.duration;
+            updateNodeData(id, { media: [...(data.media || []), entry] });
+          };
+          video.src = blobUrl;
+        } else {
+          newEntries.push(entry);
+        }
+      });
+
+      if (newEntries.length > 0) {
+        updateNodeData(id, { media: [...currentMedia, ...newEntries] });
+      }
+    },
+    [id, data.media, updateNodeData]
+  );
+
+  const handleRemoveMedia = useCallback(
+    (mediaId: string) => {
+      const currentMedia = data.media || [];
+      const entry = currentMedia.find((m) => m.id === mediaId);
+      if (entry?.dataUrl.startsWith('blob:')) {
+        try { URL.revokeObjectURL(entry.dataUrl); } catch { /* ignore */ }
+      }
+      updateNodeData(id, { media: currentMedia.filter((m) => m.id !== mediaId) });
+    },
+    [id, data.media, updateNodeData]
+  );
 
   // ─── State update helpers ───────────────────────────────────────────
   const updateState = useCallback(
@@ -778,7 +927,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       try {
         await streamToAgent(
           `Analyze this animation request and either ask a clarifying question (if style is unclear) or generate a plan directly:\n\n${prompt}`,
-          { nodeId: id, phase: 'idle', attachments: promptAttachments || attachments, engine, aspectRatio },
+          { nodeId: id, phase: 'idle', attachments: promptAttachments || attachments, media, engine, aspectRatio },
           callbacks
         );
         // Fallback if agent didn't use tools
@@ -934,13 +1083,13 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           '',
           `Prompt: ${data.prompt || 'Animation request'}`,
         ].join('\n'),
-        { nodeId: id, phase: 'executing', plan: ls.plan, todos, sandboxId: ls.sandboxId, engine, aspectRatio },
+        { nodeId: id, phase: 'executing', plan: ls.plan, todos, sandboxId: ls.sandboxId, media, engine, aspectRatio },
         callbacks
       );
     } catch {
       // Error handled by callback
     }
-  }, [id, data.prompt, engine, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
+  }, [id, data.prompt, engine, media, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
 
   const handleRejectPlan = useCallback(() => {
     updateState({ phase: 'idle', plan: undefined, question: undefined, planAccepted: undefined });
@@ -1050,6 +1199,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           plan: ls.plan,
           todos: ls.execution?.todos,
           sandboxId: ls.sandboxId,
+          media,
           engine,
           aspectRatio,
         }, callbacks);
@@ -1135,13 +1285,13 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     try {
       await streamToAgent(
         `Regenerate the animation from the plan. Execute all steps again.\n\nPrompt: ${data.prompt || 'Animation request'}`,
-        { nodeId: id, phase: 'executing', plan: ls.plan, todos, sandboxId: ls.sandboxId, engine, aspectRatio },
+        { nodeId: id, phase: 'executing', plan: ls.plan, todos, sandboxId: ls.sandboxId, media, engine, aspectRatio },
         callbacks
       );
     } catch {
       // Error handled by callback
     }
-  }, [id, data.prompt, engine, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
+  }, [id, data.prompt, engine, media, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
 
   const handleExportVideo = useCallback(async () => {
     const ls = getLatestState();
@@ -1377,11 +1527,40 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
   // ─── Render ─────────────────────────────────────────────────────────
   return (
     <div
-      className={nodeClasses}
+      className={`${nodeClasses}${isDragOver ? ' ring-1 ring-teal-500/50' : ''}`}
       style={{ minHeight }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.dataTransfer.types.includes('Files')) setIsDragOver(true);
+      }}
+      onDragLeave={(e) => {
+        e.preventDefault();
+        setIsDragOver(false);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragOver(false);
+        if (e.dataTransfer.files.length > 0) handleMediaUpload(e.dataTransfer.files);
+      }}
     >
+      {/* Hidden file input for media uploads */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*,video/*"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files && e.target.files.length > 0) {
+            handleMediaUpload(e.target.files);
+            e.target.value = ''; // Reset so same file can be re-selected
+          }
+        }}
+      />
       {/* ── Left: Image reference handles ─────────────────────────────── */}
       {Array.from({ length: imageRefCount }).map((_, i) => {
         const top = IMAGE_HANDLE_START + i * HANDLE_SPACING;
@@ -1609,6 +1788,47 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       {state.execution?.todos && state.execution.todos.length > 0 && (
         <div className="flex-shrink-0">
           <TodoSection todos={state.execution.todos} />
+        </div>
+      )}
+
+      {/* ── Media strip (thumbnails of attached media + upload button) */}
+      {(media.length > 0 || state.phase === 'idle') && (
+        <div className="flex-shrink-0 px-3 py-1.5 border-t border-[#27272a]">
+          <div className="flex gap-1.5 overflow-x-auto scrollbar-hidden items-center">
+            {/* Upload button */}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex-shrink-0 w-10 h-10 rounded border border-dashed border-[#3f3f46] flex items-center justify-center text-zinc-500 hover:border-teal-500/50 hover:text-teal-400 transition-colors"
+              title="Upload image or video"
+            >
+              <Upload className="w-3.5 h-3.5" />
+            </button>
+            {media.map((m) => (
+              <div key={m.id} className="relative group flex-shrink-0">
+                <div className="w-10 h-10 rounded bg-[#27272a] overflow-hidden border border-[#3f3f46]">
+                  {m.type === 'image' ? (
+                    <img src={m.dataUrl} alt={m.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <Video className="w-4 h-4 text-purple-400" />
+                    </div>
+                  )}
+                </div>
+                {m.source === 'upload' && (
+                  <button
+                    onClick={() => handleRemoveMedia(m.id)}
+                    className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500/90 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <X className="w-2 h-2 text-white" />
+                  </button>
+                )}
+                <span className="absolute bottom-0 left-0 right-0 text-[7px] text-center text-zinc-400 bg-black/60 truncate px-0.5">
+                  {m.type === 'video' && m.duration ? `${m.duration.toFixed(1)}s` : ''}
+                  {m.source === 'edge' ? '⚡' : ''}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

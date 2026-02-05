@@ -10,7 +10,7 @@
  */
 
 import { useState, useCallback, useRef } from 'react';
-import type { AnimationPlan, AnimationTodo, AnimationAttachment } from '../types';
+import type { AnimationPlan, AnimationTodo, AnimationAttachment, MediaEntry } from '../types';
 import type { AnimationStreamEvent, AnimationAppEvent } from '../events';
 import { toolCallToAppEvent, toolResultToAppEvent } from '../events';
 
@@ -24,6 +24,7 @@ interface StreamContext {
   plan?: AnimationPlan;
   todos?: AnimationTodo[];
   attachments?: AnimationAttachment[];
+  media?: MediaEntry[];
   sandboxId?: string;
   engine?: 'remotion' | 'theatre';
   aspectRatio?: '16:9' | '9:16' | '1:1' | '4:3' | '21:9';

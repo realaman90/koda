@@ -31,6 +31,7 @@ const MediaAnalysisResultSchema = z.object({
   overallDescription: z.string().describe('Summary of the entire media'),
   suggestedAnimations: z.array(z.string()).describe('Animation ideas that would work well'),
   audioDescription: z.string().optional().describe('Description of audio/music (videos only)'),
+  keyMoments: z.array(z.number()).optional().describe('Key timestamp seconds for frame extraction (videos only). Scene boundaries, important actions, cuts.'),
   error: z.string().optional(),
 });
 
@@ -74,12 +75,19 @@ Return a JSON object with:
       "colors": ["dominant", "colors"]
     }
   ],
+  "keyMoments": [0, 2.3, 5.1, 7.8],
   "audioDescription": "Description of music, speech, or sound effects",
   "suggestedAnimations": [
     "Specific animation ideas with timestamps",
     "Consider: text reveals synced to speech, particle effects on beats, lower thirds, transitions between scenes"
   ]
 }
+
+IMPORTANT — keyMoments:
+- Include timestamp (in seconds) for every scene boundary/cut
+- Include timestamps of important visual events (object appears, camera change, text shown)
+- Include the first frame (0) and key action moments
+- These timestamps will be used to extract frames for detailed analysis by models that cannot process video natively
 
 Pay attention to:
 - Scene changes and cuts
@@ -253,6 +261,17 @@ async function analyzeVideoWithGemini(
 
     try {
       const parsed = JSON.parse(jsonMatch[0]);
+      // Derive keyMoments from scenes if not explicitly provided
+      let keyMoments: number[] = parsed.keyMoments || [];
+      if (keyMoments.length === 0 && parsed.scenes?.length > 0) {
+        const moments = new Set<number>();
+        moments.add(0);
+        for (const scene of parsed.scenes) {
+          if (typeof scene.startTime === 'number') moments.add(scene.startTime);
+          if (typeof scene.endTime === 'number') moments.add(scene.endTime);
+        }
+        keyMoments = [...moments].sort((a, b) => a - b);
+      }
       return {
         success: true,
         mediaType: 'video',
@@ -261,6 +280,7 @@ async function analyzeVideoWithGemini(
         overallDescription: parsed.overallDescription || '',
         suggestedAnimations: parsed.suggestedAnimations || [],
         audioDescription: parsed.audioDescription,
+        keyMoments,
       };
     } catch {
       return {

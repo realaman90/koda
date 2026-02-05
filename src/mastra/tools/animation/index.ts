@@ -47,6 +47,8 @@ export {
   sandboxRunCommandTool,
   sandboxListFilesTool,
   sandboxUploadMediaTool,
+  sandboxWriteBinaryTool,
+  extractVideoFramesTool,
   sandboxStartPreviewTool,
   sandboxScreenshotTool,
   renderPreviewTool,

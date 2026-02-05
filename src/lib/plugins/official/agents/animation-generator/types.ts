@@ -214,6 +214,24 @@ export interface AnimationAttachment {
   nodeId?: string;  // If referencing another node's output
 }
 
+/**
+ * MediaEntry — tracks media files (images/videos) attached to the animation node.
+ * Populated from edge connections or direct file uploads.
+ * Stored in node.data.media[] and passed to the agent as context.
+ */
+export interface MediaEntry {
+  id: string;
+  source: 'upload' | 'edge';
+  edgeId?: string;            // For edge-sourced media: the React Flow edge ID
+  sourceNodeId?: string;      // For edge-sourced media: the source node ID
+  name: string;
+  type: 'image' | 'video';
+  dataUrl: string;            // Blob URL, base64 data URL, or external URL
+  duration?: number;          // Video only, in seconds
+  thumbnailUrl?: string;      // For video previews (first frame)
+  mimeType?: string;          // e.g. 'image/png', 'video/mp4'
+}
+
 // ============================================
 // NODE DATA (for React Flow)
 // ============================================
@@ -241,6 +259,9 @@ export interface AnimationNodeData extends Record<string, unknown> {
 
   // Attachments for chat input
   attachments?: AnimationAttachment[];
+
+  // Media files (images/videos) from edge connections or direct uploads
+  media?: MediaEntry[];
 }
 
 // ============================================

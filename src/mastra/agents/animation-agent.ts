@@ -34,6 +34,8 @@ import {
   sandboxRunCommandTool,
   sandboxListFilesTool,
   sandboxUploadMediaTool,
+  sandboxWriteBinaryTool,
+  extractVideoFramesTool,
   sandboxStartPreviewTool,
   sandboxScreenshotTool,
   renderPreviewTool,
@@ -82,6 +84,9 @@ export const animationAgent = new Agent({
     sandbox_run_command: sandboxRunCommandTool,
     sandbox_list_files: sandboxListFilesTool,
     sandbox_upload_media: sandboxUploadMediaTool,
+    sandbox_write_binary: sandboxWriteBinaryTool,
+    // Media Processing
+    extract_video_frames: extractVideoFramesTool,
     // Preview & Visual
     sandbox_start_preview: sandboxStartPreviewTool,
     sandbox_screenshot: sandboxScreenshotTool,

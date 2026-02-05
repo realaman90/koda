@@ -533,6 +533,39 @@ export const dockerProvider: SandboxProvider = {
   },
 
   /**
+   * Write binary data (images, videos) to the sandbox.
+   * Pipes raw Buffer through stdin to avoid shell escaping issues.
+   */
+  async writeBinary(sandboxId: string, path: string, data: Buffer): Promise<void> {
+    validatePath(path);
+    await ensureContainerRunning(sandboxId);
+    touchActivity(sandboxId);
+
+    const containerPath = resolveContainerPath(path);
+
+    // Ensure parent directory exists
+    const dir = containerPath.substring(0, containerPath.lastIndexOf('/'));
+    if (dir) {
+      await execAsync('docker', ['exec', sandboxId, 'mkdir', '-p', dir]);
+    }
+
+    // Pipe binary data through stdin using cat
+    await new Promise<void>((resolve, reject) => {
+      const proc = execFile(
+        'docker',
+        ['exec', '-i', sandboxId, 'sh', '-c', `cat > ${containerPath}`],
+        { timeout: 60_000, maxBuffer: 100 * 1024 * 1024 },
+        (error) => {
+          if (error) reject(error);
+          else resolve();
+        }
+      );
+      proc.stdin?.write(data);
+      proc.stdin?.end();
+    });
+  },
+
+  /**
    * Get sandbox status
    */
   async getStatus(sandboxId: string): Promise<SandboxInstance | null> {

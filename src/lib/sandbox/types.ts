@@ -54,6 +54,9 @@ export interface SandboxProvider {
   /** Upload media (image/video) from a URL to the sandbox */
   uploadMedia(sandboxId: string, mediaUrl: string, destPath: string): Promise<{ success: boolean; path: string; size?: number; error?: string }>;
 
+  /** Write binary data (images, videos) to the sandbox */
+  writeBinary(sandboxId: string, path: string, data: Buffer): Promise<void>;
+
   /** Get sandbox status */
   getStatus(sandboxId: string): Promise<SandboxInstance | null>;
 }

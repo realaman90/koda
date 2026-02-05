@@ -301,6 +301,180 @@ After uploading, reference in code as '/assets/image.png' or '/assets/video.mp4'
 });
 
 /**
+ * sandbox_write_binary - Write binary data (base64) to sandbox
+ */
+export const sandboxWriteBinaryTool = createTool({
+  id: 'sandbox_write_binary',
+  description: `Write binary data (images, videos) to the sandbox from base64-encoded content.
+
+Use this when:
+- User uploaded a file directly (not a URL) and you need to write it to sandbox
+- You need to create binary files from base64 data
+
+For URL-based media, prefer sandbox_upload_media instead (more efficient).`,
+  inputSchema: z.object({
+    sandboxId: z.string().describe('Sandbox ID'),
+    path: z.string().describe('Destination path in sandbox (e.g., public/media/image.png)'),
+    base64Data: z.string().describe('Base64-encoded binary data'),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    path: z.string(),
+    size: z.number().optional(),
+    message: z.string(),
+  }),
+  execute: async (inputData) => {
+    try {
+      const buffer = Buffer.from(inputData.base64Data, 'base64');
+      await dockerProvider.writeBinary(inputData.sandboxId, inputData.path, buffer);
+      return {
+        success: true,
+        path: inputData.path,
+        size: buffer.length,
+        message: `Binary file written: ${inputData.path} (${Math.round(buffer.length / 1024)} KB)`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        path: inputData.path,
+        message: error instanceof Error ? error.message : `Failed to write binary: ${inputData.path}`,
+      };
+    }
+  },
+});
+
+/**
+ * extract_video_frames - Extract frames from a video in the sandbox using FFmpeg
+ */
+export const extractVideoFramesTool = createTool({
+  id: 'extract_video_frames',
+  description: `Extract frames from a video file in the sandbox using FFmpeg.
+
+Use this after uploading a video to the sandbox and analyzing it with analyze_media.
+The Gemini analysis returns keyMoments timestamps — pass those here for targeted extraction.
+
+Modes:
+- "fps": Extract at N frames per second (default 1fps). Good for overview.
+- "timestamps": Extract at specific second timestamps. Good for key moments.
+
+Frames are saved as JPG images in /app/public/media/frames/.`,
+  inputSchema: z.object({
+    sandboxId: z.string().describe('Sandbox ID'),
+    videoPath: z.string().describe('Path to video file in sandbox (e.g., public/media/video.mp4)'),
+    mode: z.enum(['fps', 'timestamps']).describe('Extraction mode'),
+    timestamps: z.array(z.number()).optional().describe('Specific second timestamps to extract (for "timestamps" mode)'),
+    fps: z.number().optional().describe('Frames per second (for "fps" mode, default: 1)'),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    frames: z.array(z.object({
+      timestamp: z.number(),
+      path: z.string(),
+      url: z.string(),
+    })),
+    totalFrames: z.number(),
+    message: z.string(),
+  }),
+  execute: async (inputData) => {
+    try {
+      const videoPath = inputData.videoPath.startsWith('/') ? inputData.videoPath : `/app/${inputData.videoPath}`;
+      const framesDir = '/app/public/media/frames';
+
+      // Ensure frames directory exists
+      await dockerProvider.runCommand(inputData.sandboxId, `mkdir -p ${framesDir}`, { timeout: 5_000 });
+
+      const frames: Array<{ timestamp: number; path: string; url: string }> = [];
+
+      if (inputData.mode === 'timestamps' && inputData.timestamps && inputData.timestamps.length > 0) {
+        // Extract specific timestamps
+        for (const ts of inputData.timestamps) {
+          const filename = `frame_${ts.toFixed(1)}s.jpg`;
+          const outputPath = `${framesDir}/${filename}`;
+
+          const result = await dockerProvider.runCommand(
+            inputData.sandboxId,
+            `ffmpeg -ss ${ts} -i ${videoPath} -frames:v 1 -q:v 2 -y ${outputPath} 2>&1`,
+            { timeout: 15_000 }
+          );
+
+          if (result.success) {
+            // Verify file exists
+            const check = await dockerProvider.runCommand(
+              inputData.sandboxId,
+              `test -f ${outputPath} && echo "OK" || echo "MISSING"`,
+              { timeout: 5_000 }
+            );
+            if (check.stdout.trim() === 'OK') {
+              frames.push({
+                timestamp: ts,
+                path: `public/media/frames/${filename}`,
+                url: `/api/plugins/animation/sandbox/${inputData.sandboxId}/file?path=public/media/frames/${filename}`,
+              });
+            }
+          }
+        }
+      } else {
+        // FPS-based extraction
+        const fpsRate = inputData.fps || 1;
+
+        // Get video duration first
+        const durationResult = await dockerProvider.runCommand(
+          inputData.sandboxId,
+          `ffprobe -v error -show_entries format=duration -of csv=p=0 ${videoPath} 2>/dev/null`,
+          { timeout: 10_000 }
+        );
+        const duration = parseFloat(durationResult.stdout.trim()) || 10;
+
+        // Extract frames at the specified fps
+        const result = await dockerProvider.runCommand(
+          inputData.sandboxId,
+          `ffmpeg -i ${videoPath} -vf fps=${fpsRate} -q:v 2 -y ${framesDir}/frame_%03d.jpg 2>&1`,
+          { timeout: 30_000 }
+        );
+
+        if (result.success) {
+          // List extracted frames
+          const listResult = await dockerProvider.runCommand(
+            inputData.sandboxId,
+            `ls -1 ${framesDir}/frame_*.jpg 2>/dev/null | sort`,
+            { timeout: 5_000 }
+          );
+
+          const filePaths = listResult.stdout.trim().split('\n').filter(Boolean);
+          filePaths.forEach((fp, idx) => {
+            const filename = fp.split('/').pop() || '';
+            const timestamp = idx / fpsRate;
+            if (timestamp <= duration) {
+              frames.push({
+                timestamp: Math.round(timestamp * 10) / 10,
+                path: `public/media/frames/${filename}`,
+                url: `/api/plugins/animation/sandbox/${inputData.sandboxId}/file?path=public/media/frames/${filename}`,
+              });
+            }
+          });
+        }
+      }
+
+      return {
+        success: frames.length > 0,
+        frames,
+        totalFrames: frames.length,
+        message: frames.length > 0
+          ? `Extracted ${frames.length} frame(s) from video`
+          : 'No frames extracted — check if the video file exists and is valid',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        frames: [],
+        totalFrames: 0,
+        message: error instanceof Error ? error.message : 'Frame extraction failed',
+      };
+    }
+  },
+});
+
+/**
  * sandbox_start_preview - Start dev server and get live preview URL
  */
 export const sandboxStartPreviewTool = createTool({
