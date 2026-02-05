@@ -110,9 +110,19 @@ export interface AnimationExecution {
 }
 
 // ============================================
-// PREVIEW PHASE TYPES
+// VERSION TYPES (replaces preview phase)
 // ============================================
 
+export interface AnimationVersion {
+  id: string;
+  videoUrl: string;
+  thumbnailUrl?: string;
+  duration: number;
+  prompt: string;          // The prompt/feedback that generated this version
+  createdAt: string;
+}
+
+// Legacy preview type (kept for compatibility during migration)
 export interface AnimationPreview {
   videoUrl: string;
   streamUrl?: string;
@@ -170,15 +180,19 @@ export interface AnimationNodeState {
   output?: AnimationOutput;
   error?: AnimationError;
 
+  // Version history - each render creates a new version
+  versions?: AnimationVersion[];
+  /** Currently displayed version (defaults to latest) */
+  activeVersionId?: string;
+
   // Sandbox state
   sandboxId?: string;
   sandboxStatus?: 'creating' | 'ready' | 'busy' | 'destroyed';
   lastCheckpoint?: string;
 
-  // Live preview (iframe to sandbox dev server)
+  // Live preview (deprecated - kept for compatibility)
   previewUrl?: string;
   previewUrlTimestamp?: string;
-  /** Preview visibility state: 'active' (visible), 'stale' (updating), 'hidden' (collapsed during iteration) */
   previewState?: 'active' | 'stale' | 'hidden';
 
   // Timestamps
@@ -204,20 +218,29 @@ export interface AnimationAttachment {
 // NODE DATA (for React Flow)
 // ============================================
 
+// Animation engine type
+export type AnimationEngine = 'remotion' | 'theatre';
+
+// Aspect ratio type
+export type AspectRatio = '16:9' | '9:16' | '1:1' | '4:3' | '21:9';
+
 export interface AnimationNodeData extends Record<string, unknown> {
   name?: string;
   prompt: string;
   state: AnimationNodeState;
-  
+
+  // Animation engine (Remotion or Theatre.js)
+  engine?: AnimationEngine;
+
+  // Aspect ratio (default 16:9)
+  aspectRatio?: AspectRatio;
+
   // Dynamic handle counts
   imageRefCount?: number;  // Number of image reference handles (default 1)
   videoRefCount?: number;  // Number of video reference handles (default 1)
-  
+
   // Attachments for chat input
   attachments?: AnimationAttachment[];
-  
-  // Selected model
-  model?: string;
 }
 
 // ============================================

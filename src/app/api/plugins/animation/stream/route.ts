@@ -22,6 +22,8 @@ interface StreamRequestBody {
     todos?: Array<{ id: string; label: string; status: string }>;
     attachments?: Array<{ type: string; url: string }>;
     sandboxId?: string;
+    engine?: 'remotion' | 'theatre';
+    aspectRatio?: '16:9' | '9:16' | '1:1' | '4:3' | '21:9';
   };
 }
 
@@ -47,6 +49,14 @@ export async function POST(request: Request) {
     // Prepend context as a system-style user message if provided
     if (context) {
       const contextParts: string[] = [];
+      if (context.engine) {
+        const engineName = context.engine === 'remotion' ? 'Remotion' : 'Theatre.js';
+        contextParts.push(`Animation engine: ${engineName}`);
+        contextParts.push(`IMPORTANT: Use ${engineName} for all animation code. ${context.engine === 'remotion' ? 'Use React components with useCurrentFrame/useVideoConfig hooks.' : 'Use Theatre.js sheet objects and sequences for animation.'}`);
+      }
+      if (context.aspectRatio) {
+        contextParts.push(`Aspect ratio: ${context.aspectRatio}`);
+      }
       if (context.sandboxId) {
         contextParts.push(`Active sandbox ID: ${context.sandboxId}`);
       }

@@ -82,6 +82,15 @@ This avoids passing large file contents through the conversation and saves token
   }),
 
   execute: async (inputData) => {
+    // Validate sandboxId is provided (critical for writing files)
+    if (!inputData.sandboxId) {
+      return {
+        files: [],
+        summary: 'ERROR: No sandboxId provided. You MUST create a sandbox first with sandbox_create(template="remotion"), then pass the returned sandboxId to this tool.',
+        writtenToSandbox: false,
+      };
+    }
+
     // Format the request for the code generator subagent
     const prompt = formatRemotionCodeGenerationPrompt(inputData);
 
@@ -93,11 +102,19 @@ This avoids passing large file contents through the conversation and saves token
 
       const fullResponse = result.text;
 
+      // Log for debugging
+      console.log(`[generate_remotion_code] Subagent response length: ${fullResponse.length}`);
+
       // Parse the JSON response from the subagent
       const parsed = extractJSON(fullResponse);
 
       if (!parsed || !parsed.files || !Array.isArray(parsed.files)) {
-        throw new Error('Code generator returned invalid structure: missing files array. Raw output: ' + fullResponse.slice(0, 300));
+        console.error(`[generate_remotion_code] Invalid response:`, fullResponse.slice(0, 500));
+        return {
+          files: [],
+          summary: `ERROR: Code generator returned invalid format. Expected JSON with "files" array. Raw output (first 200 chars): ${fullResponse.slice(0, 200)}`,
+          writtenToSandbox: false,
+        };
       }
 
       // Validate each file has path and content
@@ -137,10 +154,13 @@ This avoids passing large file contents through the conversation and saves token
         writtenToSandbox: false,
       };
     } catch (error) {
-      if (error instanceof SyntaxError) {
-        throw new Error(`Code generator returned invalid JSON: ${error.message}`);
-      }
-      throw error;
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[generate_remotion_code] Error:`, errorMsg);
+      return {
+        files: [],
+        summary: `ERROR: Code generation failed: ${errorMsg}. Check that sandboxId is valid and the sandbox is running.`,
+        writtenToSandbox: false,
+      };
     }
   },
 });

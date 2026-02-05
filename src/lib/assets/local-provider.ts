@@ -80,7 +80,8 @@ export class LocalAssetProvider implements AssetStorageProvider {
       this.manifest = { assets: {} };
     }
 
-    return this.manifest;
+    // TypeScript can't track that manifest is always set in the branches above
+    return this.manifest!;
   }
 
   /**

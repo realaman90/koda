@@ -108,7 +108,16 @@ export async function GET(
   // Reconstruct the sub-path from catch-all segments
   const subPath = path ? `/${path.join('/')}` : '/';
   // Forward any query string (Vite uses ?t=... for cache busting, ?import, etc.)
-  const search = request.nextUrl.search || '';
+  let search = request.nextUrl.search || '';
+
+  // REMOTION FIX: When loading the root URL without a composition selection,
+  // Remotion Studio interprets the full proxy path as a composition ID.
+  // Add ?selected=MainVideo to tell Remotion which composition to display.
+  // This is only needed for the root URL (no subPath) without an existing 'selected' param.
+  if (subPath === '/' && !search.includes('selected=')) {
+    search = search ? `${search}&selected=MainVideo` : '?selected=MainVideo';
+  }
+
   const targetUrl = `http://localhost:${instance.port}${subPath}${search}`;
 
   const proxyBase = `/api/plugins/animation/sandbox/${sandboxId}/proxy`;
@@ -177,10 +186,31 @@ export async function GET(
       html = html.replace(/http:\/\/localhost:5173/g, proxyBase);
 
       // Inject scripts:
-      // 1. Silence HMR WebSocket errors (HMR doesn't work through proxy)
-      // 2. Error capture overlay — catches uncaught JS errors and displays them
+      // 1. REMOTION FIX: Override pathname so Remotion doesn't interpret proxy path as composition ID
+      // 2. Silence HMR WebSocket errors (HMR doesn't work through proxy)
+      // 3. Error capture overlay — catches uncaught JS errors and displays them
       //    visually instead of showing a black screen in the iframe.
       const injectedScripts = `<script>
+// REMOTION FIX: Use history.replaceState to change the URL to "/" before Remotion loads.
+// Remotion uses window.location.pathname to determine which composition to show.
+// When embedded via proxy, the path is "/api/plugins/animation/sandbox/.../proxy"
+// which Remotion interprets as a composition ID and fails.
+// By using replaceState, we actually change the browser's URL to "/" which Remotion sees correctly.
+(function() {
+  try {
+    var path = window.location.pathname;
+    if (path.includes('/api/plugins/animation/sandbox/') && path.includes('/proxy')) {
+      // Store the real proxy path for our internal use
+      window.__KODA_PROXY_BASE__ = path.replace(/\\/$/, '');
+      // Replace the URL with "/" - this changes what window.location.pathname returns
+      window.history.replaceState({}, '', '/' + window.location.search + window.location.hash);
+    }
+  } catch(e) {
+    console.warn('[Koda] Failed to rewrite URL for Remotion:', e);
+  }
+})();
+</script>
+<script>
 window.__vite_plugin_react_preamble_installed__=true;
 window.__HMR_ENABLE_OVERLAY__=false;
 (function(){

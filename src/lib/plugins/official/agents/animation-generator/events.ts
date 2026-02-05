@@ -178,6 +178,15 @@ export interface SandboxCreatedAppEvent {
   previewUrl: string;
 }
 
+/** Code generated and written to sandbox */
+export interface CodeGeneratedAppEvent {
+  kind: 'code_generated';
+  files: Array<{ path: string; size: number }>;
+  writtenToSandbox: boolean;
+  summary: string;
+  hasError: boolean;
+}
+
 /** Union of all application-level events */
 export type AnimationAppEvent =
   | TodoUpdateAppEvent
@@ -190,7 +199,8 @@ export type AnimationAppEvent =
   | PreviewReadyAppEvent
   | ScreenshotCapturedAppEvent
   | RenderCompleteAppEvent
-  | SandboxCreatedAppEvent;
+  | SandboxCreatedAppEvent
+  | CodeGeneratedAppEvent;
 
 // ============================================
 // TOOL NAME CONSTANTS
@@ -224,6 +234,12 @@ export const SANDBOX_TOOL_NAMES = [
   'sandbox_screenshot',
 ] as const;
 
+/** Code generation tools */
+export const CODE_GEN_TOOL_NAMES = [
+  'generate_code',
+  'generate_remotion_code',
+] as const;
+
 /** Rendering tools — tool-result is used */
 export const RENDER_TOOL_NAMES = [
   'render_preview',
@@ -233,8 +249,9 @@ export const RENDER_TOOL_NAMES = [
 export type UIToolName = typeof UI_TOOL_NAMES[number];
 export type PlanningToolName = typeof PLANNING_TOOL_NAMES[number];
 export type SandboxToolName = typeof SANDBOX_TOOL_NAMES[number];
+export type CodeGenToolName = typeof CODE_GEN_TOOL_NAMES[number];
 export type RenderToolName = typeof RENDER_TOOL_NAMES[number];
-export type AnimationToolName = UIToolName | PlanningToolName | SandboxToolName | RenderToolName;
+export type AnimationToolName = UIToolName | PlanningToolName | SandboxToolName | CodeGenToolName | RenderToolName;
 
 /**
  * Map a tool-call event to an application-level event.
@@ -271,6 +288,20 @@ export function toolCallToAppEvent(toolName: string, args: Record<string, unknow
  * Returns null if the result doesn't produce an app event.
  */
 export function toolResultToAppEvent(toolName: string, result: Record<string, unknown>): AnimationAppEvent | null {
+  // Special handling for code generation tools — we want to report even on failure
+  if (toolName === 'generate_code' || toolName === 'generate_remotion_code') {
+    const files = (result.files as Array<{ path: string; size: number }>) || [];
+    const summary = (result.summary as string) || '';
+    const hasError = summary.startsWith('ERROR:') || files.length === 0;
+    return {
+      kind: 'code_generated',
+      files,
+      writtenToSandbox: (result.writtenToSandbox as boolean) || false,
+      summary,
+      hasError,
+    };
+  }
+
   if (result.success === false) return null;
 
   switch (toolName) {

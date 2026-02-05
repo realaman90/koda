@@ -360,10 +360,13 @@ This tool kills any existing dev server, starts a new one, and waits until it's 
         }
       }
 
-      // Start dev server in background, redirect output to a log file for debugging
+      // Start the Remotion Player dev server (not Remotion Studio) in background.
+      // The Player uses vite.player.config.ts and serves player.html which embeds the
+      // Remotion Player component. This avoids URL routing issues when embedding in iframes
+      // (Remotion Studio interprets the proxy URL path as a composition ID).
       await dockerProvider.runCommand(
         inputData.sandboxId,
-        'cd /app && nohup bun run dev > /tmp/vite.log 2>&1 &',
+        'cd /app && nohup bunx vite --config vite.player.config.ts > /tmp/vite.log 2>&1 &',
         { background: true }
       );
 
@@ -439,132 +442,98 @@ This tool kills any existing dev server, starts a new one, and waits until it's 
  */
 export const sandboxScreenshotTool = createTool({
   id: 'sandbox_screenshot',
-  description: `Capture one or more screenshots of the animation at specific points in time.
+  description: `Capture screenshots of the animation at specific frames using Remotion's native still renderer.
 
-Uses Puppeteer inside the sandbox to navigate to the dev server, seek to specified times, and capture screenshots.
+Uses 'bunx remotion still' command - much more reliable than Puppeteer-based approaches.
 
-**Single mode**: Pass \`seekTo\` for one screenshot.
-**Batch mode**: Pass \`timestamps\` array (e.g. [0, 1, 2, 3, 4]) to capture multiple frames in one call. Much more efficient than calling this tool multiple times.
+**Single mode**: Pass \`frame\` for one screenshot.
+**Batch mode**: Pass \`frames\` array (e.g. [0, 30, 60, 90]) to capture multiple frames.
 
-**IMPORTANT — Verification workflow**: After starting the preview, ALWAYS use batch mode with ~10 evenly spaced timestamps across the animation duration. This proves the animation is actually playing and not a static image. Example for a 5s animation: timestamps=[0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5]`,
+To convert seconds to frames: frame = seconds * fps (default 30fps)
+Example: 2 seconds at 30fps = frame 60`,
   inputSchema: z.object({
     sandboxId: z.string().describe('Sandbox ID'),
-    seekTo: z.number().optional().describe('Single screenshot: seek to this time (seconds)'),
-    timestamps: z.array(z.number()).optional().describe('Batch mode: array of timestamps (seconds) for multiple screenshots in one call'),
-    width: z.number().optional().describe('Screenshot width (default: 1920)'),
-    height: z.number().optional().describe('Screenshot height (default: 1080)'),
+    frame: z.number().optional().describe('Single screenshot: capture this frame number'),
+    frames: z.array(z.number()).optional().describe('Batch mode: array of frame numbers'),
+    fps: z.number().optional().describe('Frames per second for time conversion (default: 30)'),
   }),
   outputSchema: z.object({
     success: z.boolean(),
     screenshots: z.array(z.object({
       imageUrl: z.string(),
-      timestamp: z.number(),
+      frame: z.number(),
     })),
     message: z.string(),
   }),
   execute: async (inputData) => {
-    const width = inputData.width || 1920;
-    const height = inputData.height || 1080;
-    const fps = 60;
+    const fps = inputData.fps || 30;
 
-    // Determine which timestamps to capture
-    let timestamps: number[];
-    if (inputData.timestamps && inputData.timestamps.length > 0) {
-      timestamps = inputData.timestamps;
+    // Determine which frames to capture
+    let frames: number[];
+    if (inputData.frames && inputData.frames.length > 0) {
+      frames = inputData.frames;
     } else {
-      timestamps = [inputData.seekTo || 0];
+      frames = [inputData.frame || 0];
     }
 
-    // Cap at 20 screenshots per call
-    if (timestamps.length > 20) {
-      timestamps = timestamps.slice(0, 20);
+    // Cap at 10 screenshots per call (Remotion still is slower than batch render)
+    if (frames.length > 10) {
+      frames = frames.slice(0, 10);
     }
-
-    // Build a Puppeteer script that captures all timestamps in a single browser session
-    const captureEntries = timestamps.map((t, i) => {
-      const frame = Math.round(t * fps);
-      const filename = `screenshot-${i}-${t.toFixed(2).replace('.', '_')}s.png`;
-      return { t, frame, filename };
-    });
-
-    const screenshotScript = `
-const puppeteer = require('puppeteer-core');
-(async () => {
-  const browser = await puppeteer.launch({
-    headless: 'new',
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-  });
-  const page = await browser.newPage();
-  await page.setViewport({ width: ${width}, height: ${height} });
-
-  // Set export mode before page loads so useCurrentFrame doesn't start RAF
-  await page.evaluateOnNewDocument(() => {
-    window.__EXPORT_MODE__ = true;
-  });
-
-  await page.goto('http://localhost:5173', { waitUntil: 'networkidle0', timeout: 30000 });
-  await page.waitForSelector('#root', { timeout: 10000 });
-
-  // Wait for React to mount
-  await new Promise(r => setTimeout(r, 500));
-
-  const captures = ${JSON.stringify(captureEntries)};
-  const results = [];
-
-  for (const cap of captures) {
-    // Seek via theatre-seek event (matches useCurrentFrame hook)
-    await page.evaluate((frame) => {
-      window.dispatchEvent(new CustomEvent('theatre-seek', { detail: { frame } }));
-    }, cap.frame);
-
-    // Wait for React to re-render
-    await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
-    // Extra settle time for complex animations
-    await new Promise(r => setTimeout(r, 100));
-
-    await page.screenshot({ path: '/app/output/' + cap.filename, type: 'png' });
-    results.push({ filename: cap.filename, timestamp: cap.t });
-  }
-
-  await browser.close();
-  console.log(JSON.stringify(results));
-})();
-`;
 
     try {
       // Ensure output directory
-      await dockerProvider.runCommand(inputData.sandboxId, 'mkdir -p /app/output');
+      await dockerProvider.runCommand(inputData.sandboxId, 'mkdir -p /app/output', { timeout: 5_000 });
 
-      // Write the screenshot script
-      await dockerProvider.writeFile(inputData.sandboxId, 'screenshot.cjs', screenshotScript);
+      const screenshots: { imageUrl: string; frame: number }[] = [];
+      const errors: string[] = [];
 
-      // Run it (longer timeout for batch mode)
-      const timeoutMs = Math.max(30_000, timestamps.length * 5_000);
-      const result = await dockerProvider.runCommand(
-        inputData.sandboxId,
-        'node screenshot.cjs',
-        { timeout: timeoutMs }
-      );
+      // Capture each frame using Remotion's native still command
+      for (const frame of frames) {
+        const filename = `frame-${frame}.png`;
+        const outputPath = `/app/output/${filename}`;
 
-      if (!result.success) {
+        const result = await dockerProvider.runCommand(
+          inputData.sandboxId,
+          `cd /app && bunx remotion still src/index.ts MainVideo ${outputPath} --frame=${frame} 2>&1`,
+          { timeout: 30_000 }
+        );
+
+        if (result.success) {
+          // Verify file was created
+          const checkFile = await dockerProvider.runCommand(
+            inputData.sandboxId,
+            `test -f ${outputPath} && echo "OK" || echo "MISSING"`,
+            { timeout: 5_000 }
+          );
+
+          if (checkFile.stdout.trim() === 'OK') {
+            screenshots.push({
+              imageUrl: `/api/plugins/animation/sandbox/${inputData.sandboxId}/file?path=output/${filename}`,
+              frame,
+            });
+          } else {
+            errors.push(`Frame ${frame}: file not created`);
+          }
+        } else {
+          errors.push(`Frame ${frame}: ${result.stderr || result.stdout}`.slice(0, 100));
+        }
+      }
+
+      if (screenshots.length === 0) {
         return {
           success: false,
           screenshots: [],
-          message: `Screenshot failed: ${result.stderr}`,
+          message: `All screenshots failed. Errors: ${errors.join('; ')}`,
         };
       }
-
-      // Build the response with image URLs
-      const screenshots = captureEntries.map((cap) => ({
-        imageUrl: `/api/plugins/animation/sandbox/${inputData.sandboxId}/file?path=output/${cap.filename}`,
-        timestamp: cap.t,
-      }));
 
       return {
         success: true,
         screenshots,
-        message: `Captured ${screenshots.length} screenshot(s) at t=${timestamps.map(t => t + 's').join(', ')}`,
+        message: screenshots.length === frames.length
+          ? `Captured ${screenshots.length} screenshot(s)`
+          : `Captured ${screenshots.length}/${frames.length} screenshots. Errors: ${errors.join('; ')}`,
       };
     } catch (error) {
       return {
@@ -581,27 +550,60 @@ const puppeteer = require('puppeteer-core');
  */
 export const renderPreviewTool = createTool({
   id: 'render_preview',
-  description: `Render a low-quality preview video of the animation.
+  description: `Render a preview video of the animation using Remotion's built-in renderer.
 
-This runs the export-video script inside the sandbox container,
-which uses Puppeteer + FFmpeg to capture the animation.`,
+Uses 'bunx remotion render' to create an MP4 video file. Automatically detects the composition ID.`,
   inputSchema: z.object({
     sandboxId: z.string().describe('Sandbox ID'),
     duration: z.number().describe('Video duration in seconds'),
+    fps: z.number().optional().describe('Frames per second (default: 30)'),
+    compositionId: z.string().optional().describe('Composition ID to render (auto-detected if not provided)'),
   }),
   outputSchema: z.object({
     success: z.boolean(),
     videoUrl: z.string(),
     thumbnailUrl: z.string(),
     duration: z.number(),
+    message: z.string().optional(),
   }),
   execute: async (inputData) => {
+    const fps = inputData.fps || 30;
+    const outputPath = '/app/output/preview.mp4';
+
     try {
-      // Run the export script in the container
+      // Ensure output directory exists
+      await dockerProvider.runCommand(inputData.sandboxId, 'mkdir -p /app/output', { timeout: 5_000 });
+
+      // Detect composition ID if not provided
+      let compositionId = inputData.compositionId;
+      if (!compositionId) {
+        // List available compositions and pick the first one
+        const listResult = await dockerProvider.runCommand(
+          inputData.sandboxId,
+          `cd /app && bunx remotion compositions src/index.ts --props='{}' 2>&1 | grep -E '^[A-Za-z]' | head -1 | awk '{print $1}'`,
+          { timeout: 30_000 }
+        );
+        compositionId = listResult.stdout.trim();
+
+        if (!compositionId) {
+          // Fallback: try to extract from Root.tsx
+          const rootCheck = await dockerProvider.runCommand(
+            inputData.sandboxId,
+            `grep -oP 'id="\\K[^"]+' /app/src/Root.tsx 2>/dev/null | head -1 || echo "MainVideo"`,
+            { timeout: 5_000 }
+          );
+          compositionId = rootCheck.stdout.trim() || 'MainVideo';
+        }
+      }
+
+      console.log(`[render_preview] Using composition ID: ${compositionId}`);
+
+      // Use Remotion's built-in renderer
+      // --concurrency=1 for lower memory usage in container
       const result = await dockerProvider.runCommand(
         inputData.sandboxId,
-        `node export-video.cjs --duration ${inputData.duration} --quality preview --output /app/output/preview.mp4`,
-        { timeout: 120_000 }
+        `cd /app && bunx remotion render src/index.ts ${compositionId} ${outputPath} --props='{}' --concurrency=1 2>&1`,
+        { timeout: 180_000 } // 3 minutes for rendering
       );
 
       if (!result.success) {
@@ -610,16 +612,33 @@ which uses Puppeteer + FFmpeg to capture the animation.`,
           videoUrl: '',
           thumbnailUrl: '',
           duration: inputData.duration,
+          message: `Render failed: ${result.stderr || result.stdout}`.slice(0, 500),
         };
       }
 
-      // Copy the video out of the container
-      // TODO: Upload to storage and return a real URL
+      // Check if the file was created
+      const checkFile = await dockerProvider.runCommand(
+        inputData.sandboxId,
+        `test -f ${outputPath} && echo "OK" || echo "MISSING"`,
+        { timeout: 5_000 }
+      );
+
+      if (checkFile.stdout.trim() !== 'OK') {
+        return {
+          success: false,
+          videoUrl: '',
+          thumbnailUrl: '',
+          duration: inputData.duration,
+          message: 'Video file was not created. Render output: ' + result.stdout.slice(0, 300),
+        };
+      }
+
       return {
         success: true,
         videoUrl: `/api/plugins/animation/sandbox/${inputData.sandboxId}/file?path=output/preview.mp4`,
-        thumbnailUrl: `/api/plugins/animation/sandbox/${inputData.sandboxId}/file?path=output/preview-thumb.jpg`,
+        thumbnailUrl: '',
         duration: inputData.duration,
+        message: `Video rendered successfully (composition: ${compositionId})`,
       };
     } catch (error) {
       return {
@@ -627,6 +646,7 @@ which uses Puppeteer + FFmpeg to capture the animation.`,
         videoUrl: '',
         thumbnailUrl: '',
         duration: inputData.duration,
+        message: error instanceof Error ? error.message : 'Unknown error',
       };
     }
   },
@@ -637,11 +657,14 @@ which uses Puppeteer + FFmpeg to capture the animation.`,
  */
 export const renderFinalTool = createTool({
   id: 'render_final',
-  description: 'Render the final high-quality video.',
+  description: `Render the final high-quality video using Remotion's built-in renderer.
+
+Uses higher quality settings and supports multiple resolutions. Automatically detects the composition ID.`,
   inputSchema: z.object({
     sandboxId: z.string().describe('Sandbox ID'),
     duration: z.number().describe('Video duration'),
     resolution: z.enum(['720p', '1080p', '4k']).optional().describe('Output resolution'),
+    compositionId: z.string().optional().describe('Composition ID to render (auto-detected if not provided)'),
   }),
   outputSchema: z.object({
     success: z.boolean(),
@@ -649,15 +672,51 @@ export const renderFinalTool = createTool({
     thumbnailUrl: z.string(),
     duration: z.number(),
     resolution: z.string(),
+    message: z.string().optional(),
   }),
   execute: async (inputData) => {
     const resolution = inputData.resolution || '1080p';
+    const outputPath = '/app/output/final.mp4';
+
+    // Map resolution to Remotion scale factor (based on 1920x1080 default)
+    const scaleMap: Record<string, string> = {
+      '720p': '--scale=0.67',
+      '1080p': '',
+      '4k': '--scale=2',
+    };
+    const scaleFlag = scaleMap[resolution] || '';
 
     try {
+      // Ensure output directory exists
+      await dockerProvider.runCommand(inputData.sandboxId, 'mkdir -p /app/output', { timeout: 5_000 });
+
+      // Detect composition ID if not provided
+      let compositionId = inputData.compositionId;
+      if (!compositionId) {
+        const listResult = await dockerProvider.runCommand(
+          inputData.sandboxId,
+          `cd /app && bunx remotion compositions src/index.ts --props='{}' 2>&1 | grep -E '^[A-Za-z]' | head -1 | awk '{print $1}'`,
+          { timeout: 30_000 }
+        );
+        compositionId = listResult.stdout.trim();
+
+        if (!compositionId) {
+          const rootCheck = await dockerProvider.runCommand(
+            inputData.sandboxId,
+            `grep -oP 'id="\\K[^"]+' /app/src/Root.tsx 2>/dev/null | head -1 || echo "MainVideo"`,
+            { timeout: 5_000 }
+          );
+          compositionId = rootCheck.stdout.trim() || 'MainVideo';
+        }
+      }
+
+      console.log(`[render_final] Using composition ID: ${compositionId}`);
+
+      // Use Remotion's built-in renderer with high quality settings
       const result = await dockerProvider.runCommand(
         inputData.sandboxId,
-        `node export-video.cjs --duration ${inputData.duration} --quality final --resolution ${resolution} --output /app/output/final.mp4`,
-        { timeout: 300_000 }
+        `cd /app && bunx remotion render src/index.ts ${compositionId} ${outputPath} --props='{}' ${scaleFlag} 2>&1`,
+        { timeout: 300_000 } // 5 minutes for final render
       );
 
       if (!result.success) {
@@ -667,15 +726,35 @@ export const renderFinalTool = createTool({
           thumbnailUrl: '',
           duration: inputData.duration,
           resolution,
+          message: `Render failed: ${result.stderr || result.stdout}`.slice(0, 500),
+        };
+      }
+
+      // Check if the file was created
+      const checkFile = await dockerProvider.runCommand(
+        inputData.sandboxId,
+        `test -f ${outputPath} && echo "OK" || echo "MISSING"`,
+        { timeout: 5_000 }
+      );
+
+      if (checkFile.stdout.trim() !== 'OK') {
+        return {
+          success: false,
+          videoUrl: '',
+          thumbnailUrl: '',
+          duration: inputData.duration,
+          resolution,
+          message: 'Video file was not created',
         };
       }
 
       return {
         success: true,
         videoUrl: `/api/plugins/animation/sandbox/${inputData.sandboxId}/file?path=output/final.mp4`,
-        thumbnailUrl: `/api/plugins/animation/sandbox/${inputData.sandboxId}/file?path=output/final-thumb.jpg`,
+        thumbnailUrl: '',
         duration: inputData.duration,
         resolution,
+        message: 'Video rendered successfully',
       };
     } catch (error) {
       return {

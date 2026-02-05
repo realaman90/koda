@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import {
   applyNodeChanges,
   applyEdgeChanges,
@@ -307,7 +308,8 @@ export const createPluginNode = (
 });
 
 export const useCanvasStore = create<CanvasState>()(
-  (set, get) => ({
+  persist(
+    (set, get) => ({
     // Initial state
     nodes: [],
     edges: [],
@@ -870,6 +872,14 @@ export const useCanvasStore = create<CanvasState>()(
             return (node.data as VideoGeneratorNodeData).outputUrl;
           } else if (node.type === 'videoAudio') {
             return (node.data as VideoAudioNodeData).outputUrl;
+          } else if (node.type === 'pluginNode') {
+            // Support animation plugin output
+            const pluginData = node.data as PluginNodeData;
+            if (pluginData.pluginId === 'animation-generator') {
+              const state = pluginData.state as { preview?: { videoUrl?: string }; output?: { videoUrl?: string }; versions?: Array<{ videoUrl: string }> };
+              // Priority: final output > current preview > latest version
+              return state.output?.videoUrl || state.preview?.videoUrl || state.versions?.[state.versions.length - 1]?.videoUrl;
+            }
           }
           return undefined;
         };
@@ -1008,5 +1018,15 @@ export const useCanvasStore = create<CanvasState>()(
         const { _pushHistory } = get() as CanvasState & { _pushHistory: () => void };
         _pushHistory();
       },
-    })
+    }),
+    {
+      name: 'spaces-canvas-storage',
+      storage: createJSONStorage(() => localStorage),
+      // Only persist nodes and edges - not UI state like selections, clipboard, etc.
+      partialize: (state) => ({
+        nodes: state.nodes,
+        edges: state.edges,
+      }),
+    }
+  )
 );

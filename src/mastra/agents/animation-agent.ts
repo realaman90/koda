@@ -53,7 +53,7 @@ export const animationAgent = new Agent({
   id: 'animation-agent',
   name: 'animation-agent',
   instructions: ANIMATION_AGENT_INSTRUCTIONS,
-  model: 'anthropic/claude-sonnet-4-5', //anthropic/claude-opus-4-5',
+  model: 'anthropic/claude-opus-4-5',
   tools: {
     // UI Tools
     update_todo: updateTodoTool,

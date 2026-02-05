@@ -4,7 +4,8 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "dev": "remotion preview src/index.ts --port 5173",
+    "dev": "remotion studio src/index.ts --port 5173",
+    "player": "vite --config vite.player.config.ts",
     "build": "remotion render src/index.ts MainVideo out/video.mp4",
     "render": "remotion render src/index.ts MainVideo",
     "compositions": "remotion compositions src/index.ts"
@@ -14,11 +15,22 @@
     "react-dom": "^18.3.1",
     "remotion": "^4.0.0",
     "@remotion/cli": "^4.0.0",
-    "@remotion/bundler": "^4.0.0"
+    "@remotion/bundler": "^4.0.0",
+    "@remotion/player": "^4.0.0",
+    "@remotion/transitions": "^4.0.0",
+    "@remotion/media": "^4.0.0",
+    "@remotion/three": "^4.0.0",
+    "@remotion/gif": "^4.0.0",
+    "@react-three/fiber": "^8.17.0",
+    "@react-three/drei": "^9.117.0",
+    "three": "^0.169.0",
+    "vite": "^5.4.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
+    "@types/three": "^0.169.0",
+    "@vitejs/plugin-react": "^4.3.0",
     "typescript": "^5.5.0"
   }
 }

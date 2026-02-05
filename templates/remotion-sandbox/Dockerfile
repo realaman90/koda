@@ -38,6 +38,8 @@ RUN mkdir -p /app/output /app/src/utils /app/src/components /app/src/sequences /
 COPY template/package.json /app/
 COPY template/tsconfig.json /app/
 COPY template/remotion.config.ts /app/
+COPY template/vite.player.config.ts /app/
+COPY template/player.html /app/
 COPY template/src/ /app/src/
 COPY template/public/ /app/public/
 

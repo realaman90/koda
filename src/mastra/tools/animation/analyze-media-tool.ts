@@ -96,7 +96,7 @@ const claudeImageAnalyzer = new Agent({
   name: 'claude-image-analyzer',
   instructions: `You are an image analysis expert. Analyze images and return structured JSON for animation planning.
 Always return valid JSON matching the requested schema. Be detailed about composition, objects, and animation opportunities.`,
-  model: 'anthropic/claude-sonnet-4',
+  model: 'anthropic/claude-opus-4-5',
 });
 
 /**

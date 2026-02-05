@@ -20,16 +20,11 @@ import { ChatInput } from './components';
 import {
   UserBubble,
   AssistantText,
-  ToolCallCard,
   PlanCard,
   QuestionOptions,
-  StreamingText,
-  StreamingPlaceholder,
-  ThinkingBlock,
   RetryButton,
   TodoSection,
   VideoCard,
-  LivePreviewCard,
 } from './components/ChatMessages';
 
 // Hooks
@@ -43,6 +38,9 @@ import type {
   AnimationAttachment,
   AnimationPlan,
   AnimationMessage,
+  AnimationVersion,
+  AnimationEngine,
+  AspectRatio,
   ToolCallItem,
   ThinkingBlockItem,
 } from './types';
@@ -74,13 +72,13 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
 const UI_TOOLS = new Set(['update_todo', 'set_thinking', 'add_message', 'request_approval', 'analyze_prompt']);
 
 // ─── Timeline item union ────────────────────────────────────────────────
-// Note: iframe and video are rendered separately at the end of the chat area
+// Simplified: only user messages, assistant messages, plan cards, and videos
+// Tool calls and thinking blocks are hidden for cleaner UX
 type TimelineItem =
   | { kind: 'user'; id: string; content: string; ts: string; seq: number }
   | { kind: 'assistant'; id: string; content: string; ts: string; seq: number }
-  | { kind: 'tool'; id: string; item: ToolCallItem; ts: string; seq: number }
-  | { kind: 'thinking'; id: string; item: ThinkingBlockItem; ts: string; seq: number }
-  | { kind: 'plan'; id: string; ts: string; seq: number };
+  | { kind: 'plan'; id: string; ts: string; seq: number }
+  | { kind: 'video'; id: string; ts: string; seq: number; videoUrl: string; duration: number };
 
 // ─── Global sequence counter for stable chronological ordering ──────────
 // This ensures events are ordered correctly even when timestamps are identical
@@ -150,7 +148,8 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
   const imageRefCount = data.imageRefCount || 1;
   const videoRefCount = data.videoRefCount || 1;
   const attachments = data.attachments || [];
-  const model = data.model || 'anthropic/claude-sonnet-4-5';
+  const engine: AnimationEngine = data.engine || 'remotion';
+  const aspectRatio: AspectRatio = data.aspectRatio || '16:9';
 
   useEffect(() => {
     updateNodeInternals(id);
@@ -546,23 +545,103 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           }
         }
 
-        if (event.toolName === 'render_preview') {
+        if (event.toolName === 'render_preview' || event.toolName === 'render_final') {
+          console.log(`[AnimationNode] Render tool result:`, JSON.stringify(event.result, null, 2));
           const result = event.result as { success?: boolean; videoUrl?: string; duration?: number; message?: string };
           if (result.success === false || event.isError) {
             // Log technical details, show friendly message
             console.error(`[AnimationNode] Render failed:`, result.message);
             addUserMessage('Video rendering encountered an issue. Retrying...');
-          } else if (result.videoUrl) {
-            updateNodeData(id, {
-              state: {
-                ...ls,
-                phase: 'preview',
-                preview: { videoUrl: result.videoUrl, duration: result.duration || ls.plan?.totalDuration || 7 },
-                previewTimestamp: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-              },
+          } else if (result.videoUrl && result.videoUrl.length > 0) {
+            console.log(`[AnimationNode] Creating video version with URL:`, result.videoUrl);
+            const sandboxVideoUrl = result.videoUrl;
+            const duration = result.duration || ls.plan?.totalDuration || 7;
+
+            // Immediately show the sandbox video URL (for instant feedback)
+            const tempVersion: AnimationVersion = {
+              id: `v${Date.now()}`,
+              videoUrl: sandboxVideoUrl,
+              duration,
+              prompt: data.prompt || '',
+              createdAt: new Date().toISOString(),
+            };
+            const existingVersions = ls.versions || [];
+            const newState = {
+              ...ls,
+              phase: 'preview' as const,
+              versions: [...existingVersions, tempVersion],
+              activeVersionId: tempVersion.id,
+              preview: { videoUrl: sandboxVideoUrl, duration },
+              previewTimestamp: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            };
+            console.log(`[AnimationNode] Updating state with video version:`, {
+              versionCount: newState.versions.length,
+              activeVersionId: newState.activeVersionId,
+              phase: newState.phase,
+              videoUrl: sandboxVideoUrl.slice(0, 50) + '...',
             });
+            updateNodeData(id, { state: newState });
+            // Force update ls reference for subsequent handlers
+            ls = newState;
             autoMarkTodo('render', 'done');
+
+            // Persist video to storage in background (async)
+            // This replaces the temp sandbox URL with a permanent storage URL
+            if (ls.sandboxId) {
+              // Extract the file path from the sandbox URL
+              // Format: /api/plugins/animation/sandbox/{id}/file?path=output/preview.mp4
+              const pathMatch = sandboxVideoUrl.match(/[?&]path=([^&]+)/);
+              const filePath = pathMatch ? decodeURIComponent(pathMatch[1]) : 'output/preview.mp4';
+              const versionId = tempVersion.id; // Capture for async callback
+
+              console.log(`[AnimationNode] Saving video to permanent storage...`, { sandboxId: ls.sandboxId, filePath, versionId });
+
+              fetch('/api/plugins/animation/save-video', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  sandboxId: ls.sandboxId,
+                  filePath,
+                  nodeId: id,
+                  prompt: data.prompt,
+                  duration,
+                }),
+              })
+                .then((res) => {
+                  if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+                  }
+                  return res.json();
+                })
+                .then((saved) => {
+                  console.log(`[AnimationNode] save-video response:`, saved);
+                  if (saved.success && saved.videoUrl) {
+                    // Update the version with the permanent URL
+                    const latestState = getLatestState();
+                    const updatedVersions = (latestState.versions || []).map((v) =>
+                      v.id === versionId ? { ...v, videoUrl: saved.videoUrl, thumbnailUrl: saved.thumbnailUrl } : v
+                    );
+                    updateNodeData(id, {
+                      state: {
+                        ...latestState,
+                        versions: updatedVersions,
+                        preview: latestState.preview ? { ...latestState.preview, videoUrl: saved.videoUrl } : undefined,
+                        updatedAt: new Date().toISOString(),
+                      },
+                    });
+                    console.log(`[AnimationNode] Video URL updated to permanent storage: ${saved.videoUrl}`);
+                  } else {
+                    console.error(`[AnimationNode] save-video failed:`, saved.error || 'Unknown error');
+                  }
+                })
+                .catch((err) => {
+                  console.error('[AnimationNode] Failed to save video to storage:', err);
+                  // Keep using sandbox URL as fallback - will show "unavailable" after refresh
+                });
+            } else {
+              console.warn('[AnimationNode] No sandboxId available to save video - URL will be ephemeral');
+            }
           }
         }
 
@@ -645,8 +724,13 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     [id, updateNodeData]
   );
 
-  const handleModelChange = useCallback(
-    (newModel: string) => updateNodeData(id, { model: newModel }),
+  const handleAspectRatioChange = useCallback(
+    (newAspectRatio: AspectRatio) => updateNodeData(id, { aspectRatio: newAspectRatio }),
+    [id, updateNodeData]
+  );
+
+  const handleEngineChange = useCallback(
+    (newEngine: AnimationEngine) => updateNodeData(id, { engine: newEngine }),
     [id, updateNodeData]
   );
 
@@ -692,7 +776,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       try {
         await streamToAgent(
           `Analyze this animation request and either ask a clarifying question (if style is unclear) or generate a plan directly:\n\n${prompt}`,
-          { nodeId: id, phase: 'idle', attachments: promptAttachments || attachments },
+          { nodeId: id, phase: 'idle', attachments: promptAttachments || attachments, engine, aspectRatio },
           callbacks
         );
         // Fallback if agent didn't use tools
@@ -721,7 +805,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         // Error handled by onError callback
       }
     },
-    [id, attachments, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
+    [id, attachments, engine, aspectRatio, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
   );
 
   const handleSelectStyle = useCallback(
@@ -760,7 +844,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       try {
         await streamToAgent(
           `Generate an animation plan for this request with style "${selectedStyle}":\n\n${data.prompt || 'Animation request'}`,
-          { nodeId: id, phase: 'question' },
+          { nodeId: id, phase: 'question', engine, aspectRatio },
           callbacks
         );
         const latest = getLatestState();
@@ -788,7 +872,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         // Error handled by callback
       }
     },
-    [id, data.prompt, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
+    [id, data.prompt, engine, aspectRatio, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
   );
 
   const handleAcceptPlan = useCallback(async () => {
@@ -844,17 +928,17 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           '',
           'Use set_thinking to explain what you are doing.',
           'Write all code files using sandbox_write_file.',
-          'After all scenes are done, call sandbox_start_preview to start the dev server, then render_preview.',
+          'After all scenes are done, call render_preview to generate the video.',
           '',
           `Prompt: ${data.prompt || 'Animation request'}`,
         ].join('\n'),
-        { nodeId: id, phase: 'executing', plan: ls.plan, todos, sandboxId: ls.sandboxId },
+        { nodeId: id, phase: 'executing', plan: ls.plan, todos, sandboxId: ls.sandboxId, engine, aspectRatio },
         callbacks
       );
     } catch {
       // Error handled by callback
     }
-  }, [id, data.prompt, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
+  }, [id, data.prompt, engine, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
 
   const handleRejectPlan = useCallback(() => {
     updateState({ phase: 'idle', plan: undefined, question: undefined, planAccepted: undefined });
@@ -888,7 +972,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       try {
         await streamToAgent(
           `The user wants to revise the animation plan. Feedback: "${feedback}"\n\nGenerate an updated plan using the generate_plan tool.`,
-          { nodeId: id, phase: 'plan', plan: ls.plan, sandboxId: ls.sandboxId },
+          { nodeId: id, phase: 'plan', plan: ls.plan, sandboxId: ls.sandboxId, engine, aspectRatio },
           callbacks
         );
         const latest = getLatestState();
@@ -901,7 +985,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         // Error handled by callback
       }
     },
-    [id, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
+    [id, engine, aspectRatio, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
   );
 
   const handleSendMessage = useCallback(
@@ -964,12 +1048,14 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           plan: ls.plan,
           todos: ls.execution?.todos,
           sandboxId: ls.sandboxId,
+          engine,
+          aspectRatio,
         }, callbacks);
       } catch {
         // Error handled by callback
       }
     },
-    [id, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
+    [id, engine, aspectRatio, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
   );
 
   const handleAcceptPreview = useCallback(async () => {
@@ -1047,13 +1133,13 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     try {
       await streamToAgent(
         `Regenerate the animation from the plan. Execute all steps again.\n\nPrompt: ${data.prompt || 'Animation request'}`,
-        { nodeId: id, phase: 'executing', plan: ls.plan, todos, sandboxId: ls.sandboxId },
+        { nodeId: id, phase: 'executing', plan: ls.plan, todos, sandboxId: ls.sandboxId, engine, aspectRatio },
         callbacks
       );
     } catch {
       // Error handled by callback
     }
-  }, [id, data.prompt, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
+  }, [id, data.prompt, engine, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
 
   const handleExportVideo = useCallback(async () => {
     const ls = getLatestState();
@@ -1097,13 +1183,13 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           'Use render_preview to create the video.',
           `Active sandbox: ${ls.sandboxId}`,
         ].join('\n'),
-        { nodeId: id, phase: 'executing', plan: ls.plan, sandboxId: ls.sandboxId },
+        { nodeId: id, phase: 'executing', plan: ls.plan, sandboxId: ls.sandboxId, engine, aspectRatio },
         callbacks
       );
     } catch {
       // Error handled by callback
     }
-  }, [id, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
+  }, [id, engine, aspectRatio, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
 
   const handleRetry = useCallback(() => {
     if (state.plan) {
@@ -1112,11 +1198,6 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       updateState({ phase: 'idle', error: undefined, execution: undefined });
     }
   }, [state.plan, updateState]);
-
-  // Handler to show hidden preview (Issue #22)
-  const handleShowPreview = useCallback(() => {
-    updateState({ previewState: 'active' });
-  }, [updateState]);
 
   const handleReset = useCallback(() => {
     abortStream();
@@ -1209,30 +1290,25 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
   }, [state.phase]);
 
   // ─── Timeline computation ───────────────────────────────────────────
-  // Uses sequence numbers (seq) for stable ordering when timestamps are identical.
-  // This fixes Issue #19: UI Events Not in Chronological Order
+  // SIMPLIFIED: Only show messages, plan, and videos, hide verbose tool calls and thinking blocks.
+  // Users care about the result (video), not the building process.
   const timeline = useMemo((): TimelineItem[] => {
     const items: TimelineItem[] = [];
 
+    // Only show user/assistant messages - skip internal status messages
     state.messages.forEach((msg) => {
-      items.push({
-        kind: msg.role === 'user' ? 'user' : 'assistant',
-        id: msg.id,
-        content: msg.content,
-        ts: msg.timestamp || state.createdAt,
-        seq: msg.seq ?? 0,
-      });
-    });
-
-    state.toolCalls.forEach((tc) => {
-      // Only show non-UI tools in timeline
-      if (!UI_TOOLS.has(tc.toolName)) {
-        items.push({ kind: 'tool', id: tc.id, item: tc, ts: tc.timestamp, seq: tc.seq ?? 0 });
+      // Skip internal status messages (start with underscore or are just waiting indicators)
+      const isInternalMessage = msg.content.startsWith('_') ||
+        msg.content.includes('Waiting for your input');
+      if (!isInternalMessage) {
+        items.push({
+          kind: msg.role === 'user' ? 'user' : 'assistant',
+          id: msg.id,
+          content: msg.content,
+          ts: msg.timestamp || state.createdAt,
+          seq: msg.seq ?? 0,
+        });
       }
-    });
-
-    state.thinkingBlocks.forEach((tb) => {
-      items.push({ kind: 'thinking', id: tb.id, item: tb, ts: tb.startedAt, seq: tb.seq ?? 0 });
     });
 
     // Include plan card in timeline if it has a timestamp
@@ -1240,18 +1316,32 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       items.push({ kind: 'plan', id: 'plan', ts: state.planTimestamp, seq: state.planSeq ?? 0 });
     }
 
-    // NOTE: Live preview iframe and rendered video are NOT in the timeline.
-    // They render at the END of the chat area (after streaming text) so users see them as the result.
+    // Include video versions in timeline - each version appears where it was created
+    if (state.versions && state.versions.length > 0) {
+      console.log(`[AnimationNode] Timeline: Adding ${state.versions.length} video(s) to timeline`);
+      state.versions.forEach((version, idx) => {
+        console.log(`[AnimationNode] Timeline video ${idx}:`, { id: version.id, url: version.videoUrl?.slice(0, 50) });
+        items.push({
+          kind: 'video',
+          id: version.id,
+          ts: version.createdAt,
+          seq: 1000000 + idx, // High seq to ensure videos appear after same-timestamp messages
+          videoUrl: version.videoUrl,
+          duration: version.duration,
+        });
+      });
+    } else {
+      console.log(`[AnimationNode] Timeline: No videos in state.versions`);
+    }
 
     // Sort by timestamp first, then by sequence number for stable ordering
-    // This ensures events with identical timestamps maintain their arrival order
     items.sort((a, b) => {
       const tsCompare = a.ts.localeCompare(b.ts);
       if (tsCompare !== 0) return tsCompare;
       return a.seq - b.seq;
     });
     return items;
-  }, [state.messages, state.toolCalls, state.thinkingBlocks, state.plan, state.planTimestamp, state.planSeq, state.createdAt]);
+  }, [state.messages, state.plan, state.planTimestamp, state.planSeq, state.versions, state.createdAt]);
 
   const hasTimelineContent =
     timeline.length > 0 ||
@@ -1399,17 +1489,6 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
             {isStreaming && state.phase === 'executing' ? ' (streaming)' : ''}
           </p>
         </div>
-        {/* Floating preview button when preview is hidden (Issue #22) */}
-        {state.previewUrl && state.previewState === 'hidden' && state.phase !== 'complete' && (
-          <button
-            onClick={handleShowPreview}
-            className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-[#1E3A5F]/70 border border-[#3B82F6]/40 hover:bg-[#1E3A5F] hover:border-[#3B82F6]/60 transition-colors"
-            title="Show live preview"
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-[#3B82F6] animate-pulse" />
-            <span className="text-[10px] font-medium text-[#93C5FD]">Preview</span>
-          </button>
-        )}
       </div>
 
       {/* ── Chat area (scrollable) ───────────────────────────────────── */}
@@ -1421,30 +1500,13 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           onWheel={(e) => { if (!e.ctrlKey) e.stopPropagation(); }}
         >
           <div className="px-3.5 py-2.5 space-y-2.5">
-            {/* Timeline items */}
-            {timeline.map((item) => {
+            {/* Timeline items - messages, plan, and videos in chronological order */}
+            {timeline.map((item, idx) => {
               if (item.kind === 'user') {
                 return <UserBubble key={item.id} content={item.content} />;
               }
               if (item.kind === 'assistant') {
                 return <AssistantText key={item.id} content={item.content} />;
-              }
-              if (item.kind === 'tool') {
-                return <ToolCallCard key={item.id} item={item.item} />;
-              }
-              if (item.kind === 'thinking') {
-                const isActive = !item.item.endedAt && isStreaming;
-                const reasoning = isActive ? (state.execution?.reasoning || item.item.reasoning) : item.item.reasoning;
-                return (
-                  <ThinkingBlock
-                    key={item.id}
-                    thinking={isActive ? (state.execution?.thinking || item.item.label) : item.item.label}
-                    reasoning={reasoning}
-                    isStreaming={isActive}
-                    startedAt={item.item.startedAt}
-                    endedAt={item.item.endedAt}
-                  />
-                );
               }
               if (item.kind === 'plan' && state.plan) {
                 return (
@@ -1457,67 +1519,44 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
                   />
                 );
               }
-              // Note: iframe and video are rendered at the end of the chat area, not in the timeline
+              if (item.kind === 'video') {
+                // Check if this is the latest video (last video in the timeline)
+                const isLatestVideo = timeline.filter(i => i.kind === 'video').pop()?.id === item.id;
+                // Check if there are user messages after this video
+                const videoIdx = idx;
+                const hasMessageAfter = timeline.slice(videoIdx + 1).some(i => i.kind === 'user');
+                // Expand if it's the latest video and no messages after it
+                const shouldExpand = isLatestVideo && !hasMessageAfter;
+                // Show accept/regenerate only on latest video in preview phase
+                const isActivePreview = isLatestVideo && state.phase === 'preview' && !hasMessageAfter;
+
+                return (
+                  <VideoCard
+                    key={item.id}
+                    videoUrl={item.videoUrl}
+                    duration={item.duration}
+                    expanded={shouldExpand}
+                    isActivePreview={isActivePreview}
+                    onAccept={isActivePreview ? handleAcceptPreview : undefined}
+                    onRegenerate={isActivePreview ? handleRegenerate : undefined}
+                  />
+                );
+              }
               return null;
             })}
 
-            {/* Streaming placeholder (shown when streaming but no text yet) */}
-            {isStreaming && !state.execution?.streamingText && (
-              <StreamingPlaceholder
-                activeToolName={state.toolCalls.find((tc) => tc.status === 'running')?.toolName}
-              />
+            {/* Simple progress indicator during execution */}
+            {state.phase === 'executing' && isStreaming && (
+              <div className="flex items-center gap-2 py-2">
+                <div className="relative w-4 h-4 flex items-center justify-center">
+                  <span className="absolute w-3 h-3 rounded-full bg-[#3B82F6] animate-ping opacity-30" />
+                  <span className="absolute w-2 h-2 rounded-full bg-[#3B82F6]" />
+                </div>
+                <span className="text-[11px] text-[#71717A]">
+                  {state.execution?.thinking || 'Creating your video...'}
+                </span>
+              </div>
             )}
-
-            {/* Live streaming text */}
-            {state.execution?.streamingText && (
-              <StreamingText text={state.execution.streamingText} />
-            )}
-
-            {/* Live preview iframe - shows at the end, after all messages */}
-            {state.previewUrl && state.phase !== 'complete' && (() => {
-              // Determine preview visibility based on previewState (Issue #22)
-              // - 'hidden': show only a pill button to restore
-              // - 'stale': show with updating overlay
-              // - 'active' or undefined: show normally
-              const previewTs = state.previewUrlTimestamp;
-              const hasMessageAfter = previewTs ? state.messages.some(
-                (msg) => msg.role === 'user' && msg.timestamp && msg.timestamp > previewTs
-              ) : false;
-              // Only show Export button if we don't already have a rendered video
-              const showExport = !state.preview?.videoUrl;
-              // Use previewState if set, otherwise fall back to legacy collapse behavior
-              const effectiveState = state.previewState || (hasMessageAfter ? 'stale' : 'active');
-              return (
-                <LivePreviewCard
-                  previewUrl={state.previewUrl}
-                  nodeId={id}
-                  expanded={effectiveState !== 'hidden' && !hasMessageAfter}
-                  onExport={showExport ? handleExportVideo : undefined}
-                  isExporting={isStreaming}
-                  previewState={effectiveState}
-                  onShowPreview={handleShowPreview}
-                />
-              );
-            })()}
-
-            {/* Rendered preview video - shows after live preview */}
-            {state.preview?.videoUrl && state.phase !== 'complete' && (() => {
-              // Collapse if user sent a message after the video appeared
-              const videoTs = state.previewTimestamp;
-              const hasMessageAfter = videoTs ? state.messages.some(
-                (msg) => msg.role === 'user' && msg.timestamp && msg.timestamp > videoTs
-              ) : false;
-              return (
-                <VideoCard
-                  videoUrl={state.preview.videoUrl}
-                  duration={state.preview.duration}
-                  expanded={!hasMessageAfter}
-                  isActivePreview={state.phase === 'preview' && !hasMessageAfter}
-                  onAccept={handleAcceptPreview}
-                  onRegenerate={handleRegenerate}
-                />
-              );
-            })()}
 
             {/* Question options */}
             {state.phase === 'question' && state.question && (
@@ -1579,8 +1618,10 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           hasActiveTool={state.toolCalls.some((tc) => tc.status === 'running')}
           onStop={() => abortStream()}
           placeholder={inputPlaceholder}
-          model={model}
-          onModelChange={handleModelChange}
+          engine={engine}
+          onEngineChange={handleEngineChange}
+          aspectRatio={aspectRatio}
+          onAspectRatioChange={handleAspectRatioChange}
           attachments={state.phase === 'idle' || state.phase === 'error' ? attachments : undefined}
           onAttachmentsChange={state.phase === 'idle' || state.phase === 'error' ? handleAttachmentsChange : undefined}
           availableNodeOutputs={state.phase === 'idle' || state.phase === 'error' ? availableNodeOutputs : undefined}

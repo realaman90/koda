@@ -17,13 +17,22 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
-import type { AnimationAttachment } from '../types';
+import type { AnimationAttachment, AnimationEngine } from '../types';
 
-const MODELS = [
-  { id: 'anthropic/claude-sonnet-4-5', label: 'Claude Sonnet 4.5' },
-  { id: 'anthropic/claude-haiku-3-5', label: 'Claude Haiku 3.5' },
-  { id: 'anthropic/claude-opus-4', label: 'Claude Opus 4' },
-] as const;
+const ENGINES: { id: AnimationEngine; label: string }[] = [
+  { id: 'remotion', label: 'Remotion' },
+  { id: 'theatre', label: 'Theatre.js' },
+];
+
+export type AspectRatio = '16:9' | '9:16' | '1:1' | '4:3' | '21:9';
+
+const ASPECT_RATIOS: { id: AspectRatio; label: string }[] = [
+  { id: '16:9', label: '16:9' },
+  { id: '9:16', label: '9:16' },
+  { id: '1:1', label: '1:1' },
+  { id: '4:3', label: '4:3' },
+  { id: '21:9', label: '21:9' },
+];
 
 interface QueuedMessage {
   id: string;
@@ -38,8 +47,10 @@ interface ChatInputProps {
   hasActiveTool?: boolean;
   disabled?: boolean;
   placeholder?: string;
-  model?: string;
-  onModelChange?: (model: string) => void;
+  engine?: AnimationEngine;
+  onEngineChange?: (engine: AnimationEngine) => void;
+  aspectRatio?: AspectRatio;
+  onAspectRatioChange?: (aspectRatio: AspectRatio) => void;
   attachments?: AnimationAttachment[];
   onAttachmentsChange?: (attachments: AnimationAttachment[]) => void;
   availableNodeOutputs?: Array<{ nodeId: string; name: string; type: 'image' | 'video'; url: string }>;
@@ -52,8 +63,10 @@ export function ChatInput({
   hasActiveTool,
   disabled,
   placeholder = 'Describe the animation you want...',
-  model = 'anthropic/claude-sonnet-4-5',
-  onModelChange,
+  engine = 'remotion',
+  onEngineChange,
+  aspectRatio = '16:9',
+  onAspectRatioChange,
   attachments = [],
   onAttachmentsChange,
   availableNodeOutputs = [],
@@ -68,7 +81,8 @@ export function ChatInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
 
-  const selectedModel = MODELS.find((m) => m.id === model) || MODELS[0];
+  const selectedEngine = ENGINES.find((e) => e.id === engine) || ENGINES[0];
+  const selectedAspectRatio = ASPECT_RATIOS.find((a) => a.id === aspectRatio) || ASPECT_RATIOS[0];
 
   // Show busy state if streaming OR if tool is active
   const isBusy = isGenerating || hasActiveTool;
@@ -362,31 +376,63 @@ export function ChatInput({
 
         {/* Bottom bar */}
         <div className="flex items-center justify-between px-2 py-1 pb-2">
-          {/* Model selector */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                className="flex items-center gap-1 px-1.5 py-1 rounded text-[11px] text-[#71717A] hover:text-[#A1A1AA] transition-colors"
-                disabled={disabled || isGenerating}
-              >
-                {selectedModel.label}
-                <ChevronDown className="w-2.5 h-2.5 text-[#52525B]" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-48">
-              <DropdownMenuLabel className="text-xs text-zinc-500">Select Model</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {MODELS.map((m) => (
-                <DropdownMenuItem
-                  key={m.id}
-                  onClick={() => onModelChange?.(m.id)}
-                  className={model === m.id ? 'bg-zinc-800' : ''}
+          {/* Engine & Aspect Ratio selectors */}
+          <div className="flex items-center gap-1">
+            {/* Engine selector */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="flex items-center gap-1 px-1.5 py-1 rounded text-[11px] text-[#71717A] hover:text-[#A1A1AA] transition-colors"
+                  disabled={disabled}
                 >
-                  <span className="text-sm">{m.label}</span>
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                  {selectedEngine.label}
+                  <ChevronDown className="w-2.5 h-2.5 text-[#52525B]" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-40">
+                <DropdownMenuLabel className="text-xs text-zinc-500">Animation Engine</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {ENGINES.map((e) => (
+                  <DropdownMenuItem
+                    key={e.id}
+                    onSelect={() => onEngineChange?.(e.id)}
+                    className={engine === e.id ? 'bg-zinc-800' : ''}
+                  >
+                    <span className="text-sm">{e.label}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* Separator */}
+            <span className="text-[#3f3f46]">•</span>
+
+            {/* Aspect Ratio selector */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="flex items-center gap-1 px-1.5 py-1 rounded text-[11px] text-[#71717A] hover:text-[#A1A1AA] transition-colors"
+                  disabled={disabled}
+                >
+                  {selectedAspectRatio.label}
+                  <ChevronDown className="w-2.5 h-2.5 text-[#52525B]" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-32">
+                <DropdownMenuLabel className="text-xs text-zinc-500">Aspect Ratio</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {ASPECT_RATIOS.map((a) => (
+                  <DropdownMenuItem
+                    key={a.id}
+                    onSelect={() => onAspectRatioChange?.(a.id)}
+                    className={aspectRatio === a.id ? 'bg-zinc-800' : ''}
+                  >
+                    <span className="text-sm">{a.label}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
 
           {/* Action buttons */}
           <div className="flex items-center gap-1.5">

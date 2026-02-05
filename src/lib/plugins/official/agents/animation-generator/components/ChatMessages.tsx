@@ -36,6 +36,7 @@ import type {
   AnimationTodo,
   AnimationQuestion,
   AnimationPlan,
+  AnimationVersion,
   ToolCallItem,
 } from '../types';
 
@@ -331,6 +332,25 @@ function summarizeToolOutput(toolName: string, output: string | undefined): stri
   }
 }
 
+// ─── Friendly Error Messages ──────────────────────────────────────────
+// Converts raw technical errors to user-friendly messages
+
+function getFriendlyErrorMessage(toolName: string, rawError: string): string {
+  // Map tool names to user-friendly error messages
+  const toolErrorMessages: Record<string, string> = {
+    sandbox_create: 'Setup taking longer than expected',
+    sandbox_start_preview: 'Preview server starting...',
+    sandbox_run_command: 'Processing step encountered an issue',
+    sandbox_write_file: 'File save issue, retrying...',
+    render_preview: 'Video render in progress...',
+    render_final: 'Final render in progress...',
+    generate_code: 'Code generation retry needed',
+  };
+
+  // Return tool-specific message, or generic one
+  return toolErrorMessages[toolName] || 'Retrying...';
+}
+
 // ─── Tool Running Context ─────────────────────────────────────────────
 // Shows meaningful context while a tool is running (especially for slow ones like generate_code)
 
@@ -442,23 +462,18 @@ export function ToolCallCard({ item }: { item: ToolCallItem }) {
         </div>
       )}
 
-      {/* Error output section */}
+      {/* Error output section - show user-friendly message, not raw JSON */}
       {hasError && (
         <div
-          className="px-2.5 py-2 bg-[#1C1011] border border-[#7F1D1D] border-t-0 space-y-1 overflow-hidden"
+          className="px-2.5 py-2 bg-[#1C1011] border border-[#7F1D1D] border-t-0 overflow-hidden"
           style={{ borderRadius: '0 0 6px 6px' }}
         >
           <div className="flex items-center gap-1.5">
             <TriangleAlert className="w-3 h-3 text-[#EF4444] shrink-0" />
-            <span className="text-[11px] font-semibold text-[#FCA5A5] break-all line-clamp-2">
-              {item.error!.split('\n')[0] || 'Something went wrong'}
+            <span className="text-[11px] font-medium text-[#FCA5A5]">
+              {getFriendlyErrorMessage(item.toolName, item.error!)}
             </span>
           </div>
-          {item.error!.includes('\n') && (
-            <p className="text-[10px] text-[#71717A] leading-[1.4] break-all line-clamp-3 overflow-hidden">
-              {item.error!.split('\n').slice(1).join('\n')}
-            </p>
-          )}
         </div>
       )}
     </div>
@@ -890,6 +905,9 @@ interface VideoCardProps {
   isActivePreview?: boolean;
 }
 
+// Check if URL is a sandbox URL (ephemeral, won't work after sandbox destroyed)
+const isSandboxUrl = (url: string) => url.includes('/api/plugins/animation/sandbox/');
+
 export function VideoCard({
   videoUrl,
   duration,
@@ -899,6 +917,8 @@ export function VideoCard({
   isActivePreview = false,
 }: VideoCardProps) {
   const [isExpanded, setIsExpanded] = useState(expanded);
+  const [loadError, setLoadError] = useState(false);
+  const isSandbox = isSandboxUrl(videoUrl);
 
   // Show collapsed state: just a clickable card to expand
   if (!isExpanded) {
@@ -933,13 +953,24 @@ export function VideoCard({
         <ChevronUp className="w-3 h-3 text-[#52525B]" />
       </button>
 
-      {/* Video player */}
-      <video
-        src={videoUrl}
-        controls
-        className="w-full"
-        style={{ maxHeight: '180px' }}
-      />
+      {/* Video player with error handling */}
+      {loadError || (isSandbox && !isActivePreview) ? (
+        <div className="flex flex-col items-center justify-center py-6 px-4 text-center">
+          <Video className="w-8 h-8 text-[#52525B] mb-2" />
+          <p className="text-[11px] text-[#71717A] mb-1">Video unavailable</p>
+          <p className="text-[10px] text-[#52525B]">
+            {isSandbox ? 'Session expired — regenerate to create a new video' : 'Failed to load video'}
+          </p>
+        </div>
+      ) : (
+        <video
+          src={videoUrl}
+          controls
+          className="w-full"
+          style={{ maxHeight: '180px' }}
+          onError={() => setLoadError(true)}
+        />
+      )}
 
       {/* Action buttons (only for active preview) */}
       {isActivePreview && onAccept && onRegenerate && (
@@ -960,6 +991,58 @@ export function VideoCard({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Version History Thumbnails ───────────────────────────────────────
+
+interface VersionHistoryProps {
+  versions: AnimationVersion[];
+  activeVersionId?: string;
+  onSelectVersion: (version: AnimationVersion) => void;
+}
+
+export function VersionHistory({ versions, activeVersionId, onSelectVersion }: VersionHistoryProps) {
+  if (versions.length <= 1) return null;
+
+  return (
+    <div className="flex flex-col gap-1.5 px-1 py-2">
+      <span className="text-[10px] font-medium text-[#71717A] uppercase tracking-wide">
+        Versions ({versions.length})
+      </span>
+      <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hidden">
+        {versions.map((version, idx) => {
+          const isActive = version.id === activeVersionId;
+          return (
+            <button
+              key={version.id}
+              onClick={() => onSelectVersion(version)}
+              className={`relative shrink-0 w-14 h-10 rounded overflow-hidden border-2 transition-all ${
+                isActive
+                  ? 'border-[#3B82F6] ring-1 ring-[#3B82F6]/30'
+                  : 'border-[#27272a] hover:border-[#3f3f46]'
+              }`}
+              title={`Version ${idx + 1} - ${new Date(version.createdAt).toLocaleTimeString()}`}
+            >
+              {version.thumbnailUrl ? (
+                <img
+                  src={version.thumbnailUrl}
+                  alt={`Version ${idx + 1}`}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full bg-[#14161A] flex items-center justify-center">
+                  <Video className="w-4 h-4 text-[#52525B]" />
+                </div>
+              )}
+              <span className="absolute bottom-0.5 right-0.5 text-[8px] font-bold text-white bg-black/60 px-1 rounded">
+                v{idx + 1}
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

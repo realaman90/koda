@@ -55,7 +55,42 @@ const PORT_RANGE_START = 15_173;
 const PORT_RANGE_END = 15_272;
 const usedPorts = new Set<number>();
 
-function allocatePort(): number {
+/**
+ * Get ports actually in use by Docker containers.
+ * This survives server restarts by checking real Docker state.
+ */
+async function getDockerUsedPorts(): Promise<Set<number>> {
+  const ports = new Set<number>();
+  try {
+    // Get all koda-sandbox containers and their port mappings
+    const result = await execCommand('docker', [
+      'ps', '-a',
+      '--filter', `name=${CONTAINER_PREFIX}`,
+      '--format', '{{.Ports}}',
+    ], 5_000);
+
+    if (result.success && result.stdout) {
+      // Parse port mappings like "0.0.0.0:15173->5173/tcp"
+      const portMatches = result.stdout.matchAll(/0\.0\.0\.0:(\d+)->5173/g);
+      for (const match of portMatches) {
+        ports.add(parseInt(match[1], 10));
+      }
+    }
+  } catch {
+    // If Docker check fails, fall back to in-memory tracking
+  }
+  return ports;
+}
+
+async function allocatePort(): Promise<number> {
+  // Get ports actually in use by Docker containers
+  const dockerPorts = await getDockerUsedPorts();
+
+  // Merge with in-memory tracking (belt and suspenders)
+  for (const port of dockerPorts) {
+    usedPorts.add(port);
+  }
+
   for (let port = PORT_RANGE_START; port <= PORT_RANGE_END; port++) {
     if (!usedPorts.has(port)) {
       usedPorts.add(port);
@@ -130,6 +165,86 @@ function execCommand(
   });
 }
 
+/**
+ * Check if a container exists and is running.
+ * Returns an object with status info.
+ */
+async function checkContainerStatus(sandboxId: string): Promise<{
+  exists: boolean;
+  running: boolean;
+  status?: string;
+}> {
+  const result = await execCommand('docker', [
+    'inspect',
+    '--format',
+    '{{.State.Status}}',
+    sandboxId,
+  ], 5_000);
+
+  if (!result.success) {
+    return { exists: false, running: false };
+  }
+
+  const status = result.stdout.trim();
+  return {
+    exists: true,
+    running: status === 'running',
+    status,
+  };
+}
+
+/**
+ * Ensure a container is running before performing operations.
+ * If the container is in "created" state (failed to start), try to start it.
+ * Throws a descriptive error if the container doesn't exist or can't be started.
+ */
+async function ensureContainerRunning(sandboxId: string): Promise<void> {
+  let status = await checkContainerStatus(sandboxId);
+
+  if (!status.exists) {
+    throw new Error(
+      `Sandbox "${sandboxId}" does not exist. ` +
+      `Create a new sandbox with sandbox_create before writing files.`
+    );
+  }
+
+  // If container exists but isn't running, try to start it
+  if (!status.running && status.status === 'created') {
+    console.log(`[Sandbox] Container ${sandboxId} is in "created" state, attempting to start...`);
+    const startResult = await execCommand('docker', ['start', sandboxId], 10_000);
+    if (startResult.success) {
+      // Re-check status after starting
+      status = await checkContainerStatus(sandboxId);
+    } else {
+      // Start failed - likely port conflict. Remove the broken container.
+      console.log(`[Sandbox] Failed to start container ${sandboxId}: ${startResult.stderr}`);
+      await execCommand('docker', ['rm', '-f', sandboxId], 5_000);
+      activeSandboxes.delete(sandboxId);
+      throw new Error(
+        `Sandbox "${sandboxId}" failed to start (${startResult.stderr.trim() || 'unknown error'}). ` +
+        `The container has been removed. Create a new sandbox with sandbox_create.`
+      );
+    }
+  }
+
+  // If container exited, try to restart it
+  if (!status.running && status.status === 'exited') {
+    console.log(`[Sandbox] Container ${sandboxId} has exited, attempting to restart...`);
+    const restartResult = await execCommand('docker', ['restart', sandboxId], 15_000);
+    if (restartResult.success) {
+      status = await checkContainerStatus(sandboxId);
+    }
+  }
+
+  if (!status.running) {
+    throw new Error(
+      `Sandbox "${sandboxId}" is not running (status: ${status.status}). ` +
+      `The container may have stopped or been cleaned up. ` +
+      `Create a new sandbox with sandbox_create to continue.`
+    );
+  }
+}
+
 export const dockerProvider: SandboxProvider = {
   /**
    * Create a new sandbox container
@@ -139,7 +254,7 @@ export const dockerProvider: SandboxProvider = {
    */
   async create(projectId: string, template: SandboxTemplate = 'theatre'): Promise<SandboxInstance> {
     const sandboxId = `${CONTAINER_PREFIX}${projectId}-${randomUUID().slice(0, 8)}`;
-    const hostPort = allocatePort();
+    const hostPort = await allocatePort();
     const image = SANDBOX_IMAGES[template];
 
     const now = new Date().toISOString();
@@ -187,11 +302,29 @@ export const dockerProvider: SandboxProvider = {
 
       return instance;
     } catch (error) {
+      // Clean up on failure
       instance.status = 'error';
-      activeSandboxes.set(sandboxId, instance);
-      throw new Error(
-        `Failed to create sandbox: ${error instanceof Error ? error.message : String(error)}`
-      );
+      activeSandboxes.delete(sandboxId);
+      releasePort(hostPort);
+
+      // Try to remove any partially created container
+      try {
+        await execCommand('docker', ['rm', '-f', sandboxId], 5_000);
+      } catch {
+        // Ignore - container may not exist
+      }
+
+      const errorMsg = error instanceof Error ? error.message : String(error);
+
+      // Check if it's a port conflict and provide helpful message
+      if (errorMsg.includes('port is already allocated') || errorMsg.includes('address already in use')) {
+        throw new Error(
+          `Port ${hostPort} is already in use. This may be a stale container. ` +
+          `Retrying sandbox creation should allocate a new port.`
+        );
+      }
+
+      throw new Error(`Failed to create sandbox: ${errorMsg}`);
     }
   },
 
@@ -217,6 +350,10 @@ export const dockerProvider: SandboxProvider = {
    */
   async writeFile(sandboxId: string, path: string, content: string): Promise<void> {
     validatePath(path);
+
+    // Check container is running before attempting write
+    await ensureContainerRunning(sandboxId);
+
     touchActivity(sandboxId);
 
     const containerPath = resolveContainerPath(path);
@@ -248,6 +385,7 @@ export const dockerProvider: SandboxProvider = {
    */
   async readFile(sandboxId: string, path: string): Promise<string> {
     validatePath(path);
+    await ensureContainerRunning(sandboxId);
     touchActivity(sandboxId);
     const containerPath = resolveContainerPath(path);
     const { stdout } = await execAsync('docker', ['exec', sandboxId, 'cat', containerPath]);
@@ -259,6 +397,7 @@ export const dockerProvider: SandboxProvider = {
    */
   async listFiles(sandboxId: string, path: string, recursive = false): Promise<SandboxFile[]> {
     validatePath(path);
+    await ensureContainerRunning(sandboxId);
 
     const containerPath = resolveContainerPath(path);
 
@@ -294,6 +433,7 @@ export const dockerProvider: SandboxProvider = {
     command: string,
     options?: { background?: boolean; timeout?: number }
   ): Promise<CommandResult> {
+    await ensureContainerRunning(sandboxId);
     touchActivity(sandboxId);
     const timeout = Math.min(options?.timeout || DEFAULT_TIMEOUT, MAX_TIMEOUT);
     const sandbox = activeSandboxes.get(sandboxId);
