@@ -107,7 +107,7 @@ const geminiVideoAnalyzer = new Agent({
   name: 'gemini-video-analyzer',
   instructions: `You are a video analysis expert. Analyze videos and return structured JSON for animation planning.
 Always return valid JSON matching the requested schema. Be detailed about timestamps, scene changes, and animation opportunities.`,
-  model: 'google/gemini-3-flash-preview',
+  model: 'openrouter/google/gemini-2.5-flash-preview',
 });
 
 /**

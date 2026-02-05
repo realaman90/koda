@@ -91,6 +91,52 @@ This avoids passing large file contents through the conversation and saves token
       };
     }
 
+    // For modify_existing: auto-read current file content if not provided
+    if (inputData.task === 'modify_existing' && !inputData.currentContent && inputData.file && inputData.sandboxId) {
+      try {
+        const filePath = inputData.file.startsWith('/') ? inputData.file : `/app/${inputData.file}`;
+        const fileContent = await dockerProvider.readFile(inputData.sandboxId, filePath);
+        if (fileContent) {
+          inputData = { ...inputData, currentContent: fileContent };
+          console.log(`[generate_remotion_code] Auto-read ${inputData.file} (${fileContent.length} chars) for modify_existing`);
+        }
+      } catch (err) {
+        console.warn(`[generate_remotion_code] Could not auto-read ${inputData.file}:`, err);
+      }
+    }
+
+    // For modify_existing without a specific file: read ALL src files so the subagent has full context
+    if (inputData.task === 'modify_existing' && !inputData.file && inputData.sandboxId) {
+      try {
+        const listResult = await dockerProvider.runCommand(
+          inputData.sandboxId,
+          `find /app/src -name '*.tsx' -o -name '*.ts' | head -20`,
+          { timeout: 5_000 }
+        );
+        const srcFiles = listResult.stdout.trim().split('\n').filter(Boolean);
+        const fileContents: string[] = [];
+        for (const f of srcFiles) {
+          try {
+            const content = await dockerProvider.readFile(inputData.sandboxId, f);
+            if (content) {
+              const relativePath = f.replace('/app/', '');
+              fileContents.push(`--- ${relativePath} ---\n${content}`);
+            }
+          } catch { /* skip unreadable files */ }
+        }
+        if (fileContents.length > 0) {
+          inputData = {
+            ...inputData,
+            currentContent: fileContents.join('\n\n'),
+            file: 'multiple files (see currentContent)',
+          };
+          console.log(`[generate_remotion_code] Auto-read ${srcFiles.length} source files for modify_existing`);
+        }
+      } catch (err) {
+        console.warn(`[generate_remotion_code] Could not auto-read source files:`, err);
+      }
+    }
+
     // Format the request for the code generator subagent
     const prompt = formatRemotionCodeGenerationPrompt(inputData);
 
@@ -286,11 +332,20 @@ function formatRemotionCodeGenerationPrompt(params: z.infer<typeof GenerateRemot
 
     case 'modify_existing': {
       parts.push(`File: ${params.file || 'unknown'}`);
-      parts.push(`Change: ${params.change || 'unspecified'}`);
+      parts.push(`Change requested: ${params.change || 'unspecified'}`);
       if (params.currentContent) {
-        parts.push(``, `Current file content:`, '```', params.currentContent, '```');
+        parts.push(``);
+        parts.push(`CURRENT FILE CONTENT (you MUST modify THIS code — do NOT generate from scratch):`);
+        parts.push('```tsx');
+        parts.push(params.currentContent);
+        parts.push('```');
+        parts.push(``);
+        parts.push(`INSTRUCTIONS: Apply ONLY the requested change to the code above. Keep everything else EXACTLY the same.`);
+        parts.push(`Return the COMPLETE updated file with the change applied, not a diff or partial snippet.`);
+      } else {
+        parts.push(`WARNING: No current file content available. Generate a reasonable implementation based on the change description.`);
+        parts.push(`Return the COMPLETE file, not a diff.`);
       }
-      parts.push(``, `Return the COMPLETE updated file, not a diff.`);
       break;
     }
   }

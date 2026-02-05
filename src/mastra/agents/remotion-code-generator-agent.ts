@@ -1,7 +1,7 @@
 /**
  * Remotion Code Generator Subagent
  *
- * Specialist agent for generating Remotion animation code.
+ * Specialist agent for generating Remotion (2D) animation code.
  * Has no tools — pure generation. Called by the orchestrator
  * via the generate_remotion_code tool (subagent-as-tool pattern).
  */
@@ -11,8 +11,8 @@ import { REMOTION_CODE_GENERATOR_INSTRUCTIONS } from './instructions/remotion-co
 
 export const remotionCodeGeneratorAgent = new Agent({
   id: 'remotion-code-generator',
-  name: 'remotion-code-generator',
+  name: 'Remotion Code Generator',
   instructions: REMOTION_CODE_GENERATOR_INSTRUCTIONS,
-  model: 'anthropic/claude-opus-4-5', // Fast model for code generation
+  model: 'openrouter/moonshotai/kimi-k2.5',
   // No tools — pure generation
 });

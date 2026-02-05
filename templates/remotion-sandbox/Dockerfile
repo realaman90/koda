@@ -39,7 +39,7 @@ COPY template/package.json /app/
 COPY template/tsconfig.json /app/
 COPY template/remotion.config.ts /app/
 COPY template/vite.player.config.ts /app/
-COPY template/player.html /app/
+COPY template/index.html /app/
 COPY template/src/ /app/src/
 COPY template/public/ /app/public/
 

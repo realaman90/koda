@@ -554,7 +554,9 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
             addUserMessage('Video rendering encountered an issue. Retrying...');
           } else if (result.videoUrl && result.videoUrl.length > 0) {
             console.log(`[AnimationNode] Creating video version with URL:`, result.videoUrl);
-            const sandboxVideoUrl = result.videoUrl;
+            // Add cache-busting timestamp to prevent browser from serving stale video
+            const separator = result.videoUrl.includes('?') ? '&' : '?';
+            const sandboxVideoUrl = `${result.videoUrl}${separator}t=${Date.now()}`;
             const duration = result.duration || ls.plan?.totalDuration || 7;
 
             // Immediately show the sandbox video URL (for instant feedback)

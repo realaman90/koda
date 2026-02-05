@@ -1,5 +1,5 @@
 /**
- * Animation Agent
+ * Animation Orchestrator Agent
  *
  * Mastra agent for creating animations from natural language.
  * Supports both Theatre.js (3D) and Remotion (2D) frameworks.
@@ -41,19 +41,20 @@ import {
 } from '../tools/animation';
 
 /**
- * Animation Agent
+ * Animation Orchestrator Agent
  *
  * Multi-phase agent for animation generation:
- * 1. Analyze → decide if clarification needed
- * 2. Plan → create scene breakdown
- * 3. Execute → create sandbox, write code
- * 4. Render → generate preview video
+ * 1. Enhance → transform vague prompt into design spec
+ * 2. Plan → create scene breakdown for user approval
+ * 3. Execute → create sandbox, generate code via subagents
+ * 4. Verify → screenshot to check visual output
+ * 5. Render → generate preview/final video
  */
 export const animationAgent = new Agent({
-  id: 'animation-agent',
-  name: 'animation-agent',
+  id: 'animation-orchestrator',
+  name: 'Animation Orchestrator',
   instructions: ANIMATION_AGENT_INSTRUCTIONS,
-  model: 'anthropic/claude-opus-4-5',
+  model: 'openrouter/moonshotai/kimi-k2.5',
   tools: {
     // UI Tools
     update_todo: updateTodoTool,
