@@ -49,6 +49,8 @@ interface ChatInputProps {
   placeholder?: string;
   engine?: AnimationEngine;
   onEngineChange?: (engine: AnimationEngine) => void;
+  /** Lock the engine dropdown (e.g. after first message is sent) */
+  engineLocked?: boolean;
   aspectRatio?: AspectRatio;
   onAspectRatioChange?: (aspectRatio: AspectRatio) => void;
   /** Upload files to data.media[] */
@@ -67,6 +69,7 @@ export function ChatInput({
   placeholder = 'Describe the animation you want...',
   engine = 'remotion',
   onEngineChange,
+  engineLocked = false,
   aspectRatio = '16:9',
   onAspectRatioChange,
   onMediaUpload,
@@ -317,11 +320,11 @@ export function ChatInput({
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
-                  className="flex items-center gap-1 px-1.5 py-1 rounded text-[11px] text-[#71717A] hover:text-[#A1A1AA] transition-colors"
-                  disabled={disabled}
+                  className={`flex items-center gap-1 px-1.5 py-1 rounded text-[11px] transition-colors ${engineLocked ? 'text-[#52525B] cursor-default' : 'text-[#71717A] hover:text-[#A1A1AA]'}`}
+                  disabled={disabled || engineLocked}
                 >
                   {selectedEngine.label}
-                  <ChevronDown className="w-2.5 h-2.5 text-[#52525B]" />
+                  {!engineLocked && <ChevronDown className="w-2.5 h-2.5 text-[#52525B]" />}
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-40">

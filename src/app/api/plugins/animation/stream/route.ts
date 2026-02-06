@@ -7,6 +7,7 @@
 
 import { NextResponse } from 'next/server';
 import { animationAgent } from '@/mastra';
+import { getEngineInstructions } from '@/mastra/agents/instructions/animation';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -47,14 +48,16 @@ export async function POST(request: Request) {
       );
     }
 
+    // Inject engine-specific instructions as a system message
+    const engine = context?.engine || 'remotion';
+    agentMessages.unshift({
+      role: 'system',
+      content: getEngineInstructions(engine),
+    });
+
     // Prepend context as a system-style user message if provided
     if (context) {
       const contextParts: string[] = [];
-      if (context.engine) {
-        const engineName = context.engine === 'remotion' ? 'Remotion' : 'Theatre.js';
-        contextParts.push(`Animation engine: ${engineName}`);
-        contextParts.push(`IMPORTANT: Use ${engineName} for all animation code. ${context.engine === 'remotion' ? 'Use React components with useCurrentFrame/useVideoConfig hooks.' : 'Use Theatre.js sheet objects and sequences for animation.'}`);
-      }
       if (context.aspectRatio) {
         contextParts.push(`Aspect ratio: ${context.aspectRatio}`);
       }

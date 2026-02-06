@@ -13,6 +13,7 @@ import { memo, useCallback, useMemo, useEffect, useState, useRef } from 'react';
 import type { NodeProps, Node } from '@xyflow/react';
 import { Handle, Position, useUpdateNodeInternals } from '@xyflow/react';
 import { Clapperboard, Plus, Minus, Image, Video, X } from 'lucide-react';
+import { toast } from 'sonner';
 import { useCanvasStore } from '@/stores/canvas-store';
 
 // Chat components
@@ -312,8 +313,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
             URL.revokeObjectURL(video.src);
             if (video.duration > 10) {
               URL.revokeObjectURL(blobUrl);
-              // Could use toast here but keeping it simple
-              console.warn(`[AnimationNode] Video "${file.name}" is ${video.duration.toFixed(1)}s — max 10s allowed`);
+              toast.error(`Video too long (${video.duration.toFixed(1)}s) — max 10 seconds`);
               return;
             }
             entry.duration = video.duration;
@@ -1853,6 +1853,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           placeholder={inputPlaceholder}
           engine={engine}
           onEngineChange={handleEngineChange}
+          engineLocked={state.messages.length > 0}
           aspectRatio={aspectRatio}
           onAspectRatioChange={handleAspectRatioChange}
           onMediaUpload={handleMediaUpload}
