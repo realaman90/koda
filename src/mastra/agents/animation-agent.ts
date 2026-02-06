@@ -56,7 +56,7 @@ export const animationAgent = new Agent({
   id: 'animation-orchestrator',
   name: 'Animation Orchestrator',
   instructions: ANIMATION_AGENT_INSTRUCTIONS,
-  model: 'openrouter/moonshotai/kimi-k2.5',
+  model: 'anthropic/claude-sonnet-4-5',
   tools: {
     // UI Tools
     update_todo: updateTodoTool,

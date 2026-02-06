@@ -12,7 +12,7 @@
 import { memo, useCallback, useMemo, useEffect, useState, useRef } from 'react';
 import type { NodeProps, Node } from '@xyflow/react';
 import { Handle, Position, useUpdateNodeInternals } from '@xyflow/react';
-import { Clapperboard, Plus, Minus, Image, Video, Upload, X } from 'lucide-react';
+import { Clapperboard, Plus, Minus, Image, Video, X } from 'lucide-react';
 import { useCanvasStore } from '@/stores/canvas-store';
 
 // Chat components
@@ -35,7 +35,6 @@ import type { AnimationStreamCallbacks } from './hooks/useAnimationStream';
 import type {
   AnimationNodeData,
   AnimationNodeState,
-  AnimationAttachment,
   AnimationPlan,
   AnimationMessage,
   AnimationVersion,
@@ -51,7 +50,9 @@ const MAX_IMAGE_REFS = 8;
 const MAX_VIDEO_REFS = 4;
 const HANDLE_SPACING = 32;
 const IMAGE_HANDLE_START = 70;
-const VIDEO_HANDLE_START_OFFSET = 20;
+// Gap between last image +/- button and first video handle
+// Must accommodate: +button(16px) + gap(4px) + -button(16px) + padding(12px) = ~48px
+const VIDEO_HANDLE_START_OFFSET = 48;
 
 /** Tool names that should appear as cards in the chat timeline */
 const TOOL_DISPLAY_NAMES: Record<string, string> = {
@@ -76,7 +77,7 @@ const UI_TOOLS = new Set(['update_todo', 'set_thinking', 'add_message', 'request
 // Simplified: only user messages, assistant messages, plan cards, and videos
 // Tool calls and thinking blocks are hidden for cleaner UX
 type TimelineItem =
-  | { kind: 'user'; id: string; content: string; ts: string; seq: number }
+  | { kind: 'user'; id: string; content: string; ts: string; seq: number; media?: MediaEntry[] }
   | { kind: 'assistant'; id: string; content: string; ts: string; seq: number }
   | { kind: 'plan'; id: string; ts: string; seq: number }
   | { kind: 'video'; id: string; ts: string; seq: number; videoUrl: string; duration: number };
@@ -130,7 +131,6 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
   const chatScrollRef = useRef<HTMLDivElement>(null);
 
   // File input ref for media uploads
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
 
   // ─── Cleanup on unmount ─────────────────────────────────────────────
@@ -152,7 +152,6 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
   // ─── Data accessors ─────────────────────────────────────────────────
   const imageRefCount = data.imageRefCount || 1;
   const videoRefCount = data.videoRefCount || 1;
-  const attachments = data.attachments || [];
   const media: MediaEntry[] = data.media || [];
   const engine: AnimationEngine = data.engine || 'remotion';
   const aspectRatio: AspectRatio = data.aspectRatio || '16:9';
@@ -329,6 +328,24 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       if (newEntries.length > 0) {
         updateNodeData(id, { media: [...currentMedia, ...newEntries] });
       }
+    },
+    [id, data.media, updateNodeData]
+  );
+
+  const handleNodeReference = useCallback(
+    (node: { nodeId: string; name: string; type: 'image' | 'video'; url: string }) => {
+      const currentMedia = data.media || [];
+      // Don't add duplicates from same source node
+      if (currentMedia.some((m) => m.source === 'upload' && m.sourceNodeId === node.nodeId)) return;
+      const entry: MediaEntry = {
+        id: `noderef_${node.nodeId}_${Date.now()}`,
+        source: 'upload', // manual reference, not auto-edge
+        sourceNodeId: node.nodeId,
+        name: node.name,
+        type: node.type,
+        dataUrl: node.url,
+      };
+      updateNodeData(id, { media: [...currentMedia, entry] });
     },
     [id, data.media, updateNodeData]
   );
@@ -870,11 +887,6 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     if (videoRefCount > 1) updateNodeData(id, { videoRefCount: videoRefCount - 1 });
   }, [id, videoRefCount, updateNodeData]);
 
-  const handleAttachmentsChange = useCallback(
-    (newAttachments: AnimationAttachment[]) => updateNodeData(id, { attachments: newAttachments }),
-    [id, updateNodeData]
-  );
-
   const handleAspectRatioChange = useCallback(
     (newAspectRatio: AspectRatio) => updateNodeData(id, { aspectRatio: newAspectRatio }),
     [id, updateNodeData]
@@ -898,9 +910,19 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
   // ─── Phase handlers ─────────────────────────────────────────────────
 
   const handleAnalyzePrompt = useCallback(
-    async (prompt: string, promptAttachments?: AnimationAttachment[]) => {
+    async (prompt: string) => {
       const ls = getLatestState();
-      const userMsg = { id: `msg_${Date.now()}`, role: 'user' as const, content: prompt, timestamp: new Date().toISOString(), seq: getNextSeq() };
+      // Collect edge media IDs already shown in prior messages so we don't repeat them
+      const seenEdgeIds = new Set(
+        ls.messages.flatMap((m) => m.media?.filter((e) => e.source === 'edge').map((e) => e.id) ?? [])
+      );
+      const uploads = media.filter((m) => m.source === 'upload');
+      const newEdge = media.filter((m) => m.source === 'edge' && !seenEdgeIds.has(m.id));
+      const msgMedia = [...uploads, ...newEdge];
+      const userMsg: AnimationMessage = {
+        id: `msg_${Date.now()}`, role: 'user' as const, content: prompt, timestamp: new Date().toISOString(), seq: getNextSeq(),
+        media: msgMedia.length > 0 ? msgMedia : undefined,
+      };
       const thinkingBlock: ThinkingBlockItem = {
         id: `tb_${Date.now()}`,
         label: 'Analyzing your prompt...',
@@ -910,7 +932,8 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
 
       updateNodeData(id, {
         prompt,
-        attachments: promptAttachments || attachments,
+        // Clear uploaded media from the strip — they're now snapshot'd on the message (edge media stays)
+        ...(uploads.length > 0 ? { media: media.filter((m) => m.source !== 'upload') } : {}),
         state: {
           ...ls,
           phase: 'executing',
@@ -927,7 +950,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       try {
         await streamToAgent(
           `Analyze this animation request and either ask a clarifying question (if style is unclear) or generate a plan directly:\n\n${prompt}`,
-          { nodeId: id, phase: 'idle', attachments: promptAttachments || attachments, media, engine, aspectRatio },
+          { nodeId: id, phase: 'idle', media, engine, aspectRatio },
           callbacks
         );
         // Fallback if agent didn't use tools
@@ -956,7 +979,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         // Error handled by onError callback
       }
     },
-    [id, attachments, engine, aspectRatio, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
+    [id, media, engine, aspectRatio, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
   );
 
   const handleSelectStyle = useCallback(
@@ -1142,7 +1165,17 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
   const handleSendMessage = useCallback(
     async (content: string) => {
       const ls = getLatestState();
-      const userMsg = { id: `msg_${Date.now()}`, role: 'user' as const, content, timestamp: new Date().toISOString(), seq: getNextSeq() };
+      // Collect edge media IDs already shown in prior messages so we don't repeat them
+      const seenEdgeIds = new Set(
+        ls.messages.flatMap((m) => m.media?.filter((e) => e.source === 'edge').map((e) => e.id) ?? [])
+      );
+      const uploads = media.filter((m) => m.source === 'upload');
+      const newEdge = media.filter((m) => m.source === 'edge' && !seenEdgeIds.has(m.id));
+      const msgMedia = [...uploads, ...newEdge];
+      const userMsg: AnimationMessage = {
+        id: `msg_${Date.now()}`, role: 'user' as const, content, timestamp: new Date().toISOString(), seq: getNextSeq(),
+        media: msgMedia.length > 0 ? msgMedia : undefined,
+      };
       const thinkingBlock: ThinkingBlockItem = {
         id: `tb_${Date.now()}`,
         label: 'Thinking...',
@@ -1173,7 +1206,11 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         stateUpdate.previewState = 'stale';
       }
 
-      updateNodeData(id, { state: { ...ls, ...stateUpdate } });
+      updateNodeData(id, {
+        // Clear uploaded media from the strip (edge media stays)
+        ...(uploads.length > 0 ? { media: media.filter((m) => m.source !== 'upload') } : {}),
+        state: { ...ls, ...stateUpdate },
+      });
 
       resetStreamingRefs();
       const callbacks = createStreamCallbacks();
@@ -1355,16 +1392,16 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     abortStream();
     reasoningTextRef.current = '';
     streamingTextRef.current = '';
-    updateNodeData(id, { prompt: '', attachments: [], state: createDefaultState(id) });
+    updateNodeData(id, { prompt: '', media: [], state: createDefaultState(id) });
   }, [id, updateNodeData, abortStream]);
 
   // ─── Input routing ──────────────────────────────────────────────────
   const handleInputSubmit = useCallback(
-    (message: string, msgAttachments?: AnimationAttachment[]) => {
+    (message: string) => {
       switch (state.phase) {
         case 'idle':
         case 'error':
-          handleAnalyzePrompt(message, msgAttachments);
+          handleAnalyzePrompt(message);
           break;
         case 'plan':
           if (state.planAccepted) {
@@ -1390,7 +1427,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           handleReset();
           break;
         default:
-          handleAnalyzePrompt(message, msgAttachments);
+          handleAnalyzePrompt(message);
       }
     },
     [state.phase, state.planAccepted, handleAnalyzePrompt, handleAcceptPlan, handleRevisePlan, handleSendMessage, handleReset]
@@ -1459,7 +1496,8 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           content: msg.content,
           ts: msg.timestamp || state.createdAt,
           seq: msg.seq ?? 0,
-        });
+          ...(msg.role === 'user' && msg.media ? { media: msg.media } : {}),
+        } as TimelineItem);
       }
     });
 
@@ -1521,8 +1559,9 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
   }, [selected]);
 
   const videoHandleStart = IMAGE_HANDLE_START + imageRefCount * HANDLE_SPACING + VIDEO_HANDLE_START_OFFSET;
-  const totalHandles = imageRefCount + videoRefCount;
-  const minHeight = Math.max(200, IMAGE_HANDLE_START + totalHandles * HANDLE_SPACING + 60);
+  // minHeight must accommodate: video handles + their +/- buttons + padding
+  const lastVideoHandleBottom = videoHandleStart + videoRefCount * HANDLE_SPACING + 40; // +40 for +/- buttons
+  const minHeight = Math.max(200, lastVideoHandleBottom);
 
   // ─── Render ─────────────────────────────────────────────────────────
   return (
@@ -1547,37 +1586,20 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         if (e.dataTransfer.files.length > 0) handleMediaUpload(e.dataTransfer.files);
       }}
     >
-      {/* Hidden file input for media uploads */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*,video/*"
-        multiple
-        className="hidden"
-        onChange={(e) => {
-          if (e.target.files && e.target.files.length > 0) {
-            handleMediaUpload(e.target.files);
-            e.target.value = ''; // Reset so same file can be re-selected
-          }
-        }}
-      />
       {/* ── Left: Image reference handles ─────────────────────────────── */}
       {Array.from({ length: imageRefCount }).map((_, i) => {
         const top = IMAGE_HANDLE_START + i * HANDLE_SPACING;
         return (
-          <div key={`img-ref-${i}`} className="absolute -left-3 group" style={{ top }}>
+          <div key={`img-ref-${i}`} className="absolute -left-[10px]" style={{ top }}>
+            <div className="w-5 h-5 rounded-full bg-[#14B8A6] flex items-center justify-center">
+              <Image className="h-3 w-3 text-white" />
+            </div>
             <Handle
               type="target"
               position={Position.Left}
               id={`image-ref-${i}`}
-              className="!w-3 !h-3 !bg-teal-500 !border-2 !border-teal-400 relative !left-0"
+              className="!absolute !top-1/2 !left-1/2 !-translate-x-1/2 !-translate-y-1/2 !w-5 !h-5 !bg-transparent !border-0"
             />
-            <div className="absolute left-5 top-1/2 -translate-y-1/2 flex items-center gap-1">
-              <Image className="h-3 w-3 text-teal-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-              <span className="text-[10px] text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                {imageRefCount > 1 ? `Image ${i + 1}` : 'Image'}
-              </span>
-            </div>
           </div>
         );
       })}
@@ -1585,23 +1607,23 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       {/* Image handle add/remove */}
       {(selected || isHovered) && (
         <div
-          className="absolute -left-3 flex flex-col gap-0.5 transition-opacity duration-200"
+          className="absolute -left-[10px] flex flex-col gap-1 transition-opacity duration-200"
           style={{ top: IMAGE_HANDLE_START + imageRefCount * HANDLE_SPACING + 4 }}
         >
           {imageRefCount < MAX_IMAGE_REFS && (
             <button
               onClick={handleAddImageRef}
-              className="w-6 h-5 rounded flex items-center justify-center bg-zinc-800 border border-zinc-700 text-zinc-400 hover:border-teal-500 hover:text-teal-400 transition-colors"
+              className="w-4 h-4 rounded-full flex items-center justify-center bg-[#27272a] border border-[#3f3f46] text-[#A1A1AA] hover:border-teal-500 hover:text-teal-400 transition-colors ml-0.5"
             >
-              <Plus className="h-3 w-3" />
+              <Plus className="h-2.5 w-2.5" />
             </button>
           )}
           {imageRefCount > 1 && (
             <button
               onClick={handleRemoveImageRef}
-              className="w-6 h-5 rounded flex items-center justify-center bg-zinc-800 border border-zinc-700 text-zinc-400 hover:border-red-500 hover:text-red-400 transition-colors"
+              className="w-4 h-4 rounded-full flex items-center justify-center bg-[#27272a] border border-[#3f3f46] text-[#A1A1AA] hover:border-red-500 hover:text-red-400 transition-colors ml-0.5"
             >
-              <Minus className="h-3 w-3" />
+              <Minus className="h-2.5 w-2.5" />
             </button>
           )}
         </div>
@@ -1611,19 +1633,16 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       {Array.from({ length: videoRefCount }).map((_, i) => {
         const top = videoHandleStart + i * HANDLE_SPACING;
         return (
-          <div key={`vid-ref-${i}`} className="absolute -left-3 group" style={{ top }}>
+          <div key={`vid-ref-${i}`} className="absolute -left-[10px]" style={{ top }}>
+            <div className="w-5 h-5 rounded-full bg-[#A855F7] flex items-center justify-center">
+              <Video className="h-3 w-3 text-white" />
+            </div>
             <Handle
               type="target"
               position={Position.Left}
               id={`video-ref-${i}`}
-              className="!w-3 !h-3 !bg-purple-500 !border-2 !border-purple-400 relative !left-0"
+              className="!absolute !top-1/2 !left-1/2 !-translate-x-1/2 !-translate-y-1/2 !w-5 !h-5 !bg-transparent !border-0"
             />
-            <div className="absolute left-5 top-1/2 -translate-y-1/2 flex items-center gap-1">
-              <Video className="h-3 w-3 text-purple-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-              <span className="text-[10px] text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                {videoRefCount > 1 ? `Video ${i + 1}` : 'Video'}
-              </span>
-            </div>
           </div>
         );
       })}
@@ -1631,23 +1650,23 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       {/* Video handle add/remove */}
       {(selected || isHovered) && (
         <div
-          className="absolute -left-3 flex flex-col gap-0.5 transition-opacity duration-200"
+          className="absolute -left-[10px] flex flex-col gap-1 transition-opacity duration-200"
           style={{ top: videoHandleStart + videoRefCount * HANDLE_SPACING + 4 }}
         >
           {videoRefCount < MAX_VIDEO_REFS && (
             <button
               onClick={handleAddVideoRef}
-              className="w-6 h-5 rounded flex items-center justify-center bg-zinc-800 border border-zinc-700 text-zinc-400 hover:border-purple-500 hover:text-purple-400 transition-colors"
+              className="w-4 h-4 rounded-full flex items-center justify-center bg-[#27272a] border border-[#3f3f46] text-[#A1A1AA] hover:border-purple-500 hover:text-purple-400 transition-colors ml-0.5"
             >
-              <Plus className="h-3 w-3" />
+              <Plus className="h-2.5 w-2.5" />
             </button>
           )}
           {videoRefCount > 1 && (
             <button
               onClick={handleRemoveVideoRef}
-              className="w-6 h-5 rounded flex items-center justify-center bg-zinc-800 border border-zinc-700 text-zinc-400 hover:border-red-500 hover:text-red-400 transition-colors"
+              className="w-4 h-4 rounded-full flex items-center justify-center bg-[#27272a] border border-[#3f3f46] text-[#A1A1AA] hover:border-red-500 hover:text-red-400 transition-colors ml-0.5"
             >
-              <Minus className="h-3 w-3" />
+              <Minus className="h-2.5 w-2.5" />
             </button>
           )}
         </div>
@@ -1684,7 +1703,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
             {/* Timeline items - messages, plan, and videos in chronological order */}
             {timeline.map((item, idx) => {
               if (item.kind === 'user') {
-                return <UserBubble key={item.id} content={item.content} />;
+                return <UserBubble key={item.id} content={item.content} media={item.media} />;
               }
               if (item.kind === 'assistant') {
                 return <AssistantText key={item.id} content={item.content} />;
@@ -1791,18 +1810,10 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         </div>
       )}
 
-      {/* ── Media strip (thumbnails of attached media + upload button) */}
-      {(media.length > 0 || state.phase === 'idle') && (
+      {/* ── Media strip (thumbnails of attached media) */}
+      {media.length > 0 && (
         <div className="flex-shrink-0 px-3 py-1.5 border-t border-[#27272a]">
           <div className="flex gap-1.5 overflow-x-auto scrollbar-hidden items-center">
-            {/* Upload button */}
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="flex-shrink-0 w-10 h-10 rounded border border-dashed border-[#3f3f46] flex items-center justify-center text-zinc-500 hover:border-teal-500/50 hover:text-teal-400 transition-colors"
-              title="Upload image or video"
-            >
-              <Upload className="w-3.5 h-3.5" />
-            </button>
             {media.map((m) => (
               <div key={m.id} className="relative group flex-shrink-0">
                 <div className="w-10 h-10 rounded bg-[#27272a] overflow-hidden border border-[#3f3f46]">
@@ -1844,27 +1855,24 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           onEngineChange={handleEngineChange}
           aspectRatio={aspectRatio}
           onAspectRatioChange={handleAspectRatioChange}
-          attachments={state.phase === 'idle' || state.phase === 'error' ? attachments : undefined}
-          onAttachmentsChange={state.phase === 'idle' || state.phase === 'error' ? handleAttachmentsChange : undefined}
-          availableNodeOutputs={state.phase === 'idle' || state.phase === 'error' ? availableNodeOutputs : undefined}
+          onMediaUpload={handleMediaUpload}
+          onNodeReference={handleNodeReference}
+          availableNodeOutputs={availableNodeOutputs}
         />
       </div>
 
-      {/* ── Right: Output handles ────────────────────────────────────── */}
-      <Handle
-        type="source"
-        position={Position.Right}
-        id="video"
-        className="!w-3 !h-3 !bg-purple-500 !border-2 !border-purple-400"
-        style={{ top: '30px' }}
-      />
-      <Handle
-        type="source"
-        position={Position.Right}
-        id="thumbnail"
-        className="!w-3 !h-3 !bg-teal-500 !border-2 !border-teal-400"
-        style={{ top: '60px' }}
-      />
+      {/* ── Right: Output handle (video) ─────────────────────────────── */}
+      <div className="absolute -right-[10px]" style={{ top: 30 }}>
+        <div className="w-5 h-5 rounded-full bg-[#A855F7] flex items-center justify-center">
+          <Video className="h-3 w-3 text-white" />
+        </div>
+        <Handle
+          type="source"
+          position={Position.Right}
+          id="video"
+          className="!absolute !top-1/2 !left-1/2 !-translate-x-1/2 !-translate-y-1/2 !w-5 !h-5 !bg-transparent !border-0"
+        />
+      </div>
     </div>
   );
 }

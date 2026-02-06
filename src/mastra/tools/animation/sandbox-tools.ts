@@ -751,10 +751,13 @@ Uses 'bunx remotion render' to create an MP4 video file. Automatically detects t
       // Detect composition ID if not provided
       let compositionId = inputData.compositionId;
       if (!compositionId) {
-        // List available compositions and pick the first one
+        // List available compositions and pick the first one.
+        // `remotion compositions` outputs bundling progress ("Bundling 6%", "Bundling 100%", "Getting composition")
+        // followed by actual composition lines like "MainVideo  30fps  1920x1080  7s".
+        // Filter for lines containing "fps" to skip progress noise.
         const listResult = await dockerProvider.runCommand(
           inputData.sandboxId,
-          `cd /app && bunx remotion compositions src/index.ts --props='{}' 2>&1 | grep -E '^[A-Za-z]' | head -1 | awk '{print $1}'`,
+          `cd /app && bunx remotion compositions src/index.ts --props='{}' 2>&1 | grep 'fps' | head -1 | awk '{print $1}'`,
           { timeout: 30_000 }
         );
         compositionId = listResult.stdout.trim();
@@ -867,9 +870,10 @@ Uses higher quality settings and supports multiple resolutions. Automatically de
       // Detect composition ID if not provided
       let compositionId = inputData.compositionId;
       if (!compositionId) {
+        // Filter for lines containing "fps" to skip bundling progress noise
         const listResult = await dockerProvider.runCommand(
           inputData.sandboxId,
-          `cd /app && bunx remotion compositions src/index.ts --props='{}' 2>&1 | grep -E '^[A-Za-z]' | head -1 | awk '{print $1}'`,
+          `cd /app && bunx remotion compositions src/index.ts --props='{}' 2>&1 | grep 'fps' | head -1 | awk '{print $1}'`,
           { timeout: 30_000 }
         );
         compositionId = listResult.stdout.trim();

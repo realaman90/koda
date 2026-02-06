@@ -17,7 +17,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
-import type { AnimationAttachment, AnimationEngine } from '../types';
+import type { AnimationEngine } from '../types';
 
 const ENGINES: { id: AnimationEngine; label: string }[] = [
   { id: 'remotion', label: 'Remotion' },
@@ -40,7 +40,7 @@ interface QueuedMessage {
 }
 
 interface ChatInputProps {
-  onSubmit: (message: string, attachments?: AnimationAttachment[]) => void;
+  onSubmit: (message: string) => void;
   onStop?: () => void;
   isGenerating?: boolean;
   /** Tool calls are still running (more fine-grained than isGenerating) */
@@ -51,8 +51,10 @@ interface ChatInputProps {
   onEngineChange?: (engine: AnimationEngine) => void;
   aspectRatio?: AspectRatio;
   onAspectRatioChange?: (aspectRatio: AspectRatio) => void;
-  attachments?: AnimationAttachment[];
-  onAttachmentsChange?: (attachments: AnimationAttachment[]) => void;
+  /** Upload files to data.media[] */
+  onMediaUpload?: (files: FileList) => void;
+  /** Reference a canvas node output → data.media[] */
+  onNodeReference?: (node: { nodeId: string; name: string; type: 'image' | 'video'; url: string }) => void;
   availableNodeOutputs?: Array<{ nodeId: string; name: string; type: 'image' | 'video'; url: string }>;
 }
 
@@ -67,8 +69,8 @@ export function ChatInput({
   onEngineChange,
   aspectRatio = '16:9',
   onAspectRatioChange,
-  attachments = [],
-  onAttachmentsChange,
+  onMediaUpload,
+  onNodeReference,
   availableNodeOutputs = [],
 }: ChatInputProps) {
   const [message, setMessage] = useState('');
@@ -100,10 +102,10 @@ export function ChatInput({
       setMessage('');
     } else {
       // Send immediately
-      onSubmit(trimmed, attachments.length > 0 ? attachments : undefined);
+      onSubmit(trimmed);
       setMessage('');
     }
-  }, [message, isBusy, disabled, onSubmit, attachments]);
+  }, [message, isBusy, disabled, onSubmit]);
 
   const handleSendQueued = useCallback(
     (item: QueuedMessage) => {
@@ -111,12 +113,12 @@ export function ChatInput({
         onStop();
         // Small delay to ensure stream is aborted
         setTimeout(() => {
-          onSubmit(item.text, attachments.length > 0 ? attachments : undefined);
+          onSubmit(item.text);
           setQueue((prev) => prev.filter((q) => q.id !== item.id));
         }, 100);
       }
     },
-    [onStop, onSubmit, attachments]
+    [onStop, onSubmit]
   );
 
   const handleDeleteQueued = useCallback((id: string) => {
@@ -187,58 +189,19 @@ export function ChatInput({
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files;
       if (!files || files.length === 0) return;
-      const file = files[0];
-      const isVideo = file.type.startsWith('video/');
-      const url = URL.createObjectURL(file);
-      const newAttachment: AnimationAttachment = {
-        id: `attach_${Date.now()}`,
-        type: isVideo ? 'video' : 'image',
-        url,
-        name: file.name,
-      };
-      onAttachmentsChange?.([...attachments, newAttachment]);
+      onMediaUpload?.(files);
       e.target.value = '';
     },
-    [attachments, onAttachmentsChange]
+    [onMediaUpload]
   );
 
-  const handleNodeReference = useCallback(
+  const handleNodeRef = useCallback(
     (node: { nodeId: string; name: string; type: 'image' | 'video'; url: string }) => {
-      const newAttachment: AnimationAttachment = {
-        id: `noderef_${node.nodeId}_${Date.now()}`,
-        type: node.type,
-        url: node.url,
-        name: node.name,
-        nodeId: node.nodeId,
-      };
-      onAttachmentsChange?.([...attachments, newAttachment]);
+      onNodeReference?.(node);
       setShowAttachMenu(false);
     },
-    [attachments, onAttachmentsChange]
+    [onNodeReference]
   );
-
-  const handleRemoveAttachment = useCallback(
-    (attachmentId: string) => {
-      const removed = attachments.find((a) => a.id === attachmentId);
-      if (removed && !removed.nodeId && removed.url.startsWith('blob:')) {
-        URL.revokeObjectURL(removed.url);
-      }
-      onAttachmentsChange?.(attachments.filter((a) => a.id !== attachmentId));
-    },
-    [attachments, onAttachmentsChange]
-  );
-
-  // Cleanup blob URLs on unmount
-  useEffect(() => {
-    return () => {
-      attachments.forEach((a) => {
-        if (!a.nodeId && a.url.startsWith('blob:')) {
-          URL.revokeObjectURL(a.url);
-        }
-      });
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -329,34 +292,6 @@ export function ChatInput({
         </div>
       )}
 
-      {/* Attachment previews */}
-      {attachments.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mb-2">
-          {attachments.map((attachment) => (
-            <div
-              key={attachment.id}
-              className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#27272a] border border-[#3f3f46] text-[10px]"
-            >
-              {attachment.type === 'image' ? (
-                <Image className="h-2.5 w-2.5 text-teal-400" />
-              ) : (
-                <Video className="h-2.5 w-2.5 text-purple-400" />
-              )}
-              <span className="text-[#A1A1AA] max-w-[80px] truncate">
-                {attachment.name || (attachment.nodeId ? 'Node output' : 'File')}
-              </span>
-              {attachment.nodeId && <Link2 className="h-2.5 w-2.5 text-[#52525B]" />}
-              <button
-                onClick={() => handleRemoveAttachment(attachment.id)}
-                className="text-[#52525B] hover:text-[#EF4444] transition-colors ml-0.5"
-              >
-                &times;
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
       {/* Input box */}
       <div className="rounded-[10px] bg-[#27272a] border border-[#3f3f46] overflow-hidden">
         {/* Textarea area */}
@@ -441,7 +376,7 @@ export function ChatInput({
               <DropdownMenuTrigger asChild>
                 <button
                   className="flex items-center justify-center w-7 h-7 rounded-md text-[#52525B] hover:text-[#71717A] transition-colors"
-                  disabled={disabled || isBusy}
+                  disabled={disabled}
                 >
                   <Paperclip className="w-4 h-4" />
                 </button>
@@ -462,7 +397,7 @@ export function ChatInput({
                     <DropdownMenuSeparator />
                     <DropdownMenuLabel className="text-xs text-zinc-500">From Canvas</DropdownMenuLabel>
                     {availableNodeOutputs.map((node) => (
-                      <DropdownMenuItem key={node.nodeId} onClick={() => handleNodeReference(node)}>
+                      <DropdownMenuItem key={node.nodeId} onClick={() => handleNodeRef(node)}>
                         {node.type === 'image' ? (
                           <Image className="h-4 w-4 mr-2 text-teal-400" />
                         ) : (

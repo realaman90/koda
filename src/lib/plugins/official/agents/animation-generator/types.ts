@@ -69,6 +69,8 @@ export interface AnimationMessage {
   timestamp?: string;
   /** Monotonically increasing sequence number for stable chronological ordering */
   seq?: number;
+  /** Snapshot of media attached when this message was sent */
+  media?: MediaEntry[];
 }
 
 export interface ToolCallItem {

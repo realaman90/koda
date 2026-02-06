@@ -38,16 +38,36 @@ import type {
   AnimationPlan,
   AnimationVersion,
   ToolCallItem,
+  MediaEntry,
 } from '../types';
 
 // ─── User Message Bubble ─────────────────────────────────────────────
 
-export function UserBubble({ content }: { content: string }) {
+export function UserBubble({ content, media }: { content: string; media?: MediaEntry[] }) {
   return (
     <div
       className="px-3 py-2.5 text-xs leading-[1.4] text-[#93C5FD] bg-[#1E3A5F] w-full"
       style={{ borderRadius: '12px 4px 12px 12px' }}
     >
+      {/* Inline media thumbnails */}
+      {media && media.length > 0 && (
+        <div className="flex gap-1.5 mb-2 flex-wrap">
+          {media.map((m) => (
+            <div key={m.id} className="w-12 h-12 rounded overflow-hidden bg-[#0F2440] border border-[#2563EB]/30 shrink-0">
+              {m.type === 'image' ? (
+                <img src={m.dataUrl} alt={m.name} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center gap-0.5">
+                  <Video className="w-4 h-4 text-purple-400" />
+                  {m.duration != null && (
+                    <span className="text-[7px] text-purple-300">{m.duration.toFixed(1)}s</span>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
       {content}
     </div>
   );
