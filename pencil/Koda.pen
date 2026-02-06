@@ -19860,7 +19860,8 @@
                                           "content": "Planned bounce animation with Theatre.js keyframes",
                                           "lineHeight": 1.4,
                                           "fontFamily": "Inter",
-                                          "fontSize": 12
+                                          "fontSize": 12,
+                                          "fontWeight": "normal"
                                         },
                                         {
                                           "type": "icon_font",
@@ -19902,7 +19903,8 @@
                                           "fill": "#52525B",
                                           "content": "Done",
                                           "fontFamily": "Inter",
-                                          "fontSize": 12
+                                          "fontSize": 12,
+                                          "fontWeight": "normal"
                                         }
                                       ]
                                     }
