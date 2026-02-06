@@ -171,6 +171,22 @@ export function Canvas() {
         return sourceNode.type === 'text';
       }
 
+      // Animation node video ref handles — only allow from videoGenerator, only for Remotion engine
+      if (targetHandle.startsWith('video-ref-')) {
+        if (sourceNode.type !== 'videoGenerator') return false;
+        // Block video connections to Theatre.js animation nodes
+        if (targetNode.type === 'pluginNode') {
+          const animData = targetNode.data as Record<string, unknown>;
+          if (animData.engine === 'theatre') return false;
+        }
+        return true;
+      }
+
+      // Animation node image ref handles
+      if (targetHandle.startsWith('image-ref-')) {
+        return isImageSource;
+      }
+
       return true;
     },
     [nodes]

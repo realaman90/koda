@@ -107,9 +107,19 @@ export interface MessageAppEvent {
 /** Agent requested user approval */
 export interface ApprovalRequestedAppEvent {
   kind: 'approval_requested';
-  approvalType: 'question' | 'plan' | 'preview';
+  approvalType: 'question' | 'plan' | 'preview' | 'multi_question';
   content: string;
   options?: Array<{ id: string; label: string; description?: string }>;
+  fields?: Array<{
+    id: string;
+    type: 'text' | 'select' | 'multi_select';
+    label: string;
+    description?: string;
+    required?: boolean;
+    placeholder?: string;
+    options?: Array<{ id: string; label: string; description?: string }>;
+    defaultValue?: string | string[];
+  }>;
 }
 
 /** Agent analyzed the prompt */
@@ -274,9 +284,10 @@ export function toolCallToAppEvent(toolName: string, args: Record<string, unknow
     case 'request_approval':
       return {
         kind: 'approval_requested',
-        approvalType: args.type as 'question' | 'plan' | 'preview',
+        approvalType: args.type as 'question' | 'plan' | 'preview' | 'multi_question',
         content: args.content as string,
         options: args.options as Array<{ id: string; label: string; description?: string }> | undefined,
+        fields: args.fields as ApprovalRequestedAppEvent['fields'],
       };
     default:
       return null;

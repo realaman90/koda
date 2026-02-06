@@ -13,6 +13,6 @@ export const remotionCodeGeneratorAgent = new Agent({
   id: 'remotion-code-generator',
   name: 'Remotion Code Generator',
   instructions: REMOTION_CODE_GENERATOR_INSTRUCTIONS,
-  model: 'openrouter/moonshotai/kimi-k2.5',
+  model: 'anthropic/claude-opus-4-6',
   // No tools — pure generation
 });

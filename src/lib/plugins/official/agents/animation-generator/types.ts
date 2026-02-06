@@ -33,6 +33,22 @@ export interface AnimationQuestion {
   customInput?: boolean;
 }
 
+export interface FormField {
+  id: string;
+  type: 'text' | 'select' | 'multi_select';
+  label: string;
+  description?: string;
+  required?: boolean;
+  placeholder?: string;
+  options?: AnimationStyleOption[];
+  defaultValue?: string | string[];
+}
+
+export interface AnimationFormQuestion {
+  content: string;
+  fields: FormField[];
+}
+
 // ============================================
 // PLAN PHASE TYPES
 // ============================================
@@ -170,6 +186,7 @@ export interface AnimationNodeState {
 
   // Phase-specific data
   question?: AnimationQuestion;
+  formQuestion?: AnimationFormQuestion;
   selectedStyle?: string;
   plan?: AnimationPlan;
   planTimestamp?: string;

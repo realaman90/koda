@@ -58,6 +58,8 @@ export async function POST(request: Request) {
     // Prepend context as a system-style user message if provided
     if (context) {
       const contextParts: string[] = [];
+      // Engine is ALWAYS included prominently so the agent can't miss it
+      contextParts.push(`ANIMATION ENGINE: ${engine.toUpperCase()} — You MUST use template "${engine}" when creating a sandbox. Do NOT use any other engine.`);
       if (context.aspectRatio) {
         contextParts.push(`Aspect ratio: ${context.aspectRatio}`);
       }
@@ -109,15 +111,10 @@ export async function POST(request: Request) {
       agentMessages = agentMessages.slice(-MAX_MESSAGES);
     }
 
-    // Stream the response using Mastra's agent.stream()
-    // Type assertion needed: our {role, content}[] is a valid CoreMessage[] but
-    // TypeScript can't narrow the MessageListInput union (string | string[] | MessageInput[])
-    //
-    // CRITICAL: maxSteps controls how many tool-call rounds the agent can do.
-    // Default is 1, which stops after the first tool call!
-    // Animation generation needs many steps: create sandbox, generate code,
-    // run commands, start preview, take screenshots, render, etc.
-    // Set to 30 to allow for complex animations with retries.
+    // ⏱ Server-side timing
+    const serverStart = Date.now();
+    console.log(`⏱ [Animation API] Stream request — engine: ${engine}, messages: ${agentMessages.length}`);
+
     const result = await animationAgent.stream(
       agentMessages as Parameters<typeof animationAgent.stream>[0],
       {
@@ -178,6 +175,8 @@ export async function POST(request: Request) {
               }
 
               case 'tool-call': {
+                const toolElapsed = ((Date.now() - serverStart) / 1000).toFixed(1);
+                console.log(`⏱ [Animation API] Tool call: ${chunk.payload.toolName} at +${toolElapsed}s`);
                 sseData = JSON.stringify({
                   type: 'tool-call',
                   toolCallId: chunk.payload.toolCallId,
@@ -188,6 +187,9 @@ export async function POST(request: Request) {
               }
 
               case 'tool-result': {
+                const resultElapsed = ((Date.now() - serverStart) / 1000).toFixed(1);
+                const isErr = chunk.payload.isError;
+                console.log(`⏱ [Animation API] Tool result: ${chunk.payload.toolName} at +${resultElapsed}s ${isErr ? '❌' : '✅'}`);
                 sseData = JSON.stringify({
                   type: 'tool-result',
                   toolCallId: chunk.payload.toolCallId,
@@ -256,6 +258,10 @@ export async function POST(request: Request) {
               safeEnqueue(encoder.encode(`data: ${sseData}\n\n`));
             }
           }
+
+          // ⏱ Server total time
+          const serverTotal = ((Date.now() - serverStart) / 1000).toFixed(1);
+          console.log(`⏱ [Animation API] Stream complete — total: ${serverTotal}s`);
 
           // Send final complete event (ALWAYS — even if aggregation fails)
           // This is critical: the client relies on 'complete' to know the stream ended

@@ -26,14 +26,16 @@ export const sandboxCreateTool = createTool({
   id: 'sandbox_create',
   description: `Create a new isolated Docker sandbox for animation development.
 
-Choose a template based on the selected framework:
-- "theatre" (default): Theatre.js + React Three Fiber for 3D animations
-- "remotion": Remotion for 2D motion graphics and text animations
+Choose a template matching the engine from context:
+- "remotion" (default): Remotion for 2D motion graphics and text animations
+- "theatre": Theatre.js + React Three Fiber for 3D animations
+
+IMPORTANT: Always use the engine specified in the context. If context says Remotion, use template "remotion". If context says Theatre.js, use template "theatre".
 
 Call this before writing any files or running commands.`,
   inputSchema: z.object({
     projectId: z.string().describe('Unique project identifier for this animation'),
-    template: z.enum(['theatre', 'remotion']).default('theatre').describe('Animation framework template to use'),
+    template: z.enum(['remotion', 'theatre']).default('remotion').describe('Animation framework template — MUST match the engine from context'),
   }),
   outputSchema: z.object({
     success: z.boolean(),
@@ -45,7 +47,7 @@ Call this before writing any files or running commands.`,
   }),
   execute: async (inputData) => {
     try {
-      const template = inputData.template || 'theatre';
+      const template = inputData.template || 'remotion';
       const instance = await dockerProvider.create(inputData.projectId, template);
       return {
         success: true,
@@ -61,7 +63,7 @@ Call this before writing any files or running commands.`,
         sandboxId: '',
         status: 'error',
         previewUrl: '',
-        template: inputData.template || 'theatre',
+        template: inputData.template || 'remotion',
         message: error instanceof Error ? error.message : 'Failed to create sandbox',
       };
     }
@@ -482,9 +484,13 @@ export const sandboxStartPreviewTool = createTool({
   description: `Start the Vite dev server in the sandbox and return a live preview URL.
 
 Call this after writing your animation code. The preview URL can be embedded in an iframe.
-This tool kills any existing dev server, starts a new one, and waits until it's ready.`,
+This tool kills any existing dev server, starts a new one, and waits until it's ready.
+
+For Remotion: uses vite.player.config.ts (Remotion Player).
+For Theatre.js: uses default vite.config.ts.`,
   inputSchema: z.object({
     sandboxId: z.string().describe('Sandbox ID'),
+    engine: z.enum(['remotion', 'theatre']).optional().describe('Animation engine — determines which vite config to use (default: remotion)'),
   }),
   outputSchema: z.object({
     success: z.boolean(),
@@ -534,13 +540,15 @@ This tool kills any existing dev server, starts a new one, and waits until it's 
         }
       }
 
-      // Start the Remotion Player dev server (not Remotion Studio) in background.
-      // The Player uses vite.player.config.ts and serves player.html which embeds the
-      // Remotion Player component. This avoids URL routing issues when embedding in iframes
-      // (Remotion Studio interprets the proxy URL path as a composition ID).
+      // Start the dev server. Remotion uses a custom vite config for the Player;
+      // Theatre.js uses the default vite.config.ts.
+      const engine = inputData.engine || 'remotion';
+      const viteCmd = engine === 'remotion'
+        ? 'cd /app && nohup bunx vite --config vite.player.config.ts > /tmp/vite.log 2>&1 &'
+        : 'cd /app && nohup bunx vite > /tmp/vite.log 2>&1 &';
       await dockerProvider.runCommand(
         inputData.sandboxId,
-        'cd /app && nohup bunx vite --config vite.player.config.ts > /tmp/vite.log 2>&1 &',
+        viteCmd,
         { background: true }
       );
 
@@ -616,9 +624,11 @@ This tool kills any existing dev server, starts a new one, and waits until it's 
  */
 export const sandboxScreenshotTool = createTool({
   id: 'sandbox_screenshot',
-  description: `Capture screenshots of the animation at specific frames using Remotion's native still renderer.
+  description: `Capture screenshots of the animation at specific frames.
 
-Uses 'bunx remotion still' command - much more reliable than Puppeteer-based approaches.
+Engine-aware:
+- **Remotion** (default): Uses 'bunx remotion still' — fast, native renderer.
+- **Theatre.js**: Uses Puppeteer to navigate to localhost:5173, seek to each frame, and screenshot. Requires dev server running.
 
 **Single mode**: Pass \`frame\` for one screenshot.
 **Batch mode**: Pass \`frames\` array (e.g. [0, 30, 60, 90]) to capture multiple frames.
@@ -630,6 +640,7 @@ Example: 2 seconds at 30fps = frame 60`,
     frame: z.number().optional().describe('Single screenshot: capture this frame number'),
     frames: z.array(z.number()).optional().describe('Batch mode: array of frame numbers'),
     fps: z.number().optional().describe('Frames per second for time conversion (default: 30)'),
+    engine: z.enum(['remotion', 'theatre']).optional().describe('Animation engine (default: remotion)'),
   }),
   outputSchema: z.object({
     success: z.boolean(),
@@ -641,6 +652,7 @@ Example: 2 seconds at 30fps = frame 60`,
   }),
   execute: async (inputData) => {
     const fps = inputData.fps || 30;
+    const engine = inputData.engine || 'remotion';
 
     // Determine which frames to capture
     let frames: number[];
@@ -650,7 +662,7 @@ Example: 2 seconds at 30fps = frame 60`,
       frames = [inputData.frame || 0];
     }
 
-    // Cap at 10 screenshots per call (Remotion still is slower than batch render)
+    // Cap at 10 screenshots per call
     if (frames.length > 10) {
       frames = frames.slice(0, 10);
     }
@@ -662,19 +674,73 @@ Example: 2 seconds at 30fps = frame 60`,
       const screenshots: { imageUrl: string; frame: number }[] = [];
       const errors: string[] = [];
 
-      // Capture each frame using Remotion's native still command
-      for (const frame of frames) {
-        const filename = `frame-${frame}.png`;
-        const outputPath = `/app/output/${filename}`;
+      if (engine === 'theatre') {
+        // ── Theatre.js: Puppeteer-based screenshot capture ──
+        // Write a temp capture script, run it, then clean up
+        const framesJson = JSON.stringify(frames);
+        const captureScript = `
+const puppeteer = require('puppeteer-core');
+const fs = require('fs');
+const frames = JSON.parse(process.argv[2]);
+const outputDir = process.argv[3] || '/app/output';
 
-        const result = await dockerProvider.runCommand(
+(async () => {
+  const browser = await puppeteer.launch({
+    executablePath: '/usr/bin/chromium',
+    headless: 'new',
+    args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage','--window-size=1920,1080'],
+  });
+  const page = await browser.newPage();
+  await page.setViewport({ width: 1920, height: 1080 });
+  await page.goto('http://localhost:5173', { waitUntil: 'networkidle0', timeout: 30000 });
+  await page.waitForSelector('#root', { timeout: 10000 });
+  await page.evaluate(() => { window.__EXPORT_MODE__ = true; });
+  await new Promise(r => setTimeout(r, 1000));
+
+  const results = [];
+  for (const frame of frames) {
+    const filename = 'frame-' + frame + '.png';
+    const filePath = outputDir + '/' + filename;
+    await page.evaluate(f => window.dispatchEvent(new CustomEvent('theatre-seek', { detail: { frame: f } })), frame);
+    await new Promise(r => setTimeout(r, 150));
+    await page.screenshot({ path: filePath, type: 'png' });
+    results.push({ frame, filename, exists: fs.existsSync(filePath) });
+  }
+  await browser.close();
+  console.log(JSON.stringify({ success: true, results }));
+})().catch(e => { console.error(e.message); process.exit(1); });
+`.trim();
+
+        // Write the capture script to sandbox
+        await dockerProvider.runCommand(
           inputData.sandboxId,
-          `cd /app && bunx remotion still src/index.ts MainVideo ${outputPath} --frame=${frame} 2>&1`,
-          { timeout: 30_000 }
+          `cat > /app/_capture_frames.cjs << 'CAPTURE_SCRIPT_EOF'\n${captureScript}\nCAPTURE_SCRIPT_EOF`,
+          { timeout: 5_000 }
         );
 
-        if (result.success) {
-          // Verify file was created
+        // Execute the capture script
+        const result = await dockerProvider.runCommand(
+          inputData.sandboxId,
+          `cd /app && node _capture_frames.cjs '${framesJson}' /app/output 2>&1`,
+          { timeout: 60_000 }
+        );
+
+        // Clean up
+        await dockerProvider.runCommand(inputData.sandboxId, 'rm -f /app/_capture_frames.cjs', { timeout: 5_000 });
+
+        if (!result.success) {
+          return {
+            success: false,
+            screenshots: [],
+            message: `Theatre.js screenshot capture failed: ${(result.stderr || result.stdout).slice(0, 500)}`,
+          };
+        }
+
+        // Parse output and check which frames were captured
+        for (const frame of frames) {
+          const filename = `frame-${frame}.png`;
+          const outputPath = `/app/output/${filename}`;
+
           const checkFile = await dockerProvider.runCommand(
             inputData.sandboxId,
             `test -f ${outputPath} && echo "OK" || echo "MISSING"`,
@@ -689,8 +755,38 @@ Example: 2 seconds at 30fps = frame 60`,
           } else {
             errors.push(`Frame ${frame}: file not created`);
           }
-        } else {
-          errors.push(`Frame ${frame}: ${result.stderr || result.stdout}`.slice(0, 100));
+        }
+      } else {
+        // ── Remotion: native still renderer ──
+        for (const frame of frames) {
+          const filename = `frame-${frame}.png`;
+          const outputPath = `/app/output/${filename}`;
+
+          const result = await dockerProvider.runCommand(
+            inputData.sandboxId,
+            `cd /app && bunx remotion still src/index.ts MainVideo ${outputPath} --frame=${frame} 2>&1`,
+            { timeout: 30_000 }
+          );
+
+          if (result.success) {
+            // Verify file was created
+            const checkFile = await dockerProvider.runCommand(
+              inputData.sandboxId,
+              `test -f ${outputPath} && echo "OK" || echo "MISSING"`,
+              { timeout: 5_000 }
+            );
+
+            if (checkFile.stdout.trim() === 'OK') {
+              screenshots.push({
+                imageUrl: `/api/plugins/animation/sandbox/${inputData.sandboxId}/file?path=output/${filename}`,
+                frame,
+              });
+            } else {
+              errors.push(`Frame ${frame}: file not created`);
+            }
+          } else {
+            errors.push(`Frame ${frame}: ${result.stderr || result.stdout}`.slice(0, 100));
+          }
         }
       }
 
@@ -706,8 +802,8 @@ Example: 2 seconds at 30fps = frame 60`,
         success: true,
         screenshots,
         message: screenshots.length === frames.length
-          ? `Captured ${screenshots.length} screenshot(s)`
-          : `Captured ${screenshots.length}/${frames.length} screenshots. Errors: ${errors.join('; ')}`,
+          ? `Captured ${screenshots.length} screenshot(s) [${engine}]`
+          : `Captured ${screenshots.length}/${frames.length} screenshots [${engine}]. Errors: ${errors.join('; ')}`,
       };
     } catch (error) {
       return {
@@ -724,14 +820,17 @@ Example: 2 seconds at 30fps = frame 60`,
  */
 export const renderPreviewTool = createTool({
   id: 'render_preview',
-  description: `Render a preview video of the animation using Remotion's built-in renderer.
+  description: `Render a preview video of the animation.
 
-Uses 'bunx remotion render' to create an MP4 video file. Automatically detects the composition ID.`,
+Engine-aware:
+- **Remotion** (default): Uses 'bunx remotion render' to create an MP4. Automatically detects composition ID.
+- **Theatre.js**: Uses the export-video.cjs Puppeteer/FFmpeg script at /app/export-video.cjs. Requires dev server running on port 5173.`,
   inputSchema: z.object({
     sandboxId: z.string().describe('Sandbox ID'),
     duration: z.number().describe('Video duration in seconds'),
     fps: z.number().optional().describe('Frames per second (default: 30)'),
-    compositionId: z.string().optional().describe('Composition ID to render (auto-detected if not provided)'),
+    compositionId: z.string().optional().describe('Composition ID to render (auto-detected if not provided, Remotion only)'),
+    engine: z.enum(['remotion', 'theatre']).optional().describe('Animation engine (default: remotion)'),
   }),
   outputSchema: z.object({
     success: z.boolean(),
@@ -742,12 +841,92 @@ Uses 'bunx remotion render' to create an MP4 video file. Automatically detects t
   }),
   execute: async (inputData) => {
     const fps = inputData.fps || 30;
+    const engine = inputData.engine || 'remotion';
     const outputPath = '/app/output/preview.mp4';
 
     try {
       // Ensure output directory exists
       await dockerProvider.runCommand(inputData.sandboxId, 'mkdir -p /app/output', { timeout: 5_000 });
 
+      if (engine === 'theatre') {
+        // ── Theatre.js: Puppeteer + FFmpeg via export-video.cjs ──
+        // Verify Vite dev server is running on port 5173
+        const portCheck = await dockerProvider.runCommand(
+          inputData.sandboxId,
+          '(curl -s -o /dev/null -w "%{http_code}" http://localhost:5173/ 2>/dev/null || echo "000")',
+          { timeout: 10_000 }
+        );
+        if (!portCheck.stdout.trim().startsWith('200') && !portCheck.stdout.trim().startsWith('304')) {
+          return {
+            success: false,
+            videoUrl: '',
+            thumbnailUrl: '',
+            duration: inputData.duration,
+            message: 'Theatre.js render requires the Vite dev server running on port 5173. Call sandbox_start_preview first.',
+          };
+        }
+
+        // Verify export script exists
+        const scriptCheck = await dockerProvider.runCommand(
+          inputData.sandboxId,
+          'test -f /app/export-video.cjs && echo "OK" || echo "MISSING"',
+          { timeout: 5_000 }
+        );
+        if (scriptCheck.stdout.trim() !== 'OK') {
+          return {
+            success: false,
+            videoUrl: '',
+            thumbnailUrl: '',
+            duration: inputData.duration,
+            message: 'export-video.cjs not found at /app/export-video.cjs. Theatre.js sandbox may not be set up correctly.',
+          };
+        }
+
+        console.log(`[render_preview] Theatre.js render: duration=${inputData.duration}s, quality=preview`);
+
+        const result = await dockerProvider.runCommand(
+          inputData.sandboxId,
+          `cd /app && node export-video.cjs --duration ${inputData.duration} --quality preview --output ${outputPath} 2>&1`,
+          { timeout: 180_000 } // 3 minutes for preview render
+        );
+
+        if (!result.success) {
+          return {
+            success: false,
+            videoUrl: '',
+            thumbnailUrl: '',
+            duration: inputData.duration,
+            message: `Theatre.js render failed: ${(result.stderr || result.stdout).slice(0, 500)}`,
+          };
+        }
+
+        // Check if the file was created
+        const checkFile = await dockerProvider.runCommand(
+          inputData.sandboxId,
+          `test -f ${outputPath} && echo "OK" || echo "MISSING"`,
+          { timeout: 5_000 }
+        );
+
+        if (checkFile.stdout.trim() !== 'OK') {
+          return {
+            success: false,
+            videoUrl: '',
+            thumbnailUrl: '',
+            duration: inputData.duration,
+            message: 'Video file was not created. Render output: ' + (result.stdout || '').slice(0, 300),
+          };
+        }
+
+        return {
+          success: true,
+          videoUrl: `/api/plugins/animation/sandbox/${inputData.sandboxId}/file?path=output/preview.mp4`,
+          thumbnailUrl: '',
+          duration: inputData.duration,
+          message: `Video rendered successfully [theatre, preview quality]`,
+        };
+      }
+
+      // ── Remotion: native renderer ──
       // Detect composition ID if not provided
       let compositionId = inputData.compositionId;
       if (!compositionId) {
@@ -834,14 +1013,17 @@ Uses 'bunx remotion render' to create an MP4 video file. Automatically detects t
  */
 export const renderFinalTool = createTool({
   id: 'render_final',
-  description: `Render the final high-quality video using Remotion's built-in renderer.
+  description: `Render the final high-quality video.
 
-Uses higher quality settings and supports multiple resolutions. Automatically detects the composition ID.`,
+Engine-aware:
+- **Remotion** (default): Uses 'bunx remotion render' with higher quality settings and resolution scaling.
+- **Theatre.js**: Uses export-video.cjs with --quality final and --resolution flag. Requires dev server running on port 5173.`,
   inputSchema: z.object({
     sandboxId: z.string().describe('Sandbox ID'),
     duration: z.number().describe('Video duration'),
     resolution: z.enum(['720p', '1080p', '4k']).optional().describe('Output resolution'),
-    compositionId: z.string().optional().describe('Composition ID to render (auto-detected if not provided)'),
+    compositionId: z.string().optional().describe('Composition ID to render (auto-detected if not provided, Remotion only)'),
+    engine: z.enum(['remotion', 'theatre']).optional().describe('Animation engine (default: remotion)'),
   }),
   outputSchema: z.object({
     success: z.boolean(),
@@ -853,19 +1035,104 @@ Uses higher quality settings and supports multiple resolutions. Automatically de
   }),
   execute: async (inputData) => {
     const resolution = inputData.resolution || '1080p';
+    const engine = inputData.engine || 'remotion';
     const outputPath = '/app/output/final.mp4';
-
-    // Map resolution to Remotion scale factor (based on 1920x1080 default)
-    const scaleMap: Record<string, string> = {
-      '720p': '--scale=0.67',
-      '1080p': '',
-      '4k': '--scale=2',
-    };
-    const scaleFlag = scaleMap[resolution] || '';
 
     try {
       // Ensure output directory exists
       await dockerProvider.runCommand(inputData.sandboxId, 'mkdir -p /app/output', { timeout: 5_000 });
+
+      if (engine === 'theatre') {
+        // ── Theatre.js: Puppeteer + FFmpeg via export-video.cjs ──
+        // Verify Vite dev server is running on port 5173
+        const portCheck = await dockerProvider.runCommand(
+          inputData.sandboxId,
+          '(curl -s -o /dev/null -w "%{http_code}" http://localhost:5173/ 2>/dev/null || echo "000")',
+          { timeout: 10_000 }
+        );
+        if (!portCheck.stdout.trim().startsWith('200') && !portCheck.stdout.trim().startsWith('304')) {
+          return {
+            success: false,
+            videoUrl: '',
+            thumbnailUrl: '',
+            duration: inputData.duration,
+            resolution,
+            message: 'Theatre.js render requires the Vite dev server running on port 5173. Call sandbox_start_preview first.',
+          };
+        }
+
+        // Verify export script exists
+        const scriptCheck = await dockerProvider.runCommand(
+          inputData.sandboxId,
+          'test -f /app/export-video.cjs && echo "OK" || echo "MISSING"',
+          { timeout: 5_000 }
+        );
+        if (scriptCheck.stdout.trim() !== 'OK') {
+          return {
+            success: false,
+            videoUrl: '',
+            thumbnailUrl: '',
+            duration: inputData.duration,
+            resolution,
+            message: 'export-video.cjs not found at /app/export-video.cjs. Theatre.js sandbox may not be set up correctly.',
+          };
+        }
+
+        console.log(`[render_final] Theatre.js render: duration=${inputData.duration}s, quality=final, resolution=${resolution}`);
+
+        const result = await dockerProvider.runCommand(
+          inputData.sandboxId,
+          `cd /app && node export-video.cjs --duration ${inputData.duration} --quality final --resolution ${resolution} --output ${outputPath} 2>&1`,
+          { timeout: 300_000 } // 5 minutes for final render
+        );
+
+        if (!result.success) {
+          return {
+            success: false,
+            videoUrl: '',
+            thumbnailUrl: '',
+            duration: inputData.duration,
+            resolution,
+            message: `Theatre.js final render failed: ${(result.stderr || result.stdout).slice(0, 500)}`,
+          };
+        }
+
+        // Check if the file was created
+        const checkFile = await dockerProvider.runCommand(
+          inputData.sandboxId,
+          `test -f ${outputPath} && echo "OK" || echo "MISSING"`,
+          { timeout: 5_000 }
+        );
+
+        if (checkFile.stdout.trim() !== 'OK') {
+          return {
+            success: false,
+            videoUrl: '',
+            thumbnailUrl: '',
+            duration: inputData.duration,
+            resolution,
+            message: 'Video file was not created. Render output: ' + (result.stdout || '').slice(0, 300),
+          };
+        }
+
+        return {
+          success: true,
+          videoUrl: `/api/plugins/animation/sandbox/${inputData.sandboxId}/file?path=output/final.mp4`,
+          thumbnailUrl: '',
+          duration: inputData.duration,
+          resolution,
+          message: `Video rendered successfully [theatre, final quality, ${resolution}]`,
+        };
+      }
+
+      // ── Remotion: native renderer ──
+      // Map resolution to Remotion scale factor (based on 1920x1080 default)
+      const scaleMap: Record<string, string> = {
+        '720p': '--scale=0.67',
+        '1080p': '',
+        '4k': '--scale=2',
+      };
+      const scaleFlag = scaleMap[resolution] || '';
 
       // Detect composition ID if not provided
       let compositionId = inputData.compositionId;

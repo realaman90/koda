@@ -99,18 +99,34 @@ export const requestApprovalTool = createTool({
   id: 'request_approval',
   description: `Request user approval before proceeding. Use this to:
 - Ask a clarifying question (type: "question") with selectable options
+- Ask ALL clarifying questions at once (type: "multi_question") with a fields array
 - Present a plan for approval (type: "plan") before execution
 - Ask for feedback on a preview (type: "preview") before finalizing
 
+For multi_question: pass fields[] with text inputs, selects, and multi-selects.
 The frontend will show the appropriate UI and pause until the user responds.`,
   inputSchema: z.object({
-    type: z.enum(['question', 'plan', 'preview']).describe('Type of approval requested'),
+    type: z.enum(['question', 'plan', 'preview', 'multi_question']).describe('Type of approval requested'),
     content: z.string().describe('The question, plan summary, or message to show'),
     options: z.array(z.object({
       id: z.string(),
       label: z.string(),
       description: z.string().optional(),
     })).optional().describe('Selectable options (for question type)'),
+    fields: z.array(z.object({
+      id: z.string(),
+      type: z.enum(['text', 'select', 'multi_select']),
+      label: z.string(),
+      description: z.string().optional(),
+      required: z.boolean().optional(),
+      placeholder: z.string().optional(),
+      options: z.array(z.object({
+        id: z.string(),
+        label: z.string(),
+        description: z.string().optional(),
+      })).optional(),
+      defaultValue: z.union([z.string(), z.array(z.string())]).optional(),
+    })).optional().describe('Form fields (for multi_question type)'),
   }),
   outputSchema: z.object({
     success: z.boolean(),

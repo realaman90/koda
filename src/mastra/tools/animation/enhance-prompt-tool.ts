@@ -212,7 +212,7 @@ const promptEnhancerAgent = new Agent({
   id: 'animation-prompt-enhancer',
   name: 'animation-prompt-enhancer',
   instructions: PROMPT_ENHANCER_INSTRUCTIONS,
-  model: 'anthropic/claude-opus-4-5',
+  model: 'anthropic/claude-opus-4-6',
 });
 
 export const enhanceAnimationPromptTool = createTool({

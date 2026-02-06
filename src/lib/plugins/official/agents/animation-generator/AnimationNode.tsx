@@ -27,6 +27,7 @@ import {
   TodoSection,
   VideoCard,
 } from './components/ChatMessages';
+import { QuestionForm } from './components/QuestionForm';
 
 // Hooks
 import { useAnimationStream } from './hooks/useAnimationStream';
@@ -44,6 +45,7 @@ import type {
   ToolCallItem,
   ThinkingBlockItem,
   MediaEntry,
+  FormField,
 } from './types';
 
 // ─── Constants ──────────────────────────────────────────────────────────
@@ -252,6 +254,9 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         mediaName = (d.name as string) || 'Video';
       }
 
+      // Skip video media for Theatre.js (no video ref support in Puppeteer rendering)
+      if (engine === 'theatre' && mediaType === 'video') continue;
+
       if (mediaUrl) {
         updatedEdgeMedia.push({
           id: `edge_${edge.id}`,
@@ -282,6 +287,15 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       updateNodeData(id, { media: [...uploadMedia, ...updatedEdgeMedia] });
     }
   }, [id, incomingEdges, nodes, data.media, updateNodeData]);
+
+  // Auto-remove video media when switching to Theatre.js (no video ref support)
+  useEffect(() => {
+    if (engine === 'theatre' && media.some((m) => m.type === 'video')) {
+      const filtered = media.filter((m) => m.type !== 'video');
+      updateNodeData(id, { media: filtered });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engine]); // Only react to engine changes
 
   // ─── Media upload handler ─────────────────────────────────────────
   const handleMediaUpload = useCallback(
@@ -402,6 +416,10 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     }
   }, [flushStreamingText]);
 
+  // ─── Performance timing ────────────────────────────────────────────
+  const pipelineStartRef = useRef<number>(0);
+  const toolTimersRef = useRef<Map<string, { name: string; start: number }>>(new Map());
+
   // ─── Stream callbacks ───────────────────────────────────────────────
   const createStreamCallbacks = useCallback(
     (): AnimationStreamCallbacks => ({
@@ -416,6 +434,8 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       },
 
       onComplete: (fullText) => {
+        const totalTime = pipelineStartRef.current ? ((Date.now() - pipelineStartRef.current) / 1000).toFixed(1) : '?';
+        console.log(`%c⏱ [Animation] Stream complete — total: ${totalTime}s`, 'color: #22C55E; font-weight: bold');
         if (textFlushTimerRef.current) {
           clearTimeout(textFlushTimerRef.current);
           textFlushTimerRef.current = null;
@@ -498,6 +518,11 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           reasoningTextRef.current = '';
         }
 
+        // ⏱ Tool call timing
+        const elapsed = pipelineStartRef.current ? ((Date.now() - pipelineStartRef.current) / 1000).toFixed(1) : '?';
+        console.log(`%c⏱ [Animation] Tool call: ${event.toolName} — started at +${elapsed}s`, 'color: #3B82F6', event.args);
+        toolTimersRef.current.set(event.toolCallId, { name: event.toolName, start: Date.now() });
+
         // Track visible tools in state.toolCalls
         if (!UI_TOOLS.has(event.toolName)) {
           const tc: ToolCallItem = {
@@ -574,6 +599,32 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           });
         }
 
+        // UI tool: request_approval with multi_question → show form
+        if (event.toolName === 'request_approval') {
+          const args = event.args as { type: string; content: string; options?: Array<{ id: string; label: string; description?: string }>; fields?: FormField[] };
+          if (args.type === 'multi_question' && args.fields) {
+            updateNodeData(id, {
+              state: {
+                ...ls,
+                phase: 'question',
+                formQuestion: { content: args.content, fields: args.fields },
+                question: undefined,
+                updatedAt: new Date().toISOString(),
+              },
+            });
+          } else if (args.type === 'question' && args.options) {
+            updateNodeData(id, {
+              state: {
+                ...ls,
+                phase: 'question',
+                question: { text: args.content, options: args.options, customInput: true },
+                formQuestion: undefined,
+                updatedAt: new Date().toISOString(),
+              },
+            });
+          }
+        }
+
         // Track sandbox file writes
         if (event.toolName === 'sandbox_write_file' && ls.execution) {
           const { path } = event.args as { path: string };
@@ -588,6 +639,19 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
 
       onToolResult: (event) => {
         let ls = getLatestState();
+
+        // ⏱ Tool result timing
+        const timer = toolTimersRef.current.get(event.toolCallId);
+        if (timer) {
+          const toolDuration = ((Date.now() - timer.start) / 1000).toFixed(1);
+          const pipelineElapsed = pipelineStartRef.current ? ((Date.now() - pipelineStartRef.current) / 1000).toFixed(1) : '?';
+          const isFail = event.isError || (typeof event.result === 'object' && event.result !== null && (event.result as Record<string, unknown>).success === false);
+          console.log(
+            `%c⏱ [Animation] Tool result: ${timer.name} — took ${toolDuration}s (pipeline +${pipelineElapsed}s) ${isFail ? '❌ FAILED' : '✅'}`,
+            isFail ? 'color: #EF4444; font-weight: bold' : 'color: #22C55E',
+          );
+          toolTimersRef.current.delete(event.toolCallId);
+        }
 
         // Update tool call status for visible tools
         if (!UI_TOOLS.has(event.toolName)) {
@@ -897,6 +961,13 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     [id, updateNodeData]
   );
 
+  // ─── Pipeline timer helper ─────────────────────────────────────────
+  const startPipelineTimer = useCallback((label: string) => {
+    pipelineStartRef.current = Date.now();
+    toolTimersRef.current.clear();
+    console.log(`%c⏱ [Animation] Pipeline started: ${label}`, 'color: #FBBF24; font-weight: bold');
+  }, []);
+
   // ─── Stream lifecycle ───────────────────────────────────────────────
   const resetStreamingRefs = useCallback(() => {
     streamingTextRef.current = '';
@@ -944,6 +1015,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         },
       });
 
+      startPipelineTimer('analyzePrompt');
       resetStreamingRefs();
       const callbacks = createStreamCallbacks();
 
@@ -1012,6 +1084,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         },
       });
 
+      startPipelineTimer('selectStyle');
       resetStreamingRefs();
       const callbacks = createStreamCallbacks();
 
@@ -1035,6 +1108,89 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
                 ],
                 totalDuration: 7,
                 style: selectedStyle,
+                fps: 60,
+              },
+              planTimestamp: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+          });
+        }
+      } catch {
+        // Error handled by callback
+      }
+    },
+    [id, data.prompt, engine, aspectRatio, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
+  );
+
+  const handleFormSubmit = useCallback(
+    async (answers: Record<string, string | string[]>) => {
+      const ls = getLatestState();
+      const formQuestion = ls.formQuestion;
+
+      // Build human-readable summary for the chat bubble
+      const lines: string[] = [];
+      if (formQuestion) {
+        for (const field of formQuestion.fields) {
+          const val = answers[field.id];
+          if (val === undefined || val === '' || (Array.isArray(val) && val.length === 0)) continue;
+          const displayVal = Array.isArray(val) ? val.join(', ') : val;
+          lines.push(`${field.label}: ${displayVal}`);
+        }
+      }
+      const userContent = lines.length > 0 ? lines.join('\n') : JSON.stringify(answers);
+
+      const userMsg: AnimationMessage = {
+        id: `msg_${Date.now()}`,
+        role: 'user' as const,
+        content: userContent,
+        timestamp: new Date().toISOString(),
+        seq: getNextSeq(),
+      };
+      const thinkingBlock: ThinkingBlockItem = {
+        id: `tb_${Date.now()}`,
+        label: 'Processing your answers...',
+        startedAt: new Date().toISOString(),
+        seq: getNextSeq(),
+      };
+
+      updateNodeData(id, {
+        state: {
+          ...ls,
+          phase: 'executing',
+          formQuestion: undefined,
+          question: undefined,
+          messages: [...ls.messages, userMsg],
+          thinkingBlocks: [...ls.thinkingBlocks, thinkingBlock],
+          execution: { todos: [], thinking: 'Processing your answers...', files: [] },
+          updatedAt: new Date().toISOString(),
+        },
+      });
+
+      startPipelineTimer('formSubmit');
+      resetStreamingRefs();
+      const callbacks = createStreamCallbacks();
+
+      try {
+        const answersJson = JSON.stringify(answers, null, 2);
+        await streamToAgent(
+          `User answered the form:\n${answersJson}\n\nProceed with generating a plan based on these answers.\n\nOriginal prompt: ${data.prompt || 'Animation request'}`,
+          { nodeId: id, phase: 'question', engine, aspectRatio },
+          callbacks
+        );
+        const latest = getLatestState();
+        if (latest.phase === 'executing') {
+          updateNodeData(id, {
+            state: {
+              ...latest,
+              phase: 'plan',
+              plan: {
+                scenes: [
+                  { number: 1, title: 'Intro', duration: 2, description: 'Opening animation' },
+                  { number: 2, title: 'Main', duration: 3, description: data.prompt || 'Main animation' },
+                  { number: 3, title: 'Outro', duration: 2, description: 'Closing animation' },
+                ],
+                totalDuration: 7,
+                style: 'smooth',
                 fps: 60,
               },
               planTimestamp: new Date().toISOString(),
@@ -1082,6 +1238,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       },
     });
 
+    startPipelineTimer('acceptPlan');
     resetStreamingRefs();
     const callbacks = createStreamCallbacks();
 
@@ -1140,6 +1297,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         },
       });
 
+      startPipelineTimer('revisePlan');
       resetStreamingRefs();
       const callbacks = createStreamCallbacks();
 
@@ -1212,6 +1370,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         state: { ...ls, ...stateUpdate },
       });
 
+      startPipelineTimer('sendMessage');
       resetStreamingRefs();
       const callbacks = createStreamCallbacks();
 
@@ -1316,6 +1475,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       },
     });
 
+    startPipelineTimer('regenerate');
     resetStreamingRefs();
     const callbacks = createStreamCallbacks();
 
@@ -1361,6 +1521,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       },
     });
 
+    startPipelineTimer('exportVideo');
     resetStreamingRefs();
     const callbacks = createStreamCallbacks();
 
@@ -1444,7 +1605,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       case 'executing':
         return 'Send a message to the agent...';
       case 'question':
-        return 'Or type your own answer...';
+        return state.formQuestion ? 'Or type a message...' : 'Or type your own answer...';
       case 'error':
         return 'Describe what you\'d like to try...';
       case 'preview':
@@ -1454,7 +1615,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       default:
         return 'Describe the animation you want...';
     }
-  }, [state.phase, state.planAccepted]);
+  }, [state.phase, state.planAccepted, state.formQuestion]);
 
   // ─── Header config ──────────────────────────────────────────────────
   const headerConfig = useMemo(() => {
@@ -1558,9 +1719,13 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     return base;
   }, [selected]);
 
-  const videoHandleStart = IMAGE_HANDLE_START + imageRefCount * HANDLE_SPACING + VIDEO_HANDLE_START_OFFSET;
+  const videoHandleStart = engine !== 'theatre'
+    ? IMAGE_HANDLE_START + imageRefCount * HANDLE_SPACING + VIDEO_HANDLE_START_OFFSET
+    : 0;
   // minHeight must accommodate: video handles + their +/- buttons + padding
-  const lastVideoHandleBottom = videoHandleStart + videoRefCount * HANDLE_SPACING + 40; // +40 for +/- buttons
+  const lastVideoHandleBottom = engine !== 'theatre'
+    ? videoHandleStart + videoRefCount * HANDLE_SPACING + 40 // +40 for +/- buttons
+    : IMAGE_HANDLE_START + imageRefCount * HANDLE_SPACING + 40;
   const minHeight = Math.max(200, lastVideoHandleBottom);
 
   // ─── Render ─────────────────────────────────────────────────────────
@@ -1629,8 +1794,8 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         </div>
       )}
 
-      {/* ── Left: Video reference handles ─────────────────────────────── */}
-      {Array.from({ length: videoRefCount }).map((_, i) => {
+      {/* ── Left: Video reference handles (hidden for Theatre.js — no video ref support) */}
+      {engine !== 'theatre' && Array.from({ length: videoRefCount }).map((_, i) => {
         const top = videoHandleStart + i * HANDLE_SPACING;
         return (
           <div key={`vid-ref-${i}`} className="absolute -left-[10px]" style={{ top }}>
@@ -1647,8 +1812,8 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         );
       })}
 
-      {/* Video handle add/remove */}
-      {(selected || isHovered) && (
+      {/* Video handle add/remove (hidden for Theatre.js) */}
+      {(selected || isHovered) && engine !== 'theatre' && (
         <div
           className="absolute -left-[10px] flex flex-col gap-1 transition-opacity duration-200"
           style={{ top: videoHandleStart + videoRefCount * HANDLE_SPACING + 4 }}
@@ -1686,7 +1851,6 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           </h3>
           <p className="text-[10px] leading-tight" style={{ color: headerConfig.statusColor }}>
             {headerConfig.statusText}
-            {isStreaming && state.phase === 'executing' ? ' (streaming)' : ''}
           </p>
         </div>
       </div>
@@ -1758,8 +1922,17 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
               </div>
             )}
 
-            {/* Question options */}
-            {state.phase === 'question' && state.question && (
+            {/* Multi-question form */}
+            {state.phase === 'question' && state.formQuestion && (
+              <QuestionForm
+                content={state.formQuestion.content}
+                fields={state.formQuestion.fields}
+                onSubmit={handleFormSubmit}
+              />
+            )}
+
+            {/* Single question options (backward compat) */}
+            {state.phase === 'question' && state.question && !state.formQuestion && (
               <>
                 <AssistantText content={state.question.text} />
                 <QuestionOptions question={state.question} onSelect={handleSelectStyle} />
