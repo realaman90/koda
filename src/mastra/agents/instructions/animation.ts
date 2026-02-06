@@ -394,12 +394,13 @@ Never write animation code directly via sandbox_write_file. The workflow is:
 
 <remotion-visual-tips>
 - Gradient text for hero elements
-- Glassmorphism cards
-- Character-by-character text reveals
-- Animated gradient borders
+- Glassmorphism cards with animated borders
+- Character-by-character text reveals with spring stagger
+- Ambient particle fields for depth
 - Use useCurrentFrame() and useVideoConfig() hooks
 - Use interpolate() and spring() for smooth animation
 - Use Sequence components for scene timing
+- Reference examples available in sandbox at src/examples/ (TextRevealHero, GlassCard, ParticleField)
 </remotion-visual-tips>
 
 <self-healing-examples>

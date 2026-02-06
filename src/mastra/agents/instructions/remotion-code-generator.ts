@@ -657,6 +657,100 @@ const displayText = text.slice(0, charsToShow);
 </typewriter-pattern>
 </remotion-rules>
 
+<premium-examples>
+The sandbox contains reference examples at src/examples/ that you can study.
+Below are condensed versions showing KEY PATTERNS for premium output.
+
+<example name="TextRevealHero" file="src/examples/TextRevealHero.tsx">
+Character-by-character text reveal with gradient text and radial glow background.
+
+KEY PATTERNS:
+1. Split text into chars, stagger spring per char:
+\`\`\`tsx
+{text.split('').map((char, i) => {
+  const progress = spring({ frame: frame - (startFrame + i * 2), fps, config: { damping: 12, stiffness: 120, mass: 0.5 } });
+  const y = interpolate(progress, [0, 1], [40, 0]);
+  return (
+    <span key={i} style={{
+      display: 'inline-block', opacity: progress,
+      transform: \`translateY(\${y}px)\`,
+      background: 'linear-gradient(135deg, #FFFFFF 0%, #6366F1 100%)',
+      WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+    }}>
+      {char === ' ' ? '\\u00A0' : char}
+    </span>
+  );
+})}
+\`\`\`
+2. Radial glow behind hero element (position: absolute, radial-gradient, filter: blur(80px))
+3. Grid pattern overlay (linear-gradient 1px lines at rgba 0.02 white, backgroundSize: 60px 60px)
+4. Subtitle fades in AFTER title finishes with separate spring delay
+</example>
+
+<example name="GlassCard" file="src/examples/GlassCard.tsx">
+Glassmorphism card with animated conic-gradient border and staggered feature list.
+
+KEY PATTERNS:
+1. Card entrance with scale spring from 0.85:
+\`\`\`tsx
+const cardScale = spring({ frame, fps, config: { damping: 14, stiffness: 80, mass: 0.8 } });
+<div style={{ transform: \`scale(\${0.85 + cardScale * 0.15})\` }}>
+\`\`\`
+2. Animated border: conic-gradient with rotation driven by frame:
+\`\`\`tsx
+const borderRotation = (frame * 1.5) % 360;
+<div style={{ background: \`conic-gradient(from \${borderRotation}deg, #8B5CF6, #22D3EE, #8B5CF680, #8B5CF6)\`, opacity: 0.6 }} />
+\`\`\`
+3. Glass body: rgba(15,15,25,0.9), backdropFilter: blur(24px), inset highlight border
+4. Staggered feature rows: each row delays by 8 frames (delay: 20 + i * 8)
+</example>
+
+<example name="ParticleField" file="src/examples/ParticleField.tsx">
+Ambient floating particles for depth. Composable as a background layer in any scene.
+
+KEY PATTERNS:
+1. Deterministic random via seeded sin function (reproducible across renders):
+\`\`\`tsx
+function seededRandom(seed: number): number {
+  const x = Math.sin(seed * 127.1 + seed * 311.7) * 43758.5453;
+  return x - Math.floor(x);
+}
+\`\`\`
+2. Sine-based floating (NO CSS animations):
+\`\`\`tsx
+const floatY = Math.sin(frame * 0.02 * p.speed + p.phase) * 15;
+const floatX = Math.cos(frame * 0.015 * p.speed + p.phase * 0.7) * 8;
+const pulse = 0.7 + Math.sin(frame * 0.03 + p.phase) * 0.3;
+\`\`\`
+3. Depth illusion: vary particle size (1.5-4.5px) and opacity (0.15-0.5)
+4. Glow on larger particles: boxShadow with color at 25% opacity
+5. Use React.useMemo for particle generation (array is static per render)
+</example>
+
+<composing-examples>
+Combine these patterns in a scene. Example Video.tsx using all three:
+\`\`\`tsx
+import { AbsoluteFill, Sequence } from 'remotion';
+import { ParticleField } from './examples/ParticleField';
+import { TextRevealHero } from './examples/TextRevealHero';
+import { GlassCard } from './examples/GlassCard';
+
+export const Video: React.FC = () => (
+  <AbsoluteFill style={{ background: '#0A0A0F' }}>
+    <ParticleField count={50} color="#6366F1" />
+    <Sequence from={0} durationInFrames={150}>
+      <TextRevealHero title="Next Level" subtitle="Build premium animations" />
+    </Sequence>
+    <Sequence from={120} durationInFrames={180}>
+      <GlassCard title="Features" />
+    </Sequence>
+  </AbsoluteFill>
+);
+\`\`\`
+Layer particles BEHIND content. Use Sequence to orchestrate scenes.
+</composing-examples>
+</premium-examples>
+
 <rules>
 1. ALWAYS return valid JSON with "files" array and "summary" string.
 2. NEVER include placeholder comments like "// add code here".

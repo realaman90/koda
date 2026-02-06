@@ -32,7 +32,7 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 ENV REMOTION_CHROME_EXECUTABLE=/usr/bin/chromium
 
 # Create project directories
-RUN mkdir -p /app/output /app/src/utils /app/src/components /app/src/sequences /app/public
+RUN mkdir -p /app/output /app/src/utils /app/src/components /app/src/sequences /app/src/examples /app/public
 
 # Copy template files directly to /app
 COPY template/package.json /app/
