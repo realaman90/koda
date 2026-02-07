@@ -12,7 +12,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
-import { useCanvasStore, createStoryboardNode, createProductShotNode } from '@/stores/canvas-store';
+import { useCanvasStore, createStoryboardNode, createProductShotNode, createPluginNode } from '@/stores/canvas-store';
 import type { AppNode, ImageGeneratorNodeData, VideoGeneratorNodeData, ImageModelType, VideoModelType } from '@/lib/types';
 import { MODEL_CAPABILITIES, VIDEO_MODEL_CAPABILITIES } from '@/lib/types';
 import { nodeTypes } from './nodes';
@@ -52,27 +52,33 @@ export function Canvas() {
   const addNode = useCanvasStore((state) => state.addNode);
   const reactFlowInstance = useCanvasStore((state) => state.reactFlowInstance);
 
-  // Handle plugin launch - create node for storyboard, open sandbox for others
+  // Handle plugin launch - create node for node-based plugins, open sandbox for others
   const handlePluginLaunch = useCallback(
     (pluginId: string) => {
+
+      // Create a canvas node at viewport center
+      let position = { x: 400, y: 300 };
+      if (reactFlowInstance) {
+        const viewport = reactFlowInstance.getViewport();
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        position = {
+          x: (-viewport.x + width / 2 - 200) / viewport.zoom,
+          y: (-viewport.y + height / 2 - 200) / viewport.zoom,
+        };
+      }
       if (pluginId === 'storyboard-generator' || pluginId === 'product-shot') {
-        // Create a canvas node at viewport center
-        let position = { x: 400, y: 300 };
-        if (reactFlowInstance) {
-          const viewport = reactFlowInstance.getViewport();
-          const width = window.innerWidth;
-          const height = window.innerHeight;
-          position = {
-            x: (-viewport.x + width / 2 - 200) / viewport.zoom,
-            y: (-viewport.y + height / 2 - 200) / viewport.zoom,
-          };
-        }
         const node = pluginId === 'product-shot'
           ? createProductShotNode(position, 'Product Shots')
           : createStoryboardNode(position, 'Storyboard');
         addNode(node);
+      } else if (pluginId === 'animation-generator') {
+        // Animation Generator uses the pluginNode type
+        const node = createPluginNode(position, pluginId, 'Animation Generator');
+        addNode(node);
       } else {
         // Other plugins still open as modals. Maybe not needed anymore. We'll see.
+        // Other plugins open as modals
         openSandbox(pluginId);
       }
     },
@@ -165,6 +171,22 @@ export function Canvas() {
       // Text handle only accepts text nodes
       if (connection.targetHandle === 'text') {
         return sourceNode.type === 'text';
+      }
+
+      // Animation node video ref handles — only allow from videoGenerator, only for Remotion engine
+      if (targetHandle.startsWith('video-ref-')) {
+        if (sourceNode.type !== 'videoGenerator') return false;
+        // Block video connections to Theatre.js animation nodes
+        if (targetNode.type === 'pluginNode') {
+          const animData = targetNode.data as Record<string, unknown>;
+          if (animData.engine === 'theatre') return false;
+        }
+        return true;
+      }
+
+      // Animation node image ref handles
+      if (targetHandle.startsWith('image-ref-')) {
+        return isImageSource;
       }
 
       return true;

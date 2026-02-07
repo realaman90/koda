@@ -30,8 +30,18 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files (keep .env.example)
+.env
+.env.local
+.env.*.local
+
+# database
+/data/
+*.db
+*.db-journal
+
+# drizzle migrations (generated)
+/drizzle/
 
 # vercel
 .vercel
@@ -39,3 +49,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+#local data
+/data/

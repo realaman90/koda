@@ -1,0 +1,381 @@
+/**
+ * Animation Generator Streaming API Route
+ *
+ * Uses Mastra's agent.stream() with fullStream to forward all chunk types
+ * (text-delta, tool-call, tool-result, finish, error) as SSE events.
+ */
+
+import { NextResponse } from 'next/server';
+import { animationAgent } from '@/mastra';
+import { getEngineInstructions } from '@/mastra/agents/instructions/animation';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const maxDuration = 120;
+
+interface StreamRequestBody {
+  prompt?: string;
+  messages?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  context?: {
+    nodeId?: string;
+    phase?: string;
+    plan?: unknown;
+    todos?: Array<{ id: string; label: string; status: string }>;
+    attachments?: Array<{ type: string; url: string }>;
+    media?: Array<{ id: string; source: string; name: string; type: string; dataUrl: string; duration?: number; mimeType?: string }>;
+    sandboxId?: string;
+    engine?: 'remotion' | 'theatre';
+    aspectRatio?: '16:9' | '9:16' | '1:1' | '4:3' | '21:9';
+  };
+}
+
+export async function POST(request: Request) {
+  try {
+    const body: StreamRequestBody = await request.json();
+    const { prompt, messages, context } = body;
+
+    // Normalize input: accept either prompt (string) or messages (array)
+    let agentMessages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
+
+    if (messages && messages.length > 0) {
+      agentMessages = [...messages];
+    } else if (prompt) {
+      agentMessages = [{ role: 'user', content: prompt }];
+    } else {
+      return NextResponse.json(
+        { error: 'Either prompt or messages is required' },
+        { status: 400 }
+      );
+    }
+
+    // Inject engine-specific instructions as a system message
+    const engine = context?.engine || 'remotion';
+    agentMessages.unshift({
+      role: 'system',
+      content: getEngineInstructions(engine),
+    });
+
+    // Prepend context as a system-style user message if provided
+    if (context) {
+      const contextParts: string[] = [];
+      // Engine is ALWAYS included prominently so the agent can't miss it
+      contextParts.push(`ANIMATION ENGINE: ${engine.toUpperCase()} — You MUST use template "${engine}" when creating a sandbox. Do NOT use any other engine.`);
+      if (context.aspectRatio) {
+        contextParts.push(`Aspect ratio: ${context.aspectRatio}`);
+      }
+      if (context.sandboxId) {
+        contextParts.push(`Active sandbox ID: ${context.sandboxId}`);
+      }
+      if (context.media && context.media.length > 0) {
+        const mediaList = context.media.map(m =>
+          `- [${m.type}] "${m.name}" (${m.source}${m.duration ? `, ${m.duration}s` : ''}) ${m.dataUrl.startsWith('data:') ? `BASE64 (${m.mimeType || 'unknown'}, ~${Math.round(m.dataUrl.length * 0.75 / 1024)}KB) — use sandbox_write_binary to write to public/media/` : `URL: ${m.dataUrl} — use sandbox_upload_media to download to public/media/`}`
+        ).join('\n');
+        contextParts.push(`⚠️ USER MEDIA FILES — MUST upload to sandbox and feature in animation:\n${mediaList}`);
+        contextParts.push(
+          'MANDATORY: Upload each file to public/media/ BEFORE writing code. ' +
+          'For base64: extract the portion after the comma in "data:mime;base64,DATA" and pass to sandbox_write_binary. ' +
+          'For videos, call analyze_media first for scene understanding, then extract_video_frames for key frame images.'
+        );
+      }
+      if (context.phase) {
+        contextParts.push(`Current phase: ${context.phase}`);
+      }
+      if (context.plan) {
+        contextParts.push(`Animation plan:\n${JSON.stringify(context.plan, null, 2)}`);
+      }
+      if (context.todos && context.todos.length > 0) {
+        contextParts.push(`Progress:\n${context.todos.map(t => `- [${t.status}] ${t.label}`).join('\n')}`);
+      }
+      if (context.attachments && context.attachments.length > 0) {
+        contextParts.push(`${context.attachments.length} reference files attached`);
+      }
+
+      if (contextParts.length > 0) {
+        // Prepend context to the first user message
+        const contextStr = contextParts.join('\n');
+        const firstUserIdx = agentMessages.findIndex(m => m.role === 'user');
+        if (firstUserIdx >= 0) {
+          agentMessages[firstUserIdx] = {
+            ...agentMessages[firstUserIdx],
+            content: `${agentMessages[firstUserIdx].content}\n\n<context>\n${contextStr}\n</context>`,
+          };
+        }
+      }
+    }
+
+    // ── Message windowing ──────────────────────────────────────────
+    // Only keep the last N messages to prevent token overflow.
+    // The system context (prepended to first user message) provides
+    // enough state for the agent to continue coherently.
+    const MAX_MESSAGES = 10;
+    if (agentMessages.length > MAX_MESSAGES) {
+      agentMessages = agentMessages.slice(-MAX_MESSAGES);
+    }
+
+    // ── Sandbox state injection (post-windowing) ─────────────────
+    // The sandbox ID is critical state — if the agent loses it
+    // (pushed out by windowing), it hallucinates fake IDs.
+    // Always append as trailing system message so it's never lost.
+    if (context?.sandboxId) {
+      agentMessages.push({
+        role: 'system',
+        content: `CRITICAL STATE: Your active sandbox ID is "${context.sandboxId}". Use EXACTLY this ID for ALL sandbox tool calls. Do NOT invent, guess, or create new sandbox IDs.`,
+      });
+    }
+
+    // ⏱ Server-side timing
+    const serverStart = Date.now();
+    console.log(`⏱ [Animation API] Stream request — engine: ${engine}, messages: ${agentMessages.length}`);
+
+    const result = await animationAgent.stream(
+      agentMessages as Parameters<typeof animationAgent.stream>[0],
+      {
+        maxSteps: 50,
+        providerOptions: {
+          anthropic: {
+            thinking: {
+              type: 'enabled',
+              budgetTokens: 10000,
+            },
+          },
+        },
+      }
+    );
+
+    // Create encoder for SSE streaming
+    const encoder = new TextEncoder();
+
+    // Track closed state for the stream controller
+    let closed = false;
+
+    const readable = new ReadableStream({
+      async start(controller) {
+        const safeEnqueue = (data: Uint8Array) => {
+          if (!closed) {
+            try { controller.enqueue(data); } catch { closed = true; }
+          }
+        };
+        const safeClose = () => {
+          if (!closed) {
+            closed = true;
+            try { controller.close(); } catch { /* already closed */ }
+          }
+        };
+
+        // Close early when the client disconnects
+        request.signal.addEventListener('abort', () => {
+          closed = true;
+          safeClose();
+        });
+
+        try {
+          const reader = result.fullStream.getReader();
+
+          while (!closed) {
+            const { done, value: chunk } = await reader.read();
+            if (done || closed) break;
+
+            let sseData: string | null = null;
+
+            switch (chunk.type) {
+              case 'text-delta': {
+                sseData = JSON.stringify({
+                  type: 'text-delta',
+                  text: chunk.payload.text,
+                });
+                break;
+              }
+
+              case 'tool-call': {
+                const toolElapsed = ((Date.now() - serverStart) / 1000).toFixed(1);
+                console.log(`⏱ [Animation API] Tool call: ${chunk.payload.toolName} at +${toolElapsed}s`);
+                sseData = JSON.stringify({
+                  type: 'tool-call',
+                  toolCallId: chunk.payload.toolCallId,
+                  toolName: chunk.payload.toolName,
+                  args: chunk.payload.args,
+                });
+                break;
+              }
+
+              case 'tool-result': {
+                const resultElapsed = ((Date.now() - serverStart) / 1000).toFixed(1);
+                const isErr = chunk.payload.isError;
+                console.log(`⏱ [Animation API] Tool result: ${chunk.payload.toolName} at +${resultElapsed}s ${isErr ? '❌' : '✅'}`);
+                sseData = JSON.stringify({
+                  type: 'tool-result',
+                  toolCallId: chunk.payload.toolCallId,
+                  toolName: chunk.payload.toolName,
+                  result: chunk.payload.result,
+                  isError: chunk.payload.isError,
+                });
+                break;
+              }
+
+              case 'finish': {
+                sseData = JSON.stringify({
+                  type: 'finish',
+                  finishReason: chunk.payload.stepResult?.reason,
+                });
+                break;
+              }
+
+              case 'step-finish': {
+                sseData = JSON.stringify({
+                  type: 'step-finish',
+                  usage: chunk.payload.output?.usage ?? chunk.payload.totalUsage,
+                });
+                break;
+              }
+
+              case 'tool-error': {
+                sseData = JSON.stringify({
+                  type: 'tool-result',
+                  toolCallId: chunk.payload.toolCallId,
+                  toolName: chunk.payload.toolName,
+                  result: { error: chunk.payload.error instanceof Error ? chunk.payload.error.message : String(chunk.payload.error) },
+                  isError: true,
+                });
+                break;
+              }
+
+              case 'error': {
+                sseData = JSON.stringify({
+                  type: 'error',
+                  error: chunk.payload.error instanceof Error
+                    ? chunk.payload.error.message
+                    : String(chunk.payload.error),
+                });
+                break;
+              }
+
+              // Handle reasoning/extended thinking (may not be in Mastra's type union yet)
+              default: {
+                const chunkType = (chunk as { type: string }).type;
+                if (chunkType === 'reasoning' || chunkType === 'reasoning-delta') {
+                  const payload = (chunk as { payload: Record<string, unknown> }).payload;
+                  const reasoningText = payload?.text ?? payload?.content ?? '';
+                  if (reasoningText) {
+                    sseData = JSON.stringify({
+                      type: 'reasoning-delta',
+                      text: String(reasoningText),
+                    });
+                  }
+                }
+                break;
+              }
+            }
+
+            if (sseData) {
+              safeEnqueue(encoder.encode(`data: ${sseData}\n\n`));
+            }
+          }
+
+          // ⏱ Server total time
+          const serverTotal = ((Date.now() - serverStart) / 1000).toFixed(1);
+          console.log(`⏱ [Animation API] Stream complete — total: ${serverTotal}s`);
+
+          // Send final complete event (ALWAYS — even if aggregation fails)
+          // This is critical: the client relies on 'complete' to know the stream ended
+          if (!closed) {
+            let text = '';
+            let usage = undefined;
+            let finishReason = undefined;
+            try {
+              [text, usage, finishReason] = await Promise.all([
+                result.text,
+                result.usage,
+                result.finishReason,
+              ]);
+            } catch (aggregationErr) {
+              // Aggregation failed — send complete with empty text
+              // This happens when agent only did tool calls without generating text
+              console.warn('Stream aggregation failed (likely tool-only response):', aggregationErr);
+            }
+
+            safeEnqueue(encoder.encode(`data: ${JSON.stringify({
+              type: 'complete',
+              text: text || '',
+              usage,
+              finishReason,
+            })}\n\n`));
+          }
+          safeClose();
+        } catch (error) {
+          if (!closed) {
+            console.error('Stream processing error:', error);
+            safeEnqueue(encoder.encode(`data: ${JSON.stringify({
+              type: 'error',
+              error: error instanceof Error ? error.message : 'Stream error',
+            })}\n\n`));
+          }
+          safeClose();
+        }
+      },
+      cancel() {
+        closed = true;
+      },
+    });
+
+    return new Response(readable, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      },
+    });
+  } catch (error) {
+    console.error('Animation streaming error:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Streaming failed' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * GET endpoint for checking stream status
+ */
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const nodeId = searchParams.get('nodeId');
+
+  if (!nodeId) {
+    return NextResponse.json(
+      { error: 'nodeId parameter required' },
+      { status: 400 }
+    );
+  }
+
+  return NextResponse.json({
+    status: 'ready',
+    nodeId,
+    agentId: 'animation-agent',
+    capabilities: [
+      // UI Tools
+      'update_todo',
+      'batch_update_todos',
+      'set_thinking',
+      'add_message',
+      'request_approval',
+      // Planning Tools
+      'analyze_prompt',
+      'generate_plan',
+      // Sandbox Lifecycle
+      'sandbox_create',
+      'sandbox_destroy',
+      // Sandbox Operations
+      'sandbox_write_file',
+      'sandbox_read_file',
+      'sandbox_run_command',
+      'sandbox_list_files',
+      // Preview & Visual
+      'sandbox_start_preview',
+      'sandbox_screenshot',
+      // Rendering
+      'render_preview',
+      'render_final',
+    ],
+  });
+}

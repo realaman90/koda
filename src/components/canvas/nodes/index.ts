@@ -11,6 +11,7 @@ import { ProductShotNode } from './ProductShotNode';
 import { MusicGeneratorNode } from './MusicGeneratorNode';
 import { SpeechNode } from './SpeechNode';
 import { VideoAudioNode } from './VideoAudioNode';
+import { PluginNode } from './PluginNode';
 
 export const nodeTypes: NodeTypes = {
   imageGenerator: ImageGeneratorNode,
@@ -25,8 +26,9 @@ export const nodeTypes: NodeTypes = {
   musicGenerator: MusicGeneratorNode,
   speech: SpeechNode,
   videoAudio: VideoAudioNode,
+  pluginNode: PluginNode,
 };
 
-export { ImageGeneratorNode, VideoGeneratorNode, TextNode, MediaNode, StickyNoteNode, StickerNode, GroupNode, StoryboardNode, ProductShotNode, MusicGeneratorNode, SpeechNode, VideoAudioNode };
+export { ImageGeneratorNode, VideoGeneratorNode, TextNode, MediaNode, StickyNoteNode, StickerNode, GroupNode, StoryboardNode,ProductShotNode, MusicGeneratorNode, SpeechNode, VideoAudioNode, PluginNode };
 export { ExpandButton } from './ExpandButton';
 export { ResizeHandle } from './ResizeHandle';

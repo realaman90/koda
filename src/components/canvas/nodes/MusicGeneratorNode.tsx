@@ -399,11 +399,11 @@ function MusicGeneratorNodeComponent({ id, data, selected }: NodeProps<MusicGene
             type="target"
             position={Position.Left}
             id="text"
-            className="!relative !transform-none !w-6 !h-6 !border-2 !rounded-md node-handle hover:!border-orange-500"
+            className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-yellow-400 !border-zinc-900 hover:!border-zinc-700"
           />
-          <Type className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none" style={{ color: 'var(--text-muted)' }} />
+          <Type className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
         </div>
-        <span className="absolute left-8 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
+        <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
           Text Prompt
         </span>
       </div>
@@ -415,11 +415,11 @@ function MusicGeneratorNodeComponent({ id, data, selected }: NodeProps<MusicGene
             type="source"
             position={Position.Right}
             id="output"
-            className="!relative !transform-none !w-6 !h-6 !border-2 !rounded-md node-handle hover:!border-green-500"
+            className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-orange-400 !border-zinc-900 hover:!border-zinc-700"
           />
-          <Music className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none" style={{ color: 'var(--text-muted)' }} />
+          <Music className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
         </div>
-        <span className="absolute right-8 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
+        <span className="absolute right-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
           Generated audio
         </span>
       </div>

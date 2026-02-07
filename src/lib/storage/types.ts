@@ -63,7 +63,7 @@ export interface StorageProvider {
 /**
  * Storage provider type identifier
  */
-export type StorageProviderType = 'localStorage' | 'libSQL' | 'supabase';
+export type StorageProviderType = 'localStorage' | 'sqlite';
 
 /**
  * Generate a unique canvas ID

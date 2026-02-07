@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useMemo } from 'react';
-import { useCanvasStore, createImageGeneratorNode, createVideoGeneratorNode, createTextNode, createMediaNode, createStickyNoteNode, createStickerNode, createGroupNode, createMusicGeneratorNode, createSpeechNode, createVideoAudioNode } from '@/stores/canvas-store';
+import { useCanvasStore, createImageGeneratorNode, createVideoGeneratorNode, createTextNode, createMediaNode, createStickyNoteNode, createStickerNode, createGroupNode, createMusicGeneratorNode, createSpeechNode, createVideoAudioNode, createPluginNode } from '@/stores/canvas-store';
 import { useReactFlow } from '@xyflow/react';
 import {
   Copy,
@@ -25,11 +25,13 @@ import {
   Music,
   Mic,
   Film,
+  Clapperboard,
 } from 'lucide-react';
 import { pluginRegistry } from '@/lib/plugins/registry';
 // Import official plugins to register them
 import '@/lib/plugins/official/storyboard-generator';
 import '@/lib/plugins/official/product-shot';
+import '@/lib/plugins/official/agents/animation-generator';
 
 interface MenuItem {
   id: string;
@@ -202,6 +204,16 @@ export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
           label: 'Video Generator',
           action: () => handleAddNode(createVideoGeneratorNode, 'Video Generator'),
           keywords: ['video', 'generate', 'ai', 'movie', 'clip'],
+        },
+        {
+          id: 'animationGenerator',
+          icon: <Clapperboard className="h-4 w-4 text-blue-500" />,
+          label: 'Animation Generator',
+          action: () => handleAddNode(
+            (pos, name) => createPluginNode(pos, 'animation-generator', name),
+            'Animation Generator'
+          ),
+          keywords: ['animation', 'animate', 'motion', 'theatre', 'theater'],
         },
       ],
     },

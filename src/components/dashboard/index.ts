@@ -7,5 +7,6 @@ export { SharedSection } from './SharedSection';
 export { CanvasCard } from './CanvasCard';
 export { TemplateCard } from './TemplateCard';
 export { CreateCanvasButton } from './CreateCanvasButton';
+export { SyncStatusIndicator } from './SyncStatusIndicator';
 export { useDashboardState } from './hooks/useDashboardState';
 export type { TabType, TemplateFilter, DashboardState } from './hooks/useDashboardState';

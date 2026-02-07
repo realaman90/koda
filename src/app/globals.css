@@ -6,6 +6,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-accent-primary: var(--accent-primary);
+  --color-accent-primary-hover: var(--accent-primary-hover);
+  --color-accent-primary-fg: var(--accent-primary-fg);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -47,7 +50,10 @@
 }
 
 :root {
-  --radius: 0.625rem;
+  --radius: 0.75rem;
+  --accent-primary: #7C3AED;
+  --accent-primary-hover: #6D28D9;
+  --accent-primary-fg: #FFFFFF;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -195,7 +201,7 @@
 
   /* Text colors */
   --text-primary: #18181b;
-  --text-secondary: #374151;
+  --text-secondary: #71717A;
   --text-muted: #6b7280;
   --text-placeholder: #9ca3af;
 
@@ -204,10 +210,11 @@
   --node-title-image: #0f766e;
   --node-title-video: #7c3aed;
   --node-title-text: #92400e;
-  --node-title-media: #4f46e5;
+  --node-title-media: #dc2626;
   --node-title-speech: #0891b2;
   --node-title-music: #ea580c;
   --node-title-storyboard: #7c3aed;
+  --node-title-animation: #2563eb;
 
   /* Inputs */
   --input-bg: #f9fafb;
@@ -281,7 +288,7 @@
 
   /* Text colors */
   --text-primary: #fafafa;
-  --text-secondary: #d4d4d8;
+  --text-secondary: #A1A1AA;
   --text-muted: #71717a;
   --text-placeholder: #52525b;
 
@@ -290,10 +297,11 @@
   --node-title-image: #14b8a6;
   --node-title-video: #a855f7;
   --node-title-text: #fcd34d;
-  --node-title-media: #818cf8;
+  --node-title-media: #F87171;
   --node-title-speech: #22d3ee;
   --node-title-music: #fb923c;
   --node-title-storyboard: #a78bfa;
+  --node-title-animation: #3B82F6;
 
   /* Inputs */
   --input-bg: transparent;
@@ -606,6 +614,71 @@
   color: #71717a !important;
 }
 
+/* Think shimmer animation for ThinkingBlock gradient text */
+@keyframes think-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Shimmer text animation for streaming placeholder */
+@keyframes shimmer-text {
+  0% {
+    background-position: 200% 0;
+  }
+  50% {
+    background-position: 0% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Bloom animation for streaming placeholder */
+@keyframes bloom-center {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 0.8;
+  }
+}
+
+@keyframes bloom-petal {
+  0%, 100% {
+    transform: translate(0, 0) scale(0.8);
+    opacity: 0.6;
+  }
+  25% {
+    transform: translate(4px, -2px) scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(0, -5px) scale(0.9);
+    opacity: 0.8;
+  }
+  75% {
+    transform: translate(-4px, -2px) scale(1);
+    opacity: 1;
+  }
+}
+
+/* Hidden scrollbar utility — !important to override global ::-webkit-scrollbar */
+.scrollbar-hidden {
+  scrollbar-width: none !important; /* Firefox */
+  -ms-overflow-style: none !important; /* IE/Edge */
+}
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none !important; /* Chrome/Safari/Opera */
+  width: 0 !important;
+  height: 0 !important;
+}
+
 /* Shimmer animation for loading states */
 @keyframes shimmer {
   0% {
@@ -664,6 +737,11 @@
 
 .generating-border-teal {
   border: 2.5px solid #14b8a6;
+  background-color: var(--node-card-bg);
+}
+
+.generating-border-blue {
+  border: 2.5px solid #3B82F6;
   background-color: var(--node-card-bg);
 }
 

@@ -4,7 +4,16 @@ import {
   getStorageProvider,
   getLocalStorageProvider,
   createEmptyCanvas,
+  isSQLiteConfigured,
 } from '@/lib/storage';
+import {
+  syncCanvasToServer,
+  createCanvasOnServer,
+  deleteCanvasFromServer,
+  performInitialSync,
+  subscribeSyncStatus,
+  type SyncStatus,
+} from '@/lib/storage/sync-service';
 import { useCanvasStore } from './canvas-store';
 import type { Template } from '@/lib/templates/types';
 
@@ -22,6 +31,11 @@ interface AppState {
   lastSavedAt: number | null;
   hasUnsavedChanges: boolean;
 
+  // Sync status (for SQLite backend)
+  syncStatus: SyncStatus;
+  syncError: string | null;
+  isSyncEnabled: boolean;
+
   // Actions
   loadCanvasList: () => Promise<void>;
   loadCanvas: (id: string) => Promise<boolean>;
@@ -36,6 +50,9 @@ interface AppState {
 
   // Migration
   migrateLegacyData: () => Promise<string | null>;
+
+  // Sync
+  initializeSync: () => Promise<void>;
 }
 
 // Debounce timer for auto-save
@@ -51,6 +68,47 @@ export const useAppStore = create<AppState>()((set, get) => ({
   isSaving: false,
   lastSavedAt: null,
   hasUnsavedChanges: false,
+  syncStatus: 'idle',
+  syncError: null,
+  isSyncEnabled: false,
+
+  initializeSync: async () => {
+    // Check if SQLite is configured
+    const syncEnabled = isSQLiteConfigured();
+    set({ isSyncEnabled: syncEnabled });
+
+    if (!syncEnabled) {
+      return;
+    }
+
+    // Subscribe to sync status changes
+    subscribeSyncStatus((state) => {
+      set({ syncStatus: state.status, syncError: state.error });
+    });
+
+    // Perform initial sync
+    const localProvider = getLocalStorageProvider();
+    
+    await performInitialSync(
+      async () => {
+        const metaList = await localProvider.listCanvases();
+        const canvases: StoredCanvas[] = [];
+        for (const meta of metaList) {
+          const canvas = await localProvider.getCanvas(meta.id);
+          if (canvas) canvases.push(canvas);
+        }
+        return canvases;
+      },
+      async (canvases) => {
+        for (const canvas of canvases) {
+          await localProvider.saveCanvas(canvas);
+        }
+      }
+    );
+
+    // Reload canvas list after sync
+    await get().loadCanvasList();
+  },
 
   loadCanvasList: async () => {
     set({ isLoadingList: true });
@@ -96,10 +154,19 @@ export const useAppStore = create<AppState>()((set, get) => ({
   },
 
   createCanvas: async (name?: string) => {
+    const { isSyncEnabled } = get();
     const provider = getStorageProvider();
     const canvas = createEmptyCanvas(name || 'Untitled Canvas');
 
+    // Save to localStorage first
     await provider.saveCanvas(canvas);
+
+    // Sync to SQLite (if enabled)
+    if (isSyncEnabled) {
+      createCanvasOnServer(canvas).catch((err) => {
+        console.error('Failed to sync new canvas:', err);
+      });
+    }
 
     // Refresh the canvas list
     await get().loadCanvasList();
@@ -108,6 +175,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   },
 
   createCanvasFromTemplate: async (template: Template) => {
+    const { isSyncEnabled } = get();
     const provider = getStorageProvider();
     const now = Date.now();
 
@@ -120,7 +188,15 @@ export const useAppStore = create<AppState>()((set, get) => ({
       updatedAt: now,
     };
 
+    // Save to localStorage first
     await provider.saveCanvas(canvas);
+
+    // Sync to SQLite (if enabled)
+    if (isSyncEnabled) {
+      createCanvasOnServer(canvas).catch((err) => {
+        console.error('Failed to sync template canvas:', err);
+      });
+    }
 
     // Refresh the canvas list
     await get().loadCanvasList();
@@ -149,6 +225,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   },
 
   duplicateCanvas: async (id: string) => {
+    const { isSyncEnabled } = get();
     const provider = getStorageProvider();
 
     const original = await provider.getCanvas(id);
@@ -165,7 +242,15 @@ export const useAppStore = create<AppState>()((set, get) => ({
       updatedAt: now,
     };
 
+    // Save to localStorage first
     await provider.saveCanvas(duplicate);
+
+    // Sync to SQLite (if enabled)
+    if (isSyncEnabled) {
+      createCanvasOnServer(duplicate).catch((err) => {
+        console.error('Failed to sync duplicated canvas:', err);
+      });
+    }
 
     // Refresh the canvas list
     await get().loadCanvasList();
@@ -174,9 +259,18 @@ export const useAppStore = create<AppState>()((set, get) => ({
   },
 
   deleteCanvas: async (id: string) => {
+    const { isSyncEnabled } = get();
     const provider = getStorageProvider();
 
+    // Delete from localStorage first
     await provider.deleteCanvas(id);
+
+    // Sync deletion to SQLite (if enabled)
+    if (isSyncEnabled) {
+      deleteCanvasFromServer(id).catch((err) => {
+        console.error('Failed to sync canvas deletion:', err);
+      });
+    }
 
     // Clear current canvas if it was deleted
     if (get().currentCanvasId === id) {
@@ -192,7 +286,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   },
 
   saveCurrentCanvas: async () => {
-    const { currentCanvasId, currentCanvasName } = get();
+    const { currentCanvasId, currentCanvasName, isSyncEnabled } = get();
     if (!currentCanvasId) return;
 
     const canvasStore = useCanvasStore.getState();
@@ -218,12 +312,21 @@ export const useAppStore = create<AppState>()((set, get) => ({
         canvas.createdAt = Date.now();
       }
 
+      // Save to localStorage first (instant)
       await provider.saveCanvas(canvas);
 
       set({
         hasUnsavedChanges: false,
         lastSavedAt: canvas.updatedAt,
       });
+
+      // Sync to SQLite in background (if enabled)
+      if (isSyncEnabled) {
+        // Don't await - let it run in background
+        syncCanvasToServer(canvas).catch((err) => {
+          console.error('Background sync failed:', err);
+        });
+      }
     } catch (error) {
       console.error('Failed to save canvas:', error);
     } finally {

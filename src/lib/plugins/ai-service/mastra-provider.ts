@@ -26,6 +26,7 @@ export class MastraAIService implements AIService {
   ): Promise<z.infer<T>> {
     // Create a lightweight agent for this request
     const agent = new Agent({
+      id: `plugin-ai-service-${Date.now()}`,
       name: 'plugin-ai-service',
       instructions: options?.systemPrompt ?? 'You are a helpful assistant.',
       model: options?.model ?? DEFAULT_MODEL,
