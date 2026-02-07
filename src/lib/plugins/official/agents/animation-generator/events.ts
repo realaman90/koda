@@ -67,6 +67,12 @@ export interface ReasoningDeltaEvent {
   text: string;
 }
 
+/** Custom SSE event: sandbox was created (redundant with tool-result, defense-in-depth) */
+export interface SandboxCreatedSSEEvent {
+  type: 'sandbox-created';
+  sandboxId: string;
+}
+
 /** Union of all SSE event types */
 export type AnimationStreamEvent =
   | TextDeltaEvent
@@ -76,7 +82,8 @@ export type AnimationStreamEvent =
   | FinishEvent
   | CompleteEvent
   | ErrorEvent
-  | ReasoningDeltaEvent;
+  | ReasoningDeltaEvent
+  | SandboxCreatedSSEEvent;
 
 // ============================================
 // APPLICATION-LEVEL EVENT TYPES

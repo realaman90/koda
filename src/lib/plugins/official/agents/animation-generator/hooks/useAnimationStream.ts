@@ -29,6 +29,7 @@ interface StreamContext {
   engine?: 'remotion' | 'theatre';
   aspectRatio?: '16:9' | '9:16' | '1:1' | '4:3' | '21:9';
   duration?: number;
+  techniques?: string[];
 }
 
 interface ToolCallEvent {
@@ -218,6 +219,22 @@ export function useAnimationStream(): UseAnimationStreamReturn {
                   const errMsg = data.error || 'Unknown stream error';
                   setError(errMsg);
                   callbacks?.onError?.(errMsg);
+                  break;
+                }
+
+                // sandbox-created: custom SSE event from server when sandbox_create succeeds.
+                // Redundant with tool-result, but ensures sandboxId is saved even if
+                // tool-result processing is delayed or skipped.
+                case 'sandbox-created': {
+                  const sandboxData = data as { type: 'sandbox-created'; sandboxId: string };
+                  if (sandboxData.sandboxId) {
+                    console.log(`[useAnimationStream] sandbox-created SSE: ${sandboxData.sandboxId}`);
+                    callbacks?.onToolResult?.({
+                      toolCallId: `sse_sandbox_${Date.now()}`,
+                      toolName: 'sandbox_create',
+                      result: { success: true, sandboxId: sandboxData.sandboxId },
+                    });
+                  }
                   break;
                 }
 

@@ -32,6 +32,18 @@ Examples:
 The orchestrator agent uses an enhance_animation_prompt tool to transform vague requests into detailed specs. When you receive a detailed spec, it's been carefully crafted to match a specific design language (Cursor, Linear, Vercel, etc.). Deviating from the spec produces generic output instead of the premium, brand-specific look the user expects.
 
 When NO design spec is provided: Use the premium defaults shown below.
+
+Priority order:
+1. Values from the DESIGN SPECIFICATION block → use EXACTLY as given
+2. Values implied by style reference (Cursor, Linear, etc.) → use brand-specific values
+3. Premium defaults from this instructions document → last resort only
+
+Common mistakes to AVOID:
+- Using #6366F1 indigo when the spec says a different accent color
+- Using default spring { damping: 10, stiffness: 100 } when spec gives specific values
+- Using fontSize: 80 when spec says fontSize: 120
+- Ignoring gradient specs and using solid colors
+- Skipping ambient effects (particles, grid, noise) mentioned in the spec
 </design-specs>
 
 <quality-standards>
@@ -50,7 +62,7 @@ Your animations must look PREMIUM. Every output should feel like it belongs on:
 | Instant/linear motion | Spring physics, eased motion with overshoot |
 | Everything at once | Staggered, orchestrated timing |
 | Thin borders | Subtle borders OR no borders with shadows |
-| Plain backgrounds | Gradient backgrounds, noise, grid patterns |
+| Plain backgrounds | Gradient backgrounds (light OR dark), subtle textures |
 | Centered everything | Intentional asymmetry, visual hierarchy |
 | Basic rectangles | Rounded corners (12-24px), soft shapes |
 </comparison>
@@ -121,7 +133,7 @@ export const Video: React.FC = () => {
   const { fps, durationInFrames } = useVideoConfig();
 
   return (
-    <AbsoluteFill style={{ backgroundColor: '#000' }}>
+    <AbsoluteFill style={{ background: '#0A0A0F' }}> {/* Choose bg based on content — see <backgrounds> */}
       <IntroSequence />
     </AbsoluteFill>
   );
@@ -326,51 +338,64 @@ const accentStyle: React.CSSProperties = {
 </typography>
 
 <backgrounds>
-Gradient Background:
+IMPORTANT: Choose background based on the content and mood. Do NOT default to dark.
+- Dark backgrounds: tech demos, developer content, cinematic, nighttime
+- Light backgrounds: product showcases, corporate, educational, clean/minimal, lifestyle
+- Colorful backgrounds: creative, playful, brand-specific, marketing
+
+Dark Gradient:
 \`\`\`typescript
 <AbsoluteFill style={{ background: 'linear-gradient(135deg, #0A0A0F 0%, #1A1A2E 50%, #0F0F1A 100%)' }} />
 \`\`\`
 
-Radial Glow (Hero Focus):
+Light/Clean Background:
 \`\`\`typescript
-<AbsoluteFill style={{ background: '#0A0A0F' }}>
-  <div style={{
-    position: 'absolute',
-    top: '50%', left: '50%',
-    transform: 'translate(-50%, -50%)',
-    width: 800, height: 800,
-    background: 'radial-gradient(circle, rgba(99,102,241,0.15) 0%, transparent 70%)',
-    filter: 'blur(60px)',
-  }} />
-</AbsoluteFill>
+<AbsoluteFill style={{ background: '#FAFAFA' }} />
+// Or warm white:
+<AbsoluteFill style={{ background: 'linear-gradient(180deg, #FFFFFF 0%, #F5F5F4 100%)' }} />
+// Or soft gradient:
+<AbsoluteFill style={{ background: 'linear-gradient(135deg, #F8FAFC 0%, #EEF2FF 50%, #F8FAFC 100%)' }} />
 \`\`\`
 
-Grid Pattern (Tech/SaaS):
+Colorful Background:
 \`\`\`typescript
-<div style={{
-  position: 'absolute', inset: 0,
-  backgroundImage: \`
-    linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)
-  \`,
-  backgroundSize: '60px 60px',
+// Warm sunset
+<AbsoluteFill style={{ background: 'linear-gradient(135deg, #FFF7ED 0%, #FEF3C7 50%, #FECDD3 100%)' }} />
+// Cool ocean
+<AbsoluteFill style={{ background: 'linear-gradient(135deg, #ECFEFF 0%, #DBEAFE 50%, #EDE9FE 100%)' }} />
+// Bold brand
+<AbsoluteFill style={{ background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 50%, #EC4899 100%)' }} />
+\`\`\`
+
+Radial Glow (works on both light and dark):
+\`\`\`typescript
+// On dark
+<div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+  width: 800, height: 800,
+  background: 'radial-gradient(circle, rgba(99,102,241,0.15) 0%, transparent 70%)',
+  filter: 'blur(60px)',
+}} />
+// On light
+<div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+  width: 800, height: 800,
+  background: 'radial-gradient(circle, rgba(99,102,241,0.08) 0%, transparent 70%)',
+  filter: 'blur(80px)',
 }} />
 \`\`\`
 
-Noise Texture (Subtle):
+Grid Pattern (adapts to theme):
 \`\`\`typescript
-<div style={{
-  position: 'absolute', inset: 0,
-  opacity: 0.03,
-  backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg"%3E%3Cfilter id="noise"%3E%3CfeTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" /%3E%3C/filter%3E%3Crect width="100%25" height="100%25" filter="url(%23noise)" /%3E%3C/svg%3E")',
-}} />
+// On dark
+backgroundImage: 'linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)',
+// On light
+backgroundImage: 'linear-gradient(rgba(0,0,0,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.04) 1px, transparent 1px)',
 \`\`\`
 </backgrounds>
 
 <cards>
-Glassmorphism Card:
+Dark Glass Card:
 \`\`\`typescript
-const glassCard: React.CSSProperties = {
+const darkGlassCard: React.CSSProperties = {
   background: 'rgba(255, 255, 255, 0.05)',
   backdropFilter: 'blur(20px)',
   borderRadius: 24,
@@ -380,32 +405,24 @@ const glassCard: React.CSSProperties = {
 };
 \`\`\`
 
-Elevated Card:
+Light Elevated Card:
 \`\`\`typescript
-const elevatedCard: React.CSSProperties = {
-  background: 'linear-gradient(135deg, #1A1A2E 0%, #0F0F1A 100%)',
+const lightCard: React.CSSProperties = {
+  background: '#FFFFFF',
   borderRadius: 20,
   padding: 32,
-  boxShadow: \`
-    0 0 0 1px rgba(255,255,255,0.05),
-    0 4px 6px rgba(0,0,0,0.1),
-    0 12px 24px rgba(0,0,0,0.2),
-    0 24px 48px rgba(0,0,0,0.3)
-  \`,
+  boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.06), 0 16px 40px rgba(0,0,0,0.08)',
+  border: '1px solid rgba(0,0,0,0.06)',
 };
 \`\`\`
 
-Glow Button:
+Dark Elevated Card:
 \`\`\`typescript
-const glowButton: React.CSSProperties = {
-  background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
-  color: '#fff',
-  fontWeight: 600,
-  fontSize: 18,
-  padding: '16px 32px',
-  borderRadius: 12,
-  border: 'none',
-  boxShadow: '0 0 20px rgba(99, 102, 241, 0.4), 0 4px 12px rgba(0,0,0,0.2)',
+const darkCard: React.CSSProperties = {
+  background: 'linear-gradient(135deg, #1A1A2E 0%, #0F0F1A 100%)',
+  borderRadius: 20,
+  padding: 32,
+  boxShadow: '0 0 0 1px rgba(255,255,255,0.05), 0 4px 6px rgba(0,0,0,0.1), 0 12px 24px rgba(0,0,0,0.2)',
 };
 \`\`\`
 </cards>
@@ -496,7 +513,7 @@ const AnimatedBorder: React.FC<{ children: React.ReactNode }> = ({ children }) =
         position: 'absolute', inset: 0, borderRadius: 16,
         background: \`conic-gradient(from \${rotation}deg, #6366F1, #8B5CF6, #22D3EE, #6366F1)\`,
       }} />
-      <div style={{ position: 'relative', background: '#0A0A0F', borderRadius: 14, padding: 24 }}>
+      <div style={{ position: 'relative', background: '#0A0A0F', borderRadius: 14, padding: 24 }}> {/* or #FFFFFF for light theme */}
         {children}
       </div>
     </div>
@@ -643,7 +660,22 @@ import { Series } from 'remotion';
 <media-rules>
 - ALWAYS use Img from 'remotion' — never native img.
 - Use staticFile() for local assets in public/ folder.
-- For videos, use Video from '@remotion/media'.
+- For videos, use OffthreadVideo from 'remotion'.
+- When MEDIA FILES are listed in the prompt, you MUST use them:
+  \`\`\`tsx
+  import { Img, staticFile, OffthreadVideo } from 'remotion';
+
+  // Image as full-bleed background
+  <Img src={staticFile("media/photo.jpg")} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+
+  // Image with animation
+  <Img src={staticFile("media/logo.png")} style={{ opacity, transform: \\\`scale(\\\${scale})\\\` }} />
+
+  // Video background
+  <OffthreadVideo src={staticFile("media/clip.mp4")} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+  \`\`\`
+- User-provided media should typically be the HERO element — feature it prominently, not as a tiny thumbnail.
+- Common patterns: full-bleed background with text overlay, Ken Burns zoom, parallax layers, reveal wipe.
 </media-rules>
 
 <typewriter-pattern>
@@ -749,6 +781,70 @@ export const Video: React.FC = () => (
 \`\`\`
 Layer particles BEHIND content. Use Sequence to orchestrate scenes.
 </composing-examples>
+
+<example name="AnimatedCounter" file="src/examples/AnimatedCounter.tsx">
+Dashboard-style animated number counter with muted teal palette.
+
+KEY PATTERNS:
+1. Number count-up with interpolate + Math.floor + toLocaleString for formatting
+2. Staggered entry: number -> label -> badge -> separator line
+3. Monospace font for numbers, sans-serif for labels
+4. Muted color palette (dark blue-gray + teal accent) — NOT indigo/purple
+</example>
+
+<example name="NotificationToast" file="src/examples/NotificationToast.tsx">
+SaaS notification toast with slide-in/out and staggered content.
+
+KEY PATTERNS:
+1. Slide from right: translateX with spring { damping: 18, stiffness: 120 }
+2. White/light card on dark background (contrast inversion from other examples)
+3. Progress bar animation: width from 0% to 100% using interpolate
+4. Exit animation: reverse slide after delay
+</example>
+
+<example name="CodeBlock" file="src/examples/CodeBlock.tsx">
+Developer-style code reveal with syntax highlighting.
+
+KEY PATTERNS:
+1. Line-by-line reveal using frame-based index calculation
+2. Terminal chrome header (colored dots, filename tab)
+3. Syntax highlighting via inline color mapping (keywords, strings, comments)
+4. Monospace typography, Vercel-style pure black + blue accent
+</example>
+
+<example name="SplitReveal" file="src/examples/SplitReveal.tsx">
+Editorial split-screen reveal with warm color palette.
+
+KEY PATTERNS:
+1. Split layout: 50/50 with independent animations per side
+2. WARM palette (amber/brown) — demonstrates non-cool-tone aesthetics
+3. Large editorial typography (100px headline, tight letter-spacing)
+4. Eyebrow text pattern (small caps, accent color, above headline)
+</example>
+
+<style-diversity>
+IMPORTANT: Not all animations should look the same! Match the aesthetic to the content:
+
+DARK backgrounds (use when content calls for it):
+- Tech/SaaS/Developer -> Cool tones (blue, purple, cyan) — see TextRevealHero, GlassCard, CodeBlock
+- Cinematic/Dramatic -> Deep blacks, single accent glow
+- Gaming/Night -> Neon accents on dark
+
+LIGHT backgrounds (use when content calls for it):
+- Product showcase -> White/off-white (#FAFAFA), clean shadows, product colors as accents
+- Corporate/Business -> Light gray (#F5F5F4), navy/blue text, professional
+- Educational/Tutorial -> Warm white, friendly colors, high readability
+- Lifestyle/Marketing -> Soft pastels, warm gradients, inviting
+
+COLORFUL backgrounds:
+- Brand campaigns -> Use brand colors as gradients
+- Creative/Playful -> Bold gradients, vibrant but harmonious
+- Abstract/Artistic -> Gradient meshes, color experiments
+
+DECISION RULE: If the user's prompt does NOT suggest a dark theme (no words like "dark", "neon", "cyber", "night", "cinematic", "code", "terminal"), consider using a light or colorful background instead.
+
+NEVER default to dark + indigo/purple for everything. Read the design spec and choose colors that match the CONTENT.
+</style-diversity>
 </premium-examples>
 
 <rules>

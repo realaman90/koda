@@ -183,6 +183,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
   const engine: AnimationEngine = data.engine || 'remotion';
   const aspectRatio: AspectRatio = data.aspectRatio || '16:9';
   const duration: number = data.duration || 10;
+  const techniques: string[] = data.techniques || [];
 
   useEffect(() => {
     updateNodeInternals(id);
@@ -1074,6 +1075,11 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     [id, updateNodeData]
   );
 
+  const handleTechniquesChange = useCallback(
+    (newTechniques: string[]) => updateNodeData(id, { techniques: newTechniques }),
+    [id, updateNodeData]
+  );
+
   // ─── Pipeline timer helper ─────────────────────────────────────────
   const startPipelineTimer = useCallback((label: string) => {
     pipelineStartRef.current = Date.now();
@@ -1134,7 +1140,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       try {
         await streamToAgent(
           `Analyze this animation request and either ask a clarifying question (if style is unclear) or generate a plan directly:\n\n${prompt}`,
-          { nodeId: id, phase: 'idle', media, engine, aspectRatio, duration },
+          { nodeId: id, phase: 'idle', media, engine, aspectRatio, duration, techniques },
           callbacks
         );
         // Fallback if agent didn't use tools
@@ -1163,7 +1169,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         // Error handled by onError callback
       }
     },
-    [id, media, engine, aspectRatio, duration, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
+    [id, media, engine, aspectRatio, duration, techniques, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
   );
 
   const handleSelectStyle = useCallback(
@@ -1203,7 +1209,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       try {
         await streamToAgent(
           `Generate an animation plan for this request with style "${selectedStyle}":\n\n${data.prompt || 'Animation request'}`,
-          { nodeId: id, phase: 'question', engine, aspectRatio, duration },
+          { nodeId: id, phase: 'question', engine, aspectRatio, duration, techniques },
           callbacks
         );
         const latest = getLatestState();
@@ -1231,7 +1237,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         // Error handled by callback
       }
     },
-    [id, data.prompt, engine, aspectRatio, duration, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
+    [id, data.prompt, engine, aspectRatio, duration, techniques, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
   );
 
   const handleFormSubmit = useCallback(
@@ -1286,7 +1292,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         const answersJson = JSON.stringify(answers, null, 2);
         await streamToAgent(
           `User answered the form:\n${answersJson}\n\nProceed with generating a plan based on these answers.\n\nOriginal prompt: ${data.prompt || 'Animation request'}`,
-          { nodeId: id, phase: 'question', engine, aspectRatio, duration },
+          { nodeId: id, phase: 'question', engine, aspectRatio, duration, techniques },
           callbacks
         );
         const latest = getLatestState();
@@ -1314,7 +1320,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         // Error handled by callback
       }
     },
-    [id, data.prompt, engine, aspectRatio, duration, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
+    [id, data.prompt, engine, aspectRatio, duration, techniques, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
   );
 
   const handleAcceptPlan = useCallback(async () => {
@@ -1376,13 +1382,13 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           '',
           `Prompt: ${data.prompt || 'Animation request'}`,
         ].join('\n'),
-        { nodeId: id, phase: 'executing', plan: ls.plan, todos: [], sandboxId: ls.sandboxId, media, engine, aspectRatio, duration },
+        { nodeId: id, phase: 'executing', plan: ls.plan, todos: [], sandboxId: ls.sandboxId, media, engine, aspectRatio, duration, techniques },
         callbacks
       );
     } catch {
       // Error handled by callback
     }
-  }, [id, data.prompt, engine, media, duration, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
+  }, [id, data.prompt, engine, media, duration, techniques, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
 
   const handleRejectPlan = useCallback(() => {
     updateState({ phase: 'idle', plan: undefined, question: undefined, planAccepted: undefined });
@@ -1417,7 +1423,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       try {
         await streamToAgent(
           `The user wants to revise the animation plan. Feedback: "${feedback}"\n\nGenerate an updated plan using the generate_plan tool.`,
-          { nodeId: id, phase: 'plan', plan: ls.plan, sandboxId: ls.sandboxId, engine, aspectRatio, duration },
+          { nodeId: id, phase: 'plan', plan: ls.plan, sandboxId: ls.sandboxId, engine, aspectRatio, duration, techniques },
           callbacks
         );
         const latest = getLatestState();
@@ -1430,7 +1436,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         // Error handled by callback
       }
     },
-    [id, engine, aspectRatio, duration, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
+    [id, engine, aspectRatio, duration, techniques, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
   );
 
   const handleSendMessage = useCallback(
@@ -1512,12 +1518,13 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           engine,
           aspectRatio,
           duration,
+          techniques,
         }, callbacks);
       } catch {
         // Error handled by callback
       }
     },
-    [id, engine, aspectRatio, duration, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
+    [id, engine, aspectRatio, duration, techniques, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
   );
 
   const handleAcceptPreview = useCallback(async () => {
@@ -1596,13 +1603,13 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     try {
       await streamToAgent(
         `Regenerate the animation from the plan. Execute all steps again.\n\nPrompt: ${data.prompt || 'Animation request'}`,
-        { nodeId: id, phase: 'executing', plan: ls.plan, todos, sandboxId: ls.sandboxId, media, engine, aspectRatio, duration },
+        { nodeId: id, phase: 'executing', plan: ls.plan, todos, sandboxId: ls.sandboxId, media, engine, aspectRatio, duration, techniques },
         callbacks
       );
     } catch {
       // Error handled by callback
     }
-  }, [id, data.prompt, engine, media, duration, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
+  }, [id, data.prompt, engine, media, duration, techniques, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
 
   const handleExportVideo = useCallback(async () => {
     const ls = getLatestState();
@@ -1647,13 +1654,13 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           'Use render_preview to create the video.',
           `Active sandbox: ${ls.sandboxId}`,
         ].join('\n'),
-        { nodeId: id, phase: 'executing', plan: ls.plan, sandboxId: ls.sandboxId, engine, aspectRatio, duration },
+        { nodeId: id, phase: 'executing', plan: ls.plan, sandboxId: ls.sandboxId, engine, aspectRatio, duration, techniques },
         callbacks
       );
     } catch {
       // Error handled by callback
     }
-  }, [id, engine, aspectRatio, duration, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
+  }, [id, engine, aspectRatio, duration, techniques, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
 
   const handleRetry = useCallback(() => {
     if (state.plan) {
@@ -2179,6 +2186,8 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           onAspectRatioChange={handleAspectRatioChange}
           duration={duration}
           onDurationChange={handleDurationChange}
+          techniques={techniques}
+          onTechniquesChange={handleTechniquesChange}
           onMediaUpload={handleMediaUpload}
           onNodeReference={handleNodeReference}
           availableNodeOutputs={availableNodeOutputs}

@@ -8,6 +8,7 @@
 import { NextResponse } from 'next/server';
 import { animationAgent } from '@/mastra';
 import { getEngineInstructions } from '@/mastra/agents/instructions/animation';
+import { loadRecipes } from '@/mastra/recipes';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -27,6 +28,7 @@ interface StreamRequestBody {
     engine?: 'remotion' | 'theatre';
     aspectRatio?: '16:9' | '9:16' | '1:1' | '4:3' | '21:9';
     duration?: number;
+    techniques?: string[];
   };
 }
 
@@ -51,9 +53,17 @@ export async function POST(request: Request) {
 
     // Inject engine-specific instructions as a system message
     const engine = context?.engine || 'remotion';
+    const engineInstructions = getEngineInstructions(engine);
+
+    // Load technique recipes if any are selected
+    const recipeContent = loadRecipes(context?.techniques || []);
+    const systemContent = recipeContent
+      ? `${engineInstructions}\n\n${recipeContent}`
+      : engineInstructions;
+
     agentMessages.unshift({
       role: 'system',
-      content: getEngineInstructions(engine),
+      content: systemContent,
     });
 
     // Prepend context as a system-style user message if provided
@@ -71,15 +81,26 @@ export async function POST(request: Request) {
         contextParts.push(`Active sandbox ID: ${context.sandboxId}`);
       }
       if (context.media && context.media.length > 0) {
-        const mediaList = context.media.map(m =>
-          `- [${m.type}] "${m.name}" (${m.source}${m.duration ? `, ${m.duration}s` : ''}) ${m.dataUrl.startsWith('data:') ? `BASE64 (${m.mimeType || 'unknown'}, ~${Math.round(m.dataUrl.length * 0.75 / 1024)}KB) — use sandbox_write_binary to write to public/media/` : `URL: ${m.dataUrl} — use sandbox_upload_media to download to public/media/`}`
-        ).join('\n');
-        contextParts.push(`⚠️ USER MEDIA FILES — MUST upload to sandbox and feature in animation:\n${mediaList}`);
+        const edgeMedia = context.media.filter(m => m.source === 'edge');
+        const uploadMedia = context.media.filter(m => m.source !== 'edge');
+        const formatMedia = (m: typeof context.media[0]) =>
+          `- [${m.type}] "${m.name}" (source: ${m.source}) ${m.dataUrl.startsWith('data:') ? `BASE64 (~${Math.round(m.dataUrl.length * 0.75 / 1024)}KB) — use sandbox_write_binary to write to public/media/` : `URL: ${m.dataUrl} — use sandbox_upload_media to download to public/media/`}`;
+
+        if (edgeMedia.length > 0) {
+          contextParts.push(`⚠️ EDGE MEDIA — ALWAYS CONTENT. Upload and feature prominently in the animation:\n${edgeMedia.map(formatMedia).join('\n')}`);
+        }
+        if (uploadMedia.length > 0) {
+          contextParts.push(`📎 UPLOADED MEDIA — Determine purpose from prompt context (content vs reference):\n${uploadMedia.map(formatMedia).join('\n')}`);
+        }
         contextParts.push(
-          'MANDATORY: Upload each file to public/media/ BEFORE writing code. ' +
+          'For CONTENT media: Upload to public/media/ BEFORE writing code, then pass via mediaFiles to generate_remotion_code. ' +
+          'For REFERENCE media: Use analyze_media for design cues, do NOT upload to sandbox. ' +
           'For base64: extract the portion after the comma in "data:mime;base64,DATA" and pass to sandbox_write_binary. ' +
           'For videos, call analyze_media first for scene understanding, then extract_video_frames for key frame images.'
         );
+      }
+      if (context.techniques && context.techniques.length > 0) {
+        contextParts.push(`Selected technique presets: ${context.techniques.join(', ')} — recipe patterns are injected in the system message.`);
       }
       if (context.phase) {
         contextParts.push(`Current phase: ${context.phase}`);
@@ -135,19 +156,16 @@ export async function POST(request: Request) {
 
     // ⏱ Server-side timing
     const serverStart = Date.now();
-    console.log(`⏱ [Animation API] Stream request — engine: ${engine}, messages: ${agentMessages.length}`);
+    console.log(`⏱ [Animation API] Stream request — engine: ${engine}, messages: ${agentMessages.length}, sandboxId: ${context?.sandboxId || 'NONE'}, phase: ${context?.phase || 'unknown'}, techniques: ${context?.techniques?.length || 0}${recipeContent ? ` (~${Math.round(recipeContent.length / 4)} tokens)` : ''}`);
 
     const result = await animationAgent.stream(
       agentMessages as Parameters<typeof animationAgent.stream>[0],
       {
         maxSteps: 50,
         providerOptions: {
-          anthropic: {
-            thinking: {
-              type: 'enabled',
-              budgetTokens: 10000,
-            },
-          },
+          // Each provider ignores keys meant for other providers
+          google: { thinkingConfig: { thinkingBudget: 8192 } },
+          anthropic: { thinking: { type: 'enabled', budgetTokens: 10000 } },
         },
       }
     );
@@ -285,21 +303,25 @@ export async function POST(request: Request) {
                 break;
               }
 
-              // Handle reasoning/extended thinking (may not be in Mastra's type union yet)
-              default: {
-                const chunkType = (chunk as { type: string }).type;
-                if (chunkType === 'reasoning' || chunkType === 'reasoning-delta') {
-                  const payload = (chunk as { payload: Record<string, unknown> }).payload;
-                  const reasoningText = payload?.text ?? payload?.content ?? '';
-                  if (reasoningText) {
-                    sseData = JSON.stringify({
-                      type: 'reasoning-delta',
-                      text: String(reasoningText),
-                    });
-                  }
+              case 'reasoning-delta': {
+                if (chunk.payload.text) {
+                  sseData = JSON.stringify({
+                    type: 'reasoning-delta',
+                    text: chunk.payload.text,
+                  });
                 }
                 break;
               }
+
+              // reasoning-start, reasoning-end, reasoning-signature — skip silently
+              case 'reasoning-start':
+              case 'reasoning-end':
+              case 'reasoning-signature':
+              case 'redacted-reasoning':
+                break;
+
+              default:
+                break;
             }
 
             if (sseData) {

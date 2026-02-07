@@ -697,6 +697,8 @@ Example: 2 seconds at 30fps = frame 60`,
       frames = frames.slice(0, 10);
     }
 
+    console.log(`[sandbox_screenshot] engine=${engine} sandbox=${inputData.sandboxId} frames=[${frames.join(',')}] fps=${fps}`);
+
     try {
       // Ensure output directory
       await dockerProvider.runCommand(inputData.sandboxId, 'mkdir -p /app/output', { timeout: 5_000 });
@@ -758,6 +760,9 @@ const outputDir = process.argv[3] || '/app/output';
         // Clean up
         await dockerProvider.runCommand(inputData.sandboxId, 'rm -f /app/_capture_frames.cjs', { timeout: 5_000 });
 
+        console.log(`[sandbox_screenshot] Theatre.js capture result: success=${result.success} stdout=${result.stdout.slice(0, 300)}`);
+        if (result.stderr) console.log(`[sandbox_screenshot] Theatre.js stderr: ${result.stderr.slice(0, 300)}`);
+
         if (!result.success) {
           return {
             success: false,
@@ -787,16 +792,58 @@ const outputDir = process.argv[3] || '/app/output';
           }
         }
       } else {
-        // ── Remotion: native still renderer ──
+        // ── Remotion: bundle once, then take stills from the bundle ──
+
+        // Step 1: Auto-detect composition ID (same logic as render_preview)
+        const listResult = await dockerProvider.runCommand(
+          inputData.sandboxId,
+          `cd /app && bunx remotion compositions src/index.ts --props='{}' 2>&1 | grep 'fps' | head -1 | awk '{print $1}'`,
+          { timeout: 60_000 }
+        );
+        let compositionId = listResult.stdout.trim();
+        if (!compositionId) {
+          const rootCheck = await dockerProvider.runCommand(
+            inputData.sandboxId,
+            `grep -oP 'id="\\K[^"]+' /app/src/Root.tsx 2>/dev/null | head -1 || echo "MainVideo"`,
+            { timeout: 5_000 }
+          );
+          compositionId = rootCheck.stdout.trim() || 'MainVideo';
+        }
+        console.log(`[sandbox_screenshot] Detected composition: ${compositionId}`);
+
+        // Step 2: Bundle once (the expensive part — ~30-60s)
+        const bundleDir = '/tmp/remotion-bundle';
+        console.log(`[sandbox_screenshot] Bundling to ${bundleDir}...`);
+        const bundleResult = await dockerProvider.runCommand(
+          inputData.sandboxId,
+          `cd /app && bunx remotion bundle src/index.ts --out-dir ${bundleDir} 2>&1`,
+          { timeout: 90_000 }
+        );
+
+        if (!bundleResult.success) {
+          console.log(`[sandbox_screenshot] Bundle failed: ${bundleResult.stderr || bundleResult.stdout}`);
+          return {
+            success: false,
+            screenshots: [],
+            message: `Remotion bundling failed: ${(bundleResult.stderr || bundleResult.stdout).slice(0, 500)}`,
+          };
+        }
+        console.log(`[sandbox_screenshot] Bundle complete`);
+
+        // Step 3: Take stills from the bundle (fast — no rebundling)
         for (const frame of frames) {
           const filename = `frame-${frame}.png`;
           const outputPath = `/app/output/${filename}`;
 
+          const cmd = `cd /app && bunx remotion still ${bundleDir} ${compositionId} ${outputPath} --frame=${frame} 2>&1`;
+          console.log(`[sandbox_screenshot] Remotion frame ${frame}: taking still from bundle`);
           const result = await dockerProvider.runCommand(
             inputData.sandboxId,
-            `cd /app && bunx remotion still src/index.ts MainVideo ${outputPath} --frame=${frame} 2>&1`,
+            cmd,
             { timeout: 30_000 }
           );
+          console.log(`[sandbox_screenshot] Remotion frame ${frame}: success=${result.success} stdout=${result.stdout.slice(0, 200)}`);
+          if (result.stderr) console.log(`[sandbox_screenshot] Remotion frame ${frame} stderr: ${result.stderr.slice(0, 200)}`);
 
           if (result.success) {
             // Verify file was created
@@ -818,9 +865,13 @@ const outputDir = process.argv[3] || '/app/output';
             errors.push(`Frame ${frame}: ${result.stderr || result.stdout}`.slice(0, 100));
           }
         }
+
+        // Clean up bundle to save disk space
+        await dockerProvider.runCommand(inputData.sandboxId, `rm -rf ${bundleDir}`, { timeout: 5_000 });
       }
 
       if (screenshots.length === 0) {
+        console.log(`[sandbox_screenshot] ALL FAILED. Errors: ${errors.join('; ')}`);
         return {
           success: false,
           screenshots: [],
@@ -828,18 +879,18 @@ const outputDir = process.argv[3] || '/app/output';
         };
       }
 
-      return {
-        success: true,
-        screenshots,
-        message: screenshots.length === frames.length
-          ? `Captured ${screenshots.length} screenshot(s) [${engine}]`
-          : `Captured ${screenshots.length}/${frames.length} screenshots [${engine}]. Errors: ${errors.join('; ')}`,
-      };
+      const msg = screenshots.length === frames.length
+        ? `Captured ${screenshots.length} screenshot(s) [${engine}]`
+        : `Captured ${screenshots.length}/${frames.length} screenshots [${engine}]. Errors: ${errors.join('; ')}`;
+      console.log(`[sandbox_screenshot] ${msg}`);
+      return { success: true, screenshots, message: msg };
     } catch (error) {
+      const errMsg = error instanceof Error ? error.message : 'Screenshot failed';
+      console.error(`[sandbox_screenshot] Exception: ${errMsg}`);
       return {
         success: false,
         screenshots: [],
-        message: error instanceof Error ? error.message : 'Screenshot failed',
+        message: errMsg,
       };
     }
   },

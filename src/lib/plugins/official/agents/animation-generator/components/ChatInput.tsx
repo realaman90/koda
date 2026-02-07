@@ -8,7 +8,11 @@
  */
 
 import { useState, useCallback, useRef, useEffect, KeyboardEvent } from 'react';
-import { ArrowUp, Square, Paperclip, ChevronDown, ChevronUp, Image, Video, Link2, Pencil, Trash2 } from 'lucide-react';
+import {
+  ArrowUp, Square, Paperclip, ChevronDown, ChevronUp, Image, Video, Link2, Pencil, Trash2,
+  Type, Sparkles, Box, BarChart3, Layers, Blend, Zap, Clapperboard, Aperture, SunMoon,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,6 +22,12 @@ import {
   DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
 import type { AnimationEngine } from '../types';
+import { TECHNIQUE_PRESETS } from '@/mastra/recipes';
+
+/** Map Lucide icon name strings to components for technique chips */
+const TECHNIQUE_ICONS: Record<string, LucideIcon> = {
+  Type, Sparkles, Box, BarChart3, Layers, Blend, Zap, Clapperboard, Aperture, SunMoon,
+};
 
 const ENGINES: { id: AnimationEngine; label: string }[] = [
   { id: 'remotion', label: 'Remotion' },
@@ -63,6 +73,9 @@ interface ChatInputProps {
   onAspectRatioChange?: (aspectRatio: AspectRatio) => void;
   duration?: number;
   onDurationChange?: (duration: number) => void;
+  /** Selected technique presets */
+  techniques?: string[];
+  onTechniquesChange?: (techniques: string[]) => void;
   /** Upload files to data.media[] */
   onMediaUpload?: (files: FileList) => void;
   /** Reference a canvas node output → data.media[] */
@@ -84,6 +97,8 @@ export function ChatInput({
   onAspectRatioChange,
   duration = 10,
   onDurationChange,
+  techniques = [],
+  onTechniquesChange,
   onMediaUpload,
   onNodeReference,
   availableNodeOutputs = [],
@@ -94,9 +109,17 @@ export function ChatInput({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [showTechniques, setShowTechniques] = useState(techniques.length > 0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
+
+  const toggleTechnique = useCallback((id: string) => {
+    const next = techniques.includes(id)
+      ? techniques.filter(t => t !== id)
+      : [...techniques, id];
+    onTechniquesChange?.(next);
+  }, [techniques, onTechniquesChange]);
 
   const selectedEngine = ENGINES.find((e) => e.id === engine) || ENGINES[0];
   const selectedAspectRatio = ASPECT_RATIOS.find((a) => a.id === aspectRatio) || ASPECT_RATIOS[0];
@@ -325,10 +348,55 @@ export function ChatInput({
           />
         </div>
 
+        {/* Technique preset chips */}
+        {showTechniques && (
+          <div className="px-2.5 pb-1.5">
+            <div className="flex flex-wrap gap-1">
+              {TECHNIQUE_PRESETS.map((preset) => {
+                const isSelected = techniques.includes(preset.id);
+                const IconComponent = TECHNIQUE_ICONS[preset.icon];
+                return (
+                  <button
+                    key={preset.id}
+                    onClick={() => toggleTechnique(preset.id)}
+                    disabled={disabled}
+                    className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium transition-all border ${
+                      isSelected
+                        ? 'bg-[#1E3A5F] border-[#3B82F6] text-[#93C5FD]'
+                        : 'bg-transparent border-[#3f3f46] text-[#71717A] hover:border-[#52525B] hover:text-[#A1A1AA]'
+                    }`}
+                    title={preset.description}
+                  >
+                    {IconComponent && <IconComponent className="w-3 h-3" />}
+                    {preset.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Bottom bar */}
         <div className="flex items-center justify-between px-2 py-1 pb-2">
           {/* Engine & Aspect Ratio selectors */}
           <div className="flex items-center gap-1">
+            {/* Techniques toggle */}
+            <button
+              onClick={() => setShowTechniques(v => !v)}
+              disabled={disabled}
+              className={`flex items-center gap-1 px-1.5 py-1 rounded text-[11px] transition-colors ${
+                techniques.length > 0
+                  ? 'text-[#93C5FD]'
+                  : 'text-[#71717A] hover:text-[#A1A1AA]'
+              }`}
+              title="Technique presets"
+            >
+              {techniques.length > 0 ? `${techniques.length} preset${techniques.length > 1 ? 's' : ''}` : 'Presets'}
+            </button>
+
+            {/* Separator */}
+            <span className="text-[#3f3f46]">·</span>
+
             {/* Engine selector */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

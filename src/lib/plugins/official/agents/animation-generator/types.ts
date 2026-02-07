@@ -279,6 +279,9 @@ export interface AnimationNodeData extends Record<string, unknown> {
   imageRefCount?: number;  // Number of image reference handles (default 1)
   videoRefCount?: number;  // Number of video reference handles (default 1)
 
+  // Technique presets (selective recipe injection into code gen context)
+  techniques?: string[];
+
   // Attachments for chat input
   attachments?: AnimationAttachment[];
 

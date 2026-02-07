@@ -29,5 +29,5 @@ When suggesting prompts, format them as:
 **Prompt:** [the actual prompt]
 **Style:** [recommended style]
 **Mood:** [intended mood/atmosphere]`,
-  model: 'anthropic/claude-opus-4-6',
+  model: 'google/gemini-3-flash-preview',
 });

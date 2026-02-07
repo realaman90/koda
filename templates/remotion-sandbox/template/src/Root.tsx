@@ -1,5 +1,7 @@
 import React from 'react';
 import { Composition } from 'remotion';
+import './index.css';
+import './utils/fonts';
 import { Video } from './Video';
 
 export const RemotionRoot: React.FC = () => {

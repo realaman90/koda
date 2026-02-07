@@ -9,6 +9,7 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { remotionCodeGeneratorAgent } from '../../agents/remotion-code-generator-agent';
 import { dockerProvider } from '@/lib/sandbox/docker-provider';
+import { loadRecipes } from '../../recipes';
 
 const GenerateRemotionCodeInputSchema = z.object({
   task: z.enum(['initial_setup', 'create_component', 'create_scene', 'modify_existing'])
@@ -52,10 +53,23 @@ const GenerateRemotionCodeInputSchema = z.object({
   })).optional().describe('Scene segments for the compositor'),
   components: z.array(z.string()).optional().describe('Component names used in the scene'),
 
+  // Full design specification from the enhance_animation_prompt tool
+  designSpec: z.string().optional().describe('Full enhanced prompt / design specification. The code generator MUST use exact hex colors, pixel dimensions, spring configs, and typography from this.'),
+
   // For modify_existing
   file: z.string().optional().describe('File path to modify'),
   currentContent: z.string().optional().describe('Current file content'),
   change: z.string().optional().describe('Description of what to change'),
+
+  // Technique presets — recipe patterns injected into code gen prompt
+  techniques: z.array(z.string()).optional().describe('Selected technique preset IDs (e.g. "3d-scenes", "particles"). Passes recipe patterns to the code generator.'),
+
+  // Media files already uploaded to the sandbox — tells the code generator what's available
+  mediaFiles: z.array(z.object({
+    path: z.string().describe('File path relative to /app/ (e.g. "public/media/photo.jpg")'),
+    type: z.enum(['image', 'video']).describe('Media type'),
+    description: z.string().optional().describe('What this media shows / how it should be used'),
+  })).optional().describe('Media files already uploaded to the sandbox. The code generator MUST reference these using staticFile("media/filename") for images or <OffthreadVideo> for videos. ALWAYS pass this when user-provided media was uploaded.'),
 });
 
 export const generateRemotionCodeTool = createTool({
@@ -69,7 +83,14 @@ Use this for ALL Remotion code generation tasks:
 - modify_existing: Modify an existing file based on feedback
 
 IMPORTANT: Always pass sandboxId so files are written directly to the sandbox.
-This avoids passing large file contents through the conversation and saves tokens.`,
+This avoids passing large file contents through the conversation and saves tokens.
+
+CRITICAL: If you uploaded media files to the sandbox (via sandbox_upload_media or sandbox_write_binary),
+you MUST pass them via the mediaFiles parameter. The code generator cannot see the sandbox filesystem —
+it only knows about media files you explicitly tell it about. Without mediaFiles, user images will be ignored.
+
+If the user selected technique presets (available in your context), pass their IDs via the techniques parameter.
+This injects recipe patterns (tested code snippets) directly into the code generator for higher quality output.`,
 
   inputSchema: GenerateRemotionCodeInputSchema,
   outputSchema: z.object({
@@ -142,9 +163,15 @@ This avoids passing large file contents through the conversation and saves token
 
     try {
       // Call the subagent (non-streaming for tool result)
+      // Enable thinking/reasoning — each provider ignores keys meant for others
       const result = await remotionCodeGeneratorAgent.generate([
         { role: 'user', content: prompt },
-      ]);
+      ], {
+        providerOptions: {
+          google: { thinkingConfig: { thinkingBudget: 8192 } },
+          anthropic: { thinking: { type: 'enabled', budgetTokens: 10000 } },
+        },
+      });
 
       const fullResponse = result.text;
 
@@ -279,11 +306,23 @@ function extractJSON(text: string): Record<string, unknown> | null {
  * Format the code generation prompt for the Remotion subagent
  */
 function formatRemotionCodeGenerationPrompt(params: z.infer<typeof GenerateRemotionCodeInputSchema>): string {
-  const parts: string[] = [
-    `Generate Remotion animation code for the following task:`,
-    ``,
-    `Task Type: ${params.task}`,
-  ];
+  const parts: string[] = [];
+
+  // Prepend design spec at the TOP if provided
+  if (params.designSpec) {
+    parts.push(`═══════════════════════════════════════════════`);
+    parts.push(`DESIGN SPECIFICATION — USE THESE EXACT VALUES`);
+    parts.push(`═══════════════════════════════════════════════`);
+    parts.push(``);
+    parts.push(params.designSpec);
+    parts.push(``);
+    parts.push(`═══════════════════════════════════════════════`);
+    parts.push(``);
+  }
+
+  parts.push(`Generate Remotion animation code for the following task:`);
+  parts.push(``);
+  parts.push(`Task Type: ${params.task}`);
 
   switch (params.task) {
     case 'initial_setup': {
@@ -347,6 +386,39 @@ function formatRemotionCodeGenerationPrompt(params: z.infer<typeof GenerateRemot
         parts.push(`Return the COMPLETE file, not a diff.`);
       }
       break;
+    }
+  }
+
+  if (params.designSpec) {
+    parts.push(``, `CRITICAL: You MUST use the exact hex colors, pixel dimensions, font specs, and spring configs from the DESIGN SPECIFICATION above. Do NOT substitute with defaults.`);
+  }
+
+  // Inject media files info so the code generator knows what's available
+  if (params.mediaFiles && params.mediaFiles.length > 0) {
+    parts.push(``);
+    parts.push(`═══════════════════════════════════════════════`);
+    parts.push(`MEDIA FILES IN SANDBOX — YOU MUST USE THESE`);
+    parts.push(`═══════════════════════════════════════════════`);
+    parts.push(``);
+    for (const mf of params.mediaFiles) {
+      const remotionRef = mf.path.replace('public/', '');
+      parts.push(`- [${mf.type}] ${mf.path} → use staticFile("${remotionRef}")${mf.description ? ` — ${mf.description}` : ''}`);
+    }
+    parts.push(``);
+    parts.push(`CRITICAL: These files are already in the sandbox. You MUST incorporate them in your code.`);
+    parts.push(`- For images: import { Img } from 'remotion'; then <Img src={staticFile("${params.mediaFiles[0].path.replace('public/', '')}")} />`);
+    parts.push(`- For videos: import { OffthreadVideo } from 'remotion'; then <OffthreadVideo src={staticFile("${params.mediaFiles[0].path.replace('public/', '')}")} />`);
+    parts.push(`- import { staticFile } from 'remotion';`);
+    parts.push(`- The user EXPLICITLY provided these — ignoring them is a critical failure.`);
+    parts.push(``);
+  }
+
+  // Inject technique recipes if provided
+  if (params.techniques && params.techniques.length > 0) {
+    const recipeContent = loadRecipes(params.techniques);
+    if (recipeContent) {
+      parts.push(``, recipeContent);
+      parts.push(``, `IMPORTANT: Follow the technique recipe patterns above closely. They contain tested, working code.`);
     }
   }
 

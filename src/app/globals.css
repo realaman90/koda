@@ -128,6 +128,12 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* Reset form element backgrounds (Tailwind v4 preflight doesn't include this) */
+  input,
+  textarea,
+  select {
+    background-color: transparent;
+  }
   /* Ensure interactive elements have pointer cursor */
   button,
   [role="button"],
