@@ -164,7 +164,7 @@ export async function POST(request: Request) {
         maxSteps: 50,
         providerOptions: {
           // Each provider ignores keys meant for other providers
-          google: { thinkingConfig: { thinkingBudget: 8192 } },
+          google: { thinkingConfig: { thinkingBudget: 8192, includeThoughts: true } },
           anthropic: { thinking: { type: 'enabled', budgetTokens: 10000 } },
         },
       }
