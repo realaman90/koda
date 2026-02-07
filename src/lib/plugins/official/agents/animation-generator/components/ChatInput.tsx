@@ -332,7 +332,7 @@ export function ChatInput({
       )}
 
       {/* Input box */}
-      <div className="rounded-[10px] bg-[#27272a] border border-[#3f3f46] overflow-hidden">
+      <div className="rounded-[10px] border border-[#3f3f46] overflow-hidden" style={{ backgroundColor: '#27272a' }}>
         {/* Textarea area */}
         <div className="px-3 pt-2.5 pb-1.5">
           <textarea
@@ -343,8 +343,8 @@ export function ChatInput({
             placeholder={inputPlaceholder}
             disabled={disabled}
             rows={1}
-            className="w-full resize-none bg-transparent text-[13px] text-[#FAFAFA] placeholder:text-[#52525B] outline-none leading-[1.4]"
-            style={{ minHeight: '20px', maxHeight: '100px' }}
+            className="w-full resize-none text-[13px] text-[#FAFAFA] placeholder:text-[#52525B] outline-none leading-[1.4]"
+            style={{ minHeight: '20px', maxHeight: '100px', backgroundColor: 'transparent' }}
           />
         </div>
 
