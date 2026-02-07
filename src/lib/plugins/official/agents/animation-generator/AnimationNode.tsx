@@ -74,7 +74,7 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
 };
 
 /** UI tools that update state silently — not shown in the timeline */
-const UI_TOOLS = new Set(['update_todo', 'set_thinking', 'add_message', 'request_approval', 'analyze_prompt']);
+const UI_TOOLS = new Set(['update_todo', 'batch_update_todos', 'set_thinking', 'add_message', 'request_approval', 'analyze_prompt']);
 
 // ─── Timeline item union ────────────────────────────────────────────────
 // Simplified: only user messages, assistant messages, plan cards, and videos
@@ -84,6 +84,16 @@ type TimelineItem =
   | { kind: 'assistant'; id: string; content: string; ts: string; seq: number }
   | { kind: 'plan'; id: string; ts: string; seq: number }
   | { kind: 'video'; id: string; ts: string; seq: number; videoUrl: string; duration: number };
+
+// ─── Media data cache (IndexedDB-backed) ─────────────────────────────────
+import {
+  cacheMediaData,
+  cacheIfLarge,
+  getCached,
+  removeCached,
+  resolveMediaCache,
+  hydrateMediaCache,
+} from './media-cache';
 
 // ─── Global sequence counter for stable chronological ordering ──────────
 // This ensures events are ordered correctly even when timestamps are identical
@@ -152,10 +162,22 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     };
   }, [id]);
 
+  // ─── Hydrate media cache from IndexedDB on mount ────────────────────
+  const [mediaCacheReady, setMediaCacheReady] = useState(false);
+  useEffect(() => {
+    const entries = data.media || [];
+    if (entries.some((m) => m.dataUrl.startsWith('cached:'))) {
+      hydrateMediaCache(entries).then(() => setMediaCacheReady(true));
+    } else {
+      setMediaCacheReady(true);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- hydrate once on mount
+
   // ─── Data accessors ─────────────────────────────────────────────────
   const imageRefCount = data.imageRefCount || 1;
   const videoRefCount = data.videoRefCount || 1;
-  const media: MediaEntry[] = data.media || [];
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const media: MediaEntry[] = useMemo(() => resolveMediaCache(data.media || []), [data.media, mediaCacheReady]);
   const engine: AnimationEngine = data.engine || 'remotion';
   const aspectRatio: AspectRatio = data.aspectRatio || '16:9';
 
@@ -226,9 +248,9 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     const removedIds = [...currentEdgeIds].filter((eid) => !activeEdgeIds.has(eid));
     if (removedIds.length > 0) {
       updatedEdgeMedia = updatedEdgeMedia.filter((m) => !removedIds.includes(m.edgeId!));
-      // Revoke blob URLs for removed media
-      edgeMedia.filter((m) => removedIds.includes(m.edgeId!) && m.dataUrl.startsWith('blob:')).forEach((m) => {
-        try { URL.revokeObjectURL(m.dataUrl); } catch { /* ignore */ }
+      // Clean up cached data for removed edges
+      edgeMedia.filter((m) => removedIds.includes(m.edgeId!)).forEach((m) => {
+        removeCached(m.id);
       });
       changed = true;
     }
@@ -246,7 +268,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       let mediaName = (d.name as string) || sourceNode.type || 'Media';
 
       if (sourceNode.type === 'imageGenerator' || sourceNode.type === 'media') {
-        mediaUrl = (d.outputUrl as string) || (d.imageUrl as string);
+        mediaUrl = (d.outputUrl as string) || (d.imageUrl as string) || (d.url as string);
         mediaType = 'image';
       } else if (sourceNode.type === 'videoGenerator') {
         mediaUrl = d.outputUrl as string;
@@ -258,14 +280,15 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       if (engine === 'theatre' && mediaType === 'video') continue;
 
       if (mediaUrl) {
+        const entryId = `edge_${edge.id}`;
         updatedEdgeMedia.push({
-          id: `edge_${edge.id}`,
+          id: entryId,
           source: 'edge',
           edgeId: edge.id,
           sourceNodeId: edge.source,
           name: mediaName,
           type: mediaType,
-          dataUrl: mediaUrl,
+          dataUrl: cacheIfLarge(entryId, mediaUrl),
         });
         changed = true;
       }
@@ -276,9 +299,11 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       const sourceNode = nodes.find((n) => n.id === entry.sourceNodeId);
       if (!sourceNode) continue;
       const d = sourceNode.data as Record<string, unknown>;
-      const currentUrl = (d.outputUrl as string) || (d.imageUrl as string) || '';
-      if (currentUrl && currentUrl !== entry.dataUrl) {
-        entry.dataUrl = currentUrl;
+      const currentUrl = (d.outputUrl as string) || (d.imageUrl as string) || (d.url as string) || '';
+      // Compare against resolved (real) URL, not the cached placeholder
+      const resolvedUrl = entry.dataUrl.startsWith('cached:') ? (getCached(entry.id) || '') : entry.dataUrl;
+      if (currentUrl && currentUrl !== resolvedUrl) {
+        entry.dataUrl = cacheIfLarge(entry.id, currentUrl);
         changed = true;
       }
     }
@@ -298,50 +323,67 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
   }, [engine]); // Only react to engine changes
 
   // ─── Media upload handler ─────────────────────────────────────────
+  // Converts files to base64 data URLs (not blob URLs) so they can be
+  // passed to the Docker sandbox via sandbox_write_binary.
   const handleMediaUpload = useCallback(
     (files: FileList) => {
-      const currentMedia = data.media || [];
-      const newEntries: MediaEntry[] = [];
-
       Array.from(files).forEach((file) => {
         const isVideo = file.type.startsWith('video/');
         const isImage = file.type.startsWith('image/');
         if (!isVideo && !isImage) return;
 
-        // For videos, we validate duration client-side after creating the blob
-        const blobUrl = URL.createObjectURL(file);
-        const entry: MediaEntry = {
-          id: `upload_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-          source: 'upload',
-          name: file.name,
-          type: isVideo ? 'video' : 'image',
-          dataUrl: blobUrl,
-          mimeType: file.type,
-        };
-
         if (isVideo) {
-          // Validate video duration (max 10s) via hidden <video> element
+          // Videos: validate duration first, then convert to base64
+          const tempUrl = URL.createObjectURL(file);
           const video = document.createElement('video');
           video.preload = 'metadata';
           video.onloadedmetadata = () => {
-            URL.revokeObjectURL(video.src);
+            URL.revokeObjectURL(tempUrl);
             if (video.duration > 10) {
-              URL.revokeObjectURL(blobUrl);
               toast.error(`Video too long (${video.duration.toFixed(1)}s) — max 10 seconds`);
               return;
             }
-            entry.duration = video.duration;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+              const dataUrl = e.target?.result as string;
+              const entryId = `upload_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+              // Store large base64 in memory cache, not in persisted state
+              cacheMediaData(entryId, dataUrl);
+              const entry: MediaEntry = {
+                id: entryId,
+                source: 'upload',
+                name: file.name,
+                type: 'video',
+                dataUrl: `cached:${entryId}`,
+                duration: video.duration,
+                mimeType: file.type,
+              };
+              updateNodeData(id, { media: [...(data.media || []), entry] });
+            };
+            reader.readAsDataURL(file);
+          };
+          video.src = tempUrl;
+        } else {
+          // Images: convert to base64 directly
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const dataUrl = e.target?.result as string;
+            const entryId = `upload_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+            // Store large base64 in memory cache, not in persisted state
+            cacheMediaData(entryId, dataUrl);
+            const entry: MediaEntry = {
+              id: entryId,
+              source: 'upload',
+              name: file.name,
+              type: 'image',
+              dataUrl: `cached:${entryId}`,
+              mimeType: file.type,
+            };
             updateNodeData(id, { media: [...(data.media || []), entry] });
           };
-          video.src = blobUrl;
-        } else {
-          newEntries.push(entry);
+          reader.readAsDataURL(file);
         }
       });
-
-      if (newEntries.length > 0) {
-        updateNodeData(id, { media: [...currentMedia, ...newEntries] });
-      }
     },
     [id, data.media, updateNodeData]
   );
@@ -351,13 +393,14 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       const currentMedia = data.media || [];
       // Don't add duplicates from same source node
       if (currentMedia.some((m) => m.source === 'upload' && m.sourceNodeId === node.nodeId)) return;
+      const entryId = `noderef_${node.nodeId}_${Date.now()}`;
       const entry: MediaEntry = {
-        id: `noderef_${node.nodeId}_${Date.now()}`,
+        id: entryId,
         source: 'upload', // manual reference, not auto-edge
         sourceNodeId: node.nodeId,
         name: node.name,
         type: node.type,
-        dataUrl: node.url,
+        dataUrl: cacheIfLarge(entryId, node.url),
       };
       updateNodeData(id, { media: [...currentMedia, entry] });
     },
@@ -367,10 +410,8 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
   const handleRemoveMedia = useCallback(
     (mediaId: string) => {
       const currentMedia = data.media || [];
-      const entry = currentMedia.find((m) => m.id === mediaId);
-      if (entry?.dataUrl.startsWith('blob:')) {
-        try { URL.revokeObjectURL(entry.dataUrl); } catch { /* ignore */ }
-      }
+      // Clean up cached data
+      removeCached(mediaId);
       updateNodeData(id, { media: currentMedia.filter((m) => m.id !== mediaId) });
     },
     [id, data.media, updateNodeData]
@@ -523,6 +564,34 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         console.log(`%c⏱ [Animation] Tool call: ${event.toolName} — started at +${elapsed}s`, 'color: #3B82F6', event.args);
         toolTimersRef.current.set(event.toolCallId, { name: event.toolName, start: Date.now() });
 
+        // ── Auto-label thinking based on tool call ──────────────────
+        // Updates the thinking message to reflect what's actually happening,
+        // so users don't see a stale "Analysing your prompt" for 45+ seconds.
+        const TOOL_THINKING_LABELS: Record<string, string> = {
+          enhance_animation_prompt: 'Crafting your design...',
+          analyze_prompt: 'Understanding your request...',
+          generate_plan: 'Planning your animation...',
+          sandbox_create: 'Setting up workspace...',
+          generate_remotion_code: 'Writing animation code...',
+          generate_code: 'Writing animation code...',
+          sandbox_start_preview: 'Starting preview...',
+          sandbox_screenshot: 'Checking the animation...',
+          render_preview: 'Rendering preview video...',
+          render_final: 'Rendering final video...',
+          analyze_media: 'Analyzing your media...',
+        };
+        const autoLabel = TOOL_THINKING_LABELS[event.toolName];
+        if (autoLabel && ls.execution) {
+          // Update thinking + active thinking block label
+          const updatedBlocks = [...ls.thinkingBlocks];
+          const activeBlkIdx = updatedBlocks.findIndex((tb) => !tb.endedAt);
+          if (activeBlkIdx >= 0) {
+            updatedBlocks[activeBlkIdx] = { ...updatedBlocks[activeBlkIdx], label: autoLabel };
+          }
+          ls = { ...ls, thinkingBlocks: updatedBlocks, execution: { ...ls.execution, thinking: autoLabel } };
+          updateNodeData(id, { state: { ...ls, updatedAt: new Date().toISOString() } });
+        }
+
         // Track visible tools in state.toolCalls
         if (!UI_TOOLS.has(event.toolName)) {
           const tc: ToolCallItem = {
@@ -564,7 +633,13 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
               updatedTodos.push({ id: todoId, label, status: (status as 'pending' | 'active' | 'done') || 'pending' });
             }
           } else if (action === 'remove') {
-            updatedTodos = updatedTodos.filter((t) => t.id !== todoId);
+            // Safety: never remove a completed todo — they should stay visible
+            const target = updatedTodos.find((t) => t.id === todoId);
+            if (target?.status === 'done') {
+              console.warn(`[AnimationNode] Blocked removal of completed todo "${todoId}"`);
+            } else {
+              updatedTodos = updatedTodos.filter((t) => t.id !== todoId);
+            }
           } else {
             // Default: update status
             updatedTodos = updatedTodos.map((t) =>
@@ -575,6 +650,36 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           updateNodeData(id, {
             state: { ...ls, execution: { ...ls.execution, todos: updatedTodos }, updatedAt: new Date().toISOString() },
           });
+        }
+
+        // UI tool: batch_update_todos — process multiple updates at once
+        if (event.toolName === 'batch_update_todos' && ls.execution) {
+          const { updates } = event.args as {
+            updates: Array<{ action?: string; todoId: string; status?: string; label?: string }>;
+          };
+          if (updates?.length) {
+            let updatedTodos = [...ls.execution.todos];
+            for (const u of updates) {
+              const action = u.action || 'update';
+              if (action === 'add' && u.label) {
+                if (!updatedTodos.some((t) => t.id === u.todoId)) {
+                  updatedTodos.push({ id: u.todoId, label: u.label, status: (u.status as 'pending' | 'active' | 'done') || 'pending' });
+                }
+              } else if (action === 'remove') {
+                const target = updatedTodos.find((t) => t.id === u.todoId);
+                if (target?.status !== 'done') {
+                  updatedTodos = updatedTodos.filter((t) => t.id !== u.todoId);
+                }
+              } else {
+                updatedTodos = updatedTodos.map((t) =>
+                  t.id === u.todoId ? { ...t, status: (u.status as 'pending' | 'active' | 'done') || t.status } : t
+                );
+              }
+            }
+            updateNodeData(id, {
+              state: { ...ls, execution: { ...ls.execution, todos: updatedTodos }, updatedAt: new Date().toISOString() },
+            });
+          }
         }
 
         // UI tool: set_thinking — update execution + active thinking block label
@@ -1003,8 +1108,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
 
       updateNodeData(id, {
         prompt,
-        // Clear uploaded media from the strip — they're now snapshot'd on the message (edge media stays)
-        ...(uploads.length > 0 ? { media: media.filter((m) => m.source !== 'upload') } : {}),
+        // Keep uploads in data.media so they're available for plan acceptance and execution streams
         state: {
           ...ls,
           phase: 'executing',
@@ -1209,19 +1313,11 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     const ls = getLatestState();
     if (!ls.plan) return;
 
-    const todos = [
-      { id: 'setup', label: 'Set up Theatre.js project', status: 'pending' as const },
-      ...ls.plan.scenes.map((s) => ({
-        id: `scene-${s.number}`,
-        label: `Create Scene ${s.number} (${s.title})`,
-        status: 'pending' as const,
-      })),
-      { id: 'postprocess', label: 'Add post-processing effects', status: 'pending' as const },
-      { id: 'render', label: 'Render preview', status: 'pending' as const },
-    ];
+    // Don't pre-create todos — let the agent own them entirely to avoid double bookkeeping
+    const engineLabel = engine === 'remotion' ? 'Remotion' : 'Theatre.js';
     const thinkingBlock: ThinkingBlockItem = {
       id: `tb_${Date.now()}`,
-      label: 'Initializing animation sandbox...',
+      label: `Setting up ${engineLabel} animation...`,
       startedAt: new Date().toISOString(),
       seq: getNextSeq(),
     };
@@ -1232,7 +1328,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         phase: 'executing',
         planAccepted: true,
         thinkingBlocks: [...ls.thinkingBlocks, thinkingBlock],
-        execution: { todos, thinking: 'Initializing animation sandbox...', files: [] },
+        execution: { todos: [], thinking: `Setting up ${engineLabel} animation...`, files: [] },
         startedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       },
@@ -1243,27 +1339,36 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     const callbacks = createStreamCallbacks();
 
     try {
-      const todoList = todos.map((t) => `  - [${t.status}] ${t.id}: ${t.label}`).join('\n');
+      const sceneList = ls.plan.scenes.map((s) =>
+        `  - Scene ${s.number}: ${s.title} (${s.duration}s) — ${s.description}`
+      ).join('\n');
+      const mediaInfo = media.length > 0 ? [
+        '',
+        `MEDIA FILES TO INCLUDE (${media.length} file${media.length > 1 ? 's' : ''}):`,
+        ...media.map(m => `  - "${m.name}" (${m.type}) — upload to sandbox at public/media/${m.name}`),
+        'Upload these FIRST (step 4a-media), then reference them in your animation code.',
+      ] : [];
       await streamToAgent(
         [
-          'The user has approved the animation plan. Execute it step by step.',
+          'The user has approved the animation plan. Execute it now.',
           '',
-          'IMPORTANT — keep the todo list accurate at all times:',
-          `  call update_todo({ action: "update", todoId: "<id>", status: "active" }) BEFORE starting each task`,
-          `  call update_todo({ action: "update", todoId: "<id>", status: "done" })   AFTER completing each task`,
-          `  If you discover extra work, call update_todo({ action: "add", todoId, label }) to add it.`,
-          `  If a task becomes irrelevant, call update_todo({ action: "remove", todoId }) to clean it up.`,
+          'FIRST: Create your task list using batch_update_todos with action="add" for ALL tasks.',
+          'Include tasks for: sandbox setup, each scene, post-processing, and rendering.',
+          'Then IMMEDIATELY start executing — do NOT stop after creating todos.',
           '',
-          'Current todos:',
-          todoList,
+          'Plan scenes:',
+          sceneList,
+          ...mediaInfo,
           '',
-          'Use set_thinking to explain what you are doing.',
-          'Write all code files using sandbox_write_file.',
-          'After all scenes are done, call render_preview to generate the video.',
+          'RULES:',
+          '- Mark each todo "active" before starting, "done" after completing.',
+          '- NEVER remove completed todos.',
+          '- Prefer batch_update_todos for multiple updates.',
+          '- Work SILENTLY — use set_thinking for status, not text output.',
           '',
           `Prompt: ${data.prompt || 'Animation request'}`,
         ].join('\n'),
-        { nodeId: id, phase: 'executing', plan: ls.plan, todos, sandboxId: ls.sandboxId, media, engine, aspectRatio },
+        { nodeId: id, phase: 'executing', plan: ls.plan, todos: [], sandboxId: ls.sandboxId, media, engine, aspectRatio },
         callbacks
       );
     } catch {
@@ -1348,8 +1453,9 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         updatedAt: new Date().toISOString(),
       };
 
-      // If plan was accepted but we're back in plan phase (failed execution), transition to executing
-      if (ls.planAccepted && ls.phase === 'plan') {
+      // Transition to executing when user sends a message and plan was already accepted
+      // This covers: plan phase (failed execution), preview phase (edit request), complete phase (follow-up)
+      if (ls.planAccepted) {
         stateUpdate.phase = 'executing';
         stateUpdate.execution = {
           todos: ls.execution?.todos || [],
@@ -1365,8 +1471,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       }
 
       updateNodeData(id, {
-        // Clear uploaded media from the strip (edge media stays)
-        ...(uploads.length > 0 ? { media: media.filter((m) => m.source !== 'upload') } : {}),
+        // Keep uploads in data.media so they persist through execution streams
         state: { ...ls, ...stateUpdate },
       });
 
@@ -1909,15 +2014,17 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
               return null;
             })}
 
-            {/* Simple progress indicator during execution */}
-            {state.phase === 'executing' && isStreaming && (
-              <div className="flex items-center gap-2 py-2">
-                <div className="relative w-4 h-4 flex items-center justify-center">
-                  <span className="absolute w-3 h-3 rounded-full bg-[#3B82F6] animate-ping opacity-30" />
-                  <span className="absolute w-2 h-2 rounded-full bg-[#3B82F6]" />
-                </div>
-                <span className="text-[11px] text-[#71717A]">
-                  {state.execution?.thinking || 'Creating your video...'}
+            {/* Thinking shimmer — visible whenever streaming with no visible text output */}
+            {(
+              (isStreaming && !state.execution?.streamingText) ||
+              (state.phase === 'executing' && state.execution?.thinking && !isStreaming && !state.execution?.streamingText && state.execution?.todos.length === 0)
+            ) && (
+              <div className="py-2">
+                <span
+                  className="text-[11px] font-medium bg-clip-text text-transparent bg-gradient-to-r from-[#52525B] via-[#D4D4D8] to-[#52525B] bg-[length:200%_100%]"
+                  style={{ animation: 'think-shimmer 2.5s ease-in-out infinite' }}
+                >
+                  {state.execution?.thinking || 'Working on it...'}
                 </span>
               </div>
             )}

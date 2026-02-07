@@ -17,7 +17,7 @@ const PROMPT_ENHANCER_INSTRUCTIONS = `You are a world-class motion designer AND 
 When given a simple prompt, create a detailed spec that includes:
 
 1. **Visual Design System** (MOST IMPORTANT)
-   - Exact color palette with hex codes (dark mode by default)
+   - Exact color palette with hex codes (match the user's intent — use dark mode for tech/SaaS/dev themes, light mode for organic/lifestyle/minimal themes, or follow what the prompt implies)
    - Typography: font sizes, weights, letter-spacing
    - Spacing system: padding, gaps, margins
    - Border radius, shadows, gradients
@@ -208,11 +208,13 @@ Return a detailed prompt in this structure:
 Now enhance the user's prompt into a world-class, PREMIUM animation spec with exact design values.`;
 
 // Create a lightweight agent for prompt enhancement
+// Uses Sonnet for speed — prompt enhancement is creative writing, not complex reasoning.
+// Opus took ~110s here; Sonnet should be ~15-25s.
 const promptEnhancerAgent = new Agent({
   id: 'animation-prompt-enhancer',
   name: 'animation-prompt-enhancer',
   instructions: PROMPT_ENHANCER_INSTRUCTIONS,
-  model: 'anthropic/claude-opus-4-6',
+  model: 'anthropic/claude-sonnet-4-5-20250929',
 });
 
 export const enhanceAnimationPromptTool = createTool({

@@ -66,6 +66,17 @@ export async function POST(request: Request) {
       if (context.sandboxId) {
         contextParts.push(`Active sandbox ID: ${context.sandboxId}`);
       }
+      if (context.media && context.media.length > 0) {
+        const mediaList = context.media.map(m =>
+          `- [${m.type}] "${m.name}" (${m.source}${m.duration ? `, ${m.duration}s` : ''}) ${m.dataUrl.startsWith('data:') ? `BASE64 (${m.mimeType || 'unknown'}, ~${Math.round(m.dataUrl.length * 0.75 / 1024)}KB) — use sandbox_write_binary to write to public/media/` : `URL: ${m.dataUrl} — use sandbox_upload_media to download to public/media/`}`
+        ).join('\n');
+        contextParts.push(`⚠️ USER MEDIA FILES — MUST upload to sandbox and feature in animation:\n${mediaList}`);
+        contextParts.push(
+          'MANDATORY: Upload each file to public/media/ BEFORE writing code. ' +
+          'For base64: extract the portion after the comma in "data:mime;base64,DATA" and pass to sandbox_write_binary. ' +
+          'For videos, call analyze_media first for scene understanding, then extract_video_frames for key frame images.'
+        );
+      }
       if (context.phase) {
         contextParts.push(`Current phase: ${context.phase}`);
       }
@@ -77,16 +88,6 @@ export async function POST(request: Request) {
       }
       if (context.attachments && context.attachments.length > 0) {
         contextParts.push(`${context.attachments.length} reference files attached`);
-      }
-      if (context.media && context.media.length > 0) {
-        const mediaList = context.media.map(m =>
-          `- [${m.type}] "${m.name}" (${m.source}${m.duration ? `, ${m.duration}s` : ''}) URL: ${m.dataUrl.startsWith('data:') ? '[base64 data]' : m.dataUrl}`
-        ).join('\n');
-        contextParts.push(`User media files (upload to sandbox before use):\n${mediaList}`);
-        contextParts.push(
-          'IMPORTANT: For each media file, call sandbox_upload_media (if URL) or sandbox_write_binary (if base64) to write it to the sandbox at public/media/. ' +
-          'For videos, call analyze_media first for scene understanding, then extract_video_frames for key frame images.'
-        );
       }
 
       if (contextParts.length > 0) {
@@ -111,6 +112,17 @@ export async function POST(request: Request) {
       agentMessages = agentMessages.slice(-MAX_MESSAGES);
     }
 
+    // ── Sandbox state injection (post-windowing) ─────────────────
+    // The sandbox ID is critical state — if the agent loses it
+    // (pushed out by windowing), it hallucinates fake IDs.
+    // Always append as trailing system message so it's never lost.
+    if (context?.sandboxId) {
+      agentMessages.push({
+        role: 'system',
+        content: `CRITICAL STATE: Your active sandbox ID is "${context.sandboxId}". Use EXACTLY this ID for ALL sandbox tool calls. Do NOT invent, guess, or create new sandbox IDs.`,
+      });
+    }
+
     // ⏱ Server-side timing
     const serverStart = Date.now();
     console.log(`⏱ [Animation API] Stream request — engine: ${engine}, messages: ${agentMessages.length}`);
@@ -118,7 +130,7 @@ export async function POST(request: Request) {
     const result = await animationAgent.stream(
       agentMessages as Parameters<typeof animationAgent.stream>[0],
       {
-        maxSteps: 30,
+        maxSteps: 50,
         providerOptions: {
           anthropic: {
             thinking: {
@@ -343,6 +355,7 @@ export async function GET(request: Request) {
     capabilities: [
       // UI Tools
       'update_todo',
+      'batch_update_todos',
       'set_thinking',
       'add_message',
       'request_approval',

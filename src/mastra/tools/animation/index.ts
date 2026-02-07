@@ -7,6 +7,7 @@
 // UI Communication Tools
 export {
   updateTodoTool,
+  batchUpdateTodosTool,
   setThinkingTool,
   addMessageTool,
   requestApprovalTool,

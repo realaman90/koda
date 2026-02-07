@@ -177,7 +177,11 @@ export function useAnimationStream(): UseAnimationStreamReturn {
                   // Map to typed app event (for UI tools with actionable args)
                   const appEvent = toolCallToAppEvent(data.toolName, data.args);
                   if (appEvent) {
-                    callbacks?.onAppEvent?.(appEvent);
+                    // batch_update_todos returns an array of events
+                    const events = Array.isArray(appEvent) ? appEvent : [appEvent];
+                    for (const evt of events) {
+                      callbacks?.onAppEvent?.(evt);
+                    }
                   }
                   break;
                 }

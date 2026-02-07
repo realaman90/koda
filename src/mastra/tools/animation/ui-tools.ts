@@ -51,6 +51,45 @@ Use "remove" to clean up stale items the user no longer needs to see.`,
 });
 
 /**
+ * batch_update_todos - Update multiple todos in one call
+ * Reduces token overhead from 8 separate tool calls to 1.
+ */
+export const batchUpdateTodosTool = createTool({
+  id: 'batch_update_todos',
+  description: `Update multiple todos in a single call. Use this INSTEAD of calling update_todo multiple times.
+Accepts an array of updates — each can be an "update", "add", or "remove" action.
+This is more efficient and reduces round-trips.`,
+  inputSchema: z.object({
+    updates: z.array(z.object({
+      action: z.enum(['update', 'add', 'remove']).default('update'),
+      todoId: z.string(),
+      label: z.string().optional(),
+      status: z.enum(['pending', 'active', 'done']).optional(),
+    })).min(1).describe('Array of todo updates to apply'),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    count: z.number(),
+    updates: z.array(z.object({
+      action: z.string(),
+      todoId: z.string(),
+      status: z.string().optional(),
+    })),
+  }),
+  execute: async (inputData) => {
+    return {
+      success: true,
+      count: inputData.updates.length,
+      updates: inputData.updates.map(u => ({
+        action: u.action,
+        todoId: u.todoId,
+        status: u.status,
+      })),
+    };
+  },
+});
+
+/**
  * set_thinking - Update the thinking/status message
  */
 export const setThinkingTool = createTool({

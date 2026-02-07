@@ -221,6 +221,7 @@ export type AnimationAppEvent =
 /** UI tools — tool-call args are used directly */
 export const UI_TOOL_NAMES = [
   'update_todo',
+  'batch_update_todos',
   'set_thinking',
   'add_message',
   'request_approval',
@@ -268,7 +269,7 @@ export type AnimationToolName = UIToolName | PlanningToolName | SandboxToolName 
  * Returns null if the tool call doesn't produce an immediate app event
  * (e.g., sandbox_read_file doesn't need to update the UI on call).
  */
-export function toolCallToAppEvent(toolName: string, args: Record<string, unknown>): AnimationAppEvent | null {
+export function toolCallToAppEvent(toolName: string, args: Record<string, unknown>): AnimationAppEvent | AnimationAppEvent[] | null {
   switch (toolName) {
     case 'update_todo':
       return {
@@ -276,6 +277,15 @@ export function toolCallToAppEvent(toolName: string, args: Record<string, unknow
         todoId: args.todoId as string,
         status: args.status as 'pending' | 'active' | 'done',
       };
+    case 'batch_update_todos': {
+      const updates = args.updates as Array<{ action: string; todoId: string; status?: string; label?: string }>;
+      if (!updates?.length) return null;
+      return updates.map(u => ({
+        kind: 'todo_update' as const,
+        todoId: u.todoId,
+        status: (u.status || 'done') as 'pending' | 'active' | 'done',
+      }));
+    }
     case 'set_thinking':
       return {
         kind: 'thinking',

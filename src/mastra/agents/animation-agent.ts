@@ -11,6 +11,7 @@ import { ANIMATION_AGENT_INSTRUCTIONS } from './instructions/animation';
 import {
   // UI Tools
   updateTodoTool,
+  batchUpdateTodosTool,
   setThinkingTool,
   addMessageTool,
   requestApprovalTool,
@@ -56,10 +57,11 @@ export const animationAgent = new Agent({
   id: 'animation-orchestrator',
   name: 'Animation Orchestrator',
   instructions: ANIMATION_AGENT_INSTRUCTIONS,
-  model: 'anthropic/claude-sonnet-4-5',
+  model: 'anthropic/claude-opus-4-6',
   tools: {
     // UI Tools
     update_todo: updateTodoTool,
+    batch_update_todos: batchUpdateTodosTool,
     set_thinking: setThinkingTool,
     add_message: addMessageTool,
     request_approval: requestApprovalTool,
