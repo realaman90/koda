@@ -272,6 +272,9 @@ export interface AnimationNodeData extends Record<string, unknown> {
   // Aspect ratio (default 16:9)
   aspectRatio?: AspectRatio;
 
+  // Target animation duration in seconds (default 10)
+  duration?: number;
+
   // Dynamic handle counts
   imageRefCount?: number;  // Number of image reference handles (default 1)
   videoRefCount?: number;  // Number of video reference handles (default 1)

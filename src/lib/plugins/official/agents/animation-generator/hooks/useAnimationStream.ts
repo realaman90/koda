@@ -28,6 +28,7 @@ interface StreamContext {
   sandboxId?: string;
   engine?: 'remotion' | 'theatre';
   aspectRatio?: '16:9' | '9:16' | '1:1' | '4:3' | '21:9';
+  duration?: number;
 }
 
 interface ToolCallEvent {

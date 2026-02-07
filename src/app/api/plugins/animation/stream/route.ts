@@ -26,6 +26,7 @@ interface StreamRequestBody {
     sandboxId?: string;
     engine?: 'remotion' | 'theatre';
     aspectRatio?: '16:9' | '9:16' | '1:1' | '4:3' | '21:9';
+    duration?: number;
   };
 }
 
@@ -62,6 +63,9 @@ export async function POST(request: Request) {
       contextParts.push(`ANIMATION ENGINE: ${engine.toUpperCase()} — You MUST use template "${engine}" when creating a sandbox. Do NOT use any other engine.`);
       if (context.aspectRatio) {
         contextParts.push(`Aspect ratio: ${context.aspectRatio}`);
+      }
+      if (context.duration) {
+        contextParts.push(`Target duration: ${context.duration} seconds`);
       }
       if (context.sandboxId) {
         contextParts.push(`Active sandbox ID: ${context.sandboxId}`);
@@ -112,14 +116,20 @@ export async function POST(request: Request) {
       agentMessages = agentMessages.slice(-MAX_MESSAGES);
     }
 
-    // ── Sandbox state injection (post-windowing) ─────────────────
-    // The sandbox ID is critical state — if the agent loses it
-    // (pushed out by windowing), it hallucinates fake IDs.
-    // Always append as trailing system message so it's never lost.
-    if (context?.sandboxId) {
+    // ── Critical state injection (post-windowing) ────────────────
+    // The sandbox ID and engine are critical state — if the agent
+    // loses them (pushed out by windowing), it hallucinates fake IDs
+    // or picks the wrong engine. Always append as a single trailing
+    // system message so it's never lost.
+    {
+      const trailingParts: string[] = [];
+      if (context?.sandboxId) {
+        trailingParts.push(`Your active sandbox ID is "${context.sandboxId}". Use EXACTLY this ID for ALL sandbox tool calls. Do NOT invent, guess, or create new sandbox IDs.`);
+      }
+      trailingParts.push(`ENGINE: ${engine}. Use template="${engine}" for sandbox_create. Do NOT use any other engine.`);
       agentMessages.push({
         role: 'system',
-        content: `CRITICAL STATE: Your active sandbox ID is "${context.sandboxId}". Use EXACTLY this ID for ALL sandbox tool calls. Do NOT invent, guess, or create new sandbox IDs.`,
+        content: `CRITICAL STATE: ${trailingParts.join(' ')}`,
       });
     }
 
@@ -147,6 +157,10 @@ export async function POST(request: Request) {
 
     // Track closed state for the stream controller
     let closed = false;
+
+    // Track sandbox ID discovered from sandbox_create tool results
+    // so the client can store it for subsequent stream calls
+    let discoveredSandboxId: string | null = null;
 
     const readable = new ReadableStream({
       async start(controller) {
@@ -202,6 +216,28 @@ export async function POST(request: Request) {
                 const resultElapsed = ((Date.now() - serverStart) / 1000).toFixed(1);
                 const isErr = chunk.payload.isError;
                 console.log(`⏱ [Animation API] Tool result: ${chunk.payload.toolName} at +${resultElapsed}s ${isErr ? '❌' : '✅'}`);
+
+                // Track sandbox ID from sandbox_create results so the client
+                // can persist it for subsequent stream calls (Issue #47)
+                if (
+                  chunk.payload.toolName === 'sandbox_create' &&
+                  !isErr &&
+                  chunk.payload.result &&
+                  typeof chunk.payload.result === 'object' &&
+                  'sandboxId' in (chunk.payload.result as Record<string, unknown>)
+                ) {
+                  const newSandboxId = (chunk.payload.result as Record<string, unknown>).sandboxId;
+                  if (typeof newSandboxId === 'string' && newSandboxId) {
+                    discoveredSandboxId = newSandboxId;
+                    console.log(`⏱ [Animation API] Discovered sandbox ID: ${discoveredSandboxId}`);
+                    // Send a custom SSE event so the frontend can store it
+                    safeEnqueue(encoder.encode(`data: ${JSON.stringify({
+                      type: 'sandbox-created',
+                      sandboxId: discoveredSandboxId,
+                    })}\n\n`));
+                  }
+                }
+
                 sseData = JSON.stringify({
                   type: 'tool-result',
                   toolCallId: chunk.payload.toolCallId,

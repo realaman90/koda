@@ -26,6 +26,7 @@ import {
   RetryButton,
   TodoSection,
   VideoCard,
+  ThinkingBlock,
 } from './components/ChatMessages';
 import { QuestionForm } from './components/QuestionForm';
 
@@ -83,7 +84,8 @@ type TimelineItem =
   | { kind: 'user'; id: string; content: string; ts: string; seq: number; media?: MediaEntry[] }
   | { kind: 'assistant'; id: string; content: string; ts: string; seq: number }
   | { kind: 'plan'; id: string; ts: string; seq: number }
-  | { kind: 'video'; id: string; ts: string; seq: number; videoUrl: string; duration: number };
+  | { kind: 'video'; id: string; ts: string; seq: number; videoUrl: string; duration: number }
+  | { kind: 'thinking'; id: string; ts: string; seq: number; label: string; reasoning?: string; duration?: number; isActive?: boolean };
 
 // ─── Media data cache (IndexedDB-backed) ─────────────────────────────────
 import {
@@ -180,6 +182,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
   const media: MediaEntry[] = useMemo(() => resolveMediaCache(data.media || []), [data.media, mediaCacheReady]);
   const engine: AnimationEngine = data.engine || 'remotion';
   const aspectRatio: AspectRatio = data.aspectRatio || '16:9';
+  const duration: number = data.duration || 10;
 
   useEffect(() => {
     updateNodeInternals(id);
@@ -1061,6 +1064,11 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     [id, updateNodeData]
   );
 
+  const handleDurationChange = useCallback(
+    (newDuration: number) => updateNodeData(id, { duration: newDuration }),
+    [id, updateNodeData]
+  );
+
   const handleEngineChange = useCallback(
     (newEngine: AnimationEngine) => updateNodeData(id, { engine: newEngine }),
     [id, updateNodeData]
@@ -1126,7 +1134,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       try {
         await streamToAgent(
           `Analyze this animation request and either ask a clarifying question (if style is unclear) or generate a plan directly:\n\n${prompt}`,
-          { nodeId: id, phase: 'idle', media, engine, aspectRatio },
+          { nodeId: id, phase: 'idle', media, engine, aspectRatio, duration },
           callbacks
         );
         // Fallback if agent didn't use tools
@@ -1155,7 +1163,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         // Error handled by onError callback
       }
     },
-    [id, media, engine, aspectRatio, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
+    [id, media, engine, aspectRatio, duration, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
   );
 
   const handleSelectStyle = useCallback(
@@ -1195,7 +1203,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       try {
         await streamToAgent(
           `Generate an animation plan for this request with style "${selectedStyle}":\n\n${data.prompt || 'Animation request'}`,
-          { nodeId: id, phase: 'question', engine, aspectRatio },
+          { nodeId: id, phase: 'question', engine, aspectRatio, duration },
           callbacks
         );
         const latest = getLatestState();
@@ -1223,7 +1231,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         // Error handled by callback
       }
     },
-    [id, data.prompt, engine, aspectRatio, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
+    [id, data.prompt, engine, aspectRatio, duration, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
   );
 
   const handleFormSubmit = useCallback(
@@ -1278,7 +1286,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         const answersJson = JSON.stringify(answers, null, 2);
         await streamToAgent(
           `User answered the form:\n${answersJson}\n\nProceed with generating a plan based on these answers.\n\nOriginal prompt: ${data.prompt || 'Animation request'}`,
-          { nodeId: id, phase: 'question', engine, aspectRatio },
+          { nodeId: id, phase: 'question', engine, aspectRatio, duration },
           callbacks
         );
         const latest = getLatestState();
@@ -1306,7 +1314,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         // Error handled by callback
       }
     },
-    [id, data.prompt, engine, aspectRatio, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
+    [id, data.prompt, engine, aspectRatio, duration, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
   );
 
   const handleAcceptPlan = useCallback(async () => {
@@ -1368,13 +1376,13 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           '',
           `Prompt: ${data.prompt || 'Animation request'}`,
         ].join('\n'),
-        { nodeId: id, phase: 'executing', plan: ls.plan, todos: [], sandboxId: ls.sandboxId, media, engine, aspectRatio },
+        { nodeId: id, phase: 'executing', plan: ls.plan, todos: [], sandboxId: ls.sandboxId, media, engine, aspectRatio, duration },
         callbacks
       );
     } catch {
       // Error handled by callback
     }
-  }, [id, data.prompt, engine, media, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
+  }, [id, data.prompt, engine, media, duration, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
 
   const handleRejectPlan = useCallback(() => {
     updateState({ phase: 'idle', plan: undefined, question: undefined, planAccepted: undefined });
@@ -1409,7 +1417,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       try {
         await streamToAgent(
           `The user wants to revise the animation plan. Feedback: "${feedback}"\n\nGenerate an updated plan using the generate_plan tool.`,
-          { nodeId: id, phase: 'plan', plan: ls.plan, sandboxId: ls.sandboxId, engine, aspectRatio },
+          { nodeId: id, phase: 'plan', plan: ls.plan, sandboxId: ls.sandboxId, engine, aspectRatio, duration },
           callbacks
         );
         const latest = getLatestState();
@@ -1422,7 +1430,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         // Error handled by callback
       }
     },
-    [id, engine, aspectRatio, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
+    [id, engine, aspectRatio, duration, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
   );
 
   const handleSendMessage = useCallback(
@@ -1503,12 +1511,13 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           media,
           engine,
           aspectRatio,
+          duration,
         }, callbacks);
       } catch {
         // Error handled by callback
       }
     },
-    [id, engine, aspectRatio, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
+    [id, engine, aspectRatio, duration, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
   );
 
   const handleAcceptPreview = useCallback(async () => {
@@ -1587,13 +1596,13 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     try {
       await streamToAgent(
         `Regenerate the animation from the plan. Execute all steps again.\n\nPrompt: ${data.prompt || 'Animation request'}`,
-        { nodeId: id, phase: 'executing', plan: ls.plan, todos, sandboxId: ls.sandboxId, media, engine, aspectRatio },
+        { nodeId: id, phase: 'executing', plan: ls.plan, todos, sandboxId: ls.sandboxId, media, engine, aspectRatio, duration },
         callbacks
       );
     } catch {
       // Error handled by callback
     }
-  }, [id, data.prompt, engine, media, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
+  }, [id, data.prompt, engine, media, duration, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
 
   const handleExportVideo = useCallback(async () => {
     const ls = getLatestState();
@@ -1638,13 +1647,13 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           'Use render_preview to create the video.',
           `Active sandbox: ${ls.sandboxId}`,
         ].join('\n'),
-        { nodeId: id, phase: 'executing', plan: ls.plan, sandboxId: ls.sandboxId, engine, aspectRatio },
+        { nodeId: id, phase: 'executing', plan: ls.plan, sandboxId: ls.sandboxId, engine, aspectRatio, duration },
         callbacks
       );
     } catch {
       // Error handled by callback
     }
-  }, [id, engine, aspectRatio, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
+  }, [id, engine, aspectRatio, duration, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
 
   const handleRetry = useCallback(() => {
     if (state.plan) {
@@ -1790,6 +1799,26 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       console.log(`[AnimationNode] Timeline: No videos in state.versions`);
     }
 
+    // Include thinking blocks that have meaningful content
+    state.thinkingBlocks.forEach((tb) => {
+      const tbDuration = tb.endedAt
+        ? (new Date(tb.endedAt).getTime() - new Date(tb.startedAt).getTime()) / 1000
+        : undefined;
+      // Only show blocks with reasoning text or a completed duration > 0
+      const hasMeaningfulContent = tb.reasoning || (tbDuration !== undefined && tbDuration > 0);
+      if (!hasMeaningfulContent) return;
+      items.push({
+        kind: 'thinking' as const,
+        id: tb.id,
+        ts: tb.startedAt,
+        seq: tb.seq ?? 0,
+        label: tb.label,
+        reasoning: tb.reasoning,
+        duration: tbDuration,
+        isActive: !tb.endedAt,
+      });
+    });
+
     // Sort by timestamp first, then by sequence number for stable ordering
     items.sort((a, b) => {
       const tsCompare = a.ts.localeCompare(b.ts);
@@ -1797,7 +1826,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       return a.seq - b.seq;
     });
     return items;
-  }, [state.messages, state.plan, state.planTimestamp, state.planSeq, state.versions, state.createdAt]);
+  }, [state.messages, state.plan, state.planTimestamp, state.planSeq, state.versions, state.thinkingBlocks, state.createdAt]);
 
   const hasTimelineContent =
     timeline.length > 0 ||
@@ -1964,7 +1993,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       {hasTimelineContent && (
         <div
           ref={chatScrollRef}
-          className="nowheel flex-1 overflow-y-auto overflow-x-hidden min-h-0 scrollbar-hidden"
+          className="nowheel nopan nodrag cursor-text select-text flex-1 overflow-y-auto overflow-x-hidden min-h-0 scrollbar-hidden"
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}
           onWheel={(e) => { if (!e.ctrlKey) e.stopPropagation(); }}
         >
@@ -2008,6 +2037,18 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
                     isActivePreview={isActivePreview}
                     onAccept={isActivePreview ? handleAcceptPreview : undefined}
                     onRegenerate={isActivePreview ? handleRegenerate : undefined}
+                  />
+                );
+              }
+              if (item.kind === 'thinking') {
+                return (
+                  <ThinkingBlock
+                    key={item.id}
+                    thinking={item.label}
+                    reasoning={item.reasoning}
+                    isStreaming={!!item.isActive}
+                    startedAt={item.ts}
+                    endedAt={item.isActive ? undefined : (item.duration !== undefined ? new Date(new Date(item.ts).getTime() + item.duration * 1000).toISOString() : undefined)}
                   />
                 );
               }
@@ -2124,7 +2165,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       )}
 
       {/* ── Chat input (always visible) ──────────────────────────────── */}
-      <div className="shrink-0">
+      <div className="shrink-0 nopan nodrag">
         <ChatInput
           onSubmit={handleInputSubmit}
           isGenerating={isStreaming}
@@ -2136,6 +2177,8 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           engineLocked={state.messages.length > 0}
           aspectRatio={aspectRatio}
           onAspectRatioChange={handleAspectRatioChange}
+          duration={duration}
+          onDurationChange={handleDurationChange}
           onMediaUpload={handleMediaUpload}
           onNodeReference={handleNodeReference}
           availableNodeOutputs={availableNodeOutputs}

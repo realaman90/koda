@@ -77,13 +77,16 @@ export const sandboxDestroyTool = createTool({
   id: 'sandbox_destroy',
   description: 'Destroy a sandbox container and clean up resources.',
   inputSchema: z.object({
-    sandboxId: z.string().describe('Sandbox ID to destroy'),
+    sandboxId: z.string().optional().describe('Sandbox ID to destroy'),
   }),
   outputSchema: z.object({
     success: z.boolean(),
     message: z.string(),
   }),
   execute: async (inputData) => {
+    if (!inputData.sandboxId) {
+      return { success: false, message: 'No active sandbox. Create one first with sandbox_create.' };
+    }
     try {
       await dockerProvider.destroy(inputData.sandboxId);
       return {
@@ -112,7 +115,7 @@ Common files:
 - src/theatre/project.ts - Theatre.js config
 - src/utils/easing.ts - Easing functions`,
   inputSchema: z.object({
-    sandboxId: z.string().describe('Sandbox ID'),
+    sandboxId: z.string().optional().describe('Sandbox ID'),
     path: z.string().describe('File path relative to project root'),
     content: z.string().describe('File content'),
   }),
@@ -122,6 +125,9 @@ Common files:
     message: z.string(),
   }),
   execute: async (inputData) => {
+    if (!inputData.sandboxId) {
+      return { success: false, path: inputData.path, message: 'No active sandbox. Create one first with sandbox_create.' };
+    }
     try {
       await dockerProvider.writeFile(inputData.sandboxId, inputData.path, inputData.content);
       return {
@@ -146,7 +152,7 @@ export const sandboxReadFileTool = createTool({
   id: 'sandbox_read_file',
   description: 'Read a file from the sandbox filesystem.',
   inputSchema: z.object({
-    sandboxId: z.string().describe('Sandbox ID'),
+    sandboxId: z.string().optional().describe('Sandbox ID'),
     path: z.string().describe('File path to read'),
   }),
   outputSchema: z.object({
@@ -154,6 +160,9 @@ export const sandboxReadFileTool = createTool({
     content: z.string(),
   }),
   execute: async (inputData) => {
+    if (!inputData.sandboxId) {
+      return { success: false, content: 'No active sandbox. Create one first with sandbox_create.' };
+    }
     try {
       const content = await dockerProvider.readFile(inputData.sandboxId, inputData.path);
       // Cap file content to save tokens — agent can request specific sections if needed
@@ -179,7 +188,7 @@ Common commands:
 - bun run dev - Start dev server (use background: true)
 - bun run build - Build project`,
   inputSchema: z.object({
-    sandboxId: z.string().describe('Sandbox ID'),
+    sandboxId: z.string().optional().describe('Sandbox ID'),
     command: z.string().describe('Shell command'),
     background: z.boolean().optional().describe('Run in background'),
     timeout: z.number().optional().describe('Timeout in milliseconds (max 300000)'),
@@ -191,6 +200,9 @@ Common commands:
     exitCode: z.number(),
   }),
   execute: async (inputData) => {
+    if (!inputData.sandboxId) {
+      return { success: false, stdout: '', stderr: 'No active sandbox. Create one first with sandbox_create.', exitCode: 1 };
+    }
     try {
       const result = await dockerProvider.runCommand(inputData.sandboxId, inputData.command, {
         background: inputData.background,
@@ -219,7 +231,7 @@ export const sandboxListFilesTool = createTool({
   id: 'sandbox_list_files',
   description: 'List files in a sandbox directory.',
   inputSchema: z.object({
-    sandboxId: z.string().describe('Sandbox ID'),
+    sandboxId: z.string().optional().describe('Sandbox ID'),
     path: z.string().describe('Directory path'),
     recursive: z.boolean().optional().describe('Include subdirectories'),
   }),
@@ -231,6 +243,9 @@ export const sandboxListFilesTool = createTool({
     })),
   }),
   execute: async (inputData) => {
+    if (!inputData.sandboxId) {
+      return { success: false, files: [] };
+    }
     try {
       const files = await dockerProvider.listFiles(inputData.sandboxId, inputData.path, inputData.recursive);
       return { success: true, files };
@@ -262,7 +277,7 @@ Common destination paths:
 
 After uploading, reference in code as '/assets/image.png' or '/assets/video.mp4'.`,
   inputSchema: z.object({
-    sandboxId: z.string().describe('Sandbox ID'),
+    sandboxId: z.string().optional().describe('Sandbox ID'),
     mediaUrl: z.string().describe('URL of the media to upload'),
     destPath: z.string().describe('Destination path in sandbox (e.g., public/assets/image.png)'),
   }),
@@ -273,6 +288,9 @@ After uploading, reference in code as '/assets/image.png' or '/assets/video.mp4'
     message: z.string(),
   }),
   execute: async (inputData) => {
+    if (!inputData.sandboxId) {
+      return { success: false, path: inputData.destPath, message: 'No active sandbox. Create one first with sandbox_create.' };
+    }
     try {
       const result = await dockerProvider.uploadMedia(
         inputData.sandboxId,
@@ -315,7 +333,7 @@ Use this when:
 
 For URL-based media, prefer sandbox_upload_media instead (more efficient).`,
   inputSchema: z.object({
-    sandboxId: z.string().describe('Sandbox ID'),
+    sandboxId: z.string().optional().describe('Sandbox ID'),
     path: z.string().describe('Destination path in sandbox (e.g., public/media/image.png)'),
     base64Data: z.string().describe('Base64-encoded binary data'),
   }),
@@ -326,6 +344,9 @@ For URL-based media, prefer sandbox_upload_media instead (more efficient).`,
     message: z.string(),
   }),
   execute: async (inputData) => {
+    if (!inputData.sandboxId) {
+      return { success: false, path: inputData.path, message: 'No active sandbox. Create one first with sandbox_create.' };
+    }
     try {
       const buffer = Buffer.from(inputData.base64Data, 'base64');
       await dockerProvider.writeBinary(inputData.sandboxId, inputData.path, buffer);
@@ -361,7 +382,7 @@ Modes:
 
 Frames are saved as JPG images in /app/public/media/frames/.`,
   inputSchema: z.object({
-    sandboxId: z.string().describe('Sandbox ID'),
+    sandboxId: z.string().optional().describe('Sandbox ID'),
     videoPath: z.string().describe('Path to video file in sandbox (e.g., public/media/video.mp4)'),
     mode: z.enum(['fps', 'timestamps']).describe('Extraction mode'),
     timestamps: z.array(z.number()).optional().describe('Specific second timestamps to extract (for "timestamps" mode)'),
@@ -378,6 +399,9 @@ Frames are saved as JPG images in /app/public/media/frames/.`,
     message: z.string(),
   }),
   execute: async (inputData) => {
+    if (!inputData.sandboxId) {
+      return { success: false, frames: [], totalFrames: 0, message: 'No active sandbox. Create one first with sandbox_create.' };
+    }
     try {
       const videoPath = inputData.videoPath.startsWith('/') ? inputData.videoPath : `/app/${inputData.videoPath}`;
       const framesDir = '/app/public/media/frames';
@@ -489,7 +513,7 @@ This tool kills any existing dev server, starts a new one, and waits until it's 
 For Remotion: uses vite.player.config.ts (Remotion Player).
 For Theatre.js: uses default vite.config.ts.`,
   inputSchema: z.object({
-    sandboxId: z.string().describe('Sandbox ID'),
+    sandboxId: z.string().optional().describe('Sandbox ID'),
     engine: z.enum(['remotion', 'theatre']).optional().describe('Animation engine — determines which vite config to use (default: remotion)'),
   }),
   outputSchema: z.object({
@@ -498,6 +522,9 @@ For Theatre.js: uses default vite.config.ts.`,
     message: z.string(),
   }),
   execute: async (inputData) => {
+    if (!inputData.sandboxId) {
+      return { success: false, previewUrl: '', message: 'No active sandbox. Create one first with sandbox_create.' };
+    }
     try {
       // Kill any existing dev server
       await dockerProvider.runCommand(inputData.sandboxId, 'pkill -f "vite" || true', { timeout: 5_000 });
@@ -636,7 +663,7 @@ Engine-aware:
 To convert seconds to frames: frame = seconds * fps (default 30fps)
 Example: 2 seconds at 30fps = frame 60`,
   inputSchema: z.object({
-    sandboxId: z.string().describe('Sandbox ID'),
+    sandboxId: z.string().optional().describe('Sandbox ID'),
     frame: z.number().optional().describe('Single screenshot: capture this frame number'),
     frames: z.array(z.number()).optional().describe('Batch mode: array of frame numbers'),
     fps: z.number().optional().describe('Frames per second for time conversion (default: 30)'),
@@ -651,6 +678,9 @@ Example: 2 seconds at 30fps = frame 60`,
     message: z.string(),
   }),
   execute: async (inputData) => {
+    if (!inputData.sandboxId) {
+      return { success: false, screenshots: [], message: 'No active sandbox. Create one first with sandbox_create.' };
+    }
     const fps = inputData.fps || 30;
     const engine = inputData.engine || 'remotion';
 
@@ -826,7 +856,7 @@ Engine-aware:
 - **Remotion** (default): Uses 'bunx remotion render' to create an MP4. Automatically detects composition ID.
 - **Theatre.js**: Uses the export-video.cjs Puppeteer/FFmpeg script at /app/export-video.cjs. Requires dev server running on port 5173.`,
   inputSchema: z.object({
-    sandboxId: z.string().describe('Sandbox ID'),
+    sandboxId: z.string().optional().describe('Sandbox ID'),
     duration: z.number().describe('Video duration in seconds'),
     fps: z.number().optional().describe('Frames per second (default: 30)'),
     compositionId: z.string().optional().describe('Composition ID to render (auto-detected if not provided, Remotion only)'),
@@ -840,6 +870,9 @@ Engine-aware:
     message: z.string().optional(),
   }),
   execute: async (inputData) => {
+    if (!inputData.sandboxId) {
+      return { success: false, videoUrl: '', thumbnailUrl: '', duration: inputData.duration, message: 'No active sandbox. Create one first with sandbox_create.' };
+    }
     const fps = inputData.fps || 30;
     const engine = inputData.engine || 'remotion';
     const outputPath = '/app/output/preview.mp4';
@@ -1019,7 +1052,7 @@ Engine-aware:
 - **Remotion** (default): Uses 'bunx remotion render' with higher quality settings and resolution scaling.
 - **Theatre.js**: Uses export-video.cjs with --quality final and --resolution flag. Requires dev server running on port 5173.`,
   inputSchema: z.object({
-    sandboxId: z.string().describe('Sandbox ID'),
+    sandboxId: z.string().optional().describe('Sandbox ID'),
     duration: z.number().describe('Video duration'),
     resolution: z.enum(['720p', '1080p', '4k']).optional().describe('Output resolution'),
     compositionId: z.string().optional().describe('Composition ID to render (auto-detected if not provided, Remotion only)'),
@@ -1034,6 +1067,9 @@ Engine-aware:
     message: z.string().optional(),
   }),
   execute: async (inputData) => {
+    if (!inputData.sandboxId) {
+      return { success: false, videoUrl: '', thumbnailUrl: '', duration: inputData.duration, resolution: inputData.resolution || '1080p', message: 'No active sandbox. Create one first with sandbox_create.' };
+    }
     const resolution = inputData.resolution || '1080p';
     const engine = inputData.engine || 'remotion';
     const outputPath = '/app/output/final.mp4';

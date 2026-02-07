@@ -34,6 +34,14 @@ const ASPECT_RATIOS: { id: AspectRatio; label: string }[] = [
   { id: '21:9', label: '21:9' },
 ];
 
+const DURATIONS: { value: number; label: string }[] = [
+  { value: 5, label: '5s' },
+  { value: 10, label: '10s' },
+  { value: 15, label: '15s' },
+  { value: 30, label: '30s' },
+  { value: 60, label: '60s' },
+];
+
 interface QueuedMessage {
   id: string;
   text: string;
@@ -53,6 +61,8 @@ interface ChatInputProps {
   engineLocked?: boolean;
   aspectRatio?: AspectRatio;
   onAspectRatioChange?: (aspectRatio: AspectRatio) => void;
+  duration?: number;
+  onDurationChange?: (duration: number) => void;
   /** Upload files to data.media[] */
   onMediaUpload?: (files: FileList) => void;
   /** Reference a canvas node output → data.media[] */
@@ -72,6 +82,8 @@ export function ChatInput({
   engineLocked = false,
   aspectRatio = '16:9',
   onAspectRatioChange,
+  duration = 10,
+  onDurationChange,
   onMediaUpload,
   onNodeReference,
   availableNodeOutputs = [],
@@ -88,6 +100,7 @@ export function ChatInput({
 
   const selectedEngine = ENGINES.find((e) => e.id === engine) || ENGINES[0];
   const selectedAspectRatio = ASPECT_RATIOS.find((a) => a.id === aspectRatio) || ASPECT_RATIOS[0];
+  const selectedDuration = DURATIONS.find((d) => d.value === duration) || DURATIONS[1];
 
   // Show busy state if streaming OR if tool is active
   const isBusy = isGenerating || hasActiveTool;
@@ -366,6 +379,35 @@ export function ChatInput({
                     className={aspectRatio === a.id ? 'bg-zinc-800' : ''}
                   >
                     <span className="text-sm">{a.label}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* Separator */}
+            <span className="text-[#3f3f46]">•</span>
+
+            {/* Duration selector */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="flex items-center gap-1 px-1.5 py-1 rounded text-[11px] text-[#71717A] hover:text-[#A1A1AA] transition-colors"
+                  disabled={disabled}
+                >
+                  {selectedDuration.label}
+                  <ChevronDown className="w-2.5 h-2.5 text-[#52525B]" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-32">
+                <DropdownMenuLabel className="text-xs text-zinc-500">Duration</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {DURATIONS.map((d) => (
+                  <DropdownMenuItem
+                    key={d.value}
+                    onSelect={() => onDurationChange?.(d.value)}
+                    className={duration === d.value ? 'bg-zinc-800' : ''}
+                  >
+                    <span className="text-sm">{d.label}</span>
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuContent>
