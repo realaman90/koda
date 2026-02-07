@@ -2140,16 +2140,16 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
 
       {/* ── Media strip (thumbnails of attached media) */}
       {media.length > 0 && (
-        <div className="flex-shrink-0 px-3 py-1.5 border-t border-[#27272a]">
-          <div className="flex gap-1.5 overflow-x-auto scrollbar-hidden items-center">
+        <div className="flex-shrink-0 px-3 py-1 border-t border-[#27272a]">
+          <div className="flex gap-1 overflow-x-auto scrollbar-hidden items-center">
             {media.map((m) => (
               <div key={m.id} className="relative group flex-shrink-0">
-                <div className="w-10 h-10 rounded bg-[#27272a] overflow-hidden border border-[#3f3f46]">
+                <div className="w-8 h-8 rounded bg-[#27272a] overflow-hidden border border-[#3f3f46]">
                   {m.type === 'image' ? (
                     <img src={m.dataUrl} alt={m.name} className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
-                      <Video className="w-4 h-4 text-purple-400" />
+                      <Video className="w-3 h-3 text-purple-400" />
                     </div>
                   )}
                 </div>
@@ -2161,10 +2161,12 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
                     <X className="w-2 h-2 text-white" />
                   </button>
                 )}
-                <span className="absolute bottom-0 left-0 right-0 text-[7px] text-center text-zinc-400 bg-black/60 truncate px-0.5">
-                  {m.type === 'video' && m.duration ? `${m.duration.toFixed(1)}s` : ''}
-                  {m.source === 'edge' ? '⚡' : ''}
-                </span>
+                {(m.source === 'edge' || (m.type === 'video' && m.duration)) && (
+                  <span className="absolute bottom-0 left-0 right-0 text-[6px] text-center text-zinc-400 bg-black/60 truncate px-0.5">
+                    {m.type === 'video' && m.duration ? `${m.duration.toFixed(1)}s` : ''}
+                    {m.source === 'edge' ? '⚡' : ''}
+                  </span>
+                )}
               </div>
             ))}
           </div>

@@ -7,7 +7,7 @@
  * Design matches the reference with collapsible queue section.
  */
 
-import { useState, useCallback, useRef, useEffect, KeyboardEvent } from 'react';
+import React, { useState, useCallback, useRef, useEffect, KeyboardEvent } from 'react';
 import {
   ArrowUp, Square, Paperclip, ChevronDown, ChevronUp, Image, Video, Link2, Pencil, Trash2,
   Type, Sparkles, Box, BarChart3, Layers, Blend, Zap, Clapperboard, Aperture, SunMoon,
@@ -348,10 +348,10 @@ export function ChatInput({
           />
         </div>
 
-        {/* Technique preset chips */}
+        {/* Technique preset chips — horizontal scrollable strip */}
         {showTechniques && (
           <div className="px-2.5 pb-1.5">
-            <div className="flex flex-wrap gap-1">
+            <div className="flex gap-1 overflow-x-auto scrollbar-hidden" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}>
               {TECHNIQUE_PRESETS.map((preset) => {
                 const isSelected = techniques.includes(preset.id);
                 const IconComponent = TECHNIQUE_ICONS[preset.icon];
@@ -360,7 +360,7 @@ export function ChatInput({
                     key={preset.id}
                     onClick={() => toggleTechnique(preset.id)}
                     disabled={disabled}
-                    className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium transition-all border ${
+                    className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium transition-all border whitespace-nowrap shrink-0 ${
                       isSelected
                         ? 'bg-[#1E3A5F] border-[#3B82F6] text-[#93C5FD]'
                         : 'bg-transparent border-[#3f3f46] text-[#71717A] hover:border-[#52525B] hover:text-[#A1A1AA]'
@@ -378,34 +378,34 @@ export function ChatInput({
 
         {/* Bottom bar */}
         <div className="flex items-center justify-between px-2 py-1 pb-2">
-          {/* Engine & Aspect Ratio selectors */}
-          <div className="flex items-center gap-1">
+          {/* Settings selectors */}
+          <div className="flex items-center gap-0.5">
             {/* Techniques toggle */}
             <button
               onClick={() => setShowTechniques(v => !v)}
               disabled={disabled}
-              className={`flex items-center gap-1 px-1.5 py-1 rounded text-[11px] transition-colors ${
+              className={`flex items-center gap-1 px-1.5 py-1 rounded text-[10px] transition-colors ${
                 techniques.length > 0
                   ? 'text-[#93C5FD]'
-                  : 'text-[#71717A] hover:text-[#A1A1AA]'
+                  : 'text-[#52525B] hover:text-[#A1A1AA]'
               }`}
               title="Technique presets"
             >
-              {techniques.length > 0 ? `${techniques.length} preset${techniques.length > 1 ? 's' : ''}` : 'Presets'}
+              <Sparkles className="w-3 h-3" />
+              {techniques.length > 0 && <span>{techniques.length}</span>}
             </button>
 
-            {/* Separator */}
-            <span className="text-[#3f3f46]">·</span>
+            <span className="text-[#27272a] text-[10px]">/</span>
 
             {/* Engine selector */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
-                  className={`flex items-center gap-1 px-1.5 py-1 rounded text-[11px] transition-colors ${engineLocked ? 'text-[#52525B] cursor-default' : 'text-[#71717A] hover:text-[#A1A1AA]'}`}
+                  className={`flex items-center gap-0.5 px-1 py-1 rounded text-[10px] transition-colors ${engineLocked ? 'text-[#3f3f46] cursor-default' : 'text-[#52525B] hover:text-[#A1A1AA]'}`}
                   disabled={disabled || engineLocked}
                 >
                   {selectedEngine.label}
-                  {!engineLocked && <ChevronDown className="w-2.5 h-2.5 text-[#52525B]" />}
+                  {!engineLocked && <ChevronDown className="w-2.5 h-2.5" />}
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-40">
@@ -423,18 +423,17 @@ export function ChatInput({
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {/* Separator */}
-            <span className="text-[#3f3f46]">•</span>
+            <span className="text-[#27272a] text-[10px]">/</span>
 
             {/* Aspect Ratio selector */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
-                  className="flex items-center gap-1 px-1.5 py-1 rounded text-[11px] text-[#71717A] hover:text-[#A1A1AA] transition-colors"
+                  className="flex items-center gap-0.5 px-1 py-1 rounded text-[10px] text-[#52525B] hover:text-[#A1A1AA] transition-colors"
                   disabled={disabled}
                 >
                   {selectedAspectRatio.label}
-                  <ChevronDown className="w-2.5 h-2.5 text-[#52525B]" />
+                  <ChevronDown className="w-2.5 h-2.5" />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-32">
@@ -452,18 +451,17 @@ export function ChatInput({
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {/* Separator */}
-            <span className="text-[#3f3f46]">•</span>
+            <span className="text-[#27272a] text-[10px]">/</span>
 
             {/* Duration selector */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
-                  className="flex items-center gap-1 px-1.5 py-1 rounded text-[11px] text-[#71717A] hover:text-[#A1A1AA] transition-colors"
+                  className="flex items-center gap-0.5 px-1 py-1 rounded text-[10px] text-[#52525B] hover:text-[#A1A1AA] transition-colors"
                   disabled={disabled}
                 >
                   {selectedDuration.label}
-                  <ChevronDown className="w-2.5 h-2.5 text-[#52525B]" />
+                  <ChevronDown className="w-2.5 h-2.5" />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-32">
