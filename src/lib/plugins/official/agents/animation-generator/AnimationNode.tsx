@@ -2174,7 +2174,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       )}
 
       {/* ── Chat input (always visible) ──────────────────────────────── */}
-      <div className="shrink-0 nopan nodrag">
+      <div className="shrink-0 nopan nodrag nowheel">
         <ChatInput
           onSubmit={handleInputSubmit}
           isGenerating={isStreaming}

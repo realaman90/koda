@@ -351,7 +351,11 @@ export function ChatInput({
         {/* Technique preset chips — horizontal scrollable strip */}
         {showTechniques && (
           <div className="px-2.5 pb-1.5">
-            <div className="flex gap-1 overflow-x-auto scrollbar-hidden" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}>
+            <div
+              className="flex gap-1 overflow-x-auto scrollbar-hidden"
+              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}
+              onWheel={(e) => e.stopPropagation()}
+            >
               {TECHNIQUE_PRESETS.map((preset) => {
                 const isSelected = techniques.includes(preset.id);
                 const IconComponent = TECHNIQUE_ICONS[preset.icon];
