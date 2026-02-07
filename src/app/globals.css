@@ -128,12 +128,6 @@
   body {
     @apply bg-background text-foreground;
   }
-  /* Reset form element backgrounds (Tailwind v4 preflight doesn't include this) */
-  input,
-  textarea,
-  select {
-    background-color: transparent;
-  }
   /* Ensure interactive elements have pointer cursor */
   button,
   [role="button"],
@@ -143,6 +137,17 @@
   [type="reset"] {
     cursor: pointer;
   }
+}
+
+/*
+ * Reset form element backgrounds — MUST be outside @layer base.
+ * In Tailwind v4, layered rules lose to unlayered browser defaults,
+ * so this has to be unlayered to override the UA white background.
+ */
+input,
+textarea,
+select {
+  background-color: transparent;
 }
 
 /* Toast theme variables */
