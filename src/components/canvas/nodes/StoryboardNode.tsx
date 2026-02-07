@@ -14,8 +14,9 @@ import { useCanvasStore } from '@/stores/canvas-store';
 import { useCanvasAPI } from '@/lib/plugins/canvas-api';
 import type { StoryboardNode as StoryboardNodeType, StoryboardNodeData, StoryboardSceneData, StoryboardStyle, StoryboardMode } from '@/lib/types';
 import type { CreateNodeInput } from '@/lib/plugins/types';
-import { Clapperboard, Trash2, Loader2, Sparkles, Grid3X3, ChevronRight, Image as ImageIcon, User, ArrowLeftRight, LayoutGrid } from 'lucide-react';
+import { Clapperboard, Trash2, Sparkles, Grid3X3, ChevronRight, Image as ImageIcon, User, ArrowLeftRight, LayoutGrid } from 'lucide-react';
 import { toast } from 'sonner';
+import { ThinkingBlock } from '@/lib/plugins/official/agents/animation-generator/components/ChatMessages';
 
 // Style options
 const STYLE_OPTIONS: { value: StoryboardStyle; label: string }[] = [
@@ -72,11 +73,19 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
   // Validation
   const isValid = (data.product?.trim().length ?? 0) > 0 && (data.concept?.trim().length ?? 0) > 0;
 
-  // Generate storyboard
+  // Generate storyboard via SSE stream
   const handleGenerate = useCallback(async () => {
     if (!isValid) return;
 
-    updateNodeData(id, { viewState: 'loading', error: undefined });
+    const startedAt = new Date().toISOString();
+    updateNodeData(id, {
+      viewState: 'loading',
+      error: undefined,
+      thinkingText: 'Generating storyboard',
+      reasoningText: undefined,
+      thinkingStartedAt: startedAt,
+      isStreaming: true,
+    });
 
     try {
       const input = {
@@ -94,20 +103,79 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
         body: JSON.stringify(input),
       });
 
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Generation failed');
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        throw new Error(errorBody.error || `HTTP ${response.status}`);
       }
 
-      updateNodeData(id, {
-        viewState: 'preview',
-        result: { scenes: result.scenes, summary: result.summary },
-      });
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No response stream');
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let accumulatedReasoning = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const jsonStr = line.slice(6).trim();
+          if (!jsonStr) continue;
+
+          let event: { type: string; text?: string; error?: string; success?: boolean; scenes?: unknown[]; summary?: string };
+          try {
+            event = JSON.parse(jsonStr);
+          } catch {
+            continue;
+          }
+
+          switch (event.type) {
+            case 'reasoning-delta': {
+              accumulatedReasoning += event.text || '';
+              updateNodeData(id, { reasoningText: accumulatedReasoning });
+              break;
+            }
+            case 'result': {
+              if (event.success && event.scenes) {
+                updateNodeData(id, {
+                  viewState: 'preview',
+                  result: { scenes: event.scenes as StoryboardSceneData[], summary: event.summary || '' },
+                  thinkingText: undefined,
+                  reasoningText: undefined,
+                  thinkingStartedAt: undefined,
+                  isStreaming: false,
+                });
+              } else {
+                throw new Error('Invalid result from AI service');
+              }
+              return;
+            }
+            case 'error': {
+              throw new Error(event.error || 'Generation failed');
+            }
+          }
+        }
+      }
+
+      // Stream ended without a result event -- treat as error
+      const currentData = useCanvasStore.getState().nodes.find(n => n.id === id)?.data as StoryboardNodeData | undefined;
+      if (currentData?.viewState === 'loading') {
+        throw new Error('Stream ended without result');
+      }
     } catch (err) {
       updateNodeData(id, {
         viewState: 'form',
         error: err instanceof Error ? err.message : 'Generation failed',
+        thinkingText: undefined,
+        reasoningText: undefined,
+        thinkingStartedAt: undefined,
+        isStreaming: false,
       });
     }
   }, [id, data.product, data.character, data.concept, data.sceneCount, data.style, data.mode, isValid, updateNodeData]);
@@ -512,11 +580,16 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
     </div>
   );
 
-  // Render loading view
+  // Render loading view with ThinkingBlock
   const renderLoading = () => (
-    <div className="flex flex-col items-center justify-center p-8 space-y-3">
-      <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
-      <p className="text-muted-foreground text-sm">Generating your storyboard...</p>
+    <div className="p-4 h-full flex flex-col justify-center">
+      <ThinkingBlock
+        thinking={data.thinkingText || 'Generating storyboard'}
+        reasoning={data.reasoningText}
+        isStreaming={data.isStreaming ?? true}
+        startedAt={data.thinkingStartedAt}
+        maxReasoningHeight={400}
+      />
     </div>
   );
 
@@ -554,7 +627,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
         {/* Scenes preview */}
         <div className="space-y-2">
           <h3 className="text-xs font-medium text-muted-foreground">Scenes</h3>
-          <div className="space-y-1 max-h-[200px] overflow-y-auto nowheel" onWheel={(e) => !e.ctrlKey && e.stopPropagation()}>
+          <div className="space-y-1">
             {data.result.scenes.map((scene) => (
               <ScenePreview key={scene.number} scene={scene} />
             ))}
@@ -649,10 +722,12 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
           <span className="text-sm font-medium text-foreground">Create</span>
         </div>
 
-        {/* Content */}
-        {data.viewState === 'form' && renderForm()}
-        {data.viewState === 'loading' && renderLoading()}
-        {data.viewState === 'preview' && renderPreview()}
+        {/* Content — fixed height across all states */}
+        <div className="h-[580px] overflow-y-auto nowheel" onWheel={(e) => !e.ctrlKey && e.stopPropagation()}>
+          {data.viewState === 'form' && renderForm()}
+          {data.viewState === 'loading' && renderLoading()}
+          {data.viewState === 'preview' && renderPreview()}
+        </div>
       </div>
 
       {/* Input Handles - Left side (only shown in form view) */}

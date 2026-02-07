@@ -169,9 +169,11 @@ interface ThinkingBlockProps {
   startedAt?: string;
   /** ISO timestamp when this thinking block finished */
   endedAt?: string;
+  /** Max height for the scrollable reasoning area (default: 80px) */
+  maxReasoningHeight?: number;
 }
 
-export function ThinkingBlock({ thinking, reasoning, isStreaming, startedAt, endedAt }: ThinkingBlockProps) {
+export function ThinkingBlock({ thinking, reasoning, isStreaming, startedAt, endedAt, maxReasoningHeight = 80 }: ThinkingBlockProps) {
   const [expanded, setExpanded] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [elapsed, setElapsed] = useState(0);
@@ -225,7 +227,7 @@ export function ThinkingBlock({ thinking, reasoning, isStreaming, startedAt, end
           <div
             ref={scrollRef}
             className="px-2.5 pb-2 overflow-y-auto scrollbar-hidden"
-            style={{ maxHeight: '80px' }}
+            style={{ maxHeight: `${maxReasoningHeight}px` }}
           >
             <p className="text-[10px] text-[#52525B] leading-[1.4] whitespace-pre-wrap break-words">
               {reasoning}

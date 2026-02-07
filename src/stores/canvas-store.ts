@@ -77,6 +77,7 @@ interface CanvasState {
   paste: (position?: { x: number; y: number }) => void;
   deleteSelected: () => void;
   duplicateSelected: () => void;
+  groupSelected: () => void;
 
   // History actions
   undo: () => void;
@@ -627,6 +628,41 @@ export const useCanvasStore = create<CanvasState>()(
         const avgY = selectedNodes.reduce((sum, n) => sum + n.position.y, 0) / selectedNodes.length;
 
         paste({ x: avgX + 50, y: avgY + 50 });
+      },
+
+      groupSelected: () => {
+        const { nodes, selectedNodeIds, _pushHistory } = get() as CanvasState & { _pushHistory: () => void };
+
+        // Need at least 2 non-group nodes selected
+        const selectedNodes = nodes.filter(
+          (n) => selectedNodeIds.includes(n.id) && n.type !== 'group'
+        );
+        if (selectedNodes.length < 2) return;
+
+        // Calculate bounding box of selected nodes
+        const padding = 40;
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const node of selectedNodes) {
+          const w = node.measured?.width || 280;
+          const h = node.measured?.height || 150;
+          minX = Math.min(minX, node.position.x);
+          minY = Math.min(minY, node.position.y);
+          maxX = Math.max(maxX, node.position.x + w);
+          maxY = Math.max(maxY, node.position.y + h);
+        }
+
+        const groupNode = createGroupNode(
+          { x: minX - padding, y: minY - padding },
+          `Group ${nodes.filter((n) => n.type === 'group').length + 1}`
+        );
+        (groupNode.data as GroupNodeData).width = maxX - minX + padding * 2;
+        (groupNode.data as GroupNodeData).height = maxY - minY + padding * 2;
+
+        // Insert at beginning so it renders behind other nodes
+        set((state) => ({
+          nodes: [groupNode, ...state.nodes] as AppNode[],
+        }));
+        _pushHistory();
       },
 
       // History actions

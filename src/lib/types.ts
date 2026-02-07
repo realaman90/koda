@@ -174,6 +174,7 @@ export interface GroupNodeData extends Record<string, unknown> {
   color: string;
   width: number;
   height: number;
+  notes?: string;
 }
 
 export type GroupNode = Node<GroupNodeData, 'group'>;
@@ -593,6 +594,11 @@ export interface StoryboardNodeData extends Record<string, unknown> {
   // UI state
   viewState: StoryboardViewState;
   error?: string;
+  // Streaming / thinking state
+  thinkingText?: string;       // Label for ThinkingBlock
+  reasoningText?: string;      // Accumulated reasoning stream
+  thinkingStartedAt?: string;  // ISO timestamp for elapsed timer
+  isStreaming?: boolean;        // Whether actively receiving events
   // Generated result (stored for persistence)
   result?: {
     scenes: StoryboardSceneData[];
