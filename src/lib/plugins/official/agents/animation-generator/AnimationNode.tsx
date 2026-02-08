@@ -27,6 +27,7 @@ import {
   RetryButton,
   TodoSection,
   VideoCard,
+  LivePreviewCard,
   ThinkingBlock,
 } from './components/ChatMessages';
 import { QuestionForm } from './components/QuestionForm';
@@ -86,6 +87,7 @@ type TimelineItem =
   | { kind: 'assistant'; id: string; content: string; ts: string; seq: number }
   | { kind: 'plan'; id: string; ts: string; seq: number }
   | { kind: 'video'; id: string; ts: string; seq: number; videoUrl: string; duration: number }
+  | { kind: 'preview'; id: string; ts: string; seq: number; previewUrl: string }
   | { kind: 'thinking'; id: string; ts: string; seq: number; label: string; reasoning?: string; duration?: number; isActive?: boolean };
 
 // ─── Media data cache (IndexedDB-backed) ─────────────────────────────────
@@ -197,6 +199,16 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     updateNodeInternals(id);
   }, [id, imageRefCount, videoRefCount, updateNodeInternals]);
 
+  // Re-sync handle positions whenever the node resizes (content streaming, plan, video, etc.)
+  const nodeContainerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = nodeContainerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => updateNodeInternals(id));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [id, updateNodeInternals]);
+
   // Ensure state initialized
   const state = useMemo((): AnimationNodeState => {
     if (data.state) {
@@ -278,14 +290,18 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       let mediaUrl: string | undefined;
       let mediaType: 'image' | 'video' = 'image';
       let mediaName = (d.name as string) || sourceNode.type || 'Media';
+      let mediaDescription: string | undefined;
 
       if (sourceNode.type === 'imageGenerator' || sourceNode.type === 'media') {
         mediaUrl = (d.outputUrl as string) || (d.imageUrl as string) || (d.url as string);
         mediaType = 'image';
+        // Extract description from the source node's generation prompt or name
+        mediaDescription = (d.prompt as string) || (d.name as string) || undefined;
       } else if (sourceNode.type === 'videoGenerator') {
         mediaUrl = d.outputUrl as string;
         mediaType = 'video';
         mediaName = (d.name as string) || 'Video';
+        mediaDescription = (d.prompt as string) || (d.name as string) || undefined;
       }
 
       // Skip video media for Theatre.js (no video ref support in Puppeteer rendering)
@@ -301,6 +317,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           name: mediaName,
           type: mediaType,
           dataUrl: cacheIfLarge(entryId, mediaUrl),
+          description: mediaDescription,
         });
         changed = true;
       }
@@ -316,6 +333,12 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       const resolvedUrl = entry.dataUrl.startsWith('cached:') ? (getCached(entry.id) || '') : entry.dataUrl;
       if (currentUrl && currentUrl !== resolvedUrl) {
         entry.dataUrl = cacheIfLarge(entry.id, currentUrl);
+        changed = true;
+      }
+      // Update description if source node's prompt changed
+      const currentDesc = (d.prompt as string) || (d.name as string) || undefined;
+      if (currentDesc !== entry.description) {
+        entry.description = currentDesc;
         changed = true;
       }
     }
@@ -1822,6 +1845,17 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       items.push({ kind: 'plan', id: 'plan', ts: state.planTimestamp, seq: state.planSeq ?? 0 });
     }
 
+    // Include live preview in timeline if available (from sandbox_start_preview)
+    if (state.previewUrl && state.previewUrlTimestamp) {
+      items.push({
+        kind: 'preview',
+        id: 'live-preview',
+        ts: state.previewUrlTimestamp,
+        seq: 999999, // Just before videos
+        previewUrl: state.previewUrl,
+      });
+    }
+
     // Include video versions in timeline - each version appears where it was created
     if (state.versions && state.versions.length > 0) {
       console.log(`[AnimationNode] Timeline: Adding ${state.versions.length} video(s) to timeline`);
@@ -1867,7 +1901,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       return a.seq - b.seq;
     });
     return items;
-  }, [state.messages, state.plan, state.planTimestamp, state.planSeq, state.versions, state.thinkingBlocks, state.createdAt]);
+  }, [state.messages, state.plan, state.planTimestamp, state.planSeq, state.previewUrl, state.previewUrlTimestamp, state.versions, state.thinkingBlocks, state.createdAt]);
 
   const hasTimelineContent =
     timeline.length > 0 ||
@@ -1906,6 +1940,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
   // ─── Render ─────────────────────────────────────────────────────────
   return (
     <div
+      ref={nodeContainerRef}
       className={`${nodeClasses}${isDragOver ? ' ring-1 ring-teal-500/50' : ''}`}
       style={{ minHeight }}
       onMouseEnter={() => setIsHovered(true)}
@@ -2062,6 +2097,21 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
                     accepted={!!state.planAccepted}
                     onAccept={handleAcceptPlan}
                     onReject={handleRejectPlan}
+                  />
+                );
+              }
+              if (item.kind === 'preview') {
+                // Hide live preview once we have a rendered video
+                const hasVideo = timeline.some(i => i.kind === 'video');
+                if (hasVideo) return null;
+                return (
+                  <LivePreviewCard
+                    key={item.id}
+                    previewUrl={item.previewUrl}
+                    nodeId={id}
+                    expanded={true}
+                    previewState={state.previewState || 'active'}
+                    onExport={handleAcceptPreview}
                   />
                 );
               }

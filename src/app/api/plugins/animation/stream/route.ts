@@ -36,7 +36,7 @@ interface StreamRequestBody {
     plan?: unknown;
     todos?: Array<{ id: string; label: string; status: string }>;
     attachments?: Array<{ type: string; url: string }>;
-    media?: Array<{ id: string; source: string; name: string; type: string; dataUrl: string; duration?: number; mimeType?: string }>;
+    media?: Array<{ id: string; source: string; name: string; type: string; dataUrl: string; description?: string; duration?: number; mimeType?: string }>;
     sandboxId?: string;
     engine?: 'remotion' | 'theatre';
     aspectRatio?: '16:9' | '9:16' | '1:1' | '4:3' | '21:9';
@@ -191,19 +191,20 @@ export async function POST(request: Request) {
         const formatMedia = (m: typeof context.media[0]) => {
           const uploaded = uploadedPaths.has(m.id);
           const pending = pendingMediaForSandbox.some(p => p.id === m.id);
+          const desc = m.description ? ` — "${m.description}"` : '';
           if (uploaded) {
-            return `- [${m.type}] "${m.name}" (source: ${m.source}) ALREADY UPLOADED to ${uploadedPaths.get(m.id)} — reference as staticFile("media/${m.name}") in code`;
+            return `- [${m.type}] "${m.name}"${desc} (source: ${m.source}) ALREADY UPLOADED to ${uploadedPaths.get(m.id)} — reference as staticFile("media/${m.name}") in code`;
           }
           if (pending) {
-            return `- [${m.type}] "${m.name}" (source: ${m.source}) WILL BE AUTO-UPLOADED to public/media/${m.name} after sandbox creation — reference as staticFile("media/${m.name}") in code`;
+            return `- [${m.type}] "${m.name}"${desc} (source: ${m.source}) WILL BE AUTO-UPLOADED to public/media/${m.name} after sandbox creation — reference as staticFile("media/${m.name}") in code`;
           }
           // blob: or cached: URLs that couldn't be resolved — skip with warning
           if (m.dataUrl.startsWith('blob:') || m.dataUrl.startsWith('cached:')) {
             console.warn(`[Animation API] Skipping unresolvable media: ${m.name} (${m.dataUrl.slice(0, 30)}...)`);
-            return `- [${m.type}] "${m.name}" (source: ${m.source}) ⚠️ UNAVAILABLE — could not be resolved server-side. Skip this file.`;
+            return `- [${m.type}] "${m.name}"${desc} (source: ${m.source}) ⚠️ UNAVAILABLE — could not be resolved server-side. Skip this file.`;
           }
           // URL-based media — agent downloads via sandbox_upload_media
-          return `- [${m.type}] "${m.name}" (source: ${m.source}) URL: ${m.dataUrl} — use sandbox_upload_media to download to public/media/${m.name}`;
+          return `- [${m.type}] "${m.name}"${desc} (source: ${m.source}) URL: ${m.dataUrl} — use sandbox_upload_media to download to public/media/${m.name}`;
         };
 
         if (edgeMedia.length > 0) {

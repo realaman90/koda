@@ -247,6 +247,7 @@ export interface MediaEntry {
   name: string;
   type: 'image' | 'video';
   dataUrl: string;            // Blob URL, base64 data URL, or external URL
+  description?: string;       // Short description (e.g. source node's generation prompt)
   duration?: number;          // Video only, in seconds
   thumbnailUrl?: string;      // For video previews (first frame)
   mimeType?: string;          // e.g. 'image/png', 'video/mp4'

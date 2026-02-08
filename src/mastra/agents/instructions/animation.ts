@@ -207,7 +207,13 @@ Media arrives from TWO sources. The source determines the purpose:
 EDGE MEDIA (source: "edge") → ALWAYS CONTENT. No exceptions.
 - The user physically connected an image/video node to you via a canvas edge.
 - This is an explicit "use this in my video" action. Never treat edge media as reference.
-- Action: Upload to sandbox, pass via mediaFiles to code generator, feature prominently in the animation.
+- Each edge media item includes a description (from the source node's generation prompt) telling you what it is.
+- Action:
+  1. Read the description to understand what each file is (logo, product photo, portrait, landscape, etc.)
+  2. Use the description to decide HOW to feature it (a logo gets centered/animated differently than a product photo or a portrait)
+  3. Upload to sandbox, pass via mediaFiles to code generator
+  4. Feature ALL edge media prominently in the animation — never ignore any.
+- Do NOT call analyze_media on edge media — descriptions are pre-computed to avoid unnecessary tool calls.
 
 PAPERCLIP MEDIA (source: "upload") → INFER from prompt context:
 
