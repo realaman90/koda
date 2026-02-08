@@ -159,6 +159,9 @@ This injects recipe patterns (tested code snippets) directly into the code gener
       }
     }
 
+    // Log what the orchestrator passed (critical for debugging quality issues)
+    console.log(`[generate_remotion_code] task=${inputData.task}, designSpec=${inputData.designSpec ? `YES (${inputData.designSpec.length} chars)` : 'NO — output will be GENERIC'}, mediaFiles=${inputData.mediaFiles?.length || 0}, techniques=${inputData.techniques?.length || 0}`);
+
     // Format the request for the code generator subagent
     const prompt = formatRemotionCodeGenerationPrompt(inputData);
 
@@ -169,7 +172,7 @@ This injects recipe patterns (tested code snippets) directly into the code gener
         { role: 'user', content: prompt },
       ], {
         providerOptions: {
-          google: { thinkingConfig: { thinkingBudget: 24576, thinkingLevel: 'high', includeThoughts: true } },
+          google: { thinkingConfig: { thinkingBudget: 24576, includeThoughts: true } },
           anthropic: { thinking: { type: 'enabled', budgetTokens: 10000 } },
         },
       });
@@ -313,41 +316,48 @@ function extractJSON(text: string): Record<string, unknown> | null {
 function formatRemotionCodeGenerationPrompt(params: z.infer<typeof GenerateRemotionCodeInputSchema>): string {
   const parts: string[] = [];
 
-  // Prepend design spec at the TOP if provided
+  // ── Header ──
+  parts.push(`# REMOTION CODE GENERATION`);
+  parts.push(`Task: ${params.task}`);
+  parts.push(``);
+
+  // ── Design Specification (if provided) ──
   if (params.designSpec) {
-    parts.push(`═══════════════════════════════════════════════`);
-    parts.push(`DESIGN SPECIFICATION — USE THESE EXACT VALUES`);
-    parts.push(`═══════════════════════════════════════════════`);
+    parts.push(`## DESIGN SPECIFICATION — FOLLOW EXACTLY`);
+    parts.push(`Every color, dimension, font, spring config, and effect below was carefully chosen.`);
+    parts.push(`Use these EXACT values. Do NOT substitute with generic defaults.`);
     parts.push(``);
     parts.push(params.designSpec);
     parts.push(``);
-    parts.push(`═══════════════════════════════════════════════`);
-    parts.push(``);
   }
 
-  parts.push(`Generate Remotion animation code for the following task:`);
-  parts.push(``);
-  parts.push(`Task Type: ${params.task}`);
-
+  // ── Task-specific details ──
   switch (params.task) {
     case 'initial_setup': {
+      parts.push(`## SCENES TO IMPLEMENT`);
       parts.push(`Style: ${params.style || 'smooth'}`);
       if (params.plan) {
-        parts.push(`Duration: ${params.plan.duration}s at ${params.plan.fps}fps`);
-        parts.push(`Total frames: ${params.plan.duration * params.plan.fps}`);
-        parts.push(`Scenes:`);
+        parts.push(`Duration: ${params.plan.duration}s at ${params.plan.fps}fps (${params.plan.duration * params.plan.fps} total frames)`);
+        parts.push(``);
         for (const scene of params.plan.scenes) {
           const startFrame = Math.floor(scene.start * params.plan.fps);
           const endFrame = Math.floor(scene.end * params.plan.fps);
-          parts.push(`  - "${scene.title}" (frames ${startFrame}–${endFrame}): ${scene.description}`);
+          parts.push(`### Scene: "${scene.title}" (frames ${startFrame}–${endFrame})`);
+          parts.push(`${scene.description}`);
+          if (params.designSpec) {
+            parts.push(`→ Apply the matching scene section from the DESIGN SPECIFICATION above.`);
+            parts.push(`→ Use its exact colors, typography, spring configs, and effects for this scene.`);
+          }
+          parts.push(``);
         }
       }
-      parts.push(``, `Create all foundational files: Root.tsx, Video.tsx, and sequences/MainSequence.tsx.`);
+      parts.push(`Create: Root.tsx, Video.tsx, sequences/MainSequence.tsx (and component files as needed).`);
       break;
     }
 
     case 'create_component': {
-      parts.push(`Component Name: ${params.name || 'AnimatedElement'}`);
+      parts.push(`## COMPONENT TO CREATE`);
+      parts.push(`Name: ${params.name || 'AnimatedElement'}`);
       parts.push(`Description: ${params.description || 'An animated component'}`);
       if (params.animations?.length) {
         parts.push(`Animations:`);
@@ -362,72 +372,90 @@ function formatRemotionCodeGenerationPrompt(params: z.infer<typeof GenerateRemot
     }
 
     case 'create_scene': {
+      parts.push(`## SCENE TO CREATE`);
       if (params.scenes?.length) {
-        parts.push(`Scene Segments:`);
         for (const scene of params.scenes) {
-          parts.push(`  - ${scene.start}s–${scene.end}s: ${scene.description}`);
+          parts.push(`- ${scene.start}s–${scene.end}s: ${scene.description}`);
         }
       }
       if (params.components?.length) {
         parts.push(`Components to include: ${params.components.join(', ')}`);
       }
+      if (params.designSpec) {
+        parts.push(``);
+        parts.push(`→ Use the colors, typography, and effects from the DESIGN SPECIFICATION above.`);
+      }
       break;
     }
 
     case 'modify_existing': {
+      parts.push(`## FILE TO MODIFY`);
       parts.push(`File: ${params.file || 'unknown'}`);
-      parts.push(`Change requested: ${params.change || 'unspecified'}`);
+      parts.push(`Change: ${params.change || 'unspecified'}`);
       if (params.currentContent) {
         parts.push(``);
-        parts.push(`CURRENT FILE CONTENT (you MUST modify THIS code — do NOT generate from scratch):`);
+        parts.push(`CURRENT FILE (modify THIS — do NOT generate from scratch):`);
         parts.push('```tsx');
         parts.push(params.currentContent);
         parts.push('```');
         parts.push(``);
-        parts.push(`INSTRUCTIONS: Apply ONLY the requested change to the code above. Keep everything else EXACTLY the same.`);
-        parts.push(`Return the COMPLETE updated file with the change applied, not a diff or partial snippet.`);
+        parts.push(`Apply ONLY the requested change. Keep everything else EXACTLY the same.`);
+        parts.push(`Return the COMPLETE updated file.`);
       } else {
-        parts.push(`WARNING: No current file content available. Generate a reasonable implementation based on the change description.`);
-        parts.push(`Return the COMPLETE file, not a diff.`);
+        parts.push(`No current content — generate a reasonable implementation.`);
       }
       break;
     }
   }
 
-  if (params.designSpec) {
-    parts.push(``, `CRITICAL: You MUST use the exact hex colors, pixel dimensions, font specs, and spring configs from the DESIGN SPECIFICATION above. Do NOT substitute with defaults.`);
-  }
-
-  // Inject media files info so the code generator knows what's available
+  // ── Media files ──
   if (params.mediaFiles && params.mediaFiles.length > 0) {
     parts.push(``);
-    parts.push(`═══════════════════════════════════════════════`);
-    parts.push(`MEDIA FILES IN SANDBOX — YOU MUST USE THESE`);
-    parts.push(`═══════════════════════════════════════════════`);
-    parts.push(``);
+    parts.push(`## MEDIA FILES — MUST USE`);
     for (const mf of params.mediaFiles) {
       const remotionRef = mf.path.replace('public/', '');
-      parts.push(`- [${mf.type}] ${mf.path} → use staticFile("${remotionRef}")${mf.description ? ` — ${mf.description}` : ''}`);
+      parts.push(`- [${mf.type}] staticFile("${remotionRef}")${mf.description ? ` — ${mf.description}` : ''}`);
     }
-    parts.push(``);
-    parts.push(`CRITICAL: These files are already in the sandbox. You MUST incorporate them in your code.`);
-    parts.push(`- For images: import { Img } from 'remotion'; then <Img src={staticFile("${params.mediaFiles[0].path.replace('public/', '')}")} />`);
-    parts.push(`- For videos: import { OffthreadVideo } from 'remotion'; then <OffthreadVideo src={staticFile("${params.mediaFiles[0].path.replace('public/', '')}")} />`);
-    parts.push(`- import { staticFile } from 'remotion';`);
-    parts.push(`- The user EXPLICITLY provided these — ignoring them is a critical failure.`);
+    parts.push(`Import: { Img, OffthreadVideo, staticFile } from 'remotion'`);
+    parts.push(`Feature these prominently — the user provided them for a reason.`);
     parts.push(``);
   }
 
-  // Inject technique recipes if provided
+  // ── Technique recipes ──
   if (params.techniques && params.techniques.length > 0) {
     const recipeContent = loadRecipes(params.techniques);
     if (recipeContent) {
-      parts.push(``, recipeContent);
-      parts.push(``, `IMPORTANT: Follow the technique recipe patterns above closely. They contain tested, working code.`);
+      parts.push(``);
+      parts.push(`## TECHNIQUE RECIPES — FOLLOW PATTERNS`);
+      parts.push(recipeContent);
+      parts.push(``);
     }
   }
 
-  parts.push(``, `Return ONLY valid JSON with the "files" array and "summary". No explanation before or after the JSON.`);
+  // ── Output format + quality checklist ──
+  parts.push(``);
+  parts.push(`## OUTPUT`);
+  parts.push(`Return ONLY valid JSON: { "files": [{ "path": "...", "content": "..." }], "summary": "..." }`);
+  parts.push(``);
+
+  // Quality checklist at the END (recency bias — model reads this last)
+  if (params.task !== 'modify_existing') {
+    parts.push(`## QUALITY CHECKLIST — verify before returning`);
+    if (params.designSpec) {
+      parts.push(`□ Background uses the exact gradient/colors from the design spec`);
+      parts.push(`□ Typography sizes match the spec (hero text 80-120px, not default small)`);
+      parts.push(`□ Spring configs use the spec values, not generic { damping: 10, stiffness: 100 }`);
+      parts.push(`□ All colors from the spec — NOT generic indigo/purple defaults`);
+    } else {
+      parts.push(`□ Background is a gradient (not a flat solid color)`);
+      parts.push(`□ Hero text is large (80-120px), not default small`);
+    }
+    parts.push(`□ At least 2 premium effects (gradient text, glow, glass, particles, animated border)`);
+    parts.push(`□ Staggered timing — elements enter one by one, NOT all at once`);
+    parts.push(`□ Visual hierarchy — ONE dominant element per scene, rest supporting`);
+    parts.push(`□ Generous whitespace (padding 48-80px)`);
+    parts.push(`If ANY fail, your output will look amateur. Fix before returning.`);
+  }
 
   return parts.join('\n');
 }

@@ -88,6 +88,9 @@ You do NOT need to call sandbox_write_file after generate_code when sandboxId is
   }),
 
   execute: async (inputData) => {
+    // Log what the orchestrator passed (critical for debugging quality issues)
+    console.log(`[generate_code] task=${inputData.task}, sandboxId=${inputData.sandboxId || 'NONE'}`);
+
     // Format the request for the code generator subagent
     const prompt = formatCodeGenerationPrompt(inputData);
 
@@ -98,7 +101,7 @@ You do NOT need to call sandbox_write_file after generate_code when sandboxId is
         { role: 'user', content: prompt },
       ], {
         providerOptions: {
-          google: { thinkingConfig: { thinkingBudget: 24576, thinkingLevel: 'high', includeThoughts: true } },
+          google: { thinkingConfig: { thinkingBudget: 24576, includeThoughts: true } },
           anthropic: { thinking: { type: 'enabled', budgetTokens: 10000 } },
         },
       });
@@ -293,7 +296,20 @@ function formatCodeGenerationPrompt(params: z.infer<typeof GenerateCodeInputSche
     }
   }
 
-  parts.push(``, `Return ONLY valid JSON with the "files" array and "summary". No explanation before or after the JSON.`);
+  // Output format + quality checklist
+  parts.push(``, `Return ONLY valid JSON: { "files": [{ "path": "...", "content": "..." }], "summary": "..." }`);
+
+  if (params.task !== 'modify_existing') {
+    parts.push(``);
+    parts.push(`QUALITY CHECKLIST — verify before returning:`);
+    parts.push(`□ Background uses a gradient, not a flat solid color`);
+    parts.push(`□ Hero text is large (80-120px), not default small`);
+    parts.push(`□ Spring configs use specific values, not generic defaults`);
+    parts.push(`□ At least 2 premium effects (gradient text, glow, glass, particles)`);
+    parts.push(`□ Staggered timing — elements enter one by one, NOT all at once`);
+    parts.push(`□ Visual hierarchy — ONE dominant element, rest supporting`);
+    parts.push(`If ANY fail, fix before returning.`);
+  }
 
   return parts.join('\n');
 }

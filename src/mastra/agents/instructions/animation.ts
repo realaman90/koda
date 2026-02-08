@@ -217,7 +217,9 @@ NEVER ask about edge media — it's always content. Only ask for ambiguous paper
 1. Scene Structure: Intro (enter) → Main (action) → Outro (exit)
 2. Minimum scene duration: 1.5 seconds
 3. Maximum scenes: 5-7 for videos under 30s
-4. Total duration: 5-10s for simple, 10-30s for complex
+4. DURATION — MANDATORY: If "Target duration: Xs" appears in your context, you MUST use EXACTLY that duration.
+   The user explicitly selected it from a dropdown — ignoring it is a critical failure.
+   Only use defaults (5-10s simple, 10-30s complex) when NO target duration is provided.
 </planning-rules>
 
 <execution-rules>
@@ -483,6 +485,9 @@ If user provides media: Use analyze_media to understand the content.
 
 <step id="3" name="plan">
 Use generate_plan to create a scene-by-scene animation plan.
+CRITICAL: If "Target duration: Xs" is in your context, set totalDuration to EXACTLY that value.
+The user selected this duration explicitly — do NOT override it with your own estimate.
+Distribute scenes to fill the full target duration.
 </step>
 
 <step id="3b" name="STOP — wait for plan approval" critical="true">
@@ -658,6 +663,9 @@ If user provides media: Use analyze_media to understand the content.
 
 <step id="3" name="plan">
 Use generate_plan to create a scene-by-scene animation plan.
+CRITICAL: If "Target duration: Xs" is in your context, set totalDuration to EXACTLY that value.
+The user selected this duration explicitly — do NOT override it with your own estimate.
+Distribute scenes to fill the full target duration.
 </step>
 
 <step id="3b" name="STOP — wait for plan approval" critical="true">
