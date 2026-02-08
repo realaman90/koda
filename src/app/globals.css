@@ -611,17 +611,17 @@ select {
   background-color: #f4f4f5 !important;
 }
 
-/* Light mode node input fields */
-.light .nodrag input,
-.light .nodrag textarea,
-.light .nodrag select {
+/* Light mode node input fields (skip .force-dark nodes like AnimationNode) */
+.light .nodrag input:not(.force-dark *),
+.light .nodrag textarea:not(.force-dark *),
+.light .nodrag select:not(.force-dark *) {
   background-color: #f4f4f5 !important;
   border-color: #d4d4d8 !important;
   color: #18181b !important;
 }
 
-.light .nodrag input::placeholder,
-.light .nodrag textarea::placeholder {
+.light .nodrag input:not(.force-dark *)::placeholder,
+.light .nodrag textarea:not(.force-dark *)::placeholder {
   color: #71717a !important;
 }
 

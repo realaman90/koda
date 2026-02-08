@@ -1855,7 +1855,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
 
   // ─── Node styling ──────────────────────────────────────────────────
   const nodeClasses = useMemo(() => {
-    const base = 'w-[340px] min-h-[450px] max-h-[600px] rounded-xl bg-[#18181b] overflow-hidden flex flex-col border border-[#27272a]';
+    const base = 'force-dark w-[340px] min-h-[450px] max-h-[600px] rounded-xl bg-[#18181b] overflow-hidden flex flex-col border border-[#27272a]';
     if (selected) return `${base} ring-1 ring-[#3B82F6]/70`;
     return base;
   }, [selected]);
