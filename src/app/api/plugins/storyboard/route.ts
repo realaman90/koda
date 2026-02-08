@@ -13,6 +13,8 @@ import {
   StoryboardOutputSchema,
   getSystemPrompt,
   buildStoryboardPrompt,
+  getRefinementSystemPrompt,
+  buildRefinementPrompt,
 } from '@/lib/plugins/official/storyboard-generator/schema';
 
 export const runtime = 'nodejs';
@@ -28,28 +30,42 @@ export async function POST(request: Request) {
     console.log('\n========== STORYBOARD GENERATION START ==========');
     console.log('[Storyboard] Input received:', JSON.stringify(body, null, 2));
 
-    // Validate input
-    const parseResult = StoryboardInputSchema.safeParse(body);
-    if (!parseResult.success) {
-      console.log('[Storyboard] Validation failed:', parseResult.error.flatten().fieldErrors);
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Invalid input',
-          details: parseResult.error.flatten().fieldErrors,
-        },
-        { status: 400 }
-      );
+    // Check if this is a refinement request
+    const isRefinement = body.previousDraft && body.feedback;
+
+    let prompt: string;
+    let systemPrompt: string;
+
+    if (isRefinement) {
+      // Refinement turn: use previous draft + feedback
+      const mode = body.mode || 'transition';
+      prompt = buildRefinementPrompt(body.previousDraft, body.feedback, mode);
+      systemPrompt = getRefinementSystemPrompt(mode);
+      console.log('[Storyboard] Refinement mode');
+      console.log('[Storyboard] Feedback:', body.feedback);
+    } else {
+      // Initial generation: validate full input
+      const parseResult = StoryboardInputSchema.safeParse(body);
+      if (!parseResult.success) {
+        console.log('[Storyboard] Validation failed:', parseResult.error.flatten().fieldErrors);
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Invalid input',
+            details: parseResult.error.flatten().fieldErrors,
+          },
+          { status: 400 }
+        );
+      }
+
+      const input = parseResult.data;
+      console.log('[Storyboard] Validated input:', JSON.stringify(input, null, 2));
+
+      prompt = buildStoryboardPrompt(input);
+      systemPrompt = getSystemPrompt(input.mode);
     }
 
-    const input = parseResult.data;
-    console.log('[Storyboard] Validated input:', JSON.stringify(input, null, 2));
-
-    // Build the prompt
-    const prompt = buildStoryboardPrompt(input);
-    const systemPrompt = getSystemPrompt(input.mode);
     console.log('[Storyboard] Built prompt:\n', prompt);
-    console.log('[Storyboard] Mode:', input.mode);
 
     // Create a lightweight agent for this request
     const agent = new Agent({

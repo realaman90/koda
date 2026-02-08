@@ -245,6 +245,10 @@ export const createStoryboardNode = (position: { x: number; y: number }, name?: 
     style: 'cinematic',
     mode: 'transition',
     viewState: 'form',
+    chatMessages: [],
+    thinkingBlocks: [],
+    drafts: [],
+    chatPhase: 'idle',
   } as StoryboardNodeData,
 });
 

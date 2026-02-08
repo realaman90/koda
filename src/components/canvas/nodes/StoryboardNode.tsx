@@ -3,20 +3,31 @@
 /**
  * Storyboard Node
  *
- * Canvas node for generating storyboards. Renders the same UI as the
- * deprecated StoryboardSandbox modal, but directly on the canvas.
+ * Canvas node for generating storyboards with iterative chat-based refinement.
+ * Flow: Form → Generate → Chat timeline with thinking + draft cards → Refine via chat.
  */
 
-import { memo, useCallback, useState, useRef, useEffect } from 'react';
+import { memo, useCallback, useState, useRef, useEffect, useMemo } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { Button } from '@/components/ui/button';
 import { useCanvasStore } from '@/stores/canvas-store';
 import { useCanvasAPI } from '@/lib/plugins/canvas-api';
-import type { StoryboardNode as StoryboardNodeType, StoryboardNodeData, StoryboardSceneData, StoryboardStyle, StoryboardMode } from '@/lib/types';
+import type {
+  StoryboardNode as StoryboardNodeType,
+  StoryboardNodeData,
+  StoryboardSceneData,
+  StoryboardStyle,
+  StoryboardMode,
+  StoryboardChatMessage,
+  StoryboardThinkingBlock,
+  StoryboardDraft,
+} from '@/lib/types';
 import type { CreateNodeInput } from '@/lib/plugins/types';
-import { Clapperboard, Trash2, Sparkles, Grid3X3, ChevronRight, Image as ImageIcon, User, ArrowLeftRight, LayoutGrid } from 'lucide-react';
+import { Clapperboard, Trash2, Sparkles, Grid3X3, ChevronRight, Image as ImageIcon, User, ArrowLeftRight, LayoutGrid, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
-import { ThinkingBlock } from '@/lib/plugins/official/agents/animation-generator/components/ChatMessages';
+import { ThinkingBlock, UserBubble } from '@/lib/plugins/official/agents/animation-generator/components/ChatMessages';
+import { StoryboardDraftCard } from './storyboard/StoryboardDraftCard';
+import { StoryboardChatInput } from './storyboard/StoryboardChatInput';
 
 // Style options
 const STYLE_OPTIONS: { value: StoryboardStyle; label: string }[] = [
@@ -29,6 +40,12 @@ const STYLE_OPTIONS: { value: StoryboardStyle; label: string }[] = [
 
 // Scene count options
 const SCENE_COUNTS = [4, 5, 6, 8] as const;
+
+// Timeline item union for sorted rendering
+type TimelineItem =
+  | { type: 'user'; seq: number; message: StoryboardChatMessage }
+  | { type: 'thinking'; seq: number; block: StoryboardThinkingBlock }
+  | { type: 'draft'; seq: number; draft: StoryboardDraft; index: number };
 
 function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNodeType>) {
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
@@ -45,6 +62,19 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
   const [isEditingName, setIsEditingName] = useState(false);
   const [nodeName, setNodeName] = useState(data.name || 'Storyboard');
   const nameInputRef = useRef<HTMLInputElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+
+  // Sequence counter for ordering timeline items
+  const seqRef = useRef(0);
+  const nextSeq = () => ++seqRef.current;
+
+  // Abort controller for cancelling streams
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Batched reasoning accumulator (avoid updating store on every delta)
+  const reasoningBufferRef = useRef('');
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeThinkingIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (isEditingName && nameInputRef.current) {
@@ -52,6 +82,49 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
       nameInputRef.current.select();
     }
   }, [isEditingName]);
+
+  // Sync seqRef to persisted data on mount
+  useEffect(() => {
+    const allSeqs = [
+      ...(data.chatMessages || []).map((m) => m.seq),
+      ...(data.thinkingBlocks || []).map((t) => t.seq),
+      ...(data.drafts || []).map((d) => d.seq),
+    ];
+    if (allSeqs.length > 0) {
+      seqRef.current = Math.max(...allSeqs);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Backward compatibility: migrate old data.result into drafts
+  useEffect(() => {
+    if (data.result && (!data.drafts || data.drafts.length === 0)) {
+      const syntheticDraft: StoryboardDraft = {
+        id: `draft_migrated_${Date.now()}`,
+        scenes: data.result.scenes,
+        summary: data.result.summary,
+        createdAt: new Date().toISOString(),
+        seq: nextSeq(),
+      };
+      updateNodeData(id, {
+        drafts: [syntheticDraft],
+        chatPhase: 'draft-ready',
+        viewState: data.viewState === 'preview' ? 'chat' : data.viewState,
+        // Clear old fields
+        result: undefined,
+        thinkingText: undefined,
+        reasoningText: undefined,
+        thinkingStartedAt: undefined,
+        isStreaming: undefined,
+      });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-scroll chat to bottom when new items appear
+  useEffect(() => {
+    if (data.viewState === 'chat' && chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
+  }, [data.viewState, data.chatMessages?.length, data.thinkingBlocks?.length, data.drafts?.length, data.chatPhase]);
 
   const handleNameSubmit = useCallback(() => {
     setIsEditingName(false);
@@ -73,34 +146,62 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
   // Validation
   const isValid = (data.product?.trim().length ?? 0) > 0 && (data.concept?.trim().length ?? 0) > 0;
 
-  // Generate storyboard via SSE stream
-  const handleGenerate = useCallback(async () => {
-    if (!isValid) return;
+  // Helper to flush batched reasoning to store
+  const flushReasoning = useCallback(() => {
+    if (flushTimerRef.current) {
+      clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
+    const thinkingId = activeThinkingIdRef.current;
+    const buffered = reasoningBufferRef.current;
+    if (!thinkingId || !buffered) return;
 
+    const currentNode = useCanvasStore.getState().nodes.find((n) => n.id === id);
+    if (!currentNode) return;
+    const nodeData = currentNode.data as StoryboardNodeData;
+    const blocks = [...(nodeData.thinkingBlocks || [])];
+    const idx = blocks.findIndex((b) => b.id === thinkingId);
+    if (idx >= 0) {
+      blocks[idx] = { ...blocks[idx], reasoning: buffered };
+      updateNodeData(id, { thinkingBlocks: blocks });
+    }
+  }, [id, updateNodeData]);
+
+  // Stream SSE from the storyboard API
+  const streamGeneration = useCallback(async (
+    body: Record<string, unknown>,
+    thinkingLabel: string,
+  ) => {
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    const thinkingId = `thinking_${Date.now()}`;
     const startedAt = new Date().toISOString();
+    activeThinkingIdRef.current = thinkingId;
+    reasoningBufferRef.current = '';
+
+    // Add thinking block
+    const currentNode = useCanvasStore.getState().nodes.find((n) => n.id === id);
+    const nodeData = currentNode?.data as StoryboardNodeData | undefined;
+    const existingBlocks = nodeData?.thinkingBlocks || [];
+    const newThinking: StoryboardThinkingBlock = {
+      id: thinkingId,
+      label: thinkingLabel,
+      startedAt,
+      seq: nextSeq(),
+    };
+
     updateNodeData(id, {
-      viewState: 'loading',
-      error: undefined,
-      thinkingText: 'Generating storyboard',
-      reasoningText: undefined,
-      thinkingStartedAt: startedAt,
-      isStreaming: true,
+      thinkingBlocks: [...existingBlocks, newThinking],
+      chatPhase: 'streaming',
     });
 
     try {
-      const input = {
-        product: data.product.trim(),
-        character: data.character?.trim() || undefined,
-        concept: data.concept.trim(),
-        sceneCount: data.sceneCount,
-        style: data.style,
-        mode: data.mode || 'transition',
-      };
-
       const response = await fetch('/api/plugins/storyboard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
+        body: JSON.stringify(body),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -113,7 +214,6 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
 
       const decoder = new TextDecoder();
       let buffer = '';
-      let accumulatedReasoning = '';
 
       while (true) {
         const { done, value } = await reader.read();
@@ -137,19 +237,50 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
 
           switch (event.type) {
             case 'reasoning-delta': {
-              accumulatedReasoning += event.text || '';
-              updateNodeData(id, { reasoningText: accumulatedReasoning });
+              reasoningBufferRef.current += event.text || '';
+              // Batch flush every 100ms
+              if (!flushTimerRef.current) {
+                flushTimerRef.current = setTimeout(flushReasoning, 100);
+              }
               break;
             }
             case 'result': {
+              // Final flush of reasoning
+              flushReasoning();
+
               if (event.success && event.scenes) {
+                const scenes = event.scenes as StoryboardSceneData[];
+                const summary = event.summary || '';
+                const draftId = `draft_${Date.now()}`;
+                const endedAt = new Date().toISOString();
+
+                // Get latest state
+                const latestNode = useCanvasStore.getState().nodes.find((n) => n.id === id);
+                const latestData = latestNode?.data as StoryboardNodeData | undefined;
+                const currentBlocks = [...(latestData?.thinkingBlocks || [])];
+                const currentDrafts = [...(latestData?.drafts || [])];
+
+                // Finalize thinking block
+                const tIdx = currentBlocks.findIndex((b) => b.id === thinkingId);
+                if (tIdx >= 0) {
+                  currentBlocks[tIdx] = { ...currentBlocks[tIdx], endedAt };
+                }
+
+                // Add draft
+                const newDraft: StoryboardDraft = {
+                  id: draftId,
+                  scenes,
+                  summary,
+                  createdAt: endedAt,
+                  seq: nextSeq(),
+                };
+                currentDrafts.push(newDraft);
+
                 updateNodeData(id, {
-                  viewState: 'preview',
-                  result: { scenes: event.scenes as StoryboardSceneData[], summary: event.summary || '' },
-                  thinkingText: undefined,
-                  reasoningText: undefined,
-                  thinkingStartedAt: undefined,
-                  isStreaming: false,
+                  thinkingBlocks: currentBlocks,
+                  drafts: currentDrafts,
+                  chatPhase: 'draft-ready',
+                  error: undefined,
                 });
               } else {
                 throw new Error('Invalid result from AI service');
@@ -163,41 +294,158 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
         }
       }
 
-      // Stream ended without a result event -- treat as error
-      const currentData = useCanvasStore.getState().nodes.find(n => n.id === id)?.data as StoryboardNodeData | undefined;
-      if (currentData?.viewState === 'loading') {
+      // Stream ended without a result event
+      const checkNode = useCanvasStore.getState().nodes.find((n) => n.id === id);
+      const checkData = checkNode?.data as StoryboardNodeData | undefined;
+      if (checkData?.chatPhase === 'streaming') {
         throw new Error('Stream ended without result');
       }
     } catch (err) {
+      if ((err as Error).name === 'AbortError') {
+        // User aborted — finalize thinking block and go to draft-ready
+        flushReasoning();
+        const latestNode = useCanvasStore.getState().nodes.find((n) => n.id === id);
+        const latestData = latestNode?.data as StoryboardNodeData | undefined;
+        const currentBlocks = [...(latestData?.thinkingBlocks || [])];
+        const tIdx = currentBlocks.findIndex((b) => b.id === thinkingId);
+        if (tIdx >= 0) {
+          currentBlocks[tIdx] = { ...currentBlocks[tIdx], endedAt: new Date().toISOString() };
+        }
+        updateNodeData(id, {
+          thinkingBlocks: currentBlocks,
+          chatPhase: (latestData?.drafts?.length ?? 0) > 0 ? 'draft-ready' : 'idle',
+        });
+        return;
+      }
+
+      flushReasoning();
+      // Finalize thinking block
+      const latestNode = useCanvasStore.getState().nodes.find((n) => n.id === id);
+      const latestData = latestNode?.data as StoryboardNodeData | undefined;
+      const currentBlocks = [...(latestData?.thinkingBlocks || [])];
+      const tIdx = currentBlocks.findIndex((b) => b.id === thinkingId);
+      if (tIdx >= 0) {
+        currentBlocks[tIdx] = { ...currentBlocks[tIdx], endedAt: new Date().toISOString() };
+      }
       updateNodeData(id, {
-        viewState: 'form',
+        thinkingBlocks: currentBlocks,
+        chatPhase: 'error',
         error: err instanceof Error ? err.message : 'Generation failed',
-        thinkingText: undefined,
-        reasoningText: undefined,
-        thinkingStartedAt: undefined,
-        isStreaming: false,
       });
+    } finally {
+      activeThinkingIdRef.current = null;
+      abortRef.current = null;
     }
-  }, [id, data.product, data.character, data.concept, data.sceneCount, data.style, data.mode, isValid, updateNodeData]);
+  }, [id, updateNodeData, flushReasoning]);
+
+  // Initial generation from form
+  const handleGenerate = useCallback(async () => {
+    if (!isValid) return;
+
+    const mode = data.mode || 'transition';
+
+    // Synthesize user message from form fields
+    const characterLine = data.character?.trim() ? ` with character: ${data.character.trim()}` : '';
+    const userContent = `Generate a ${data.sceneCount}-scene ${data.style} storyboard for: ${data.product.trim()}${characterLine}. Concept: ${data.concept.trim()}`;
+    const userMsg: StoryboardChatMessage = {
+      id: `msg_${Date.now()}`,
+      role: 'user',
+      content: userContent,
+      timestamp: new Date().toISOString(),
+      seq: nextSeq(),
+    };
+
+    // Transition to chat view
+    updateNodeData(id, {
+      viewState: 'chat',
+      chatMessages: [...(data.chatMessages || []), userMsg],
+      error: undefined,
+    });
+
+    const input = {
+      product: data.product.trim(),
+      character: data.character?.trim() || undefined,
+      concept: data.concept.trim(),
+      sceneCount: data.sceneCount,
+      style: data.style,
+      mode,
+    };
+
+    await streamGeneration(input, 'Generating storyboard');
+  }, [id, data, isValid, updateNodeData, streamGeneration]);
+
+  // Refinement from chat input
+  const handleRefinement = useCallback(async (feedback: string) => {
+    const latestNode = useCanvasStore.getState().nodes.find((n) => n.id === id);
+    const latestData = latestNode?.data as StoryboardNodeData | undefined;
+    const drafts = latestData?.drafts || [];
+    if (drafts.length === 0) return;
+
+    const latestDraft = drafts[drafts.length - 1];
+    const mode = data.mode || 'transition';
+
+    // Add user message
+    const userMsg: StoryboardChatMessage = {
+      id: `msg_${Date.now()}`,
+      role: 'user',
+      content: feedback,
+      timestamp: new Date().toISOString(),
+      seq: nextSeq(),
+    };
+
+    const currentMessages = latestData?.chatMessages || [];
+    updateNodeData(id, {
+      chatMessages: [...currentMessages, userMsg],
+    });
+
+    // Build refinement request
+    const body = {
+      previousDraft: {
+        scenes: latestDraft.scenes,
+        summary: latestDraft.summary,
+      },
+      feedback,
+      mode,
+      product: data.product.trim(),
+      character: data.character?.trim() || undefined,
+      concept: data.concept.trim(),
+      sceneCount: data.sceneCount,
+      style: data.style,
+    };
+
+    await streamGeneration(body, 'Refining storyboard');
+  }, [id, data, updateNodeData, streamGeneration]);
+
+  // Stop streaming
+  const handleStop = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
 
   // Helper function to generate fallback transition prompt
-  const generateFallbackTransition = (fromScene: StoryboardSceneData, toScene: StoryboardSceneData): string => {
+  const generateFallbackTransition = useCallback((fromScene: StoryboardSceneData, toScene: StoryboardSceneData): string => {
     return `Cinematic transition from "${fromScene.title}" to "${toScene.title}". ${fromScene.camera} transitioning smoothly, maintaining ${fromScene.mood} atmosphere.`;
-  };
+  }, []);
 
   // Helper function to generate fallback motion prompt for single-shot mode
-  const generateFallbackMotion = (scene: StoryboardSceneData): string => {
+  const generateFallbackMotion = useCallback((scene: StoryboardSceneData): string => {
     return `${scene.description} ${scene.camera}, ${scene.mood} atmosphere.`;
-  };
+  }, []);
 
-  // Create nodes on canvas
+  // Get the active draft (latest or explicitly selected)
+  const activeDraft = useMemo(() => {
+    const drafts = data.drafts || [];
+    if (drafts.length === 0) return null;
+    const idx = data.activeDraftIndex ?? drafts.length - 1;
+    return drafts[idx] || drafts[drafts.length - 1];
+  }, [data.drafts, data.activeDraftIndex]);
+
+  // Create nodes on canvas from the active draft
   const handleCreateOnCanvas = useCallback(async () => {
-    if (!data.result) return;
+    if (!activeDraft) return;
 
     const mode = data.mode || 'transition';
 
     try {
-      // Get connected product/character images
       const connectedInputs = useCanvasStore.getState().getConnectedInputs(id);
       const productImageUrl = connectedInputs.productImageUrl;
       const characterImageUrl = connectedInputs.characterImageUrl;
@@ -205,58 +453,39 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
       const viewportCenter = canvas.getViewportCenter();
       const nodeInputs: CreateNodeInput[] = [];
 
-      // Layout constants
       const IMAGE_NODE_WIDTH = 280;
       const VIDEO_NODE_WIDTH = 420;
 
-      // Build reference URLs for the first scene
       const firstSceneReferenceUrls = [productImageUrl, characterImageUrl].filter((url): url is string => !!url);
 
       if (mode === 'single-shot') {
-        // ==================== SINGLE-SHOT MODE ====================
-        // Grid layout: N images in grid, N videos below each image
-
-        // Calculate grid dimensions
-        const sceneCount = data.result.scenes.length;
+        const sceneCount = activeDraft.scenes.length;
         let columns: number;
-        if (sceneCount <= 4) {
-          columns = 2;
-        } else if (sceneCount <= 6) {
-          columns = 3;
-        } else {
-          columns = 4;
-        }
+        if (sceneCount <= 4) columns = 2;
+        else if (sceneCount <= 6) columns = 3;
+        else columns = 4;
         const rows = Math.ceil(sceneCount / columns);
 
-        // Grid spacing
         const HORIZONTAL_SPACING = 350;
-        const VERTICAL_SPACING = 500; // Image + video + gap
+        const VERTICAL_SPACING = 500;
 
-        // Calculate starting position to center the grid
         const totalGridWidth = (columns - 1) * HORIZONTAL_SPACING + IMAGE_NODE_WIDTH;
         const gridStartX = viewportCenter.x - totalGridWidth / 2;
         const gridStartY = viewportCenter.y - (rows * VERTICAL_SPACING) / 2;
 
-        // Store image positions for video node placement
         const imagePositions: { x: number; y: number }[] = [];
-
-        // Track starting indices
         const imageNodeStartIndex = nodeInputs.length;
 
-        // Create image generator nodes in a grid
-        data.result.scenes.forEach((scene, index) => {
+        activeDraft.scenes.forEach((scene, index) => {
           const col = index % columns;
           const row = Math.floor(index / columns);
-
           const position = {
             x: gridStartX + col * HORIZONTAL_SPACING,
             y: gridStartY + row * VERTICAL_SPACING,
           };
           imagePositions.push(position);
 
-          // Only the first scene gets the product/character image references
           const isFirstScene = index === 0;
-
           nodeInputs.push({
             type: 'imageGenerator',
             position,
@@ -272,20 +501,14 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
           });
         });
 
-        // Track video node start index
         const videoNodeStartIndex = nodeInputs.length;
 
-        // Create video generator node for EACH image (N videos)
-        data.result.scenes.forEach((scene, index) => {
+        activeDraft.scenes.forEach((scene, index) => {
           const imagePos = imagePositions[index];
-
-          // Position video node below its image with 50px gap
           const videoPosition = {
             x: imagePos.x + (IMAGE_NODE_WIDTH - VIDEO_NODE_WIDTH) / 2,
-            y: imagePos.y + 300, // Below the image node
+            y: imagePos.y + 300,
           };
-
-          // Use AI-generated motion or fallback
           const motionPrompt = scene.motion || generateFallbackMotion(scene);
 
           nodeInputs.push({
@@ -294,7 +517,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
             name: `Video ${scene.number}: ${scene.title}`,
             data: {
               prompt: motionPrompt,
-              model: 'veo-3.1-i2v', // Single image input model
+              model: 'veo-3.1-i2v',
               aspectRatio: '16:9',
               duration: 8,
               resolution: '720p',
@@ -303,55 +526,37 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
           });
         });
 
-        // Create all nodes
         const nodeIds = await canvas.createNodes(nodeInputs);
 
-        // NO image-to-image chaining in single-shot mode
-
-        // Create edges connecting each image to its video via 'reference' handle
-        for (let i = 0; i < data.result.scenes.length; i++) {
+        for (let i = 0; i < activeDraft.scenes.length; i++) {
           const imageNodeId = nodeIds[imageNodeStartIndex + i];
           const videoNodeId = nodeIds[videoNodeStartIndex + i];
           await canvas.createEdge(imageNodeId, 'output', videoNodeId, 'reference');
         }
 
-        // Fit view to show all nodes
         canvas.fitView();
-
-        // Notify success
         toast.success(
-          `Created ${data.result.scenes.length} scene nodes and ${data.result.scenes.length} video nodes in grid layout. Click "Run All" to generate.`
+          `Created ${activeDraft.scenes.length} scene nodes and ${activeDraft.scenes.length} video nodes in grid layout. Click "Run All" to generate.`
         );
       } else {
-        // ==================== TRANSITION MODE (existing logic) ====================
-        // Horizontal row: N images, N-1 videos between pairs
-
         const IMAGE_SPACING = 380;
         const VIDEO_Y_OFFSET = 450;
-
-        // Track the starting index for image nodes
         const imageNodeStartIndex = nodeInputs.length;
 
-        // Calculate starting X to center the layout
-        const totalImageWidth = (data.result.scenes.length - 1) * IMAGE_SPACING + IMAGE_NODE_WIDTH;
+        const totalImageWidth = (activeDraft.scenes.length - 1) * IMAGE_SPACING + IMAGE_NODE_WIDTH;
         const imageStartX = viewportCenter.x - totalImageWidth / 2;
         const imageStartY = viewportCenter.y - 200;
 
-        // Store image positions for video node placement
         const imagePositions: { x: number; y: number }[] = [];
 
-        // Create image generator nodes in a horizontal row
-        data.result.scenes.forEach((scene, index) => {
+        activeDraft.scenes.forEach((scene, index) => {
           const position = {
             x: imageStartX + index * IMAGE_SPACING,
             y: imageStartY,
           };
           imagePositions.push(position);
 
-          // Only the first scene gets the product/character image references
-          // Subsequent scenes will get their reference from the previous scene via chain connections
           const isFirstScene = index === 0;
-
           nodeInputs.push({
             type: 'imageGenerator',
             position,
@@ -359,7 +564,6 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
             data: {
               prompt: scene.prompt,
               model: 'nanobanana-pro',
-              // Pass reference images to first scene only
               ...(isFirstScene && firstSceneReferenceUrls.length > 0 && {
                 referenceUrl: firstSceneReferenceUrls[0],
                 referenceUrls: firstSceneReferenceUrls.length > 1 ? firstSceneReferenceUrls : undefined,
@@ -368,23 +572,19 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
           });
         });
 
-        // Track the starting index for video nodes
         const videoNodeStartIndex = nodeInputs.length;
 
-        // Create video generator nodes between consecutive image pairs
-        for (let i = 0; i < data.result.scenes.length - 1; i++) {
+        for (let i = 0; i < activeDraft.scenes.length - 1; i++) {
           const sourcePos = imagePositions[i];
           const targetPos = imagePositions[i + 1];
-          const currentScene = data.result.scenes[i];
-          const nextScene = data.result.scenes[i + 1];
+          const currentScene = activeDraft.scenes[i];
+          const nextScene = activeDraft.scenes[i + 1];
 
-          // Position video node below and centered between source and target image nodes
           const videoPosition = {
             x: (sourcePos.x + targetPos.x) / 2 + (IMAGE_NODE_WIDTH - VIDEO_NODE_WIDTH) / 2,
             y: imageStartY + VIDEO_Y_OFFSET,
           };
 
-          // Use AI-generated transition or fallback
           const transitionPrompt = currentScene.transition || generateFallbackTransition(currentScene, nextScene);
 
           nodeInputs.push({
@@ -402,42 +602,64 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
           });
         }
 
-        // Create all nodes
         const nodeIds = await canvas.createNodes(nodeInputs);
 
-        // Create edges connecting image nodes in a chain (for style reference)
-        for (let i = 0; i < data.result.scenes.length - 1; i++) {
+        for (let i = 0; i < activeDraft.scenes.length - 1; i++) {
           const sourceImageId = nodeIds[imageNodeStartIndex + i];
           const targetImageId = nodeIds[imageNodeStartIndex + i + 1];
           await canvas.createEdge(sourceImageId, 'output', targetImageId, 'reference');
         }
 
-        // Create edges connecting image nodes to video nodes
-        const videoNodeCount = data.result.scenes.length - 1;
+        const videoNodeCount = activeDraft.scenes.length - 1;
         for (let i = 0; i < videoNodeCount; i++) {
           const sourceImageId = nodeIds[imageNodeStartIndex + i];
           const targetImageId = nodeIds[imageNodeStartIndex + i + 1];
           const videoNodeId = nodeIds[videoNodeStartIndex + i];
-
-          // Source image -> firstFrame
           await canvas.createEdge(sourceImageId, 'output', videoNodeId, 'firstFrame');
-          // Target image -> lastFrame
           await canvas.createEdge(targetImageId, 'output', videoNodeId, 'lastFrame');
         }
 
-        // Fit view to show all nodes
         canvas.fitView();
-
-        // Notify success
-        const videoCount = data.result.scenes.length - 1;
         toast.success(
-          `Created ${data.result.scenes.length} scene nodes and ${videoCount} video nodes. Click "Run All" to generate images, then videos.`
+          `Created ${activeDraft.scenes.length} scene nodes and ${videoNodeCount} video nodes. Click "Run All" to generate images, then videos.`
         );
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create nodes');
     }
-  }, [data.result, data.mode, canvas, id, generateFallbackTransition, generateFallbackMotion]);
+  }, [activeDraft, data.mode, canvas, id, generateFallbackTransition, generateFallbackMotion]);
+
+  // Build sorted timeline from chat messages, completed thinking blocks, and drafts
+  const timelineItems = useMemo((): TimelineItem[] => {
+    const items: TimelineItem[] = [];
+
+    // User messages
+    for (const msg of data.chatMessages || []) {
+      items.push({ type: 'user', seq: msg.seq, message: msg });
+    }
+
+    // Completed thinking blocks (not the currently-streaming one)
+    for (const block of data.thinkingBlocks || []) {
+      if (block.endedAt) {
+        items.push({ type: 'thinking', seq: block.seq, block });
+      }
+    }
+
+    // Drafts
+    (data.drafts || []).forEach((draft, index) => {
+      items.push({ type: 'draft', seq: draft.seq, draft, index });
+    });
+
+    items.sort((a, b) => a.seq - b.seq);
+    return items;
+  }, [data.chatMessages, data.thinkingBlocks, data.drafts]);
+
+  // Currently streaming thinking block
+  const streamingThinking = useMemo(() => {
+    if (data.chatPhase !== 'streaming') return null;
+    const blocks = data.thinkingBlocks || [];
+    return blocks.find((b) => !b.endedAt) || null;
+  }, [data.chatPhase, data.thinkingBlocks]);
 
   // Render form view
   const renderForm = () => (
@@ -580,81 +802,93 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
     </div>
   );
 
-  // Render loading view with ThinkingBlock
-  const renderLoading = () => (
-    <div className="p-4 h-full flex flex-col justify-center">
-      <ThinkingBlock
-        thinking={data.thinkingText || 'Generating storyboard'}
-        reasoning={data.reasoningText}
-        isStreaming={data.isStreaming ?? true}
-        startedAt={data.thinkingStartedAt}
-        maxReasoningHeight={400}
-      />
-    </div>
-  );
+  // Render chat timeline view
+  const renderChat = () => (
+    <div className="flex flex-col h-full">
+      {/* Scrollable timeline */}
+      <div
+        ref={chatScrollRef}
+        className="flex-1 overflow-y-auto nowheel p-3 space-y-3"
+        onWheel={(e) => !e.ctrlKey && e.stopPropagation()}
+      >
+        {timelineItems.map((item) => {
+          switch (item.type) {
+            case 'user':
+              return (
+                <div key={item.message.id} className="flex justify-end">
+                  <div className="max-w-[85%]">
+                    <UserBubble content={item.message.content} />
+                  </div>
+                </div>
+              );
+            case 'thinking':
+              return (
+                <div key={item.block.id}>
+                  <ThinkingBlock
+                    thinking={item.block.label}
+                    reasoning={item.block.reasoning}
+                    isStreaming={false}
+                    startedAt={item.block.startedAt}
+                    endedAt={item.block.endedAt}
+                    maxReasoningHeight={120}
+                  />
+                </div>
+              );
+            case 'draft':
+              return (
+                <div key={item.draft.id}>
+                  <StoryboardDraftCard
+                    draft={item.draft}
+                    draftIndex={item.index}
+                    mode={data.mode || 'transition'}
+                    isLatest={item.index === (data.drafts?.length ?? 0) - 1}
+                    onCreateNodes={handleCreateOnCanvas}
+                    isReadOnly={isReadOnly}
+                  />
+                </div>
+              );
+            default:
+              return null;
+          }
+        })}
 
-  // Render preview view
-  const renderPreview = () => {
-    if (!data.result) return null;
-
-    const mode = data.mode || 'transition';
-    const sceneCount = data.result.scenes.length;
-    const videoCount = mode === 'single-shot' ? sceneCount : sceneCount - 1;
-
-    return (
-      <div className="p-4 space-y-3">
-        {/* Mode indicator */}
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          {mode === 'single-shot' ? (
-            <>
-              <LayoutGrid className="w-3.5 h-3.5" />
-              <span>Grid layout ({sceneCount} images → {videoCount} videos)</span>
-            </>
-          ) : (
-            <>
-              <ArrowLeftRight className="w-3.5 h-3.5" />
-              <span>Horizontal layout ({sceneCount} images → {videoCount} transitions)</span>
-            </>
-          )}
-        </div>
-
-        {/* Summary */}
-        <div className="p-2 bg-muted rounded-lg">
-          <h3 className="text-xs font-medium text-muted-foreground mb-1">Summary</h3>
-          <p className="text-xs text-foreground">{data.result.summary}</p>
-        </div>
-
-        {/* Scenes preview */}
-        <div className="space-y-2">
-          <h3 className="text-xs font-medium text-muted-foreground">Scenes</h3>
-          <div className="space-y-1">
-            {data.result.scenes.map((scene) => (
-              <ScenePreview key={scene.number} scene={scene} />
-            ))}
+        {/* Currently streaming thinking block (not yet in timeline) */}
+        {streamingThinking && (
+          <div>
+            <ThinkingBlock
+              thinking={streamingThinking.label}
+              reasoning={streamingThinking.reasoning}
+              isStreaming={true}
+              startedAt={streamingThinking.startedAt}
+              maxReasoningHeight={120}
+            />
           </div>
-        </div>
+        )}
 
-        {/* Actions - hidden in read-only mode */}
-        {!isReadOnly && (
-          <div className="flex gap-2 pt-1">
-            <button
-              onClick={() => updateNodeData(id, { viewState: 'form' })}
-              className="flex-1 py-2 px-3 bg-muted hover:bg-muted/80 text-foreground text-sm font-medium rounded-lg transition-colors nodrag"
-            >
-              Back to Edit
-            </button>
-            <button
-              onClick={handleCreateOnCanvas}
-              className="flex-1 py-2 px-3 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-1.5 nodrag"
-            >
-              <Grid3X3 className="w-3.5 h-3.5" />
-              Create Nodes
-            </button>
+        {/* Error in chat */}
+        {data.chatPhase === 'error' && data.error && (
+          <div className="p-2 bg-red-900/30 border border-red-700 rounded-lg text-red-200 text-xs">
+            {data.error}
           </div>
         )}
       </div>
-    );
-  };
+
+      {/* Chat input — pinned at bottom */}
+      {!isReadOnly && (
+        <StoryboardChatInput
+          onSubmit={handleRefinement}
+          onStop={handleStop}
+          isGenerating={data.chatPhase === 'streaming'}
+          disabled={data.chatPhase === 'streaming'}
+          placeholder={
+            (data.drafts?.length ?? 0) > 0
+              ? 'Refine the storyboard...'
+              : 'Waiting for generation...'
+          }
+        />
+      )}
+    </div>
+  );
 
   return (
     <div className="relative">
@@ -705,7 +939,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
       {/* Main Node Card */}
       <div
         className={`
-          w-[400px] rounded-2xl overflow-hidden
+          w-[400px] rounded-2xl overflow-hidden flex flex-col
           transition-[box-shadow,ring-color] duration-150
           ${selected
             ? 'ring-[2.5px] ring-indigo-500 shadow-lg shadow-indigo-500/10'
@@ -714,24 +948,72 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
         `}
         style={{
           backgroundColor: 'var(--node-card-bg)',
-          '--tw-ring-color': selected ? undefined : 'var(--node-ring)'
+          '--tw-ring-color': selected ? undefined : 'var(--node-ring)',
+          minHeight: data.viewState === 'chat' ? '450px' : undefined,
+          maxHeight: data.viewState === 'chat' ? '620px' : undefined,
+          height: data.viewState === 'chat' ? '580px' : undefined,
         } as React.CSSProperties}
       >
         {/* Header */}
-        <div className="px-4 py-3 border-b border-border flex items-center gap-2">
-          <span className="text-sm font-medium text-foreground">Create</span>
+        <div className="px-4 py-3 border-b border-border flex items-center shrink-0">
+          {data.viewState === 'chat' && !isReadOnly ? (
+            <button
+              onClick={() => updateNodeData(id, { viewState: 'form' })}
+              className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors nodrag"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Edit Form
+            </button>
+          ) : (
+            <span className="text-sm font-medium text-foreground">Create</span>
+          )}
         </div>
 
-        {/* Content — fixed height across all states */}
-        <div className="h-[580px] overflow-y-auto nowheel" onWheel={(e) => !e.ctrlKey && e.stopPropagation()}>
-          {data.viewState === 'form' && renderForm()}
-          {data.viewState === 'loading' && renderLoading()}
-          {data.viewState === 'preview' && renderPreview()}
-        </div>
+        {/* Content */}
+        {data.viewState === 'form' ? (
+          <div className="h-[580px] overflow-y-auto nowheel" onWheel={(e) => !e.ctrlKey && e.stopPropagation()}>
+            {renderForm()}
+          </div>
+        ) : data.viewState === 'chat' ? (
+          <div className="flex-1 min-h-0 flex flex-col">
+            {renderChat()}
+          </div>
+        ) : data.viewState === 'loading' ? (
+          /* Legacy loading state — show thinking block */
+          <div className="h-[580px] overflow-y-auto nowheel p-4 flex flex-col justify-center" onWheel={(e) => !e.ctrlKey && e.stopPropagation()}>
+            <ThinkingBlock
+              thinking={data.thinkingText || 'Generating storyboard'}
+              reasoning={data.reasoningText}
+              isStreaming={data.isStreaming ?? true}
+              startedAt={data.thinkingStartedAt}
+              maxReasoningHeight={400}
+            />
+          </div>
+        ) : data.viewState === 'preview' ? (
+          /* Legacy preview state — show old result */
+          <div className="h-[580px] overflow-y-auto nowheel" onWheel={(e) => !e.ctrlKey && e.stopPropagation()}>
+            {data.result && (
+              <div className="p-4 space-y-3">
+                <div className="p-2 bg-muted rounded-lg">
+                  <h3 className="text-xs font-medium text-muted-foreground mb-1">Summary</h3>
+                  <p className="text-xs text-foreground">{data.result.summary}</p>
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-xs font-medium text-muted-foreground">Scenes</h3>
+                  <div className="space-y-1">
+                    {data.result.scenes.map((scene) => (
+                      <ScenePreview key={scene.number} scene={scene} />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : null}
       </div>
 
-      {/* Input Handles - Left side (only shown in form view) */}
-      {data.viewState === 'form' && (
+      {/* Input Handles - Left side (shown in form and chat views) */}
+      {(data.viewState === 'form' || data.viewState === 'chat') && (
         <>
           {/* Product Image Handle */}
           <div className="absolute -left-3 group" style={{ top: '95px' }}>
@@ -770,7 +1052,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
   );
 }
 
-// Scene preview card
+// Scene preview card (kept for legacy preview state)
 function ScenePreview({ scene }: { scene: StoryboardSceneData }) {
   const [expanded, setExpanded] = useState(false);
 

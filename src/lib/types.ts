@@ -567,7 +567,38 @@ export type StoryboardMode = 'transition' | 'single-shot';
 export type StoryboardStyle = 'cinematic' | 'anime' | 'photorealistic' | 'illustrated' | 'commercial';
 
 // Storyboard view state
-export type StoryboardViewState = 'form' | 'loading' | 'preview';
+export type StoryboardViewState = 'form' | 'loading' | 'preview' | 'chat';
+
+// Storyboard chat phase
+export type StoryboardChatPhase = 'idle' | 'streaming' | 'draft-ready' | 'error';
+
+// Storyboard chat message
+export interface StoryboardChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+  seq: number;
+}
+
+// Storyboard thinking block entry
+export interface StoryboardThinkingBlock {
+  id: string;
+  label: string;
+  reasoning?: string;
+  startedAt: string;
+  endedAt?: string;
+  seq: number;
+}
+
+// Storyboard draft entry
+export interface StoryboardDraft {
+  id: string;
+  scenes: StoryboardSceneData[];
+  summary: string;
+  createdAt: string;
+  seq: number;
+}
 
 // Scene data structure (matches schema.ts)
 export interface StoryboardSceneData {
@@ -594,12 +625,17 @@ export interface StoryboardNodeData extends Record<string, unknown> {
   // UI state
   viewState: StoryboardViewState;
   error?: string;
-  // Streaming / thinking state
-  thinkingText?: string;       // Label for ThinkingBlock
-  reasoningText?: string;      // Accumulated reasoning stream
-  thinkingStartedAt?: string;  // ISO timestamp for elapsed timer
-  isStreaming?: boolean;        // Whether actively receiving events
-  // Generated result (stored for persistence)
+  // Chat / iterative refinement state
+  chatMessages: StoryboardChatMessage[];
+  thinkingBlocks: StoryboardThinkingBlock[];
+  drafts: StoryboardDraft[];
+  activeDraftIndex?: number;
+  chatPhase: StoryboardChatPhase;
+  // Legacy fields (deprecated, kept for backward compat migration)
+  thinkingText?: string;
+  reasoningText?: string;
+  thinkingStartedAt?: string;
+  isStreaming?: boolean;
   result?: {
     scenes: StoryboardSceneData[];
     summary: string;

@@ -12,6 +12,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { MemoizedMarkdown } from '@/components/common/memoized-markdown';
 import {
   Terminal,
   CircleCheck,
@@ -144,6 +145,44 @@ const mdComponents = {
   ),
 } as Record<string, React.ComponentType<Record<string, unknown>>>;
 
+const thinkingMdComponents = {
+  p: ({ children }: { children?: React.ReactNode }) => (
+    <p className="text-[10px] leading-[1.4] text-[#52525B] mb-1 last:mb-0">{children}</p>
+  ),
+  strong: ({ children }: { children?: React.ReactNode }) => (
+    <strong className="font-semibold text-[#71717A]">{children}</strong>
+  ),
+  em: ({ children }: { children?: React.ReactNode }) => (
+    <em className="italic text-[#52525B]">{children}</em>
+  ),
+  ul: ({ children }: { children?: React.ReactNode }) => (
+    <ul className="list-disc list-inside space-y-0.5 text-[10px] text-[#52525B] mb-1 last:mb-0">{children}</ul>
+  ),
+  ol: ({ children }: { children?: React.ReactNode }) => (
+    <ol className="list-decimal list-inside space-y-0.5 text-[10px] text-[#52525B] mb-1 last:mb-0">{children}</ol>
+  ),
+  li: ({ children }: { children?: React.ReactNode }) => (
+    <li className="text-[10px] leading-[1.4] text-[#52525B]">{children}</li>
+  ),
+  h1: ({ children }: { children?: React.ReactNode }) => (
+    <p className="text-[10px] font-semibold text-[#71717A] mb-0.5">{children}</p>
+  ),
+  h2: ({ children }: { children?: React.ReactNode }) => (
+    <p className="text-[10px] font-semibold text-[#71717A] mb-0.5">{children}</p>
+  ),
+  h3: ({ children }: { children?: React.ReactNode }) => (
+    <p className="text-[10px] font-semibold text-[#71717A] mb-0.5">{children}</p>
+  ),
+  code: ({ children }: { children?: React.ReactNode }) => (
+    <code className="bg-[#27272a] text-[#71717A] text-[9px] px-0.5 py-px rounded font-mono">{children}</code>
+  ),
+  pre: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+  blockquote: ({ children }: { children?: React.ReactNode }) => (
+    <blockquote className="border-l-2 border-[#3f3f46] pl-2 my-1 text-[#52525B]">{children}</blockquote>
+  ),
+  hr: () => <hr className="border-[#27272a] my-1" />,
+} as Record<string, React.ComponentType<Record<string, unknown>>>;
+
 // ─── Assistant Text ──────────────────────────────────────────────────
 
 export function AssistantText({ content }: { content: string }) {
@@ -229,10 +268,10 @@ export function ThinkingBlock({ thinking, reasoning, isStreaming, startedAt, end
             className="px-2.5 pb-2 overflow-y-auto scrollbar-hidden"
             style={{ maxHeight: `${maxReasoningHeight}px` }}
           >
-            <p className="text-[10px] text-[#52525B] leading-[1.4] whitespace-pre-wrap break-words">
-              {reasoning}
+            <div className="text-[10px] text-[#52525B] leading-[1.4] break-words">
+              <MemoizedMarkdown content={reasoning} id="thinking-streaming" components={thinkingMdComponents} />
               <span className="inline-block w-[3px] h-[11px] bg-[#3B82F6] ml-0.5 animate-pulse rounded-sm align-middle" />
-            </p>
+            </div>
           </div>
         )}
       </div>
@@ -263,7 +302,9 @@ export function ThinkingBlock({ thinking, reasoning, isStreaming, startedAt, end
           className="px-2.5 py-2 bg-[#16161A] rounded-b-md overflow-y-auto scrollbar-hidden"
           style={{ maxHeight: '120px' }}
         >
-          <p className="text-[10px] text-[#52525B] leading-[1.4] whitespace-pre-wrap break-words">{displayText}</p>
+          <div className="text-[10px] text-[#52525B] leading-[1.4] break-words">
+            <MemoizedMarkdown content={displayText} id="thinking-done" components={thinkingMdComponents} />
+          </div>
         </div>
       )}
     </div>

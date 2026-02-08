@@ -175,3 +175,48 @@ Style: ${input.style}${modeInstruction}
 
 Generate exactly ${input.sceneCount} scenes that tell a compelling visual story.`;
 }
+
+// ============================================
+// REFINEMENT PROMPT BUILDERS
+// ============================================
+
+/**
+ * Build a refinement system prompt that wraps the base system prompt
+ * with additional instructions for iterative editing.
+ */
+export function getRefinementSystemPrompt(mode: 'transition' | 'single-shot'): string {
+  return `${getSystemPrompt(mode)}
+
+REFINEMENT MODE:
+You are refining an existing storyboard based on user feedback. Follow these rules:
+1. Apply the user's feedback precisely — change only what they ask for.
+2. Preserve unchanged scenes as-is (same prompts, camera, mood, etc.).
+3. Maintain narrative continuity and visual consistency across scenes.
+4. Output ALL scenes in the storyboard, not just the changed ones.
+5. Keep the same number of scenes unless the user explicitly requests adding or removing scenes.`;
+}
+
+/**
+ * Build a refinement user prompt with the previous draft context + feedback.
+ */
+export function buildRefinementPrompt(
+  previousDraft: { scenes: Array<{ number: number; title: string; description: string; prompt: string; camera: string; mood: string; transition?: string; motion?: string }>; summary: string },
+  feedback: string,
+  mode: 'transition' | 'single-shot',
+): string {
+  const sceneSummaries = previousDraft.scenes.map((s) =>
+    `  Scene ${s.number}: "${s.title}" — ${s.description} [camera: ${s.camera}, mood: ${s.mood}]${s.transition ? `, transition: ${s.transition}` : ''}${s.motion ? `, motion: ${s.motion}` : ''}`
+  ).join('\n');
+
+  return `Here is the current storyboard (${previousDraft.scenes.length} scenes):
+
+Summary: ${previousDraft.summary}
+
+Scenes:
+${sceneSummaries}
+
+USER FEEDBACK:
+${feedback}
+
+Please update the storyboard based on the feedback above. Output ALL ${previousDraft.scenes.length} scenes${mode === 'transition' ? ' with transitions' : ' with motion prompts'}.`;
+}
