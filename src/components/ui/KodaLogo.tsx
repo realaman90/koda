@@ -51,11 +51,11 @@ export function KodaLogo({ variant = 'icon', className, size = 'md' }: KodaLogoP
 
   return (
     <Image
-      src={logoSrc}
+      src={"/logos/koda_main.png"}
       alt="Koda.video"
       width={dimensions.width}
       height={dimensions.height}
-      className={cn('flex-shrink-0', className)}
+      className={cn('flex-shrink-0 w-14', className)}
       priority
     />
   );
