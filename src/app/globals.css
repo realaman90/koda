@@ -611,18 +611,87 @@ select {
   background-color: #f4f4f5 !important;
 }
 
-/* Light mode node input fields (skip .force-dark nodes like AnimationNode) */
-.light .nodrag input:not(.force-dark *),
-.light .nodrag textarea:not(.force-dark *),
-.light .nodrag select:not(.force-dark *) {
+/* Light mode node input fields (skip .animation-node which has its own theming) */
+.light .nodrag input:not(.animation-node *),
+.light .nodrag textarea:not(.animation-node *),
+.light .nodrag select:not(.animation-node *) {
   background-color: #f4f4f5 !important;
   border-color: #d4d4d8 !important;
   color: #18181b !important;
 }
 
-.light .nodrag input:not(.force-dark *)::placeholder,
-.light .nodrag textarea:not(.force-dark *)::placeholder {
+.light .nodrag input:not(.animation-node *)::placeholder,
+.light .nodrag textarea:not(.animation-node *)::placeholder {
   color: #71717a !important;
+}
+
+/* ── Animation Node Theme Variables ────────────────────────────── */
+/* Dark mode defaults */
+.animation-node {
+  --an-bg: #18181b;
+  --an-bg-card: #27272a;
+  --an-bg-elevated: #1e1e20;
+  --an-bg-input: #27272a;
+  --an-bg-hover: #3f3f46;
+  --an-bg-user-bubble: #1E3A5F;
+  --an-bg-error: #1C1011;
+  --an-border: #27272a;
+  --an-border-input: #3f3f46;
+  --an-border-hover: #52525B;
+  --an-border-error: #7F1D1D;
+  --an-text: #FAFAFA;
+  --an-text-heading: #FAFAFA;
+  --an-text-secondary: #E2E8F0;
+  --an-text-muted: #A1A1AA;
+  --an-text-dim: #71717A;
+  --an-text-placeholder: #52525B;
+  --an-text-user: #DBEAFE;
+  --an-accent: #3B82F6;
+  --an-accent-hover: #2563EB;
+  --an-accent-bg: #1E3A5F;
+  --an-accent-text: #93C5FD;
+  background-color: var(--an-bg);
+  border: 1px solid var(--an-border);
+  color: var(--an-text);
+}
+
+/* Light mode overrides */
+.light .animation-node {
+  --an-bg: #ffffff;
+  --an-bg-card: #f4f4f5;
+  --an-bg-elevated: #e4e4e7;
+  --an-bg-input: #ffffff;
+  --an-bg-hover: #e4e4e7;
+  --an-bg-user-bubble: #DBEAFE;
+  --an-bg-error: #FEF2F2;
+  --an-border: #e4e4e7;
+  --an-border-input: #d4d4d8;
+  --an-border-hover: #a1a1aa;
+  --an-border-error: #FECACA;
+  --an-text: #18181b;
+  --an-text-heading: #09090b;
+  --an-text-secondary: #27272a;
+  --an-text-muted: #52525B;
+  --an-text-dim: #71717A;
+  --an-text-placeholder: #a1a1aa;
+  --an-text-user: #1E3A5F;
+  --an-accent: #3B82F6;
+  --an-accent-hover: #2563EB;
+  --an-accent-bg: #DBEAFE;
+  --an-accent-text: #1D4ED8;
+}
+
+/* Animation node form elements inherit theme */
+.animation-node input,
+.animation-node textarea,
+.animation-node select {
+  background-color: transparent;
+  color: var(--an-text);
+}
+
+.animation-node input::placeholder,
+.animation-node textarea::placeholder {
+  color: var(--an-text-placeholder);
 }
 
 /* Think shimmer animation for ThinkingBlock gradient text */

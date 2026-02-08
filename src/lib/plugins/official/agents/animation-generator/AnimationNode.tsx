@@ -1742,21 +1742,21 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
   const headerConfig = useMemo(() => {
     switch (state.phase) {
       case 'idle':
-        return { iconColor: '#3B82F6', statusColor: '#52525B', statusText: 'Idle', iconBg: '#1E3A5F' };
+        return { iconColor: 'var(--an-accent)', statusColor: 'var(--an-text-placeholder)', statusText: 'Idle', iconBg: 'var(--an-accent-bg)' };
       case 'question':
         return { iconColor: '#FBBF24', statusColor: '#FBBF24', statusText: 'Question', iconBg: '#422006' };
       case 'plan':
-        return { iconColor: '#3B82F6', statusColor: '#52525B', statusText: 'Idle', iconBg: '#1E3A5F' };
+        return { iconColor: 'var(--an-accent)', statusColor: 'var(--an-text-placeholder)', statusText: 'Idle', iconBg: 'var(--an-accent-bg)' };
       case 'executing':
-        return { iconColor: '#3B82F6', statusColor: '#3B82F6', statusText: 'Generating', iconBg: '#1E3A5F' };
+        return { iconColor: 'var(--an-accent)', statusColor: 'var(--an-accent)', statusText: 'Generating', iconBg: 'var(--an-accent-bg)' };
       case 'preview':
-        return { iconColor: '#3B82F6', statusColor: '#3B82F6', statusText: 'Generating', iconBg: '#1E3A5F' };
+        return { iconColor: 'var(--an-accent)', statusColor: 'var(--an-accent)', statusText: 'Generating', iconBg: 'var(--an-accent-bg)' };
       case 'complete':
         return { iconColor: '#22C55E', statusColor: '#22C55E', statusText: 'Complete', iconBg: '#14532D' };
       case 'error':
         return { iconColor: '#EF4444', statusColor: '#EF4444', statusText: 'Error', iconBg: '#3B1111' };
       default:
-        return { iconColor: '#3B82F6', statusColor: '#52525B', statusText: 'Idle', iconBg: '#1E3A5F' };
+        return { iconColor: 'var(--an-accent)', statusColor: 'var(--an-text-placeholder)', statusText: 'Idle', iconBg: 'var(--an-accent-bg)' };
     }
   }, [state.phase]);
 
@@ -1855,8 +1855,8 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
 
   // ─── Node styling ──────────────────────────────────────────────────
   const nodeClasses = useMemo(() => {
-    const base = 'force-dark w-[340px] min-h-[450px] max-h-[600px] rounded-xl bg-[#18181b] overflow-hidden flex flex-col border border-[#27272a]';
-    if (selected) return `${base} ring-1 ring-[#3B82F6]/70`;
+    const base = 'animation-node w-[400px] min-h-[520px] max-h-[720px] rounded-xl overflow-hidden flex flex-col';
+    if (selected) return `${base} ring-1 ring-[var(--an-accent)]/70`;
     return base;
   }, [selected]);
 
@@ -1919,7 +1919,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           {imageRefCount < MAX_IMAGE_REFS && (
             <button
               onClick={handleAddImageRef}
-              className="w-4 h-4 rounded-full flex items-center justify-center bg-[#27272a] border border-[#3f3f46] text-[#A1A1AA] hover:border-teal-500 hover:text-teal-400 transition-colors ml-0.5"
+              className="w-4 h-4 rounded-full flex items-center justify-center bg-[var(--an-bg-card)] border border-[var(--an-border-input)] text-[var(--an-text-muted)] hover:border-teal-500 hover:text-teal-400 transition-colors ml-0.5"
             >
               <Plus className="h-2.5 w-2.5" />
             </button>
@@ -1927,7 +1927,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           {imageRefCount > 1 && (
             <button
               onClick={handleRemoveImageRef}
-              className="w-4 h-4 rounded-full flex items-center justify-center bg-[#27272a] border border-[#3f3f46] text-[#A1A1AA] hover:border-red-500 hover:text-red-400 transition-colors ml-0.5"
+              className="w-4 h-4 rounded-full flex items-center justify-center bg-[var(--an-bg-card)] border border-[var(--an-border-input)] text-[var(--an-text-muted)] hover:border-red-500 hover:text-red-400 transition-colors ml-0.5"
             >
               <Minus className="h-2.5 w-2.5" />
             </button>
@@ -1962,7 +1962,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           {videoRefCount < MAX_VIDEO_REFS && (
             <button
               onClick={handleAddVideoRef}
-              className="w-4 h-4 rounded-full flex items-center justify-center bg-[#27272a] border border-[#3f3f46] text-[#A1A1AA] hover:border-purple-500 hover:text-purple-400 transition-colors ml-0.5"
+              className="w-4 h-4 rounded-full flex items-center justify-center bg-[var(--an-bg-card)] border border-[var(--an-border-input)] text-[var(--an-text-muted)] hover:border-purple-500 hover:text-purple-400 transition-colors ml-0.5"
             >
               <Plus className="h-2.5 w-2.5" />
             </button>
@@ -1970,7 +1970,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           {videoRefCount > 1 && (
             <button
               onClick={handleRemoveVideoRef}
-              className="w-4 h-4 rounded-full flex items-center justify-center bg-[#27272a] border border-[#3f3f46] text-[#A1A1AA] hover:border-red-500 hover:text-red-400 transition-colors ml-0.5"
+              className="w-4 h-4 rounded-full flex items-center justify-center bg-[var(--an-bg-card)] border border-[var(--an-border-input)] text-[var(--an-text-muted)] hover:border-red-500 hover:text-red-400 transition-colors ml-0.5"
             >
               <Minus className="h-2.5 w-2.5" />
             </button>
@@ -1979,7 +1979,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       )}
 
       {/* ── Header ───────────────────────────────────────────────────── */}
-      <div className="flex-shrink-0 flex items-center gap-2 px-3.5 py-2.5 border-b border-[#27272a]">
+      <div className="flex-shrink-0 flex items-center gap-2 px-3.5 py-2.5 border-b border-[var(--an-border)]">
         <div
           className="h-7 w-7 rounded-[7px] flex items-center justify-center"
           style={{ backgroundColor: headerConfig.iconBg }}
@@ -1987,7 +1987,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           <Clapperboard className="h-3.5 w-3.5" style={{ color: headerConfig.iconColor }} />
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="text-[13px] font-semibold text-[#FAFAFA] leading-tight truncate">
+          <h3 className="text-[13px] font-semibold text-[var(--an-text-heading)] leading-tight truncate">
             {data.name || 'Animation Generator'}
           </h3>
           <p className="text-[10px] leading-tight" style={{ color: headerConfig.statusColor }}>
@@ -2096,7 +2096,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
 
             {/* Complete output */}
             {state.phase === 'complete' && state.output && (
-              <div className="rounded-lg overflow-hidden bg-[#14161A] border border-[#3f3f46]">
+              <div className="rounded-lg overflow-hidden bg-[var(--an-bg-elevated)] border border-[var(--an-border-input)]">
                 <video
                   src={state.output.videoUrl}
                   controls
@@ -2107,7 +2107,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
                   <span className="text-[10px] text-[#22C55E] font-medium">Animation complete</span>
                   <button
                     onClick={handleReset}
-                    className="px-2.5 py-1 rounded-md bg-[#27272a] text-[#A1A1AA] text-[10px] font-medium hover:bg-[#3f3f46] transition-colors"
+                    className="px-2.5 py-1 rounded-md bg-[var(--an-bg-card)] text-[var(--an-text-muted)] text-[10px] font-medium hover:bg-[var(--an-bg-hover)] transition-colors"
                   >
                     New Animation
                   </button>
@@ -2118,10 +2118,10 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
             {/* Error display */}
             {state.phase === 'error' && state.error && (
               <div className="space-y-2">
-                <div className="px-2.5 py-2 rounded-md bg-[#1C1011] border border-[#7F1D1D]">
+                <div className="px-2.5 py-2 rounded-md bg-[var(--an-bg-error)] border border-[var(--an-border-error)]">
                   <p className="text-[11px] text-[#FCA5A5] font-medium">{state.error.message}</p>
                   {state.error.details && (
-                    <p className="text-[10px] text-[#71717A] mt-1">{state.error.details}</p>
+                    <p className="text-[10px] text-[var(--an-text-dim)] mt-1">{state.error.details}</p>
                   )}
                 </div>
                 {state.error.canRetry && <RetryButton onRetry={handleRetry} />}
@@ -2140,11 +2140,11 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
 
       {/* ── Media strip (thumbnails of attached media) */}
       {media.length > 0 && (
-        <div className="flex-shrink-0 px-3 py-1 border-t border-[#27272a]">
+        <div className="flex-shrink-0 px-3 py-1 border-t border-[var(--an-border)]">
           <div className="flex gap-1 overflow-x-auto scrollbar-hidden items-center">
             {media.map((m) => (
               <div key={m.id} className="relative group flex-shrink-0">
-                <div className="w-8 h-8 rounded bg-[#27272a] overflow-hidden border border-[#3f3f46]">
+                <div className="w-8 h-8 rounded bg-[var(--an-bg-card)] overflow-hidden border border-[var(--an-border-input)]">
                   {m.type === 'image' ? (
                     <img src={m.dataUrl} alt={m.name} className="w-full h-full object-cover" />
                   ) : (
@@ -2172,6 +2172,9 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           </div>
         </div>
       )}
+
+      {/* Spacer: pushes chat input to bottom when no timeline content */}
+      {!hasTimelineContent && <div className="flex-1" />}
 
       {/* ── Chat input (always visible) ──────────────────────────────── */}
       <div className="shrink-0 nopan nodrag nowheel">

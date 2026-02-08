@@ -25,19 +25,19 @@ function TextFieldInput({
 }) {
   return (
     <div className="space-y-1">
-      <label className="text-[11px] font-semibold text-[#E2E8F0]">
+      <label className="text-[11px] font-semibold text-[var(--an-text-secondary)]">
         {field.label}
         {field.required && <span className="text-red-400 ml-0.5">*</span>}
       </label>
       {field.description && (
-        <p className="text-[10px] text-[#71717A]">{field.description}</p>
+        <p className="text-[10px] text-[var(--an-text-dim)]">{field.description}</p>
       )}
       <input
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={field.placeholder || ''}
-        className="w-full px-2.5 py-1.5 bg-[#27272a] border border-[#3f3f46] text-[13px] text-[#FAFAFA] rounded-lg outline-none focus:border-[#3B82F6] transition-colors placeholder:text-[#52525B]"
+        className="w-full px-2.5 py-1.5 bg-[var(--an-bg-card)] border border-[var(--an-border-input)] text-[13px] text-[var(--an-text)] rounded-lg outline-none focus:border-[var(--an-accent)] transition-colors"
       />
     </div>
   );
@@ -54,12 +54,12 @@ function RadioSelect({
 }) {
   return (
     <div className="space-y-1">
-      <label className="text-[11px] font-semibold text-[#E2E8F0]">
+      <label className="text-[11px] font-semibold text-[var(--an-text-secondary)]">
         {field.label}
         {field.required && <span className="text-red-400 ml-0.5">*</span>}
       </label>
       {field.description && (
-        <p className="text-[10px] text-[#71717A]">{field.description}</p>
+        <p className="text-[10px] text-[var(--an-text-dim)]">{field.description}</p>
       )}
       <div className="space-y-1">
         {(field.options || []).map((opt) => {
@@ -71,14 +71,14 @@ function RadioSelect({
               onClick={() => onChange(opt.id)}
               className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left transition-all ${
                 isSelected
-                  ? 'bg-[#1E3A5F] border border-[#3B82F6]'
-                  : 'bg-[#14161A] border border-[#3f3f46] hover:border-[#52525B]'
+                  ? 'bg-[var(--an-accent-bg)] border border-[var(--an-accent)]'
+                  : 'bg-[var(--an-bg-elevated)] border border-[var(--an-border-input)] hover:border-[var(--an-border-hover)]'
               }`}
             >
               <div className="text-left space-y-0.5 flex-1">
-                <div className="text-[11px] font-semibold text-[#E2E8F0]">{opt.label}</div>
+                <div className="text-[11px] font-semibold text-[var(--an-text-secondary)]">{opt.label}</div>
                 {opt.description && (
-                  <div className="text-[10px] text-[#71717A]">{opt.description}</div>
+                  <div className="text-[10px] text-[var(--an-text-dim)]">{opt.description}</div>
                 )}
               </div>
             </button>
@@ -108,12 +108,12 @@ function CheckboxSelect({
 
   return (
     <div className="space-y-1">
-      <label className="text-[11px] font-semibold text-[#E2E8F0]">
+      <label className="text-[11px] font-semibold text-[var(--an-text-secondary)]">
         {field.label}
         {field.required && <span className="text-red-400 ml-0.5">*</span>}
       </label>
       {field.description && (
-        <p className="text-[10px] text-[#71717A]">{field.description}</p>
+        <p className="text-[10px] text-[var(--an-text-dim)]">{field.description}</p>
       )}
       <div className="space-y-1">
         {(field.options || []).map((opt) => {
@@ -125,23 +125,23 @@ function CheckboxSelect({
               onClick={() => toggle(opt.id)}
               className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left transition-all ${
                 isSelected
-                  ? 'bg-[#1E3A5F] border border-[#3B82F6]'
-                  : 'bg-[#14161A] border border-[#3f3f46] hover:border-[#52525B]'
+                  ? 'bg-[var(--an-accent-bg)] border border-[var(--an-accent)]'
+                  : 'bg-[var(--an-bg-elevated)] border border-[var(--an-border-input)] hover:border-[var(--an-border-hover)]'
               }`}
             >
               <div
                 className={`w-3.5 h-3.5 rounded flex-shrink-0 flex items-center justify-center border transition-colors ${
                   isSelected
-                    ? 'bg-[#3B82F6] border-[#3B82F6]'
-                    : 'bg-transparent border-[#52525B]'
+                    ? 'bg-[var(--an-accent)] border-[var(--an-accent)]'
+                    : 'bg-transparent border-[var(--an-border-hover)]'
                 }`}
               >
                 {isSelected && <Check className="w-2.5 h-2.5 text-white" />}
               </div>
               <div className="text-left space-y-0.5 flex-1">
-                <div className="text-[11px] font-semibold text-[#E2E8F0]">{opt.label}</div>
+                <div className="text-[11px] font-semibold text-[var(--an-text-secondary)]">{opt.label}</div>
                 {opt.description && (
-                  <div className="text-[10px] text-[#71717A]">{opt.description}</div>
+                  <div className="text-[10px] text-[var(--an-text-dim)]">{opt.description}</div>
                 )}
               </div>
             </button>
@@ -188,9 +188,9 @@ export function QuestionForm({ content, fields, onSubmit }: QuestionFormProps) {
   }, [isValid, answers, onSubmit]);
 
   return (
-    <div className="bg-[#14161A] border border-[#1E2028] rounded-lg p-4 space-y-3">
+    <div className="bg-[var(--an-bg-elevated)] border border-[var(--an-border-input)] rounded-lg p-4 space-y-3">
       {content && (
-        <p className="text-[12px] text-[#A1A1AA]">{content}</p>
+        <p className="text-[12px] text-[var(--an-text-muted)]">{content}</p>
       )}
 
       {fields.map((field) => {
@@ -231,7 +231,7 @@ export function QuestionForm({ content, fields, onSubmit }: QuestionFormProps) {
         <button
           onClick={handleSubmit}
           disabled={!isValid}
-          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#3B82F6] text-white text-[11px] font-medium hover:bg-[#2563EB] transition-colors disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[var(--an-accent)] text-white text-[11px] font-medium hover:bg-[var(--an-accent-hover)] transition-colors disabled:opacity-50"
         >
           <ArrowUp className="w-3 h-3" />
           Continue

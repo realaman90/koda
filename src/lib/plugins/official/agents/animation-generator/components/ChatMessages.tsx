@@ -46,14 +46,14 @@ import type {
 export function UserBubble({ content, media }: { content: string; media?: MediaEntry[] }) {
   return (
     <div
-      className="px-3 py-2.5 text-xs leading-[1.4] text-[#93C5FD] bg-[#1E3A5F] w-full"
+      className="px-3 py-2.5 text-xs leading-[1.4] text-[var(--an-accent-text)] bg-[var(--an-bg-user-bubble)] w-full"
       style={{ borderRadius: '12px 4px 12px 12px' }}
     >
       {/* Inline media thumbnails */}
       {media && media.length > 0 && (
         <div className="flex gap-1.5 mb-2 flex-wrap">
           {media.map((m) => (
-            <div key={m.id} className="w-12 h-12 rounded overflow-hidden bg-[#0F2440] border border-[#2563EB]/30 shrink-0">
+            <div key={m.id} className="w-12 h-12 rounded overflow-hidden bg-[var(--an-accent-bg)] border border-[#2563EB]/30 shrink-0">
               {m.type === 'image' ? (
                 <img src={m.dataUrl} alt={m.name} className="w-full h-full object-cover" />
               ) : (
@@ -77,70 +77,70 @@ export function UserBubble({ content, media }: { content: string; media?: MediaE
 
 const mdComponents = {
   p: ({ children }: { children?: React.ReactNode }) => (
-    <p className="text-xs leading-[1.5] text-[#A1A1AA] mb-1.5 last:mb-0">{children}</p>
+    <p className="text-xs leading-[1.5] text-[var(--an-text-muted)] mb-1.5 last:mb-0">{children}</p>
   ),
   strong: ({ children }: { children?: React.ReactNode }) => (
-    <strong className="font-semibold text-[#E4E4E7]">{children}</strong>
+    <strong className="font-semibold text-[var(--an-text-secondary)]">{children}</strong>
   ),
   em: ({ children }: { children?: React.ReactNode }) => (
-    <em className="italic text-[#A1A1AA]">{children}</em>
+    <em className="italic text-[var(--an-text-muted)]">{children}</em>
   ),
   ul: ({ children }: { children?: React.ReactNode }) => (
-    <ul className="list-disc list-inside space-y-0.5 text-xs text-[#A1A1AA] mb-1.5 last:mb-0">{children}</ul>
+    <ul className="list-disc list-inside space-y-0.5 text-xs text-[var(--an-text-muted)] mb-1.5 last:mb-0">{children}</ul>
   ),
   ol: ({ children }: { children?: React.ReactNode }) => (
-    <ol className="list-decimal list-inside space-y-0.5 text-xs text-[#A1A1AA] mb-1.5 last:mb-0">{children}</ol>
+    <ol className="list-decimal list-inside space-y-0.5 text-xs text-[var(--an-text-muted)] mb-1.5 last:mb-0">{children}</ol>
   ),
   li: ({ children }: { children?: React.ReactNode }) => (
-    <li className="text-xs leading-[1.5] text-[#A1A1AA]">{children}</li>
+    <li className="text-xs leading-[1.5] text-[var(--an-text-muted)]">{children}</li>
   ),
   code: ({ children, className }: { children?: React.ReactNode; className?: string }) => {
     const isBlock = className?.includes('language-');
     if (isBlock) {
       return (
-        <pre className="bg-[#14161A] rounded-md px-2.5 py-2 my-1.5 overflow-x-auto">
-          <code className="text-[10px] leading-[1.4] text-[#93C5FD] font-mono">{children}</code>
+        <pre className="bg-[var(--an-bg-elevated)] rounded-md px-2.5 py-2 my-1.5 overflow-x-auto">
+          <code className="text-[10px] leading-[1.4] text-[var(--an-accent-text)] font-mono">{children}</code>
         </pre>
       );
     }
     return (
-      <code className="bg-[#27272a] text-[#93C5FD] text-[11px] px-1 py-0.5 rounded font-mono">{children}</code>
+      <code className="bg-[var(--an-bg-card)] text-[var(--an-accent-text)] text-[11px] px-1 py-0.5 rounded font-mono">{children}</code>
     );
   },
   pre: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
   h1: ({ children }: { children?: React.ReactNode }) => (
-    <h1 className="text-sm font-semibold text-[#E4E4E7] mb-1">{children}</h1>
+    <h1 className="text-sm font-semibold text-[var(--an-text-secondary)] mb-1">{children}</h1>
   ),
   h2: ({ children }: { children?: React.ReactNode }) => (
-    <h2 className="text-[13px] font-semibold text-[#E4E4E7] mb-1">{children}</h2>
+    <h2 className="text-[13px] font-semibold text-[var(--an-text-secondary)] mb-1">{children}</h2>
   ),
   h3: ({ children }: { children?: React.ReactNode }) => (
-    <h3 className="text-xs font-semibold text-[#E4E4E7] mb-0.5">{children}</h3>
+    <h3 className="text-xs font-semibold text-[var(--an-text-secondary)] mb-0.5">{children}</h3>
   ),
   blockquote: ({ children }: { children?: React.ReactNode }) => (
-    <blockquote className="border-l-2 border-[#3f3f46] pl-2.5 my-1.5 text-[#71717A]">{children}</blockquote>
+    <blockquote className="border-l-2 border-[var(--an-border-input)] pl-2.5 my-1.5 text-[var(--an-text-dim)]">{children}</blockquote>
   ),
-  hr: () => <hr className="border-[#27272a] my-2" />,
+  hr: () => <hr className="border-[var(--an-border)] my-2" />,
   // Table components
   table: ({ children }: { children?: React.ReactNode }) => (
-    <div className="overflow-x-auto my-2 rounded-md border border-[#27272a]">
+    <div className="overflow-x-auto my-2 rounded-md border border-[var(--an-border)]">
       <table className="min-w-full text-[10px]">{children}</table>
     </div>
   ),
   thead: ({ children }: { children?: React.ReactNode }) => (
-    <thead className="bg-[#1A1A1E] border-b border-[#27272a]">{children}</thead>
+    <thead className="bg-[var(--an-bg-elevated)] border-b border-[var(--an-border)]">{children}</thead>
   ),
   tbody: ({ children }: { children?: React.ReactNode }) => (
-    <tbody className="divide-y divide-[#27272a]">{children}</tbody>
+    <tbody className="divide-y divide-[var(--an-border)]">{children}</tbody>
   ),
   tr: ({ children }: { children?: React.ReactNode }) => (
-    <tr className="hover:bg-[#1A1A1E]/50 transition-colors">{children}</tr>
+    <tr className="hover:bg-[var(--an-bg-elevated)]/50 transition-colors">{children}</tr>
   ),
   th: ({ children }: { children?: React.ReactNode }) => (
-    <th className="px-2 py-1.5 text-left text-[10px] font-semibold text-[#A1A1AA]">{children}</th>
+    <th className="px-2 py-1.5 text-left text-[10px] font-semibold text-[var(--an-text-muted)]">{children}</th>
   ),
   td: ({ children }: { children?: React.ReactNode }) => (
-    <td className="px-2 py-1.5 text-[10px] text-[#71717A]">{children}</td>
+    <td className="px-2 py-1.5 text-[10px] text-[var(--an-text-dim)]">{children}</td>
   ),
 } as Record<string, React.ComponentType<Record<string, unknown>>>;
 
@@ -204,10 +204,10 @@ export function ThinkingBlock({ thinking, reasoning, isStreaming, startedAt, end
   // ── Streaming state ──
   if (isStreaming) {
     return (
-      <div className="w-full rounded-md bg-[#1A1A1E] overflow-hidden">
+      <div className="w-full rounded-md bg-[var(--an-bg-elevated)] overflow-hidden">
         {/* Header */}
         <div className="flex items-center gap-1.5 px-2.5 py-1.5">
-          <Loader2 className="w-3 h-3 text-[#A1A1AA] animate-spin shrink-0" />
+          <Loader2 className="w-3 h-3 text-[var(--an-text-muted)] animate-spin shrink-0" />
           <span
             className="text-[11px] font-medium bg-clip-text text-transparent"
             style={{
@@ -218,7 +218,7 @@ export function ThinkingBlock({ thinking, reasoning, isStreaming, startedAt, end
           >
             {thinking || 'Thinking'}
           </span>
-          <span className="ml-auto text-[9px] text-[#3f3f46] tabular-nums">{elapsed}s</span>
+          <span className="ml-auto text-[9px] text-[var(--an-border-input)] tabular-nums">{elapsed}s</span>
         </div>
         {/* Scrollable reasoning area */}
         {reasoning && (
@@ -227,9 +227,9 @@ export function ThinkingBlock({ thinking, reasoning, isStreaming, startedAt, end
             className="px-2.5 pb-2 overflow-y-auto scrollbar-hidden"
             style={{ maxHeight: '80px' }}
           >
-            <p className="text-[10px] text-[#52525B] leading-[1.4] whitespace-pre-wrap break-words">
+            <p className="text-[10px] text-[var(--an-text-placeholder)] leading-[1.4] whitespace-pre-wrap break-words">
               {reasoning}
-              <span className="inline-block w-[3px] h-[11px] bg-[#3B82F6] ml-0.5 animate-pulse rounded-sm align-middle" />
+              <span className="inline-block w-[3px] h-[11px] bg-[var(--an-accent)] ml-0.5 animate-pulse rounded-sm align-middle" />
             </p>
           </div>
         )}
@@ -246,22 +246,22 @@ export function ThinkingBlock({ thinking, reasoning, isStreaming, startedAt, end
     <div className="w-full">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 rounded-md bg-[#1A1A1E] px-2.5 py-1.5 hover:bg-[#222226] transition-colors group"
+        className="w-full flex items-center gap-2 rounded-md bg-[var(--an-bg-elevated)] px-2.5 py-1.5 hover:bg-[var(--an-bg-hover)] transition-colors group"
       >
-        <Sparkles className="w-3 h-3 text-[#52525B] shrink-0" />
-        <span className="text-[11px] text-[#52525B] group-hover:text-[#71717A] transition-colors">
+        <Sparkles className="w-3 h-3 text-[var(--an-text-placeholder)] shrink-0" />
+        <span className="text-[11px] text-[var(--an-text-placeholder)] group-hover:text-[var(--an-text-dim)] transition-colors">
           Thought for {durationLabel}
         </span>
         <ChevronDown
-          className={`w-3 h-3 text-[#3f3f46] shrink-0 ml-auto transition-transform ${expanded ? 'rotate-180' : ''}`}
+          className={`w-3 h-3 text-[var(--an-border-input)] shrink-0 ml-auto transition-transform ${expanded ? 'rotate-180' : ''}`}
         />
       </button>
       {expanded && (
         <div
-          className="px-2.5 py-2 bg-[#16161A] rounded-b-md overflow-y-auto scrollbar-hidden"
+          className="px-2.5 py-2 bg-[var(--an-bg-elevated)] rounded-b-md overflow-y-auto scrollbar-hidden"
           style={{ maxHeight: '120px' }}
         >
-          <p className="text-[10px] text-[#52525B] leading-[1.4] whitespace-pre-wrap break-words">{displayText}</p>
+          <p className="text-[10px] text-[var(--an-text-placeholder)] leading-[1.4] whitespace-pre-wrap break-words">{displayText}</p>
         </div>
       )}
     </div>
@@ -273,9 +273,9 @@ export function ThinkingBlock({ thinking, reasoning, isStreaming, startedAt, end
 function StatusPill({ status }: { status: 'running' | 'done' | 'failed' }) {
   if (status === 'running') {
     return (
-      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#1E3A5F]">
-        <span className="w-1.5 h-1.5 rounded-full bg-[#3B82F6] animate-pulse" />
-        <span className="text-[9px] font-medium text-[#93C5FD]">Running</span>
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[var(--an-bg-user-bubble)]">
+        <span className="w-1.5 h-1.5 rounded-full bg-[var(--an-accent)] animate-pulse" />
+        <span className="text-[9px] font-medium text-[var(--an-accent-text)]">Running</span>
       </span>
     );
   }
@@ -441,13 +441,13 @@ export function ToolCallCard({ item }: { item: ToolCallItem }) {
     <div className="w-full">
       {/* Header row */}
       <div
-        className="flex items-center gap-1.5 px-2 py-1.5 bg-[#14161A]"
+        className="flex items-center gap-1.5 px-2 py-1.5 bg-[var(--an-bg-elevated)]"
         style={{
           borderRadius: hasBody ? '6px 6px 0 0' : '6px',
         }}
       >
         <Terminal className="w-3 h-3 shrink-0" style={{ color: iconColor }} />
-        <span className="text-[11px] font-medium text-[#A1A1AA]">{item.displayName}</span>
+        <span className="text-[11px] font-medium text-[var(--an-text-muted)]">{item.displayName}</span>
         <div className="ml-auto">
           <StatusPill status={item.status} />
         </div>
@@ -456,18 +456,18 @@ export function ToolCallCard({ item }: { item: ToolCallItem }) {
       {/* Running state - shows elapsed time and context */}
       {item.status === 'running' && (
         <div
-          className="px-2 py-1.5 bg-[#111318] border-t border-[#1E2028] overflow-hidden"
+          className="px-2 py-1.5 bg-[var(--an-bg-elevated)] border-t border-[var(--an-border-input)] overflow-hidden"
           style={{ borderRadius: '0 0 6px 6px' }}
         >
           <div className="flex items-center gap-2">
             <div className="relative w-2.5 h-2.5 shrink-0">
-              <span className="absolute inset-0 rounded-full bg-[#3B82F6] animate-ping opacity-30" />
-              <span className="absolute inset-0 rounded-full bg-[#3B82F6]" />
+              <span className="absolute inset-0 rounded-full bg-[var(--an-accent)] animate-ping opacity-30" />
+              <span className="absolute inset-0 rounded-full bg-[var(--an-accent)]" />
             </div>
-            <p className="text-[10px] text-[#93C5FD] flex-1">
+            <p className="text-[10px] text-[var(--an-accent-text)] flex-1">
               {runningContext || 'Working...'}
             </p>
-            <span className="text-[9px] text-[#52525B] tabular-nums">{elapsed}s</span>
+            <span className="text-[9px] text-[var(--an-text-placeholder)] tabular-nums">{elapsed}s</span>
           </div>
         </div>
       )}
@@ -475,10 +475,10 @@ export function ToolCallCard({ item }: { item: ToolCallItem }) {
       {/* Output summary section (success) - only if we have a friendly summary */}
       {summary && (
         <div
-          className="px-2 py-1.5 bg-[#111318] border-t border-[#1E2028] overflow-hidden"
+          className="px-2 py-1.5 bg-[var(--an-bg-elevated)] border-t border-[var(--an-border-input)] overflow-hidden"
           style={{ borderRadius: '0 0 6px 6px' }}
         >
-          <p className="text-[10px] text-[#71717A]">{summary}</p>
+          <p className="text-[10px] text-[var(--an-text-dim)]">{summary}</p>
         </div>
       )}
 
@@ -513,14 +513,14 @@ interface PlanCardProps {
 
 export function PlanCard({ plan, accepted, onAccept, onReject }: PlanCardProps) {
   return (
-    <div className="w-full rounded-lg bg-[#14161A] border border-[#1E2028] overflow-hidden">
+    <div className="w-full rounded-lg bg-[var(--an-bg-elevated)] border border-[var(--an-border-input)] overflow-hidden">
       {/* Plan summary */}
       <div className="px-3 py-2.5 space-y-1">
-        <p className="text-[10px] font-semibold text-[#A1A1AA]">
+        <p className="text-[10px] font-semibold text-[var(--an-text-muted)]">
           {plan.scenes.length} scenes &middot; {plan.totalDuration}s &middot; {plan.fps}fps &middot; {plan.style}
         </p>
         {plan.scenes.map((scene) => (
-          <p key={scene.number} className="text-[10px] text-[#52525B]">
+          <p key={scene.number} className="text-[10px] text-[var(--an-text-placeholder)]">
             {scene.number}. {scene.title} ({scene.duration}s)
           </p>
         ))}
@@ -544,7 +544,7 @@ export function PlanCard({ plan, accepted, onAccept, onReject }: PlanCardProps) 
             </button>
             <button
               onClick={onReject}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#27272a] text-[#A1A1AA] text-[11px] font-medium hover:bg-[#3f3f46] transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--an-bg-card)] text-[var(--an-text-muted)] text-[11px] font-medium hover:bg-[var(--an-bg-hover)] transition-colors"
             >
               <X className="w-3.5 h-3.5" />
               Reject
@@ -575,7 +575,7 @@ export function PlanActions({
       </button>
       <button
         onClick={onReject}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#27272a] text-[#A1A1AA] text-[11px] font-medium hover:bg-[#3f3f46] transition-colors"
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--an-bg-card)] text-[var(--an-text-muted)] text-[11px] font-medium hover:bg-[var(--an-bg-hover)] transition-colors"
       >
         <X className="w-3.5 h-3.5" />
         Reject
@@ -623,14 +623,14 @@ export function QuestionOptions({ question, onSelect }: QuestionOptionsProps) {
             onClick={() => setSelectedId(opt.id)}
             className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-all ${
               isSelected
-                ? 'bg-[#1E3A5F] border border-[#3B82F6]'
-                : 'bg-[#14161A] border border-[#3f3f46] hover:border-[#52525B]'
+                ? 'bg-[var(--an-bg-user-bubble)] border border-[var(--an-accent)]'
+                : 'bg-[var(--an-bg-elevated)] border border-[var(--an-border-input)] hover:border-[var(--an-border-hover)]'
             }`}
           >
             <div className="text-left space-y-0.5">
-              <div className="text-[11px] font-semibold text-[#E2E8F0]">{opt.label}</div>
+              <div className="text-[11px] font-semibold text-[var(--an-text-secondary)]">{opt.label}</div>
               {opt.description && (
-                <div className="text-[10px] text-[#71717A]">{opt.description}</div>
+                <div className="text-[10px] text-[var(--an-text-dim)]">{opt.description}</div>
               )}
             </div>
           </button>
@@ -643,8 +643,8 @@ export function QuestionOptions({ question, onSelect }: QuestionOptionsProps) {
           onClick={() => setSelectedId('custom')}
           className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-all ${
             selectedId === 'custom'
-              ? 'bg-[#1E3A5F] border border-[#3B82F6]'
-              : 'bg-[#14161A] border border-[#3f3f46] hover:border-[#52525B]'
+              ? 'bg-[var(--an-bg-user-bubble)] border border-[var(--an-accent)]'
+              : 'bg-[var(--an-bg-elevated)] border border-[var(--an-border-input)] hover:border-[var(--an-border-hover)]'
           }`}
         >
           <Pencil
@@ -656,12 +656,12 @@ export function QuestionOptions({ question, onSelect }: QuestionOptionsProps) {
               value={customInput}
               onChange={(e) => setCustomInput(e.target.value)}
               placeholder="Type your own answer..."
-              className="flex-1 bg-transparent text-[11px] text-[#E2E8F0] placeholder:text-[#52525B] outline-none"
+              className="flex-1 bg-transparent text-[11px] text-[var(--an-text-secondary)] placeholder:text-[var(--an-text-placeholder)] outline-none"
               autoFocus
               onClick={(e) => e.stopPropagation()}
             />
           ) : (
-            <span className="text-[11px] text-[#52525B]">Type your own answer...</span>
+            <span className="text-[11px] text-[var(--an-text-placeholder)]">Type your own answer...</span>
           )}
         </button>
       )}
@@ -672,7 +672,7 @@ export function QuestionOptions({ question, onSelect }: QuestionOptionsProps) {
           <button
             onClick={handleSubmit}
             disabled={selectedId === 'custom' && !customInput.trim()}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#3B82F6] text-white text-[11px] font-medium hover:bg-[#2563EB] transition-colors disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[var(--an-accent)] text-white text-[11px] font-medium hover:bg-[var(--an-accent-hover)] transition-colors disabled:opacity-50"
           >
             <ArrowUp className="w-3 h-3" />
             Submit
@@ -766,10 +766,10 @@ export function LivePreviewCard({
     return (
       <button
         onClick={onShowPreview}
-        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-[#1E3A5F]/50 border border-[#3B82F6]/30 hover:bg-[#1E3A5F] hover:border-[#3B82F6]/50 transition-colors"
+        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-[var(--an-bg-user-bubble)]/50 border border-[var(--an-accent)]/30 hover:bg-[var(--an-bg-user-bubble)] hover:border-[var(--an-accent)]/50 transition-colors"
       >
-        <span className="w-1.5 h-1.5 rounded-full bg-[#3B82F6] animate-pulse" />
-        <span className="text-[10px] font-medium text-[#93C5FD]">Show Preview</span>
+        <span className="w-1.5 h-1.5 rounded-full bg-[var(--an-accent)] animate-pulse" />
+        <span className="text-[10px] font-medium text-[var(--an-accent-text)]">Show Preview</span>
       </button>
     );
   }
@@ -779,7 +779,7 @@ export function LivePreviewCard({
     return (
       <button
         onClick={() => setIsExpanded(true)}
-        className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg bg-[#14161A] border border-[#27272a] hover:border-[#3f3f46] transition-colors"
+        className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg bg-[var(--an-bg-elevated)] border border-[var(--an-border)] hover:border-[var(--an-border-input)] transition-colors"
       >
         <div className={`w-8 h-8 rounded flex items-center justify-center shrink-0 ${hasError ? 'bg-[#3B1111]' : 'bg-[#14532D]'}`}>
           {hasError ? (
@@ -789,21 +789,21 @@ export function LivePreviewCard({
           )}
         </div>
         <div className="flex-1 min-w-0 text-left">
-          <p className="text-[11px] font-medium text-[#A1A1AA] truncate">
+          <p className="text-[11px] font-medium text-[var(--an-text-muted)] truncate">
             {hasError ? 'Preview Issue' : 'Live Preview'}
           </p>
-          <p className="text-[10px] text-[#52525B]">Click to expand</p>
+          <p className="text-[10px] text-[var(--an-text-placeholder)]">Click to expand</p>
         </div>
-        <ChevronDown className="w-3.5 h-3.5 text-[#52525B] shrink-0" />
+        <ChevronDown className="w-3.5 h-3.5 text-[var(--an-text-placeholder)] shrink-0" />
       </button>
     );
   }
 
   return (
-    <div className="rounded-lg overflow-hidden bg-[#14161A] border border-[#3f3f46]">
+    <div className="rounded-lg overflow-hidden bg-[var(--an-bg-elevated)] border border-[var(--an-border-input)]">
       {/* Header with collapse button */}
-      <div className="flex items-center justify-between px-2.5 py-1.5 bg-[#1A1C20] border-b border-[#3f3f46]">
-        <span className="text-[10px] text-[#A1A1AA] font-medium flex items-center gap-1.5">
+      <div className="flex items-center justify-between px-2.5 py-1.5 bg-[var(--an-bg-elevated)] border-b border-[var(--an-border-input)]">
+        <span className="text-[10px] text-[var(--an-text-muted)] font-medium flex items-center gap-1.5">
           {hasError ? (
             <TriangleAlert className="w-3 h-3 text-[#EF4444]" />
           ) : previewState === 'stale' ? (
@@ -820,7 +820,7 @@ export function LivePreviewCard({
               disabled={isExporting}
               className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
                 isExporting
-                  ? 'bg-[#1E3A5F] text-[#93C5FD] cursor-not-allowed'
+                  ? 'bg-[var(--an-bg-user-bubble)] text-[var(--an-accent-text)] cursor-not-allowed'
                   : 'bg-[#14532D] text-[#4ADE80] hover:bg-[#166534]'
               }`}
               title="Export video"
@@ -835,21 +835,21 @@ export function LivePreviewCard({
           )}
           <button
             onClick={handleRefresh}
-            className="p-1 rounded hover:bg-[#27272a] text-[#71717A] hover:text-[#A1A1AA] transition-colors"
+            className="p-1 rounded hover:bg-[var(--an-bg-card)] text-[var(--an-text-dim)] hover:text-[var(--an-text-muted)] transition-colors"
             title="Refresh preview"
           >
             <RotateCcw className="w-3 h-3" />
           </button>
           <button
             onClick={() => window.open(previewUrl, '_blank')}
-            className="p-1 rounded hover:bg-[#27272a] text-[#71717A] hover:text-[#A1A1AA] transition-colors"
+            className="p-1 rounded hover:bg-[var(--an-bg-card)] text-[var(--an-text-dim)] hover:text-[var(--an-text-muted)] transition-colors"
             title="Open in new tab"
           >
             <ExternalLink className="w-3 h-3" />
           </button>
           <button
             onClick={() => setIsExpanded(false)}
-            className="p-1 rounded hover:bg-[#27272a] text-[#71717A] hover:text-[#A1A1AA] transition-colors"
+            className="p-1 rounded hover:bg-[var(--an-bg-card)] text-[var(--an-text-dim)] hover:text-[var(--an-text-muted)] transition-colors"
             title="Collapse"
           >
             <ChevronUp className="w-3 h-3" />
@@ -859,17 +859,17 @@ export function LivePreviewCard({
 
       {/* Error state overlay */}
       {hasError ? (
-        <div className="flex flex-col items-center justify-center py-8 px-4 bg-[#111318]">
+        <div className="flex flex-col items-center justify-center py-8 px-4 bg-[var(--an-bg-elevated)]">
           <div className="w-10 h-10 rounded-full bg-[#3B1111] flex items-center justify-center mb-3">
             <TriangleAlert className="w-5 h-5 text-[#EF4444]" />
           </div>
-          <p className="text-[11px] text-[#A1A1AA] font-medium mb-1">Preview encountered an issue</p>
-          <p className="text-[10px] text-[#52525B] text-center mb-3">
+          <p className="text-[11px] text-[var(--an-text-muted)] font-medium mb-1">Preview encountered an issue</p>
+          <p className="text-[10px] text-[var(--an-text-placeholder)] text-center mb-3">
             The animation is being fixed. This happens sometimes during development.
           </p>
           <button
             onClick={handleRefresh}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#27272a] text-[#A1A1AA] text-[10px] font-medium hover:bg-[#3f3f46] transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[var(--an-bg-card)] text-[var(--an-text-muted)] text-[10px] font-medium hover:bg-[var(--an-bg-hover)] transition-colors"
           >
             <RotateCcw className="w-3 h-3" />
             Try Again
@@ -879,7 +879,7 @@ export function LivePreviewCard({
         <div className="relative">
           {/* Loading state */}
           {isLoading && (
-            <div className="flex items-center justify-center py-8 bg-[#111318]">
+            <div className="flex items-center justify-center py-8 bg-[var(--an-bg-elevated)]">
               <Loader2 className="w-5 h-5 text-[#3B82F6] animate-spin" />
             </div>
           )}
@@ -945,40 +945,40 @@ export function VideoCard({
     return (
       <button
         onClick={() => setIsExpanded(true)}
-        className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg bg-[#14161A] border border-[#27272a] hover:border-[#3f3f46] transition-colors"
+        className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg bg-[var(--an-bg-elevated)] border border-[var(--an-border)] hover:border-[var(--an-border-input)] transition-colors"
       >
-        <div className="w-8 h-8 rounded bg-[#1A1A1E] flex items-center justify-center shrink-0">
-          <Video className="w-4 h-4 text-[#71717A]" />
+        <div className="w-8 h-8 rounded bg-[var(--an-bg-elevated)] flex items-center justify-center shrink-0">
+          <Video className="w-4 h-4 text-[var(--an-text-dim)]" />
         </div>
         <div className="flex-1 min-w-0 text-left">
-          <p className="text-[11px] font-medium text-[#A1A1AA] truncate">Preview video</p>
-          <p className="text-[10px] text-[#52525B]">{duration}s • Click to expand</p>
+          <p className="text-[11px] font-medium text-[var(--an-text-muted)] truncate">Preview video</p>
+          <p className="text-[10px] text-[var(--an-text-placeholder)]">{duration}s • Click to expand</p>
         </div>
-        <ChevronDown className="w-3.5 h-3.5 text-[#52525B] shrink-0" />
+        <ChevronDown className="w-3.5 h-3.5 text-[var(--an-text-placeholder)] shrink-0" />
       </button>
     );
   }
 
   return (
-    <div className="rounded-lg overflow-hidden bg-[#14161A] border border-[#3f3f46]">
+    <div className="rounded-lg overflow-hidden bg-[var(--an-bg-elevated)] border border-[var(--an-border-input)]">
       {/* Collapse button header */}
       <button
         onClick={() => setIsExpanded(false)}
-        className="w-full flex items-center justify-between px-2.5 py-1.5 bg-[#1A1C20] border-b border-[#3f3f46] hover:bg-[#222226] transition-colors"
+        className="w-full flex items-center justify-between px-2.5 py-1.5 bg-[var(--an-bg-elevated)] border-b border-[var(--an-border-input)] hover:bg-[var(--an-bg-hover)] transition-colors"
       >
-        <span className="text-[10px] text-[#A1A1AA] font-medium flex items-center gap-1.5">
+        <span className="text-[10px] text-[var(--an-text-muted)] font-medium flex items-center gap-1.5">
           <Video className="w-3 h-3" />
           Preview video
         </span>
-        <ChevronUp className="w-3 h-3 text-[#52525B]" />
+        <ChevronUp className="w-3 h-3 text-[var(--an-text-placeholder)]" />
       </button>
 
       {/* Video player with error handling */}
       {loadError || (isSandbox && !isActivePreview) ? (
         <div className="flex flex-col items-center justify-center py-6 px-4 text-center">
-          <Video className="w-8 h-8 text-[#52525B] mb-2" />
-          <p className="text-[11px] text-[#71717A] mb-1">Video unavailable</p>
-          <p className="text-[10px] text-[#52525B]">
+          <Video className="w-8 h-8 text-[var(--an-text-placeholder)] mb-2" />
+          <p className="text-[11px] text-[var(--an-text-dim)] mb-1">Video unavailable</p>
+          <p className="text-[10px] text-[var(--an-text-placeholder)]">
             {isSandbox ? 'Session expired — regenerate to create a new video' : 'Failed to load video'}
           </p>
         </div>
@@ -1004,7 +1004,7 @@ export function VideoCard({
           </button>
           <button
             onClick={onRegenerate}
-            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md bg-[#27272a] text-[#A1A1AA] text-[11px] font-medium hover:bg-[#3f3f46] transition-colors"
+            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md bg-[var(--an-bg-card)] text-[var(--an-text-muted)] text-[11px] font-medium hover:bg-[var(--an-bg-hover)] transition-colors"
           >
             <RotateCcw className="w-3 h-3" />
             Regenerate
@@ -1028,7 +1028,7 @@ export function VersionHistory({ versions, activeVersionId, onSelectVersion }: V
 
   return (
     <div className="flex flex-col gap-1.5 px-1 py-2">
-      <span className="text-[10px] font-medium text-[#71717A] uppercase tracking-wide">
+      <span className="text-[10px] font-medium text-[var(--an-text-dim)] uppercase tracking-wide">
         Versions ({versions.length})
       </span>
       <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hidden">
@@ -1040,8 +1040,8 @@ export function VersionHistory({ versions, activeVersionId, onSelectVersion }: V
               onClick={() => onSelectVersion(version)}
               className={`relative shrink-0 w-14 h-10 rounded overflow-hidden border-2 transition-all ${
                 isActive
-                  ? 'border-[#3B82F6] ring-1 ring-[#3B82F6]/30'
-                  : 'border-[#27272a] hover:border-[#3f3f46]'
+                  ? 'border-[var(--an-accent)] ring-1 ring-[var(--an-accent)]/30'
+                  : 'border-[var(--an-border)] hover:border-[var(--an-border-input)]'
               }`}
               title={`Version ${idx + 1} - ${new Date(version.createdAt).toLocaleTimeString()}`}
             >
@@ -1052,8 +1052,8 @@ export function VersionHistory({ versions, activeVersionId, onSelectVersion }: V
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <div className="w-full h-full bg-[#14161A] flex items-center justify-center">
-                  <Video className="w-4 h-4 text-[#52525B]" />
+                <div className="w-full h-full bg-[var(--an-bg-elevated)] flex items-center justify-center">
+                  <Video className="w-4 h-4 text-[var(--an-text-placeholder)]" />
                 </div>
               )}
               <span className="absolute bottom-0.5 right-0.5 text-[8px] font-bold text-white bg-black/60 px-1 rounded">
@@ -1137,9 +1137,9 @@ export function StreamingPlaceholder({ activeToolName }: StreamingPlaceholderPro
 
 export function StreamingText({ text }: { text: string }) {
   return (
-    <p className="text-[11px] text-[#71717A] leading-[1.4] whitespace-pre-wrap">
+    <p className="text-[11px] text-[var(--an-text-dim)] leading-[1.4] whitespace-pre-wrap">
       {text}
-      <span className="inline-block w-[3px] h-[13px] bg-[#3B82F6] ml-0.5 animate-pulse rounded-sm align-middle" />
+      <span className="inline-block w-[3px] h-[13px] bg-[var(--an-accent)] ml-0.5 animate-pulse rounded-sm align-middle" />
     </p>
   );
 }
@@ -1150,7 +1150,7 @@ export function RetryButton({ onRetry }: { onRetry: () => void }) {
   return (
     <button
       onClick={onRetry}
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#27272a] border border-[#3f3f46] text-[#A1A1AA] text-[11px] font-medium hover:bg-[#3f3f46] transition-colors"
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[var(--an-bg-card)] border border-[var(--an-border-input)] text-[var(--an-text-muted)] text-[11px] font-medium hover:bg-[var(--an-bg-hover)] transition-colors"
     >
       <RotateCcw className="w-3 h-3" />
       Retry
@@ -1169,7 +1169,7 @@ export function TodoSection({ todos }: TodoSectionProps) {
   const doneCount = todos.filter((t) => t.status === 'done').length;
 
   return (
-    <div className="border-t border-b border-[#27272a] px-3.5 py-2 space-y-1">
+    <div className="border-t border-b border-[var(--an-border)] px-3.5 py-2 space-y-1">
       {/* Header */}
       <button
         onClick={() => setCollapsed(!collapsed)}
@@ -1179,13 +1179,13 @@ export function TodoSection({ todos }: TodoSectionProps) {
           className="w-3.5 h-3.5 flex-shrink-0"
           style={{ color: doneCount === todos.length ? '#22C55E' : '#A1A1AA' }}
         />
-        <span className="text-[11px] font-semibold text-[#A1A1AA]">
+        <span className="text-[11px] font-semibold text-[var(--an-text-muted)]">
           Tasks ({doneCount}/{todos.length})
         </span>
         {collapsed ? (
-          <ChevronDown className="w-3 h-3 text-[#52525B] ml-auto" />
+          <ChevronDown className="w-3 h-3 text-[var(--an-text-placeholder)] ml-auto" />
         ) : (
-          <ChevronUp className="w-3 h-3 text-[#52525B] ml-auto" />
+          <ChevronUp className="w-3 h-3 text-[var(--an-text-placeholder)] ml-auto" />
         )}
       </button>
 
@@ -1201,15 +1201,15 @@ export function TodoSection({ todos }: TodoSectionProps) {
                 <Loader2 className="w-3 h-3 text-[#3B82F6] animate-spin flex-shrink-0" />
               )}
               {todo.status === 'pending' && (
-                <Circle className="w-3 h-3 text-[#3f3f46] flex-shrink-0" />
+                <Circle className="w-3 h-3 text-[var(--an-border-input)] flex-shrink-0" />
               )}
               <span
                 className={`text-[10px] ${
                   todo.status === 'active'
-                    ? 'text-[#E4E4E7] font-medium'
+                    ? 'text-[var(--an-text-secondary)] font-medium'
                     : todo.status === 'done'
-                    ? 'text-[#52525B]'
-                    : 'text-[#71717A]'
+                    ? 'text-[var(--an-text-placeholder)]'
+                    : 'text-[var(--an-text-dim)]'
                 }`}
               >
                 {todo.label}

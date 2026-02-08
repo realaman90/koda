@@ -253,14 +253,14 @@ export function ChatInput({
   const canSend = !disabled && message.trim().length > 0;
 
   return (
-    <div className="px-3 pt-2 pb-2.5 border-t border-[#27272a]">
+    <div className="px-3 pt-2 pb-2.5 border-t border-[var(--an-border)]">
       {/* Queued messages section */}
       {queue.length > 0 && (
-        <div className="mb-2 rounded-lg bg-[#1e1e20] border border-[#3f3f46] overflow-hidden">
+        <div className="mb-2 rounded-lg bg-[var(--an-bg-elevated)] border border-[var(--an-border-input)] overflow-hidden">
           {/* Collapsible header */}
           <button
             onClick={() => setQueueExpanded(!queueExpanded)}
-            className="w-full flex items-center gap-1.5 px-3 py-2 text-[12px] text-[#71717A] hover:text-[#A1A1AA] transition-colors"
+            className="w-full flex items-center gap-1.5 px-3 py-2 text-[12px] text-[var(--an-text-dim)] hover:text-[var(--an-text-muted)] transition-colors"
           >
             {queueExpanded ? (
               <ChevronDown className="w-3.5 h-3.5" />
@@ -279,7 +279,7 @@ export function ChatInput({
                   className="flex items-center gap-2 group"
                 >
                   {/* Circle indicator */}
-                  <div className="w-4 h-4 rounded-full border border-[#52525B] shrink-0" />
+                  <div className="w-4 h-4 rounded-full border border-[var(--an-border-hover)] shrink-0" />
 
                   {/* Message text or edit input */}
                   {editingId === item.id ? (
@@ -290,10 +290,10 @@ export function ChatInput({
                       onChange={(e) => setEditText(e.target.value)}
                       onKeyDown={handleEditKeyDown}
                       onBlur={handleSaveEdit}
-                      className="flex-1 bg-[#27272a] border border-[#3f3f46] rounded px-2 py-1 text-[12px] text-[#FAFAFA] outline-none focus:border-[#52525B]"
+                      className="flex-1 bg-[var(--an-bg-input)] border border-[var(--an-border-input)] rounded px-2 py-1 text-[12px] text-[var(--an-text)] outline-none focus:border-[var(--an-border-hover)]"
                     />
                   ) : (
-                    <span className="flex-1 text-[12px] text-[#A1A1AA] truncate">
+                    <span className="flex-1 text-[12px] text-[var(--an-text-muted)] truncate">
                       {item.text}
                     </span>
                   )}
@@ -303,21 +303,21 @@ export function ChatInput({
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
                         onClick={() => handleStartEdit(item)}
-                        className="p-1 text-[#52525B] hover:text-[#A1A1AA] transition-colors"
+                        className="p-1 text-[var(--an-text-placeholder)] hover:text-[var(--an-text-muted)] transition-colors"
                         title="Edit"
                       >
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={() => handleSendQueued(item)}
-                        className="p-1 text-[#52525B] hover:text-[#A1A1AA] transition-colors"
+                        className="p-1 text-[var(--an-text-placeholder)] hover:text-[var(--an-text-muted)] transition-colors"
                         title="Stop current and send this"
                       >
                         <ArrowUp className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={() => handleDeleteQueued(item.id)}
-                        className="p-1 text-[#52525B] hover:text-[#EF4444] transition-colors"
+                        className="p-1 text-[var(--an-text-placeholder)] hover:text-[#EF4444] transition-colors"
                         title="Delete"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -332,7 +332,7 @@ export function ChatInput({
       )}
 
       {/* Input box */}
-      <div className="rounded-[10px] border border-[#3f3f46] overflow-hidden" style={{ backgroundColor: '#27272a' }}>
+      <div className="rounded-[10px] border border-[var(--an-border-input)] overflow-hidden" style={{ backgroundColor: 'var(--an-bg-card)' }}>
         {/* Textarea area */}
         <div className="px-3 pt-2.5 pb-1.5">
           <textarea
@@ -343,7 +343,7 @@ export function ChatInput({
             placeholder={inputPlaceholder}
             disabled={disabled}
             rows={1}
-            className="w-full resize-none text-[13px] text-[#FAFAFA] placeholder:text-[#52525B] outline-none leading-[1.4]"
+            className="w-full resize-none text-[13px] text-[var(--an-text)] outline-none leading-[1.4]"
             style={{ minHeight: '20px', maxHeight: '100px', backgroundColor: 'transparent' }}
           />
         </div>
@@ -366,8 +366,8 @@ export function ChatInput({
                     disabled={disabled}
                     className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium transition-all border whitespace-nowrap shrink-0 ${
                       isSelected
-                        ? 'bg-[#1E3A5F] border-[#3B82F6] text-[#93C5FD]'
-                        : 'bg-transparent border-[#3f3f46] text-[#71717A] hover:border-[#52525B] hover:text-[#A1A1AA]'
+                        ? 'bg-[var(--an-accent-bg)] border-[var(--an-accent)] text-[var(--an-accent-text)]'
+                        : 'bg-transparent border-[var(--an-border-input)] text-[var(--an-text-dim)] hover:border-[var(--an-border-hover)] hover:text-[var(--an-text-muted)]'
                     }`}
                     title={preset.description}
                   >
@@ -390,8 +390,8 @@ export function ChatInput({
               disabled={disabled}
               className={`flex items-center gap-1 px-1.5 py-1 rounded text-[10px] transition-colors ${
                 techniques.length > 0
-                  ? 'text-[#93C5FD]'
-                  : 'text-[#52525B] hover:text-[#A1A1AA]'
+                  ? 'text-[var(--an-accent-text)]'
+                  : 'text-[var(--an-text-placeholder)] hover:text-[var(--an-text-muted)]'
               }`}
               title="Technique presets"
             >
@@ -399,13 +399,13 @@ export function ChatInput({
               {techniques.length > 0 && <span>{techniques.length}</span>}
             </button>
 
-            <span className="text-[#27272a] text-[10px]">/</span>
+            <span className="text-[var(--an-border)] text-[10px]">/</span>
 
             {/* Engine selector */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
-                  className={`flex items-center gap-0.5 px-1 py-1 rounded text-[10px] transition-colors ${engineLocked ? 'text-[#3f3f46] cursor-default' : 'text-[#52525B] hover:text-[#A1A1AA]'}`}
+                  className={`flex items-center gap-0.5 px-1 py-1 rounded text-[10px] transition-colors ${engineLocked ? 'text-[var(--an-border-input)] cursor-default' : 'text-[var(--an-text-placeholder)] hover:text-[var(--an-text-muted)]'}`}
                   disabled={disabled || engineLocked}
                 >
                   {selectedEngine.label}
@@ -419,7 +419,7 @@ export function ChatInput({
                   <DropdownMenuItem
                     key={e.id}
                     onSelect={() => onEngineChange?.(e.id)}
-                    className={engine === e.id ? 'bg-zinc-800' : ''}
+                    className={engine === e.id ? 'bg-[var(--an-bg-card)]' : ''}
                   >
                     <span className="text-sm">{e.label}</span>
                   </DropdownMenuItem>
@@ -427,13 +427,13 @@ export function ChatInput({
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <span className="text-[#27272a] text-[10px]">/</span>
+            <span className="text-[var(--an-border)] text-[10px]">/</span>
 
             {/* Aspect Ratio selector */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
-                  className="flex items-center gap-0.5 px-1 py-1 rounded text-[10px] text-[#52525B] hover:text-[#A1A1AA] transition-colors"
+                  className="flex items-center gap-0.5 px-1 py-1 rounded text-[10px] text-[var(--an-text-placeholder)] hover:text-[var(--an-text-muted)] transition-colors"
                   disabled={disabled}
                 >
                   {selectedAspectRatio.label}
@@ -447,7 +447,7 @@ export function ChatInput({
                   <DropdownMenuItem
                     key={a.id}
                     onSelect={() => onAspectRatioChange?.(a.id)}
-                    className={aspectRatio === a.id ? 'bg-zinc-800' : ''}
+                    className={aspectRatio === a.id ? 'bg-[var(--an-bg-card)]' : ''}
                   >
                     <span className="text-sm">{a.label}</span>
                   </DropdownMenuItem>
@@ -455,13 +455,13 @@ export function ChatInput({
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <span className="text-[#27272a] text-[10px]">/</span>
+            <span className="text-[var(--an-border)] text-[10px]">/</span>
 
             {/* Duration selector */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
-                  className="flex items-center gap-0.5 px-1 py-1 rounded text-[10px] text-[#52525B] hover:text-[#A1A1AA] transition-colors"
+                  className="flex items-center gap-0.5 px-1 py-1 rounded text-[10px] text-[var(--an-text-placeholder)] hover:text-[var(--an-text-muted)] transition-colors"
                   disabled={disabled}
                 >
                   {selectedDuration.label}
@@ -475,7 +475,7 @@ export function ChatInput({
                   <DropdownMenuItem
                     key={d.value}
                     onSelect={() => onDurationChange?.(d.value)}
-                    className={duration === d.value ? 'bg-zinc-800' : ''}
+                    className={duration === d.value ? 'bg-[var(--an-bg-card)]' : ''}
                   >
                     <span className="text-sm">{d.label}</span>
                   </DropdownMenuItem>
@@ -490,7 +490,7 @@ export function ChatInput({
             <DropdownMenu open={showAttachMenu} onOpenChange={setShowAttachMenu}>
               <DropdownMenuTrigger asChild>
                 <button
-                  className="flex items-center justify-center w-7 h-7 rounded-md text-[#52525B] hover:text-[#71717A] transition-colors"
+                  className="flex items-center justify-center w-7 h-7 rounded-md text-[var(--an-text-placeholder)] hover:text-[var(--an-text-dim)] transition-colors"
                   disabled={disabled}
                 >
                   <Paperclip className="w-4 h-4" />
@@ -531,7 +531,7 @@ export function ChatInput({
             {isBusy && (
               <button
                 onClick={handleStop}
-                className="flex items-center justify-center w-7 h-7 rounded-full bg-zinc-700 hover:bg-zinc-600 transition-colors"
+                className="flex items-center justify-center w-7 h-7 rounded-full bg-[var(--an-bg-hover)] hover:bg-[var(--an-border-hover)] transition-colors"
                 title="Stop generation"
               >
                 <Square className="w-3 h-3 text-white" />
@@ -544,8 +544,8 @@ export function ChatInput({
               disabled={!canSend}
               className={`flex items-center justify-center w-7 h-7 rounded-full transition-colors ${
                 canSend
-                  ? 'bg-[#3B82F6] hover:bg-[#2563EB]'
-                  : 'bg-[#3B82F6] opacity-40 cursor-not-allowed'
+                  ? 'bg-[var(--an-accent)] hover:bg-[var(--an-accent-hover)]'
+                  : 'bg-[var(--an-accent)] opacity-40 cursor-not-allowed'
               }`}
               title={isBusy ? 'Queue message' : 'Send message'}
             >
