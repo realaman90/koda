@@ -207,7 +207,7 @@ export async function POST(request: Request) {
         };
 
         if (edgeMedia.length > 0) {
-          contextParts.push(`⚠️ EDGE MEDIA — ALWAYS CONTENT. Feature prominently in the animation:\n${edgeMedia.map(formatMedia).join('\n')}`);
+          contextParts.push(`⚠️ EDGE MEDIA — ${edgeMedia.length} file(s) ALREADY PROVIDED by the user via canvas edges. These are READY TO USE — do NOT ask the user if they have images. Feature ALL of them prominently in the animation:\n${edgeMedia.map(formatMedia).join('\n')}`);
         }
         if (uploadMedia.length > 0) {
           contextParts.push(`📎 UPLOADED MEDIA — Determine purpose from prompt context (content vs reference):\n${uploadMedia.map(formatMedia).join('\n')}`);
