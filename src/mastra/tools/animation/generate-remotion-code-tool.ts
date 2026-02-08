@@ -177,11 +177,24 @@ This injects recipe patterns (tested code snippets) directly into the code gener
       }
     }
 
-    // Log what the orchestrator passed (critical for debugging quality issues)
-    console.log(`[generate_remotion_code] task=${inputData.task}, sandboxId=${sandboxId}, designSpec=${designSpec ? `YES (${designSpec.length} chars)` : 'NO — output will be GENERIC'}, mediaFiles=${inputData.mediaFiles?.length || 0}, techniques=${inputData.techniques?.length || 0}`);
+    // Auto-resolve mediaFiles from RequestContext if not passed as input arg.
+    // route.ts stores the full list of uploaded/pending media files so the code generator
+    // knows about user-provided images without the LLM having to pass them explicitly.
+    let mediaFiles = inputData.mediaFiles;
+    if (!mediaFiles || mediaFiles.length === 0) {
+      const ctxMediaFiles = (context as ToolContext)?.requestContext?.get('mediaFiles') as
+        Array<{ path: string; type: 'image' | 'video'; description?: string }> | undefined;
+      if (ctxMediaFiles && ctxMediaFiles.length > 0) {
+        mediaFiles = ctxMediaFiles;
+        console.log(`[generate_remotion_code] Auto-resolved ${mediaFiles.length} mediaFiles from requestContext`);
+      }
+    }
 
-    // Format the request for the code generator subagent (use resolved designSpec)
-    const prompt = formatRemotionCodeGenerationPrompt({ ...inputData, designSpec });
+    // Log what the orchestrator passed (critical for debugging quality issues)
+    console.log(`[generate_remotion_code] task=${inputData.task}, sandboxId=${sandboxId}, designSpec=${designSpec ? `YES (${designSpec.length} chars)` : 'NO — output will be GENERIC'}, mediaFiles=${mediaFiles?.length || 0}, techniques=${inputData.techniques?.length || 0}`);
+
+    // Format the request for the code generator subagent (use resolved designSpec + mediaFiles)
+    const prompt = formatRemotionCodeGenerationPrompt({ ...inputData, designSpec, mediaFiles });
 
     try {
       // Call the subagent (non-streaming for tool result)

@@ -174,6 +174,20 @@ export async function POST(request: Request) {
           requestContext.set('pendingMedia' as never, pendingMediaForSandbox as never);
         }
 
+        // Store mediaFiles in requestContext for generate_remotion_code to auto-resolve.
+        // Includes ALL media (pre-uploaded + pending) — by the time code gen runs,
+        // sandbox_create will have auto-uploaded pending files.
+        const mediaFilesForCodeGen = mediaBuffersLocal.map(({ m, destPath }) => ({
+          path: destPath,
+          type: m.type as 'image' | 'video',
+          description: m.description || m.name,
+        }));
+        // Also include HTTP media that was downloaded
+        if (mediaFilesForCodeGen.length > 0) {
+          requestContext.set('mediaFiles' as never, mediaFilesForCodeGen as never);
+          console.log(`[Animation API] Stored ${mediaFilesForCodeGen.length} mediaFiles in requestContext for code gen`);
+        }
+
         // Store media buffers for analyze_media tool to read without needing sandbox access.
         // Maps media name → { buffer, mimeType } so analyze_media can resolve sandbox-internal paths.
         // Uses the already-downloaded buffers from Phase 1+2 above.

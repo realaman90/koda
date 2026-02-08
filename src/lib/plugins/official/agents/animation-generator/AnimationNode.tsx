@@ -289,18 +289,15 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       const d = sourceNode.data as Record<string, unknown>;
       let mediaUrl: string | undefined;
       let mediaType: 'image' | 'video' = 'image';
-      let mediaName = (d.name as string) || sourceNode.type || 'Media';
       let mediaDescription: string | undefined;
 
       if (sourceNode.type === 'imageGenerator' || sourceNode.type === 'media') {
         mediaUrl = (d.outputUrl as string) || (d.imageUrl as string) || (d.url as string);
         mediaType = 'image';
-        // Extract description from the source node's generation prompt or name
         mediaDescription = (d.prompt as string) || (d.name as string) || undefined;
       } else if (sourceNode.type === 'videoGenerator') {
         mediaUrl = d.outputUrl as string;
         mediaType = 'video';
-        mediaName = (d.name as string) || 'Video';
         mediaDescription = (d.prompt as string) || (d.name as string) || undefined;
       }
 
@@ -308,6 +305,14 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       if (engine === 'theatre' && mediaType === 'video') continue;
 
       if (mediaUrl) {
+        // Build a safe filename with proper extension and edge ID suffix to prevent collisions
+        const baseName = ((d.name as string) || sourceNode.type || 'media')
+          .replace(/[^a-zA-Z0-9_-]/g, '_')
+          .toLowerCase();
+        const urlExt = mediaUrl.split('?')[0].match(/\.(png|jpg|jpeg|gif|webp|mp4|webm|mov)$/i)?.[1]?.toLowerCase();
+        const ext = urlExt || (mediaType === 'video' ? 'mp4' : 'png');
+        const mediaName = `${baseName}_${edge.id.slice(0, 6)}.${ext}`;
+
         const entryId = `edge_${edge.id}`;
         updatedEdgeMedia.push({
           id: entryId,
