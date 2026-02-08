@@ -169,7 +169,7 @@ select {
 :root {
   /* Canvas */
   --canvas-bg: #fafafa;
-  --canvas-dots: #e5e7eb;
+  --canvas-dots: #d1d5db;
 
   /* Node cards - Freepik style */
   --node-card-bg: #ffffff;
@@ -256,7 +256,7 @@ select {
 .dark {
   /* Canvas */
   --canvas-bg: #09090b;
-  --canvas-dots: #27272a;
+  --canvas-dots: #3f3f46;
 
   /* Node cards - dark mode */
   --node-card-bg: #18181b;

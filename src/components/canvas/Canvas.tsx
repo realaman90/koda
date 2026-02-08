@@ -241,9 +241,17 @@ export function Canvas() {
       >
         <Background
           variant={BackgroundVariant.Dots}
-          gap={20}
-          size={1}
+          gap={18}
+          size={1.5}
           color="var(--canvas-dots)"
+        />
+        {/* Radial gradient overlay — fades dots at edges (Magic UI style) */}
+        <div
+          className="pointer-events-none absolute inset-0 z-[1]"
+          style={{
+            background:
+              'radial-gradient(ellipse at center, transparent 65%, var(--canvas-bg) 100%)',
+          }}
         />
         <ZoomControls />
       </ReactFlow>
