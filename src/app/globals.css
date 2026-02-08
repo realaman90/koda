@@ -626,37 +626,8 @@ select {
 }
 
 /* ── Animation Node Theme Variables ────────────────────────────── */
-/* Dark mode defaults */
+/* Light mode (default) */
 .animation-node {
-  --an-bg: #18181b;
-  --an-bg-card: #27272a;
-  --an-bg-elevated: #1e1e20;
-  --an-bg-input: #27272a;
-  --an-bg-hover: #3f3f46;
-  --an-bg-user-bubble: #1E3A5F;
-  --an-bg-error: #1C1011;
-  --an-border: #27272a;
-  --an-border-input: #3f3f46;
-  --an-border-hover: #52525B;
-  --an-border-error: #7F1D1D;
-  --an-text: #FAFAFA;
-  --an-text-heading: #FAFAFA;
-  --an-text-secondary: #E2E8F0;
-  --an-text-muted: #A1A1AA;
-  --an-text-dim: #71717A;
-  --an-text-placeholder: #52525B;
-  --an-text-user: #DBEAFE;
-  --an-accent: #3B82F6;
-  --an-accent-hover: #2563EB;
-  --an-accent-bg: #1E3A5F;
-  --an-accent-text: #93C5FD;
-  background-color: var(--an-bg);
-  border: 1px solid var(--an-border);
-  color: var(--an-text);
-}
-
-/* Light mode overrides */
-.light .animation-node {
   --an-bg: #ffffff;
   --an-bg-card: #f4f4f5;
   --an-bg-elevated: #e4e4e7;
@@ -679,6 +650,35 @@ select {
   --an-accent-hover: #2563EB;
   --an-accent-bg: #DBEAFE;
   --an-accent-text: #1D4ED8;
+  background-color: var(--an-bg);
+  border: 1px solid var(--an-border);
+  color: var(--an-text);
+}
+
+/* Dark mode overrides */
+.dark .animation-node {
+  --an-bg: #18181b;
+  --an-bg-card: #27272a;
+  --an-bg-elevated: #1e1e20;
+  --an-bg-input: #27272a;
+  --an-bg-hover: #3f3f46;
+  --an-bg-user-bubble: #1E3A5F;
+  --an-bg-error: #1C1011;
+  --an-border: #27272a;
+  --an-border-input: #3f3f46;
+  --an-border-hover: #52525B;
+  --an-border-error: #7F1D1D;
+  --an-text: #FAFAFA;
+  --an-text-heading: #FAFAFA;
+  --an-text-secondary: #E2E8F0;
+  --an-text-muted: #A1A1AA;
+  --an-text-dim: #71717A;
+  --an-text-placeholder: #52525B;
+  --an-text-user: #DBEAFE;
+  --an-accent: #3B82F6;
+  --an-accent-hover: #2563EB;
+  --an-accent-bg: #1E3A5F;
+  --an-accent-text: #93C5FD;
 }
 
 /* Animation node form elements inherit theme */
