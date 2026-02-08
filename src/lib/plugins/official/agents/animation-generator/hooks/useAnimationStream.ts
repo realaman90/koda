@@ -30,6 +30,13 @@ interface StreamContext {
   aspectRatio?: '16:9' | '9:16' | '1:1' | '4:3' | '21:9';
   duration?: number;
   techniques?: string[];
+  designSpec?: {
+    style?: string;
+    colors?: { primary: string; secondary: string; accent?: string };
+    fonts?: { title: string; body: string };
+  };
+  fps?: number;
+  resolution?: string;
 }
 
 interface ToolCallEvent {

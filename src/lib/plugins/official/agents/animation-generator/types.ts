@@ -282,6 +282,17 @@ export interface AnimationNodeData extends Record<string, unknown> {
   // Technique presets (selective recipe injection into code gen context)
   techniques?: string[];
 
+  // Design spec (style, colors, fonts) — from settings panel
+  designSpec?: {
+    style?: string;
+    colors?: { primary: string; secondary: string; accent?: string };
+    fonts?: { title: string; body: string };
+  };
+
+  // Output settings
+  fps?: number;                              // 24 | 30 | 60
+  resolution?: '720p' | '1080p' | '4k';
+
   // Attachments for chat input
   attachments?: AnimationAttachment[];
 

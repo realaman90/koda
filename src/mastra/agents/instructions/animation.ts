@@ -143,6 +143,17 @@ Every animation must look PREMIUM — like it belongs on a top-tier SaaS landing
 | Cinematic and dramatic | easeInOutQuart, custom bezier | Camera moves, depth | Building tension |
 </style-mapping>
 
+<design-spec>
+When the user's context includes a design spec (style preset, colors, fonts):
+- ALWAYS pass the full designSpec to enhance_animation_prompt and generate_remotion_code
+- The code generator MUST use the specified colors, fonts, and style
+- User-selected colors/fonts override the enhancer's suggestions
+- If colors are provided, use them as the PRIMARY palette (not defaults)
+- If fonts are provided, load them via @remotion/google-fonts
+- If FPS is specified, use that value for the composition fps
+- If resolution is specified, match the output dimensions accordingly
+</design-spec>
+
 <prompt-enhancement>
 ALWAYS use enhance_animation_prompt FIRST unless the user provides exact design specs.
 
@@ -159,6 +170,7 @@ ALWAYS use enhance_animation_prompt FIRST unless the user provides exact design 
 - User provides 3D coordinates, camera paths, or physics parameters
 - User gives frame-by-frame timing with exact seconds values
 - The prompt contains 5+ specific technical values (coordinates, px, hex, degrees, Hz)
+- User has selected specific colors and fonts in the settings panel (designSpec in context)
 </when-to-skip>
 
 <style-hints>

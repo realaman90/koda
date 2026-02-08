@@ -10,9 +10,8 @@
 import React, { useState, useCallback, useRef, useEffect, KeyboardEvent } from 'react';
 import {
   ArrowUp, Square, Paperclip, ChevronDown, ChevronUp, Image, Video, Link2, Pencil, Trash2,
-  Type, Sparkles, Box, BarChart3, Layers, Blend, Zap, Clapperboard, Aperture, SunMoon,
+  Settings,
 } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,35 +21,6 @@ import {
   DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
 import type { AnimationEngine } from '../types';
-import { TECHNIQUE_PRESETS } from '@/mastra/recipes';
-
-/** Map Lucide icon name strings to components for technique chips */
-const TECHNIQUE_ICONS: Record<string, LucideIcon> = {
-  Type, Sparkles, Box, BarChart3, Layers, Blend, Zap, Clapperboard, Aperture, SunMoon,
-};
-
-const ENGINES: { id: AnimationEngine; label: string }[] = [
-  { id: 'remotion', label: 'Remotion' },
-  { id: 'theatre', label: 'Theatre.js' },
-];
-
-export type AspectRatio = '16:9' | '9:16' | '1:1' | '4:3' | '21:9';
-
-const ASPECT_RATIOS: { id: AspectRatio; label: string }[] = [
-  { id: '16:9', label: '16:9' },
-  { id: '9:16', label: '9:16' },
-  { id: '1:1', label: '1:1' },
-  { id: '4:3', label: '4:3' },
-  { id: '21:9', label: '21:9' },
-];
-
-const DURATIONS: { value: number; label: string }[] = [
-  { value: 5, label: '5s' },
-  { value: 10, label: '10s' },
-  { value: 15, label: '15s' },
-  { value: 30, label: '30s' },
-  { value: 60, label: '60s' },
-];
 
 interface QueuedMessage {
   id: string;
@@ -65,17 +35,13 @@ interface ChatInputProps {
   hasActiveTool?: boolean;
   disabled?: boolean;
   placeholder?: string;
+  /** Compact summary values for the settings bar */
   engine?: AnimationEngine;
-  onEngineChange?: (engine: AnimationEngine) => void;
-  /** Lock the engine dropdown (e.g. after first message is sent) */
-  engineLocked?: boolean;
-  aspectRatio?: AspectRatio;
-  onAspectRatioChange?: (aspectRatio: AspectRatio) => void;
+  aspectRatio?: string;
   duration?: number;
-  onDurationChange?: (duration: number) => void;
-  /** Selected technique presets */
   techniques?: string[];
-  onTechniquesChange?: (techniques: string[]) => void;
+  /** Open the settings panel */
+  onOpenSettings?: () => void;
   /** Upload files to data.media[] */
   onMediaUpload?: (files: FileList) => void;
   /** Reference a canvas node output → data.media[] */
@@ -91,14 +57,10 @@ export function ChatInput({
   disabled,
   placeholder = 'Describe the animation you want...',
   engine = 'remotion',
-  onEngineChange,
-  engineLocked = false,
   aspectRatio = '16:9',
-  onAspectRatioChange,
   duration = 10,
-  onDurationChange,
   techniques = [],
-  onTechniquesChange,
+  onOpenSettings,
   onMediaUpload,
   onNodeReference,
   availableNodeOutputs = [],
@@ -109,21 +71,9 @@ export function ChatInput({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   const [showAttachMenu, setShowAttachMenu] = useState(false);
-  const [showTechniques, setShowTechniques] = useState(techniques.length > 0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
-
-  const toggleTechnique = useCallback((id: string) => {
-    const next = techniques.includes(id)
-      ? techniques.filter(t => t !== id)
-      : [...techniques, id];
-    onTechniquesChange?.(next);
-  }, [techniques, onTechniquesChange]);
-
-  const selectedEngine = ENGINES.find((e) => e.id === engine) || ENGINES[0];
-  const selectedAspectRatio = ASPECT_RATIOS.find((a) => a.id === aspectRatio) || ASPECT_RATIOS[0];
-  const selectedDuration = DURATIONS.find((d) => d.value === duration) || DURATIONS[1];
 
   // Show busy state if streaming OR if tool is active
   const isBusy = isGenerating || hasActiveTool;
@@ -348,141 +298,20 @@ export function ChatInput({
           />
         </div>
 
-        {/* Technique preset chips — horizontal scrollable strip */}
-        {showTechniques && (
-          <div className="px-2.5 pb-1.5">
-            <div
-              className="flex gap-1 overflow-x-auto scrollbar-hidden"
-              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}
-              onWheel={(e) => e.stopPropagation()}
-            >
-              {TECHNIQUE_PRESETS.map((preset) => {
-                const isSelected = techniques.includes(preset.id);
-                const IconComponent = TECHNIQUE_ICONS[preset.icon];
-                return (
-                  <button
-                    key={preset.id}
-                    onClick={() => toggleTechnique(preset.id)}
-                    disabled={disabled}
-                    className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium transition-all border whitespace-nowrap shrink-0 ${
-                      isSelected
-                        ? 'bg-[var(--an-accent-bg)] border-[var(--an-accent)] text-[var(--an-accent-text)]'
-                        : 'bg-transparent border-[var(--an-border-input)] text-[var(--an-text-dim)] hover:border-[var(--an-border-hover)] hover:text-[var(--an-text-muted)]'
-                    }`}
-                    title={preset.description}
-                  >
-                    {IconComponent && <IconComponent className="w-3 h-3" />}
-                    {preset.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
         {/* Bottom bar */}
         <div className="flex items-center justify-between px-2 py-1 pb-2">
-          {/* Settings selectors */}
-          <div className="flex items-center gap-0.5">
-            {/* Techniques toggle */}
-            <button
-              onClick={() => setShowTechniques(v => !v)}
-              disabled={disabled}
-              className={`flex items-center gap-1 px-1.5 py-1 rounded text-[10px] transition-colors ${
-                techniques.length > 0
-                  ? 'text-[var(--an-accent-text)]'
-                  : 'text-[var(--an-text-placeholder)] hover:text-[var(--an-text-muted)]'
-              }`}
-              title="Technique presets"
-            >
-              <Sparkles className="w-3 h-3" />
-              {techniques.length > 0 && <span>{techniques.length}</span>}
-            </button>
-
-            <span className="text-[var(--an-border)] text-[10px]">/</span>
-
-            {/* Engine selector */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  className={`flex items-center gap-0.5 px-1 py-1 rounded text-[10px] transition-colors ${engineLocked ? 'text-[var(--an-border-input)] cursor-default' : 'text-[var(--an-text-placeholder)] hover:text-[var(--an-text-muted)]'}`}
-                  disabled={disabled || engineLocked}
-                >
-                  {selectedEngine.label}
-                  {!engineLocked && <ChevronDown className="w-2.5 h-2.5" />}
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-40">
-                <DropdownMenuLabel className="text-xs text-zinc-500">Animation Engine</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {ENGINES.map((e) => (
-                  <DropdownMenuItem
-                    key={e.id}
-                    onSelect={() => onEngineChange?.(e.id)}
-                    className={engine === e.id ? 'bg-[var(--an-bg-card)]' : ''}
-                  >
-                    <span className="text-sm">{e.label}</span>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            <span className="text-[var(--an-border)] text-[10px]">/</span>
-
-            {/* Aspect Ratio selector */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  className="flex items-center gap-0.5 px-1 py-1 rounded text-[10px] text-[var(--an-text-placeholder)] hover:text-[var(--an-text-muted)] transition-colors"
-                  disabled={disabled}
-                >
-                  {selectedAspectRatio.label}
-                  <ChevronDown className="w-2.5 h-2.5" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-32">
-                <DropdownMenuLabel className="text-xs text-zinc-500">Aspect Ratio</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {ASPECT_RATIOS.map((a) => (
-                  <DropdownMenuItem
-                    key={a.id}
-                    onSelect={() => onAspectRatioChange?.(a.id)}
-                    className={aspectRatio === a.id ? 'bg-[var(--an-bg-card)]' : ''}
-                  >
-                    <span className="text-sm">{a.label}</span>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            <span className="text-[var(--an-border)] text-[10px]">/</span>
-
-            {/* Duration selector */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  className="flex items-center gap-0.5 px-1 py-1 rounded text-[10px] text-[var(--an-text-placeholder)] hover:text-[var(--an-text-muted)] transition-colors"
-                  disabled={disabled}
-                >
-                  {selectedDuration.label}
-                  <ChevronDown className="w-2.5 h-2.5" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-32">
-                <DropdownMenuLabel className="text-xs text-zinc-500">Duration</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {DURATIONS.map((d) => (
-                  <DropdownMenuItem
-                    key={d.value}
-                    onSelect={() => onDurationChange?.(d.value)}
-                    className={duration === d.value ? 'bg-[var(--an-bg-card)]' : ''}
-                  >
-                    <span className="text-sm">{d.label}</span>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+          {/* Settings summary — click to open panel */}
+          <button
+            onClick={onOpenSettings}
+            className="flex items-center gap-1 px-1.5 py-1 rounded text-[10px] text-[var(--an-text-placeholder)] hover:text-[var(--an-text-muted)] transition-colors"
+            disabled={disabled}
+          >
+            <Settings className="w-3 h-3" />
+            <span>
+              {engine === 'remotion' ? 'Remotion' : 'Theatre'} · {aspectRatio} · {duration}s
+              {techniques.length > 0 ? ` · ${techniques.length} preset${techniques.length > 1 ? 's' : ''}` : ''}
+            </span>
+          </button>
 
           {/* Action buttons */}
           <div className="flex items-center gap-1.5">

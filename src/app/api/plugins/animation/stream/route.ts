@@ -14,6 +14,17 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
 
+// Tools that should NEVER run in the same stream as generate_plan.
+// Gemini ignores instruction-level stop rules, so we enforce at the code level.
+const EXECUTION_TOOLS = new Set([
+  'sandbox_create', 'sandbox_destroy',
+  'sandbox_write_file', 'sandbox_read_file', 'sandbox_run_command', 'sandbox_list_files',
+  'sandbox_start_preview', 'sandbox_screenshot',
+  'sandbox_upload_media', 'sandbox_write_binary', 'extract_video_frames',
+  'generate_code', 'generate_remotion_code',
+  'render_preview', 'render_final',
+]);
+
 interface StreamRequestBody {
   prompt?: string;
   messages?: Array<{ role: 'user' | 'assistant'; content: string }>;
@@ -29,6 +40,13 @@ interface StreamRequestBody {
     aspectRatio?: '16:9' | '9:16' | '1:1' | '4:3' | '21:9';
     duration?: number;
     techniques?: string[];
+    designSpec?: {
+      style?: string;
+      colors?: { primary: string; secondary: string; accent?: string };
+      fonts?: { title: string; body: string };
+    };
+    fps?: number;
+    resolution?: string;
   };
 }
 
@@ -102,6 +120,18 @@ export async function POST(request: Request) {
       if (context.techniques && context.techniques.length > 0) {
         contextParts.push(`Selected technique presets: ${context.techniques.join(', ')} — recipe patterns are injected in the system message.`);
       }
+      if (context.fps) {
+        contextParts.push(`Target FPS: ${context.fps}`);
+      }
+      if (context.resolution) {
+        contextParts.push(`Target resolution: ${context.resolution}`);
+      }
+      if (context.designSpec) {
+        const ds = context.designSpec;
+        if (ds.style) contextParts.push(`Design style preset: ${ds.style}`);
+        if (ds.colors) contextParts.push(`Color palette — Primary: ${ds.colors.primary}, Secondary: ${ds.colors.secondary}${ds.colors.accent ? `, Accent: ${ds.colors.accent}` : ''}`);
+        if (ds.fonts) contextParts.push(`Typography — Title font: ${ds.fonts.title}, Body font: ${ds.fonts.body}`);
+      }
       if (context.phase) {
         contextParts.push(`Current phase: ${context.phase}`);
       }
@@ -156,12 +186,25 @@ export async function POST(request: Request) {
 
     // ⏱ Server-side timing
     const serverStart = Date.now();
-    console.log(`⏱ [Animation API] Stream request — engine: ${engine}, messages: ${agentMessages.length}, sandboxId: ${context?.sandboxId || 'NONE'}, phase: ${context?.phase || 'unknown'}, techniques: ${context?.techniques?.length || 0}${recipeContent ? ` (~${Math.round(recipeContent.length / 4)} tokens)` : ''}`);
+
+    // ── Plan approval enforcement ──────────────────────────────────
+    // Gemini ignores instruction-level "stop after generate_plan" rules.
+    // We enforce it at the code level:
+    // - If no approved plan in context, limit maxSteps (defense-in-depth)
+    // - Stream-level: after generate_plan, block execution tools & close stream
+    const hasApprovedPlan = !!context?.plan;
+    const hasSandbox = !!context?.sandboxId;
+    // Planning phase: no approved plan AND no existing sandbox (not a revision)
+    // Give limited steps — enough for enhance + plan + approval request
+    // Execution/revision phase: full 50 steps
+    const maxSteps = (hasApprovedPlan || hasSandbox) ? 50 : 12;
+
+    console.log(`⏱ [Animation API] Stream request — engine: ${engine}, messages: ${agentMessages.length}, sandboxId: ${context?.sandboxId || 'NONE'}, phase: ${context?.phase || 'unknown'}, techniques: ${context?.techniques?.length || 0}${recipeContent ? ` (~${Math.round(recipeContent.length / 4)} tokens)` : ''}, maxSteps: ${maxSteps}, hasApprovedPlan: ${hasApprovedPlan}, designSpec: ${context?.designSpec ? JSON.stringify(context.designSpec) : 'NONE'}`);
 
     const result = await animationAgent.stream(
       agentMessages as Parameters<typeof animationAgent.stream>[0],
       {
-        maxSteps: 50,
+        maxSteps,
         providerOptions: {
           // Each provider ignores keys meant for other providers
           google: { thinkingConfig: { thinkingBudget: 8192, includeThoughts: true } },
@@ -179,6 +222,11 @@ export async function POST(request: Request) {
     // Track sandbox ID discovered from sandbox_create tool results
     // so the client can store it for subsequent stream calls
     let discoveredSandboxId: string | null = null;
+
+    // ── Plan approval gate ──────────────────────────────────────────
+    // Track whether generate_plan was called in THIS stream.
+    // If so, block all execution tools to force the user to approve first.
+    let planCalledInStream = false;
 
     const readable = new ReadableStream({
       async start(controller) {
@@ -221,6 +269,29 @@ export async function POST(request: Request) {
               case 'tool-call': {
                 const toolElapsed = ((Date.now() - serverStart) / 1000).toFixed(1);
                 console.log(`⏱ [Animation API] Tool call: ${chunk.payload.toolName} at +${toolElapsed}s`);
+
+                // Track generate_plan call — once seen, execution tools are blocked
+                if (chunk.payload.toolName === 'generate_plan') {
+                  planCalledInStream = true;
+                }
+
+                // ── Plan approval gate: block execution tools after generate_plan ──
+                // Gemini ignores instruction-level "stop after plan" rules and
+                // calls sandbox_create / generate_remotion_code in the same turn.
+                // We enforce the gate here by closing the stream.
+                if (planCalledInStream && EXECUTION_TOOLS.has(chunk.payload.toolName)) {
+                  console.log(`⏱ [Animation API] ⛔ BLOCKING post-plan tool: ${chunk.payload.toolName} — plan needs user approval first`);
+                  safeEnqueue(encoder.encode(`data: ${JSON.stringify({
+                    type: 'complete',
+                    text: '',
+                    finishReason: 'plan-approval-required',
+                  })}\n\n`));
+                  reader.cancel();
+                  safeClose();
+                  sseData = null; // Don't forward the blocked tool-call
+                  break;
+                }
+
                 sseData = JSON.stringify({
                   type: 'tool-call',
                   toolCallId: chunk.payload.toolCallId,
@@ -234,6 +305,40 @@ export async function POST(request: Request) {
                 const resultElapsed = ((Date.now() - serverStart) / 1000).toFixed(1);
                 const isErr = chunk.payload.isError;
                 console.log(`⏱ [Animation API] Tool result: ${chunk.payload.toolName} at +${resultElapsed}s ${isErr ? '❌' : '✅'}`);
+
+                // Track generate_plan from tool-result too (in case tool-call was missed)
+                if (chunk.payload.toolName === 'generate_plan' && !isErr) {
+                  planCalledInStream = true;
+                }
+
+                // ── Close stream after request_approval for plan ──
+                // The plan card is the last thing the user should see in this stream.
+                // Forward the result, send complete, then close.
+                if (planCalledInStream && chunk.payload.toolName === 'request_approval' && !isErr) {
+                  const resultObj = chunk.payload.result as Record<string, unknown>;
+                  if (resultObj?.type === 'plan') {
+                    console.log(`⏱ [Animation API] ✅ Plan approval sent — closing stream for user review`);
+                    // Forward the request_approval result
+                    const approvalSSE = JSON.stringify({
+                      type: 'tool-result',
+                      toolCallId: chunk.payload.toolCallId,
+                      toolName: chunk.payload.toolName,
+                      result: chunk.payload.result,
+                      isError: false,
+                    });
+                    safeEnqueue(encoder.encode(`data: ${approvalSSE}\n\n`));
+                    // Send complete
+                    safeEnqueue(encoder.encode(`data: ${JSON.stringify({
+                      type: 'complete',
+                      text: '',
+                      finishReason: 'plan-approval-sent',
+                    })}\n\n`));
+                    reader.cancel();
+                    safeClose();
+                    sseData = null; // Already forwarded manually
+                    break;
+                  }
+                }
 
                 // Track sandbox ID from sandbox_create results so the client
                 // can persist it for subsequent stream calls (Issue #47)
