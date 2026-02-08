@@ -57,7 +57,7 @@ export const animationAgent = new Agent({
   id: 'animation-orchestrator',
   name: 'Animation Orchestrator',
   instructions: ANIMATION_AGENT_INSTRUCTIONS,
-  model: 'google/gemini-3-flash-preview',
+  model: 'google/gemini-2.5-pro',
   tools: {
     // UI Tools
     update_todo: updateTodoTool,

@@ -84,6 +84,7 @@ You do NOT need to call sandbox_write_file after generate_code when sandboxId is
     })),
     summary: z.string(),
     writtenToSandbox: z.boolean(),
+    reasoning: z.string().optional(),
   }),
 
   execute: async (inputData) => {
@@ -97,12 +98,13 @@ You do NOT need to call sandbox_write_file after generate_code when sandboxId is
         { role: 'user', content: prompt },
       ], {
         providerOptions: {
-          google: { thinkingConfig: { thinkingBudget: 24576, thinkingLevel: 'high' } },
+          google: { thinkingConfig: { thinkingBudget: 24576, thinkingLevel: 'high', includeThoughts: true } },
           anthropic: { thinking: { type: 'enabled', budgetTokens: 10000 } },
         },
       });
 
       const fullResponse = result.text;
+      const reasoning = (result as Record<string, unknown>).reasoningText as string | undefined;
 
       // Parse the JSON response from the subagent
       // Try multiple extraction strategies: markdown code blocks first, then raw JSON
@@ -140,6 +142,7 @@ You do NOT need to call sandbox_write_file after generate_code when sandboxId is
           files: writeResults,
           summary: typeof parsed.summary === 'string' ? parsed.summary : 'Code generated and written to sandbox',
           writtenToSandbox: true,
+          reasoning,
         };
       }
 
@@ -148,6 +151,7 @@ You do NOT need to call sandbox_write_file after generate_code when sandboxId is
         files: files.map(f => ({ path: f.path, size: f.content.length })),
         summary: typeof parsed.summary === 'string' ? parsed.summary : 'Code generated (no sandbox — files not written)',
         writtenToSandbox: false,
+        reasoning,
       };
     } catch (error) {
       if (error instanceof SyntaxError) {

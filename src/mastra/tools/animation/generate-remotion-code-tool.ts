@@ -100,6 +100,7 @@ This injects recipe patterns (tested code snippets) directly into the code gener
     })),
     summary: z.string(),
     writtenToSandbox: z.boolean(),
+    reasoning: z.string().optional(),
   }),
 
   execute: async (inputData) => {
@@ -168,15 +169,17 @@ This injects recipe patterns (tested code snippets) directly into the code gener
         { role: 'user', content: prompt },
       ], {
         providerOptions: {
-          google: { thinkingConfig: { thinkingBudget: 24576, thinkingLevel: 'high' } },
+          google: { thinkingConfig: { thinkingBudget: 24576, thinkingLevel: 'high', includeThoughts: true } },
           anthropic: { thinking: { type: 'enabled', budgetTokens: 10000 } },
         },
       });
 
       const fullResponse = result.text;
+      const reasoning = (result as Record<string, unknown>).reasoningText as string | undefined;
 
       // Log for debugging
-      console.log(`[generate_remotion_code] Subagent response length: ${fullResponse.length}`);
+      console.log(`[generate_remotion_code] Subagent response length: ${fullResponse.length}${reasoning ? `, reasoning: ${reasoning.length} chars` : ''}`);
+
 
       // Parse the JSON response from the subagent
       const parsed = extractJSON(fullResponse);
@@ -217,6 +220,7 @@ This injects recipe patterns (tested code snippets) directly into the code gener
           files: writeResults,
           summary: typeof parsed.summary === 'string' ? parsed.summary : 'Remotion code generated and written to sandbox',
           writtenToSandbox: true,
+          reasoning,
         };
       }
 
@@ -225,6 +229,7 @@ This injects recipe patterns (tested code snippets) directly into the code gener
         files: files.map(f => ({ path: f.path, size: f.content.length })),
         summary: typeof parsed.summary === 'string' ? parsed.summary : 'Remotion code generated (no sandbox — files not written)',
         writtenToSandbox: false,
+        reasoning,
       };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);

@@ -13,6 +13,6 @@ export const codeGeneratorAgent = new Agent({
   id: 'theatre-code-generator',
   name: 'Theatre.js Code Generator',
   instructions: CODE_GENERATOR_INSTRUCTIONS,
-  model: 'anthropic/claude-opus-4-6',
+  model: 'google/gemini-3-pro-preview',
   // No tools — pure generation
 });
