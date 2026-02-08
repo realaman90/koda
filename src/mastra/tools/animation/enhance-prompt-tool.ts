@@ -356,6 +356,13 @@ Return a detailed prompt in this structure:
 - Camera has micro-shake: X/Y ± 0.5px at 24fps (adds organic handheld feel)
 ---
 
+IMPORTANT: Choose colors and backgrounds that match the CONTENT, not a fixed default.
+- Tech/SaaS/developer/cinematic → dark backgrounds are appropriate
+- Product showcase/lifestyle/corporate/educational → light backgrounds (#FAFAFA, white gradients)
+- Creative/brand/playful → colorful backgrounds (warm gradients, brand colors)
+- If the prompt doesn't clearly suggest a dark theme, choose light or colorful instead.
+Do NOT default to dark + indigo/purple for everything.
+
 Now enhance the user's prompt into a world-class, PREMIUM animation spec with exact design values.`;
 
 // Create a lightweight agent for prompt enhancement
@@ -452,9 +459,9 @@ Example:
 
       if (bgMatch || primaryMatch || accentMatch) {
         designSystem = {
-          background: bgMatch?.[1] || '#0A0A0B',
-          primary: primaryMatch?.[1] || '#E4E4E7',
-          accent: accentMatch?.[1] || '#6366F1',
+          background: bgMatch?.[1] || undefined,
+          primary: primaryMatch?.[1] || undefined,
+          accent: accentMatch?.[1] || undefined,
         };
       }
 

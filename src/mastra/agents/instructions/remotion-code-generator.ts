@@ -133,7 +133,7 @@ export const Video: React.FC = () => {
   const { fps, durationInFrames } = useVideoConfig();
 
   return (
-    <AbsoluteFill style={{ background: '#0A0A0F' }}> {/* Choose bg based on content — see <backgrounds> */}
+    <AbsoluteFill style={{ background: '...' }}> {/* Choose bg based on content — see <backgrounds>. Do NOT default to dark. */}
       <IntroSequence />
     </AbsoluteFill>
   );

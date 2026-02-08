@@ -168,7 +168,7 @@ This injects recipe patterns (tested code snippets) directly into the code gener
         { role: 'user', content: prompt },
       ], {
         providerOptions: {
-          google: { thinkingConfig: { thinkingBudget: 8192 } },
+          google: { thinkingConfig: { thinkingBudget: 24576, thinkingLevel: 'high' } },
           anthropic: { thinking: { type: 'enabled', budgetTokens: 10000 } },
         },
       });

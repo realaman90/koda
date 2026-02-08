@@ -25,6 +25,11 @@ const MAX_TIMEOUT = 300_000; // 5 minutes
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes idle timeout
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // Check every 5 minutes
 
+// Resource limits (configurable via env vars)
+const SANDBOX_MEMORY = process.env.SANDBOX_MEMORY || '1g';
+const SANDBOX_MEMORY_SWAP = process.env.SANDBOX_MEMORY_SWAP || SANDBOX_MEMORY;
+const SANDBOX_CPUS = process.env.SANDBOX_CPUS || '2';
+
 /** In-memory tracking of active sandboxes */
 const activeSandboxes = new Map<string, SandboxInstance>();
 
@@ -279,11 +284,10 @@ export const dockerProvider: SandboxProvider = {
         '-d',
         '--name', sandboxId,
         '--workdir', '/app',
-        // Memory limit to prevent runaway processes
-        '--memory', '2g',
-        '--memory-swap', '2g',
-        // CPU limit
-        '--cpus', '2',
+        // Resource limits (configurable via SANDBOX_MEMORY, SANDBOX_MEMORY_SWAP, SANDBOX_CPUS)
+        '--memory', SANDBOX_MEMORY,
+        '--memory-swap', SANDBOX_MEMORY_SWAP,
+        '--cpus', SANDBOX_CPUS,
         // Bridge network — allows package installs and proxy access
         '--network', DOCKER_NETWORK,
         // Expose the Vite dev server on a host port for proxying

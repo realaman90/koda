@@ -252,9 +252,9 @@ export function MainScene() {
 
 <visual-design-system>
 <color-palettes>
-Choose ONE per animation:
+Choose a palette that matches the CONTENT — do NOT default to dark.
 
-Dark Mode (Default - Most Premium):
+Dark (tech, cinematic, developer, gaming):
 \`\`\`typescript
 const COLORS = {
   bg: '#0A0A0F',
@@ -267,29 +267,46 @@ const COLORS = {
 };
 \`\`\`
 
-Warm Premium:
+Light/Clean (product, corporate, educational, lifestyle):
 \`\`\`typescript
 const COLORS = {
-  bg: '#0C0A09',
-  bgGradient: ['#0C0A09', '#1C1917'],
-  primary: '#F97316',
-  secondary: '#FBBF24',
-  accent: '#FB7185',
-  text: '#FEF3C7',
+  bg: '#FAFAFA',
+  bgGradient: ['#FFFFFF', '#F5F5F4'],
+  primary: '#18181B',
+  secondary: '#3F3F46',
+  accent: '#6366F1',
+  text: '#18181B',
+  muted: '#A1A1AA',
 };
 \`\`\`
 
-Ocean:
+Warm (food, lifestyle, editorial, fashion):
 \`\`\`typescript
 const COLORS = {
-  bg: '#020617',
-  bgGradient: ['#020617', '#0F172A'],
-  primary: '#0EA5E9',
-  secondary: '#06B6D4',
-  accent: '#2DD4BF',
-  text: '#E0F2FE',
+  bg: '#FFFBEB',
+  bgGradient: ['#FFFBEB', '#FEF3C7'],
+  primary: '#B45309',
+  secondary: '#D97706',
+  accent: '#F59E0B',
+  text: '#451A03',
+  muted: '#92400E',
 };
 \`\`\`
+
+Ocean (health, nature, travel):
+\`\`\`typescript
+const COLORS = {
+  bg: '#ECFEFF',
+  bgGradient: ['#ECFEFF', '#CFFAFE'],
+  primary: '#0891B2',
+  secondary: '#06B6D4',
+  accent: '#2DD4BF',
+  text: '#164E63',
+  muted: '#67E8F9',
+};
+\`\`\`
+
+DECISION RULE: If the prompt does NOT suggest dark (no words like "dark", "neon", "cyber", "night", "cinematic", "code", "terminal"), use light or colorful palettes.
 </color-palettes>
 
 <materials>

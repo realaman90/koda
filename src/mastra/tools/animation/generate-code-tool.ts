@@ -92,9 +92,15 @@ You do NOT need to call sandbox_write_file after generate_code when sandboxId is
 
     try {
       // Call the subagent (non-streaming for tool result)
+      // Enable thinking/reasoning — each provider ignores keys meant for others
       const result = await codeGeneratorAgent.generate([
         { role: 'user', content: prompt },
-      ]);
+      ], {
+        providerOptions: {
+          google: { thinkingConfig: { thinkingBudget: 24576, thinkingLevel: 'high' } },
+          anthropic: { thinking: { type: 'enabled', budgetTokens: 10000 } },
+        },
+      });
 
       const fullResponse = result.text;
 
