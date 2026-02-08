@@ -13,6 +13,7 @@ import { useState, useCallback, useRef } from 'react';
 import type { AnimationPlan, AnimationTodo, AnimationAttachment, MediaEntry } from '../types';
 import type { AnimationStreamEvent, AnimationAppEvent } from '../events';
 import { toolCallToAppEvent, toolResultToAppEvent } from '../events';
+import { resolveMediaCache } from '../media-cache';
 
 // ============================================
 // Types
@@ -113,10 +114,25 @@ export function useAnimationStream(): UseAnimationStreamReturn {
       let fullText = '';
 
       try {
+        // Resolve cached: placeholders back to real data URLs from memory/IndexedDB,
+        // then filter out anything still unresolvable (blob: URLs are browser-only).
+        const cleanContext = context ? {
+          ...context,
+          media: context.media
+            ? resolveMediaCache(context.media).filter(m => {
+                if (m.dataUrl.startsWith('blob:') || m.dataUrl.startsWith('cached:')) {
+                  console.warn(`[useAnimationStream] Skipping unresolvable media: ${m.name} (${m.dataUrl.slice(0, 30)}...)`);
+                  return false;
+                }
+                return true;
+              })
+            : undefined,
+        } : context;
+
         const response = await fetch('/api/plugins/animation/stream', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt, context }),
+          body: JSON.stringify({ prompt, context: cleanContext }),
           signal: abortControllerRef.current.signal,
         });
 
