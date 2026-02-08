@@ -455,33 +455,33 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
 
       const IMAGE_NODE_WIDTH = 280;
       const VIDEO_NODE_WIDTH = 420;
+      const STORYBOARD_NODE_WIDTH = 320;
+      const RIGHT_MARGIN = 200;
+
+      const storyboardNode = useCanvasStore.getState().nodes.find((n) => n.id === id);
+      const storyboardRight = storyboardNode
+        ? storyboardNode.position.x + STORYBOARD_NODE_WIDTH + RIGHT_MARGIN
+        : viewportCenter.x;
+      const storyboardY = storyboardNode?.position.y ?? viewportCenter.y;
 
       const firstSceneReferenceUrls = [productImageUrl, characterImageUrl].filter((url): url is string => !!url);
 
       if (mode === 'single-shot') {
         const sceneCount = activeDraft.scenes.length;
-        let columns: number;
-        if (sceneCount <= 4) columns = 2;
-        else if (sceneCount <= 6) columns = 3;
-        else columns = 4;
-        const rows = Math.ceil(sceneCount / columns);
 
-        const HORIZONTAL_SPACING = 350;
-        const VERTICAL_SPACING = 500;
+        const HORIZONTAL_SPACING = 450;
+        const VIDEO_Y_OFFSET = 350;
 
-        const totalGridWidth = (columns - 1) * HORIZONTAL_SPACING + IMAGE_NODE_WIDTH;
-        const gridStartX = viewportCenter.x - totalGridWidth / 2;
-        const gridStartY = viewportCenter.y - (rows * VERTICAL_SPACING) / 2;
+        const startX = storyboardRight;
+        const startY = storyboardY;
 
         const imagePositions: { x: number; y: number }[] = [];
         const imageNodeStartIndex = nodeInputs.length;
 
         activeDraft.scenes.forEach((scene, index) => {
-          const col = index % columns;
-          const row = Math.floor(index / columns);
           const position = {
-            x: gridStartX + col * HORIZONTAL_SPACING,
-            y: gridStartY + row * VERTICAL_SPACING,
+            x: startX + index * HORIZONTAL_SPACING,
+            y: startY,
           };
           imagePositions.push(position);
 
@@ -507,7 +507,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
           const imagePos = imagePositions[index];
           const videoPosition = {
             x: imagePos.x + (IMAGE_NODE_WIDTH - VIDEO_NODE_WIDTH) / 2,
-            y: imagePos.y + 300,
+            y: startY + VIDEO_Y_OFFSET,
           };
           const motionPrompt = scene.motion || generateFallbackMotion(scene);
 
@@ -536,16 +536,15 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
 
         canvas.fitView();
         toast.success(
-          `Created ${activeDraft.scenes.length} scene nodes and ${activeDraft.scenes.length} video nodes in grid layout. Click "Run All" to generate.`
+          `Created ${activeDraft.scenes.length} scene nodes and ${activeDraft.scenes.length} video nodes. Click "Run All" to generate.`
         );
       } else {
         const IMAGE_SPACING = 380;
         const VIDEO_Y_OFFSET = 450;
         const imageNodeStartIndex = nodeInputs.length;
 
-        const totalImageWidth = (activeDraft.scenes.length - 1) * IMAGE_SPACING + IMAGE_NODE_WIDTH;
-        const imageStartX = viewportCenter.x - totalImageWidth / 2;
-        const imageStartY = viewportCenter.y - 200;
+        const imageStartX = storyboardRight;
+        const imageStartY = storyboardY;
 
         const imagePositions: { x: number; y: number }[] = [];
 
