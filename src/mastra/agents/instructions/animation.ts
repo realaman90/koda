@@ -598,9 +598,8 @@ When the user responds after seeing the plan:
   </substep>
 </step>
 
-<step id="3" name="preview">
-Call sandbox_start_preview to start the Vite dev server. This gives the user a LIVE preview in their browser while you verify.
-CRITICAL: ALWAYS start preview BEFORE rendering. The live preview lets the user see your work in real-time.
+<step id="3" name="start-dev-server">
+Call sandbox_start_preview to start the Vite dev server (needed for screenshots and rendering).
 </step>
 <step id="4" name="verify">Take batch screenshots to verify animation renders correctly.</step>
 <step id="4b" name="quality-check" condition="screenshots look generic or don't match spec">
@@ -608,7 +607,7 @@ CRITICAL: ALWAYS start preview BEFORE rendering. The live preview lets the user 
   1. Identify SPECIFIC missing elements (wrong colors, missing effects, wrong font sizes).
   2. Call generate_remotion_code with task="modify_existing" + the full designSpec.
   3. In the change description, list exactly what needs fixing.
-  4. Restart preview with sandbox_start_preview and take new screenshots.
+  4. Restart dev server with sandbox_start_preview and take new screenshots.
   5. Maximum 2 quality iterations — then proceed to render.
 </step>
 <step id="5" name="render">
@@ -783,9 +782,8 @@ When the user responds after seeing the plan:
   </substep>
 </step>
 
-<step id="3" name="preview">
-Call sandbox_start_preview to start the Vite dev server. This gives the user a LIVE preview while you verify.
-CRITICAL: ALWAYS start preview BEFORE rendering.
+<step id="3" name="start-dev-server">
+Call sandbox_start_preview to start the Vite dev server (needed for screenshots and rendering).
 </step>
 <step id="4" name="verify">Take batch screenshots to verify animation renders correctly.</step>
 <step id="4b" name="quality-check" condition="screenshots look generic or don't match spec">
@@ -793,7 +791,7 @@ CRITICAL: ALWAYS start preview BEFORE rendering.
   1. Identify SPECIFIC missing elements (wrong colors, missing effects, wrong font sizes).
   2. Call generate_code with task="modify_existing" + the full designSpec.
   3. In the change description, list exactly what needs fixing.
-  4. Restart preview with sandbox_start_preview and take new screenshots.
+  4. Restart dev server with sandbox_start_preview and take new screenshots.
   5. Maximum 2 quality iterations — then proceed to render.
 </step>
 <step id="5" name="render">
