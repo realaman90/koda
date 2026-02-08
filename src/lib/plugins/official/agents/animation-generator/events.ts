@@ -156,6 +156,7 @@ export interface PlanGeneratedAppEvent {
     totalDuration: number;
     style: string;
     fps: number;
+    designSpec?: string;
   };
   todos: Array<{ id: string; label: string; status: 'pending' | 'active' | 'done' }>;
 }

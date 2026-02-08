@@ -372,30 +372,16 @@ const promptEnhancerAgent = new Agent({
   id: 'animation-prompt-enhancer',
   name: 'animation-prompt-enhancer',
   instructions: PROMPT_ENHANCER_INSTRUCTIONS,
-  model: 'anthropic/claude-sonnet-4-5-20250929',
+  model: 'anthropic/claude-haiku-4-5',
 });
 
 export const enhanceAnimationPromptTool = createTool({
   id: 'enhance_animation_prompt',
-  description: `Transform a simple animation idea into a PREMIUM, production-ready design spec.
+  description: `DEPRECATED — The orchestrator agent is now the motion designer and includes design decisions directly in generate_plan's designSpec field.
 
-ALWAYS use this tool when:
-- User gives a brief or vague animation request
-- User mentions a product/brand for reference (Cursor, Linear, Vercel, etc.)
-- The prompt lacks specific colors, typography, or visual design details
-- You want to ensure the output looks world-class, not generic
+Only use this tool if the user EXPLICITLY asks to "enhance" their prompt or you need help with a very specific brand design language that you're unsure about.
 
-The enhanced prompt will include:
-- Exact color palette with hex codes
-- Typography specs (font, size, weight)
-- Component dimensions and styling
-- Frame-by-frame animation timeline
-- Spring configs and easing values
-- Premium polish effects (glows, gradients, particles)
-
-Example:
-- Input: "chat input like cursor"
-- Output: Complete design spec with dark glass card, Inter font at 15px, #6366F1 accent gradient, typing animation at 30ms/char, spring config { damping: 20, stiffness: 200 }...`,
+For normal usage, include your design decisions (colors, typography, spring configs, effects) in generate_plan's designSpec field instead.`,
 
   inputSchema: z.object({
     prompt: z.string().describe('The simple animation idea to enhance'),

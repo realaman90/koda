@@ -11,12 +11,19 @@ import { remotionCodeGeneratorAgent } from '../../agents/remotion-code-generator
 import { dockerProvider } from '@/lib/sandbox/docker-provider';
 import { loadRecipes } from '../../recipes';
 
+type ToolContext = { requestContext?: { get: (key: string) => any; set: (key: string, value: any) => void } };
+
+/** Resolve sandboxId: prefer input arg, fallback to requestContext */
+function resolveSandboxId(input: string | undefined, context?: ToolContext): string | undefined {
+  return input || context?.requestContext?.get('sandboxId') || undefined;
+}
+
 const GenerateRemotionCodeInputSchema = z.object({
   task: z.enum(['initial_setup', 'create_component', 'create_scene', 'modify_existing'])
     .describe('Type of code generation task'),
 
   // Sandbox ID — when provided, files are written directly to the sandbox
-  sandboxId: z.string().optional().describe('Sandbox ID to write generated files directly (recommended — saves tokens)'),
+  sandboxId: z.string().optional().describe('Override sandbox ID (auto-resolved from context if omitted)'),
 
   // For initial_setup
   style: z.string().optional().describe('Animation style (e.g. playful, smooth, cinematic)'),
@@ -82,8 +89,8 @@ Use this for ALL Remotion code generation tasks:
 - create_scene: Create/update a sequence (e.g. IntroSequence.tsx)
 - modify_existing: Modify an existing file based on feedback
 
-IMPORTANT: Always pass sandboxId so files are written directly to the sandbox.
-This avoids passing large file contents through the conversation and saves tokens.
+sandboxId is auto-resolved from server context — you do NOT need to pass it.
+Files are written directly to the sandbox (saves tokens).
 
 CRITICAL: If you uploaded media files to the sandbox (via sandbox_upload_media or sandbox_write_binary),
 you MUST pass them via the mediaFiles parameter. The code generator cannot see the sandbox filesystem —
@@ -103,21 +110,23 @@ This injects recipe patterns (tested code snippets) directly into the code gener
     reasoning: z.string().optional(),
   }),
 
-  execute: async (inputData) => {
-    // Validate sandboxId is provided (critical for writing files)
-    if (!inputData.sandboxId) {
+  execute: async (inputData, context) => {
+    const sandboxId = resolveSandboxId(inputData.sandboxId, context as ToolContext);
+
+    // Validate sandboxId is available (critical for writing files)
+    if (!sandboxId) {
       return {
         files: [],
-        summary: 'ERROR: No sandboxId provided. You MUST create a sandbox first with sandbox_create(template="remotion"), then pass the returned sandboxId to this tool.',
+        summary: 'ERROR: No sandboxId available. You MUST create a sandbox first with sandbox_create(template="remotion").',
         writtenToSandbox: false,
       };
     }
 
     // For modify_existing: auto-read current file content if not provided
-    if (inputData.task === 'modify_existing' && !inputData.currentContent && inputData.file && inputData.sandboxId) {
+    if (inputData.task === 'modify_existing' && !inputData.currentContent && inputData.file) {
       try {
         const filePath = inputData.file.startsWith('/') ? inputData.file : `/app/${inputData.file}`;
-        const fileContent = await dockerProvider.readFile(inputData.sandboxId, filePath);
+        const fileContent = await dockerProvider.readFile(sandboxId, filePath);
         if (fileContent) {
           inputData = { ...inputData, currentContent: fileContent };
           console.log(`[generate_remotion_code] Auto-read ${inputData.file} (${fileContent.length} chars) for modify_existing`);
@@ -128,10 +137,10 @@ This injects recipe patterns (tested code snippets) directly into the code gener
     }
 
     // For modify_existing without a specific file: read ALL src files so the subagent has full context
-    if (inputData.task === 'modify_existing' && !inputData.file && inputData.sandboxId) {
+    if (inputData.task === 'modify_existing' && !inputData.file) {
       try {
         const listResult = await dockerProvider.runCommand(
-          inputData.sandboxId,
+          sandboxId,
           `find /app/src -name '*.tsx' -o -name '*.ts' | head -20`,
           { timeout: 5_000 }
         );
@@ -139,7 +148,7 @@ This injects recipe patterns (tested code snippets) directly into the code gener
         const fileContents: string[] = [];
         for (const f of srcFiles) {
           try {
-            const content = await dockerProvider.readFile(inputData.sandboxId, f);
+            const content = await dockerProvider.readFile(sandboxId, f);
             if (content) {
               const relativePath = f.replace('/app/', '');
               fileContents.push(`--- ${relativePath} ---\n${content}`);
@@ -159,11 +168,20 @@ This injects recipe patterns (tested code snippets) directly into the code gener
       }
     }
 
-    // Log what the orchestrator passed (critical for debugging quality issues)
-    console.log(`[generate_remotion_code] task=${inputData.task}, designSpec=${inputData.designSpec ? `YES (${inputData.designSpec.length} chars)` : 'NO — output will be GENERIC'}, mediaFiles=${inputData.mediaFiles?.length || 0}, techniques=${inputData.techniques?.length || 0}`);
+    // Auto-resolve designSpec from RequestContext if not passed as input arg
+    let designSpec = inputData.designSpec;
+    if (!designSpec) {
+      designSpec = (context as ToolContext)?.requestContext?.get('designSpec') as string | undefined;
+      if (designSpec) {
+        console.log(`[generate_remotion_code] Auto-resolved designSpec from requestContext (${designSpec.length} chars)`);
+      }
+    }
 
-    // Format the request for the code generator subagent
-    const prompt = formatRemotionCodeGenerationPrompt(inputData);
+    // Log what the orchestrator passed (critical for debugging quality issues)
+    console.log(`[generate_remotion_code] task=${inputData.task}, sandboxId=${sandboxId}, designSpec=${designSpec ? `YES (${designSpec.length} chars)` : 'NO — output will be GENERIC'}, mediaFiles=${inputData.mediaFiles?.length || 0}, techniques=${inputData.techniques?.length || 0}`);
+
+    // Format the request for the code generator subagent (use resolved designSpec)
+    const prompt = formatRemotionCodeGenerationPrompt({ ...inputData, designSpec });
 
     try {
       // Call the subagent (non-streaming for tool result)
@@ -212,11 +230,11 @@ This injects recipe patterns (tested code snippets) directly into the code gener
         }
       }
 
-      // If sandboxId is provided, write files directly to the sandbox
-      if (inputData.sandboxId) {
+      // Write files directly to the sandbox
+      if (sandboxId) {
         const writeResults: Array<{ path: string; size: number }> = [];
         for (const file of files) {
-          await dockerProvider.writeFile(inputData.sandboxId, file.path, file.content);
+          await dockerProvider.writeFile(sandboxId, file.path, file.content);
           writeResults.push({ path: file.path, size: file.content.length });
         }
         return {
@@ -447,7 +465,9 @@ function formatRemotionCodeGenerationPrompt(params: z.infer<typeof GenerateRemot
       parts.push(`□ Spring configs use the spec values, not generic { damping: 10, stiffness: 100 }`);
       parts.push(`□ All colors from the spec — NOT generic indigo/purple defaults`);
     } else {
-      parts.push(`□ Background is a gradient (not a flat solid color)`);
+      parts.push(`□ Background matches the CONTENT theme — NOT default dark/indigo`);
+      parts.push(`□ If content is product/lifestyle/corporate → use LIGHT background (#FAFAFA, white gradients)`);
+      parts.push(`□ If content is tech/developer → dark is OK but use specific brand colors, NOT generic #0A0A0B`);
       parts.push(`□ Hero text is large (80-120px), not default small`);
     }
     parts.push(`□ At least 2 premium effects (gradient text, glow, glass, particles, animated border)`);

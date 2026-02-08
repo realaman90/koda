@@ -66,6 +66,7 @@ export interface AnimationPlan {
   totalDuration: number;
   style: string;
   fps: number;
+  designSpec?: string;
 }
 
 // ============================================

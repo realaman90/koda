@@ -9,6 +9,8 @@ import { NextResponse } from 'next/server';
 import { animationAgent } from '@/mastra';
 import { getEngineInstructions } from '@/mastra/agents/instructions/animation';
 import { loadRecipes } from '@/mastra/recipes';
+import { RequestContext } from '@mastra/core/di';
+import { dockerProvider } from '@/lib/sandbox/docker-provider';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -84,6 +86,19 @@ export async function POST(request: Request) {
       content: systemContent,
     });
 
+    // RequestContext for passing server-side data to tools without going through the LLM.
+    // Tools read sandboxId/engine from here instead of relying on LLM-provided args
+    // (which can be hallucinated or lost during message windowing).
+    const requestContext = new RequestContext();
+    requestContext.set('engine' as never, engine as never);
+    if (context?.sandboxId) {
+      requestContext.set('sandboxId' as never, context.sandboxId as never);
+    }
+    // Store plan.designSpec in RequestContext so code gen tool auto-resolves it
+    if ((context?.plan as Record<string, unknown>)?.designSpec) {
+      requestContext.set('designSpec' as never, (context!.plan as Record<string, unknown>).designSpec as never);
+    }
+
     // Prepend context as a system-style user message if provided
     if (context) {
       const contextParts: string[] = [];
@@ -99,21 +114,108 @@ export async function POST(request: Request) {
         contextParts.push(`Active sandbox ID: ${context.sandboxId}`);
       }
       if (context.media && context.media.length > 0) {
+        // ── Server-side media upload ──────────────────────────────────
+        // Base64 media is uploaded server-side to avoid bloating the LLM context.
+        // - If sandbox exists: upload immediately, tell agent "ALREADY AT path"
+        // - If no sandbox: store in requestContext, sandbox_create auto-uploads
+        const uploadedPaths: Map<string, string> = new Map(); // mediaId → sandbox path
+        const pendingMediaForSandbox: Array<{ id: string; name: string; data: Buffer; destPath: string; type: string; source: string }> = [];
+
+        // ── Phase 1: Decode data: URLs to buffers ──
+        const mediaBuffersLocal: Array<{ m: typeof context.media[0]; buffer: Buffer; destPath: string }> = [];
+        for (const m of context.media) {
+          const destPath = `public/media/${m.name}`;
+          if (m.dataUrl.startsWith('data:')) {
+            const base64Part = m.dataUrl.split(',')[1];
+            if (!base64Part) continue;
+            mediaBuffersLocal.push({ m, buffer: Buffer.from(base64Part, 'base64'), destPath });
+          }
+        }
+
+        // ── Phase 2: Download HTTP URL media to buffers (parallel, 10s timeout) ──
+        const httpMedia = context.media.filter(m => m.dataUrl.startsWith('http'));
+        if (httpMedia.length > 0) {
+          const downloads = await Promise.allSettled(
+            httpMedia.map(async (m) => {
+              const destPath = `public/media/${m.name}`;
+              const resp = await fetch(m.dataUrl, { signal: AbortSignal.timeout(10_000) });
+              if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+              const buffer = Buffer.from(await resp.arrayBuffer());
+              return { m, buffer, destPath };
+            })
+          );
+          for (const result of downloads) {
+            if (result.status === 'fulfilled') {
+              mediaBuffersLocal.push(result.value);
+              console.log(`[Animation API] Downloaded HTTP media: ${result.value.m.name} (${Math.round(result.value.buffer.length / 1024)}KB)`);
+            } else {
+              console.warn(`[Animation API] Failed to download HTTP media:`, result.reason);
+            }
+          }
+        }
+
+        // ── Phase 3: Upload buffers to sandbox or store as pending ──
+        for (const { m, buffer, destPath } of mediaBuffersLocal) {
+          if (context.sandboxId) {
+            try {
+              await dockerProvider.writeBinary(context.sandboxId, destPath, buffer);
+              uploadedPaths.set(m.id, destPath);
+              console.log(`[Animation API] Pre-uploaded media: ${m.name} (${Math.round(buffer.length / 1024)}KB) → ${destPath}`);
+            } catch (err) {
+              console.warn(`[Animation API] Failed to pre-upload ${m.name}:`, err);
+            }
+          } else {
+            pendingMediaForSandbox.push({ id: m.id, name: m.name, data: buffer, destPath, type: m.type, source: m.source });
+          }
+        }
+
+        // Store pending media in requestContext for sandbox_create tool
+        if (pendingMediaForSandbox.length > 0) {
+          requestContext.set('pendingMedia' as never, pendingMediaForSandbox as never);
+        }
+
+        // Store media buffers for analyze_media tool to read without needing sandbox access.
+        // Maps media name → { buffer, mimeType } so analyze_media can resolve sandbox-internal paths.
+        // Uses the already-downloaded buffers from Phase 1+2 above.
+        const mediaBuffers = new Map<string, { buffer: Buffer; mimeType: string }>();
+        for (const { m, buffer } of mediaBuffersLocal) {
+          mediaBuffers.set(m.name, { buffer, mimeType: m.mimeType || (m.type === 'video' ? 'video/mp4' : 'image/png') });
+        }
+        if (mediaBuffers.size > 0) {
+          requestContext.set('mediaBuffers' as never, mediaBuffers as never);
+        }
+
         const edgeMedia = context.media.filter(m => m.source === 'edge');
         const uploadMedia = context.media.filter(m => m.source !== 'edge');
-        const formatMedia = (m: typeof context.media[0]) =>
-          `- [${m.type}] "${m.name}" (source: ${m.source}) ${m.dataUrl.startsWith('data:') ? `BASE64 (~${Math.round(m.dataUrl.length * 0.75 / 1024)}KB) — use sandbox_write_binary to write to public/media/` : `URL: ${m.dataUrl} — use sandbox_upload_media to download to public/media/`}`;
+
+        const formatMedia = (m: typeof context.media[0]) => {
+          const uploaded = uploadedPaths.has(m.id);
+          const pending = pendingMediaForSandbox.some(p => p.id === m.id);
+          if (uploaded) {
+            return `- [${m.type}] "${m.name}" (source: ${m.source}) ALREADY UPLOADED to ${uploadedPaths.get(m.id)} — reference as staticFile("media/${m.name}") in code`;
+          }
+          if (pending) {
+            return `- [${m.type}] "${m.name}" (source: ${m.source}) WILL BE AUTO-UPLOADED to public/media/${m.name} after sandbox creation — reference as staticFile("media/${m.name}") in code`;
+          }
+          // blob: or cached: URLs that couldn't be resolved — skip with warning
+          if (m.dataUrl.startsWith('blob:') || m.dataUrl.startsWith('cached:')) {
+            console.warn(`[Animation API] Skipping unresolvable media: ${m.name} (${m.dataUrl.slice(0, 30)}...)`);
+            return `- [${m.type}] "${m.name}" (source: ${m.source}) ⚠️ UNAVAILABLE — could not be resolved server-side. Skip this file.`;
+          }
+          // URL-based media — agent downloads via sandbox_upload_media
+          return `- [${m.type}] "${m.name}" (source: ${m.source}) URL: ${m.dataUrl} — use sandbox_upload_media to download to public/media/${m.name}`;
+        };
 
         if (edgeMedia.length > 0) {
-          contextParts.push(`⚠️ EDGE MEDIA — ALWAYS CONTENT. Upload and feature prominently in the animation:\n${edgeMedia.map(formatMedia).join('\n')}`);
+          contextParts.push(`⚠️ EDGE MEDIA — ALWAYS CONTENT. Feature prominently in the animation:\n${edgeMedia.map(formatMedia).join('\n')}`);
         }
         if (uploadMedia.length > 0) {
           contextParts.push(`📎 UPLOADED MEDIA — Determine purpose from prompt context (content vs reference):\n${uploadMedia.map(formatMedia).join('\n')}`);
         }
         contextParts.push(
-          'For CONTENT media: Upload to public/media/ BEFORE writing code, then pass via mediaFiles to generate_remotion_code. ' +
+          'For CONTENT media: Pass file paths via mediaFiles to generate_remotion_code. ' +
           'For REFERENCE media: Use analyze_media for design cues, do NOT upload to sandbox. ' +
-          'For base64: extract the portion after the comma in "data:mime;base64,DATA" and pass to sandbox_write_binary. ' +
+          'For URL media: Use sandbox_upload_media to download to public/media/. ' +
           'For videos, call analyze_media first for scene understanding, then extract_video_frames for key frame images.'
         );
       }
@@ -131,6 +233,9 @@ export async function POST(request: Request) {
         if (ds.style) contextParts.push(`Design style preset: ${ds.style}`);
         if (ds.colors) contextParts.push(`Color palette — Primary: ${ds.colors.primary}, Secondary: ${ds.colors.secondary}${ds.colors.accent ? `, Accent: ${ds.colors.accent}` : ''}`);
         if (ds.fonts) contextParts.push(`Typography — Title font: ${ds.fonts.title}, Body font: ${ds.fonts.body}`);
+      } else if (!(context?.plan as Record<string, unknown>)?.designSpec) {
+        // When NO designSpec is set at all, add guidance to prevent dark-mode default
+        contextParts.push(`No design spec selected. You MUST choose colors appropriate to the content — NOT default dark/indigo. Light backgrounds for product/lifestyle/corporate, dark for tech/developer, colorful for creative/brand. Include your chosen palette in generate_plan's designSpec field.`);
       }
       if (context.phase) {
         contextParts.push(`Current phase: ${context.phase}`);
@@ -168,19 +273,17 @@ export async function POST(request: Request) {
     }
 
     // ── Critical state injection (post-windowing) ────────────────
-    // The sandbox ID and engine are critical state — if the agent
-    // loses them (pushed out by windowing), it hallucinates fake IDs
-    // or picks the wrong engine. Always append as a single trailing
-    // system message so it's never lost.
+    // sandboxId and engine are now in RequestContext (tools read directly),
+    // but the LLM still needs engine awareness for planning/reasoning.
     {
       const trailingParts: string[] = [];
+      trailingParts.push(`ENGINE: ${engine}. All sandbox tools auto-resolve sandboxId and engine from server context — you do NOT need to pass them.`);
       if (context?.sandboxId) {
-        trailingParts.push(`Your active sandbox ID is "${context.sandboxId}". Use EXACTLY this ID for ALL sandbox tool calls. Do NOT invent, guess, or create new sandbox IDs.`);
+        trailingParts.push(`A sandbox is already active. Do NOT call sandbox_create again.`);
       }
-      trailingParts.push(`ENGINE: ${engine}. Use template="${engine}" for sandbox_create. Do NOT use any other engine.`);
       agentMessages.push({
         role: 'system',
-        content: `CRITICAL STATE: ${trailingParts.join(' ')}`,
+        content: trailingParts.join(' '),
       });
     }
 
@@ -205,6 +308,7 @@ export async function POST(request: Request) {
       agentMessages as Parameters<typeof animationAgent.stream>[0],
       {
         maxSteps,
+        requestContext,
         providerOptions: {
           // Each provider ignores keys meant for other providers
           google: { thinkingConfig: { thinkingBudget: 8192, includeThoughts: true } },
