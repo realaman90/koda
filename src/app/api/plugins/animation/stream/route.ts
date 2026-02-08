@@ -123,8 +123,24 @@ export async function POST(request: Request) {
 
         // ── Phase 1: Decode data: URLs to buffers ──
         const mediaBuffersLocal: Array<{ m: typeof context.media[0]; buffer: Buffer; destPath: string }> = [];
+        // Ensure filenames have proper extensions for sandbox filesystem
+        const ensureExt = (name: string, type: string, dataUrl: string): string => {
+          if (/\.(png|jpg|jpeg|gif|webp|mp4|webm|mov)$/i.test(name)) return name;
+          // Infer from data URL mime type
+          if (dataUrl.startsWith('data:')) {
+            const mime = dataUrl.split(';')[0]?.split(':')[1];
+            const mimeExt: Record<string, string> = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif', 'image/webp': '.webp', 'video/mp4': '.mp4', 'video/webm': '.webm' };
+            if (mime && mimeExt[mime]) return name + mimeExt[mime];
+          }
+          // Infer from URL path
+          const urlExt = dataUrl.split('?')[0].match(/\.(png|jpg|jpeg|gif|webp|mp4|webm|mov)$/i)?.[0];
+          if (urlExt) return name + urlExt;
+          // Fallback based on type
+          return name + (type === 'video' ? '.mp4' : '.png');
+        };
         for (const m of context.media) {
-          const destPath = `public/media/${m.name}`;
+          const safeName = ensureExt(m.name, m.type, m.dataUrl);
+          const destPath = `public/media/${safeName}`;
           if (m.dataUrl.startsWith('data:')) {
             const base64Part = m.dataUrl.split(',')[1];
             if (!base64Part) continue;
@@ -137,7 +153,8 @@ export async function POST(request: Request) {
         if (httpMedia.length > 0) {
           const downloads = await Promise.allSettled(
             httpMedia.map(async (m) => {
-              const destPath = `public/media/${m.name}`;
+              const safeName = ensureExt(m.name, m.type, m.dataUrl);
+              const destPath = `public/media/${safeName}`;
               const resp = await fetch(m.dataUrl, { signal: AbortSignal.timeout(10_000) });
               if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
               const buffer = Buffer.from(await resp.arrayBuffer());
