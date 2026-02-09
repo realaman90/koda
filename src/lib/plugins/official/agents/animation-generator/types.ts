@@ -66,6 +66,7 @@ export interface AnimationPlan {
   totalDuration: number;
   style: string;
   fps: number;
+  designSpec?: string;
 }
 
 // ============================================
@@ -246,6 +247,7 @@ export interface MediaEntry {
   name: string;
   type: 'image' | 'video';
   dataUrl: string;            // Blob URL, base64 data URL, or external URL
+  description?: string;       // Short description (e.g. source node's generation prompt)
   duration?: number;          // Video only, in seconds
   thumbnailUrl?: string;      // For video previews (first frame)
   mimeType?: string;          // e.g. 'image/png', 'video/mp4'
@@ -272,9 +274,26 @@ export interface AnimationNodeData extends Record<string, unknown> {
   // Aspect ratio (default 16:9)
   aspectRatio?: AspectRatio;
 
+  // Target animation duration in seconds (default 10)
+  duration?: number;
+
   // Dynamic handle counts
   imageRefCount?: number;  // Number of image reference handles (default 1)
   videoRefCount?: number;  // Number of video reference handles (default 1)
+
+  // Technique presets (selective recipe injection into code gen context)
+  techniques?: string[];
+
+  // Design spec (style, colors, fonts) — from settings panel
+  designSpec?: {
+    style?: string;
+    colors?: { primary: string; secondary: string; accent?: string };
+    fonts?: { title: string; body: string };
+  };
+
+  // Output settings
+  fps?: number;                              // 24 | 30 | 60
+  resolution?: '720p' | '1080p' | '4k';
 
   // Attachments for chat input
   attachments?: AnimationAttachment[];

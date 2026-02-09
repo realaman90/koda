@@ -35,6 +35,7 @@ export const PlanSchema = z.object({
   totalDuration: z.number(),
   style: z.string(),
   fps: z.number().default(60),
+  designSpec: z.string().optional().describe('Full design specification with exact colors, typography, spring configs, and effects'),
 });
 
 export const TodoSchema = z.object({
@@ -126,7 +127,7 @@ export function generateTodosFromPlan(plan: z.infer<typeof PlanSchema>): z.infer
  */
 export const generatePlanTool = createTool({
   id: 'generate_plan',
-  description: `Generate a detailed animation plan with scene breakdown.
+  description: `Generate a detailed animation plan with scene breakdown AND a complete design specification.
 
 Provide the full plan with scenes. Each scene needs: number, title, duration (min 1.5s), description.
 Rules:
@@ -134,12 +135,20 @@ Rules:
 - Total duration: 5-10s for simple animations, 10-30s for complex
 - Scene structure: Intro (enter) → Main (action) → Outro (exit)
 
+The designSpec should include:
+- Color palette with exact hex codes (background, primary, accent, text colors)
+- Typography specs (font family, sizes, weights)
+- Motion design (spring configs, easing curves, timing)
+- Effects (gradients, glows, shadows, particles)
+
+This designSpec will be passed directly to the code generator — be specific with exact values.
 This tool validates your plan and generates the todo list for execution.`,
   inputSchema: z.object({
     scenes: z.array(SceneSchema).describe('Array of animation scenes'),
     totalDuration: z.number().describe('Total animation duration in seconds'),
     style: z.string().describe('Animation style (e.g. playful, smooth, cinematic)'),
     fps: z.number().optional().describe('Frames per second (default 60)'),
+    designSpec: z.string().optional().describe('Complete design specification with colors, typography, motion design, and effects'),
   }),
   outputSchema: z.object({
     plan: PlanSchema,
@@ -151,6 +160,7 @@ This tool validates your plan and generates the todo list for execution.`,
       totalDuration: inputData.totalDuration,
       style: inputData.style,
       fps: inputData.fps || 60,
+      designSpec: inputData.designSpec,
     };
 
     return { plan, todos: generateTodosFromPlan(plan) };

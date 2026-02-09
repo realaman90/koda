@@ -12,12 +12,13 @@
 import { memo, useCallback, useMemo, useEffect, useState, useRef } from 'react';
 import type { NodeProps, Node } from '@xyflow/react';
 import { Handle, Position, useUpdateNodeInternals } from '@xyflow/react';
-import { Clapperboard, Plus, Minus, Image, Video, X } from 'lucide-react';
+import { Clapperboard, Plus, Minus, Image, Video, X, Settings } from 'lucide-react';
 import { toast } from 'sonner';
 import { useCanvasStore } from '@/stores/canvas-store';
 
 // Chat components
 import { ChatInput } from './components';
+import { AnimationSettingsPanel } from './components/AnimationSettingsPanel';
 import {
   UserBubble,
   AssistantText,
@@ -26,6 +27,7 @@ import {
   RetryButton,
   TodoSection,
   VideoCard,
+  ThinkingBlock,
 } from './components/ChatMessages';
 import { QuestionForm } from './components/QuestionForm';
 
@@ -83,7 +85,8 @@ type TimelineItem =
   | { kind: 'user'; id: string; content: string; ts: string; seq: number; media?: MediaEntry[] }
   | { kind: 'assistant'; id: string; content: string; ts: string; seq: number }
   | { kind: 'plan'; id: string; ts: string; seq: number }
-  | { kind: 'video'; id: string; ts: string; seq: number; videoUrl: string; duration: number };
+  | { kind: 'video'; id: string; ts: string; seq: number; videoUrl: string; duration: number }
+  | { kind: 'thinking'; id: string; ts: string; seq: number; label: string; reasoning?: string; duration?: number; isActive?: boolean };
 
 // ─── Media data cache (IndexedDB-backed) ─────────────────────────────────
 import {
@@ -126,6 +129,8 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
   const nodes = useCanvasStore((s) => s.nodes);
   const updateNodeInternals = useUpdateNodeInternals();
   const [isHovered, setIsHovered] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [settingsPosition, setSettingsPosition] = useState({ x: 0, y: 0 });
 
   // Streaming hook
   const { isStreaming, stream: streamToAgent, abort: abortStream } = useAnimationStream();
@@ -180,10 +185,27 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
   const media: MediaEntry[] = useMemo(() => resolveMediaCache(data.media || []), [data.media, mediaCacheReady]);
   const engine: AnimationEngine = data.engine || 'remotion';
   const aspectRatio: AspectRatio = data.aspectRatio || '16:9';
+  const duration: number = data.duration || 10;
+  const techniques: string[] = data.techniques || [];
+
+  // Design spec fields for stream context (passed to agent on every call)
+  const designSpec = data.designSpec;
+  const fps = data.fps;
+  const resolution = data.resolution;
 
   useEffect(() => {
     updateNodeInternals(id);
   }, [id, imageRefCount, videoRefCount, updateNodeInternals]);
+
+  // Re-sync handle positions whenever the node resizes (content streaming, plan, video, etc.)
+  const nodeContainerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = nodeContainerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => updateNodeInternals(id));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [id, updateNodeInternals]);
 
   // Ensure state initialized
   const state = useMemo((): AnimationNodeState => {
@@ -255,6 +277,9 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       changed = true;
     }
 
+    // Track blob: URLs that need async conversion to data: URLs
+    const blobConversions: Array<{ entryId: string; blobUrl: string; edgeId: string }> = [];
+
     // Add media for new edges
     for (const edge of incomingEdges) {
       if (currentEdgeIds.has(edge.id)) continue; // Already tracked
@@ -265,22 +290,38 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       const d = sourceNode.data as Record<string, unknown>;
       let mediaUrl: string | undefined;
       let mediaType: 'image' | 'video' = 'image';
-      let mediaName = (d.name as string) || sourceNode.type || 'Media';
+      let mediaDescription: string | undefined;
 
       if (sourceNode.type === 'imageGenerator' || sourceNode.type === 'media') {
         mediaUrl = (d.outputUrl as string) || (d.imageUrl as string) || (d.url as string);
         mediaType = 'image';
+        mediaDescription = (d.prompt as string) || (d.name as string) || undefined;
       } else if (sourceNode.type === 'videoGenerator') {
         mediaUrl = d.outputUrl as string;
         mediaType = 'video';
-        mediaName = (d.name as string) || 'Video';
+        mediaDescription = (d.prompt as string) || (d.name as string) || undefined;
       }
 
       // Skip video media for Theatre.js (no video ref support in Puppeteer rendering)
       if (engine === 'theatre' && mediaType === 'video') continue;
 
       if (mediaUrl) {
+        // Build a safe filename with proper extension and source node suffix to prevent collisions.
+        // NOTE: edge.id starts with "xy-edge__" so slice(0,6) was always "xy-edg" — use source node ID instead.
+        const baseName = ((d.name as string) || sourceNode.type || 'media')
+          .replace(/[^a-zA-Z0-9_-]/g, '_')
+          .toLowerCase();
+        const urlExt = mediaUrl.split('?')[0].match(/\.(png|jpg|jpeg|gif|webp|mp4|webm|mov)$/i)?.[1]?.toLowerCase();
+        const ext = urlExt || (mediaType === 'video' ? 'mp4' : 'png');
+        const mediaName = `${baseName}_${edge.source.slice(-8)}.${ext}`;
+
         const entryId = `edge_${edge.id}`;
+
+        // blob: URLs are browser-only — queue for async conversion to data: URL
+        if (mediaUrl.startsWith('blob:')) {
+          blobConversions.push({ entryId, blobUrl: mediaUrl, edgeId: edge.id });
+        }
+
         updatedEdgeMedia.push({
           id: entryId,
           source: 'edge',
@@ -288,7 +329,8 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           sourceNodeId: edge.source,
           name: mediaName,
           type: mediaType,
-          dataUrl: cacheIfLarge(entryId, mediaUrl),
+          dataUrl: mediaUrl.startsWith('blob:') ? mediaUrl : cacheIfLarge(entryId, mediaUrl),
+          description: mediaDescription,
         });
         changed = true;
       }
@@ -303,13 +345,54 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       // Compare against resolved (real) URL, not the cached placeholder
       const resolvedUrl = entry.dataUrl.startsWith('cached:') ? (getCached(entry.id) || '') : entry.dataUrl;
       if (currentUrl && currentUrl !== resolvedUrl) {
-        entry.dataUrl = cacheIfLarge(entry.id, currentUrl);
+        // New URL could be blob: — queue for conversion
+        if (currentUrl.startsWith('blob:')) {
+          blobConversions.push({ entryId: entry.id, blobUrl: currentUrl, edgeId: entry.edgeId! });
+          entry.dataUrl = currentUrl; // Store temporarily, will be converted async
+        } else {
+          entry.dataUrl = cacheIfLarge(entry.id, currentUrl);
+        }
+        changed = true;
+      }
+      // Update description if source node's prompt changed
+      const currentDesc = (d.prompt as string) || (d.name as string) || undefined;
+      if (currentDesc !== entry.description) {
+        entry.description = currentDesc;
         changed = true;
       }
     }
 
     if (changed) {
       updateNodeData(id, { media: [...uploadMedia, ...updatedEdgeMedia] });
+    }
+
+    // Async: convert any blob: URLs to data: URLs and update media entries
+    if (blobConversions.length > 0) {
+      (async () => {
+        for (const { entryId, blobUrl } of blobConversions) {
+          try {
+            const response = await fetch(blobUrl);
+            const blob = await response.blob();
+            const dataUrl = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(reader.result as string);
+              reader.onerror = () => reject(reader.error);
+              reader.readAsDataURL(blob);
+            });
+            // Cache the converted data: URL and update the media entry
+            const cachedUrl = cacheIfLarge(entryId, dataUrl);
+            // Re-read current media and update the specific entry
+            const current = (useCanvasStore.getState().nodes.find(n => n.id === id)?.data as Record<string, unknown>)?.media as MediaEntry[] | undefined;
+            if (current) {
+              const updated = current.map(m => m.id === entryId ? { ...m, dataUrl: cachedUrl } : m);
+              updateNodeData(id, { media: updated });
+            }
+            console.log(`[EdgeWatcher] Converted blob: → data: for ${entryId} (${Math.round(dataUrl.length / 1024)}KB)`);
+          } catch (err) {
+            console.warn(`[EdgeWatcher] Failed to convert blob: URL for ${entryId}:`, err);
+          }
+        }
+      })();
     }
   }, [id, incomingEdges, nodes, data.media, updateNodeData]);
 
@@ -1061,10 +1144,43 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     [id, updateNodeData]
   );
 
+  const handleDurationChange = useCallback(
+    (newDuration: number) => updateNodeData(id, { duration: newDuration }),
+    [id, updateNodeData]
+  );
+
   const handleEngineChange = useCallback(
     (newEngine: AnimationEngine) => updateNodeData(id, { engine: newEngine }),
     [id, updateNodeData]
   );
+
+  const handleTechniquesChange = useCallback(
+    (newTechniques: string[]) => updateNodeData(id, { techniques: newTechniques }),
+    [id, updateNodeData]
+  );
+
+  const handleDesignSpecChange = useCallback(
+    (spec: AnimationNodeData['designSpec']) => updateNodeData(id, { designSpec: spec }),
+    [id, updateNodeData]
+  );
+
+  const handleFpsChange = useCallback(
+    (newFps: number) => updateNodeData(id, { fps: newFps }),
+    [id, updateNodeData]
+  );
+
+  const handleResolutionChange = useCallback(
+    (res: string) => updateNodeData(id, { resolution: res as '720p' | '1080p' | '4k' }),
+    [id, updateNodeData]
+  );
+
+  const handleOpenSettings = useCallback((e: React.MouseEvent) => {
+    const rect = (e.currentTarget as HTMLElement).closest('.react-flow__node')?.getBoundingClientRect();
+    if (rect) {
+      setSettingsPosition({ x: rect.right + 10, y: rect.top });
+      setShowSettings(true);
+    }
+  }, []);
 
   // ─── Pipeline timer helper ─────────────────────────────────────────
   const startPipelineTimer = useCallback((label: string) => {
@@ -1081,6 +1197,28 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       clearTimeout(textFlushTimerRef.current);
       textFlushTimerRef.current = null;
     }
+  }, []);
+
+  // ─── Conversation history builder ──────────────────────────────────
+  // Builds a messages array from accumulated state for multi-turn continuity.
+  // The agent needs to see prior user/assistant exchanges to understand edits.
+  // Limits to last 20 messages to avoid context window blowup.
+  const buildConversationHistory = useCallback((
+    currentMessages: AnimationMessage[],
+    newUserContent: string,
+  ): Array<{ role: 'user' | 'assistant'; content: string }> => {
+    // Filter to user/assistant messages only (skip internal system messages)
+    const history = currentMessages
+      .filter(m => (m.role === 'user' || m.role === 'assistant') && m.content.trim().length > 0)
+      .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+
+    // Keep last 20 messages to stay within context limits
+    const trimmed = history.length > 20 ? history.slice(-20) : history;
+
+    // Add the new user message as the final message
+    trimmed.push({ role: 'user', content: newUserContent });
+
+    return trimmed;
   }, []);
 
   // ─── Phase handlers ─────────────────────────────────────────────────
@@ -1123,10 +1261,14 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       resetStreamingRefs();
       const callbacks = createStreamCallbacks();
 
+      // Debug: log media being sent with planning request
+      console.log(`[AnimationNode] handleAnalyzePrompt — sending ${media.length} media entries`,
+        media.map(m => ({ name: m.name, type: m.type, source: m.source, urlPrefix: m.dataUrl?.slice(0, 40) })));
+
       try {
         await streamToAgent(
           `Analyze this animation request and either ask a clarifying question (if style is unclear) or generate a plan directly:\n\n${prompt}`,
-          { nodeId: id, phase: 'idle', media, engine, aspectRatio },
+          { nodeId: id, phase: 'idle', media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution },
           callbacks
         );
         // Fallback if agent didn't use tools
@@ -1155,7 +1297,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         // Error handled by onError callback
       }
     },
-    [id, media, engine, aspectRatio, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
+    [id, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
   );
 
   const handleSelectStyle = useCallback(
@@ -1195,7 +1337,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       try {
         await streamToAgent(
           `Generate an animation plan for this request with style "${selectedStyle}":\n\n${data.prompt || 'Animation request'}`,
-          { nodeId: id, phase: 'question', engine, aspectRatio },
+          { nodeId: id, phase: 'question', media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution },
           callbacks
         );
         const latest = getLatestState();
@@ -1223,7 +1365,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         // Error handled by callback
       }
     },
-    [id, data.prompt, engine, aspectRatio, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
+    [id, data.prompt, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
   );
 
   const handleFormSubmit = useCallback(
@@ -1278,7 +1420,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         const answersJson = JSON.stringify(answers, null, 2);
         await streamToAgent(
           `User answered the form:\n${answersJson}\n\nProceed with generating a plan based on these answers.\n\nOriginal prompt: ${data.prompt || 'Animation request'}`,
-          { nodeId: id, phase: 'question', engine, aspectRatio },
+          { nodeId: id, phase: 'question', media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution },
           callbacks
         );
         const latest = getLatestState();
@@ -1306,7 +1448,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         // Error handled by callback
       }
     },
-    [id, data.prompt, engine, aspectRatio, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
+    [id, data.prompt, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
   );
 
   const handleAcceptPlan = useCallback(async () => {
@@ -1338,43 +1480,53 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     resetStreamingRefs();
     const callbacks = createStreamCallbacks();
 
+    // Debug: log media being sent with execution request
+    console.log(`[AnimationNode] handleAcceptPlan — sending ${media.length} media entries, sandboxId=${ls.sandboxId || 'NONE'}`,
+      media.map(m => ({ name: m.name, type: m.type, source: m.source, urlPrefix: m.dataUrl?.slice(0, 40) })));
+
     try {
       const sceneList = ls.plan.scenes.map((s) =>
         `  - Scene ${s.number}: ${s.title} (${s.duration}s) — ${s.description}`
       ).join('\n');
       const mediaInfo = media.length > 0 ? [
         '',
-        `MEDIA FILES TO INCLUDE (${media.length} file${media.length > 1 ? 's' : ''}):`,
-        ...media.map(m => `  - "${m.name}" (${m.type}) — upload to sandbox at public/media/${m.name}`),
-        'Upload these FIRST (step 4a-media), then reference them in your animation code.',
+        `MEDIA FILES (${media.length} file${media.length > 1 ? 's' : ''}) — AUTO-UPLOADED during sandbox creation:`,
+        ...media.map(m => `  - "${m.name}" (${m.type}) → public/media/${m.name} — use staticFile("media/${m.name}") in Remotion code`),
+        'These files are AUTOMATICALLY uploaded to the sandbox when you call sandbox_create.',
+        'Do NOT manually upload them. Just reference them with staticFile() in your animation code.',
       ] : [];
+      const executionPrompt = [
+        'The user has approved the animation plan. Execute it now.',
+        '',
+        'FIRST: Create your task list using batch_update_todos with action="add" for ALL tasks.',
+        'Include tasks for: sandbox setup, each scene, post-processing, and rendering.',
+        'Then IMMEDIATELY start executing — do NOT stop after creating todos.',
+        '',
+        'Plan scenes:',
+        sceneList,
+        ...mediaInfo,
+        '',
+        'RULES:',
+        '- Mark each todo "active" before starting, "done" after completing.',
+        '- NEVER remove completed todos.',
+        '- Prefer batch_update_todos for multiple updates.',
+        '- Work SILENTLY — use set_thinking for status, not text output.',
+        '',
+        `Prompt: ${data.prompt || 'Animation request'}`,
+      ].join('\n');
+
+      // Include conversation history so agent knows the original prompt and plan discussions
+      const conversationMessages = buildConversationHistory(ls.messages, executionPrompt);
+
       await streamToAgent(
-        [
-          'The user has approved the animation plan. Execute it now.',
-          '',
-          'FIRST: Create your task list using batch_update_todos with action="add" for ALL tasks.',
-          'Include tasks for: sandbox setup, each scene, post-processing, and rendering.',
-          'Then IMMEDIATELY start executing — do NOT stop after creating todos.',
-          '',
-          'Plan scenes:',
-          sceneList,
-          ...mediaInfo,
-          '',
-          'RULES:',
-          '- Mark each todo "active" before starting, "done" after completing.',
-          '- NEVER remove completed todos.',
-          '- Prefer batch_update_todos for multiple updates.',
-          '- Work SILENTLY — use set_thinking for status, not text output.',
-          '',
-          `Prompt: ${data.prompt || 'Animation request'}`,
-        ].join('\n'),
-        { nodeId: id, phase: 'executing', plan: ls.plan, todos: [], sandboxId: ls.sandboxId, media, engine, aspectRatio },
+        conversationMessages,
+        { nodeId: id, phase: 'executing', plan: ls.plan, todos: [], sandboxId: ls.sandboxId, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution },
         callbacks
       );
     } catch {
       // Error handled by callback
     }
-  }, [id, data.prompt, engine, media, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
+  }, [id, data.prompt, engine, media, duration, techniques, designSpec, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs, buildConversationHistory]);
 
   const handleRejectPlan = useCallback(() => {
     updateState({ phase: 'idle', plan: undefined, question: undefined, planAccepted: undefined });
@@ -1406,10 +1558,14 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       resetStreamingRefs();
       const callbacks = createStreamCallbacks();
 
+      // Send conversation history so agent understands prior discussion about the plan
+      const reviseContent = `The user wants to revise the animation plan. Feedback: "${feedback}"\n\nGenerate an updated plan using the generate_plan tool.`;
+      const conversationMessages = buildConversationHistory(ls.messages, reviseContent);
+
       try {
         await streamToAgent(
-          `The user wants to revise the animation plan. Feedback: "${feedback}"\n\nGenerate an updated plan using the generate_plan tool.`,
-          { nodeId: id, phase: 'plan', plan: ls.plan, sandboxId: ls.sandboxId, engine, aspectRatio },
+          conversationMessages,
+          { nodeId: id, phase: 'plan', plan: ls.plan, sandboxId: ls.sandboxId, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution },
           callbacks
         );
         const latest = getLatestState();
@@ -1422,7 +1578,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         // Error handled by callback
       }
     },
-    [id, engine, aspectRatio, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
+    [id, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs, buildConversationHistory]
   );
 
   const handleSendMessage = useCallback(
@@ -1479,11 +1635,11 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       resetStreamingRefs();
       const callbacks = createStreamCallbacks();
 
-      // Build a contextual prompt so the agent understands the situation
-      let prompt = content;
+      // Build a contextual prompt with instructions
+      let userContent = content;
       if (ls.planAccepted && (ls.phase === 'plan' || ls.phase === 'executing')) {
         // User is giving feedback after execution — emphasize retry, not replan
-        prompt = [
+        userContent = [
           content,
           '',
           'IMPORTANT: The plan has already been approved. Do NOT re-generate the plan.',
@@ -1493,8 +1649,12 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         ].join('\n');
       }
 
+      // Send full conversation history so the agent has context of prior exchanges.
+      // This is critical for edit requests — the agent needs to know what was built before.
+      const conversationMessages = buildConversationHistory(ls.messages, userContent);
+
       try {
-        await streamToAgent(prompt, {
+        await streamToAgent(conversationMessages, {
           nodeId: id,
           phase: ls.phase,
           plan: ls.plan,
@@ -1503,12 +1663,17 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           media,
           engine,
           aspectRatio,
+          duration,
+          techniques,
+          designSpec,
+          fps,
+          resolution,
         }, callbacks);
       } catch {
         // Error handled by callback
       }
     },
-    [id, engine, aspectRatio, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
+    [id, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs, buildConversationHistory]
   );
 
   const handleAcceptPreview = useCallback(async () => {
@@ -1587,13 +1752,13 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     try {
       await streamToAgent(
         `Regenerate the animation from the plan. Execute all steps again.\n\nPrompt: ${data.prompt || 'Animation request'}`,
-        { nodeId: id, phase: 'executing', plan: ls.plan, todos, sandboxId: ls.sandboxId, media, engine, aspectRatio },
+        { nodeId: id, phase: 'executing', plan: ls.plan, todos, sandboxId: ls.sandboxId, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution },
         callbacks
       );
     } catch {
       // Error handled by callback
     }
-  }, [id, data.prompt, engine, media, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
+  }, [id, data.prompt, engine, media, duration, techniques, designSpec, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
 
   const handleExportVideo = useCallback(async () => {
     const ls = getLatestState();
@@ -1638,13 +1803,13 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           'Use render_preview to create the video.',
           `Active sandbox: ${ls.sandboxId}`,
         ].join('\n'),
-        { nodeId: id, phase: 'executing', plan: ls.plan, sandboxId: ls.sandboxId, engine, aspectRatio },
+        { nodeId: id, phase: 'executing', plan: ls.plan, sandboxId: ls.sandboxId, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution },
         callbacks
       );
     } catch {
       // Error handled by callback
     }
-  }, [id, engine, aspectRatio, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
+  }, [id, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
 
   const handleRetry = useCallback(() => {
     if (state.plan) {
@@ -1726,21 +1891,21 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
   const headerConfig = useMemo(() => {
     switch (state.phase) {
       case 'idle':
-        return { iconColor: '#3B82F6', statusColor: '#52525B', statusText: 'Idle', iconBg: '#1E3A5F' };
+        return { iconColor: 'var(--an-accent)', statusColor: 'var(--an-text-placeholder)', statusText: 'Idle', iconBg: 'var(--an-accent-bg)' };
       case 'question':
         return { iconColor: '#FBBF24', statusColor: '#FBBF24', statusText: 'Question', iconBg: '#422006' };
       case 'plan':
-        return { iconColor: '#3B82F6', statusColor: '#52525B', statusText: 'Idle', iconBg: '#1E3A5F' };
+        return { iconColor: 'var(--an-accent)', statusColor: 'var(--an-text-placeholder)', statusText: 'Idle', iconBg: 'var(--an-accent-bg)' };
       case 'executing':
-        return { iconColor: '#3B82F6', statusColor: '#3B82F6', statusText: 'Generating', iconBg: '#1E3A5F' };
+        return { iconColor: 'var(--an-accent)', statusColor: 'var(--an-accent)', statusText: 'Generating', iconBg: 'var(--an-accent-bg)' };
       case 'preview':
-        return { iconColor: '#3B82F6', statusColor: '#3B82F6', statusText: 'Generating', iconBg: '#1E3A5F' };
+        return { iconColor: 'var(--an-accent)', statusColor: 'var(--an-accent)', statusText: 'Generating', iconBg: 'var(--an-accent-bg)' };
       case 'complete':
         return { iconColor: '#22C55E', statusColor: '#22C55E', statusText: 'Complete', iconBg: '#14532D' };
       case 'error':
         return { iconColor: '#EF4444', statusColor: '#EF4444', statusText: 'Error', iconBg: '#3B1111' };
       default:
-        return { iconColor: '#3B82F6', statusColor: '#52525B', statusText: 'Idle', iconBg: '#1E3A5F' };
+        return { iconColor: 'var(--an-accent)', statusColor: 'var(--an-text-placeholder)', statusText: 'Idle', iconBg: 'var(--an-accent-bg)' };
     }
   }, [state.phase]);
 
@@ -1790,6 +1955,26 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       console.log(`[AnimationNode] Timeline: No videos in state.versions`);
     }
 
+    // Include thinking blocks that have meaningful content
+    state.thinkingBlocks.forEach((tb) => {
+      const tbDuration = tb.endedAt
+        ? (new Date(tb.endedAt).getTime() - new Date(tb.startedAt).getTime()) / 1000
+        : undefined;
+      // Only show blocks with reasoning text or a completed duration > 0
+      const hasMeaningfulContent = tb.reasoning || (tbDuration !== undefined && tbDuration > 0);
+      if (!hasMeaningfulContent) return;
+      items.push({
+        kind: 'thinking' as const,
+        id: tb.id,
+        ts: tb.startedAt,
+        seq: tb.seq ?? 0,
+        label: tb.label,
+        reasoning: tb.reasoning,
+        duration: tbDuration,
+        isActive: !tb.endedAt,
+      });
+    });
+
     // Sort by timestamp first, then by sequence number for stable ordering
     items.sort((a, b) => {
       const tsCompare = a.ts.localeCompare(b.ts);
@@ -1797,7 +1982,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       return a.seq - b.seq;
     });
     return items;
-  }, [state.messages, state.plan, state.planTimestamp, state.planSeq, state.versions, state.createdAt]);
+  }, [state.messages, state.plan, state.planTimestamp, state.planSeq, state.versions, state.thinkingBlocks, state.createdAt]);
 
   const hasTimelineContent =
     timeline.length > 0 ||
@@ -1819,8 +2004,8 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
 
   // ─── Node styling ──────────────────────────────────────────────────
   const nodeClasses = useMemo(() => {
-    const base = 'w-[340px] min-h-[450px] max-h-[600px] rounded-xl bg-[#18181b] overflow-hidden flex flex-col border border-[#27272a]';
-    if (selected) return `${base} ring-1 ring-[#3B82F6]/70`;
+    const base = 'animation-node w-[400px] min-h-[520px] max-h-[720px] rounded-xl overflow-hidden flex flex-col';
+    if (selected) return `${base} ring-1 ring-[var(--an-accent)]/70`;
     return base;
   }, [selected]);
 
@@ -1836,6 +2021,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
   // ─── Render ─────────────────────────────────────────────────────────
   return (
     <div
+      ref={nodeContainerRef}
       className={`${nodeClasses}${isDragOver ? ' ring-1 ring-teal-500/50' : ''}`}
       style={{ minHeight }}
       onMouseEnter={() => setIsHovered(true)}
@@ -1883,7 +2069,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           {imageRefCount < MAX_IMAGE_REFS && (
             <button
               onClick={handleAddImageRef}
-              className="w-4 h-4 rounded-full flex items-center justify-center bg-[#27272a] border border-[#3f3f46] text-[#A1A1AA] hover:border-teal-500 hover:text-teal-400 transition-colors ml-0.5"
+              className="w-4 h-4 rounded-full flex items-center justify-center bg-[var(--an-bg-card)] border border-[var(--an-border-input)] text-[var(--an-text-muted)] hover:border-teal-500 hover:text-teal-400 transition-colors ml-0.5"
             >
               <Plus className="h-2.5 w-2.5" />
             </button>
@@ -1891,7 +2077,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           {imageRefCount > 1 && (
             <button
               onClick={handleRemoveImageRef}
-              className="w-4 h-4 rounded-full flex items-center justify-center bg-[#27272a] border border-[#3f3f46] text-[#A1A1AA] hover:border-red-500 hover:text-red-400 transition-colors ml-0.5"
+              className="w-4 h-4 rounded-full flex items-center justify-center bg-[var(--an-bg-card)] border border-[var(--an-border-input)] text-[var(--an-text-muted)] hover:border-red-500 hover:text-red-400 transition-colors ml-0.5"
             >
               <Minus className="h-2.5 w-2.5" />
             </button>
@@ -1926,7 +2112,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           {videoRefCount < MAX_VIDEO_REFS && (
             <button
               onClick={handleAddVideoRef}
-              className="w-4 h-4 rounded-full flex items-center justify-center bg-[#27272a] border border-[#3f3f46] text-[#A1A1AA] hover:border-purple-500 hover:text-purple-400 transition-colors ml-0.5"
+              className="w-4 h-4 rounded-full flex items-center justify-center bg-[var(--an-bg-card)] border border-[var(--an-border-input)] text-[var(--an-text-muted)] hover:border-purple-500 hover:text-purple-400 transition-colors ml-0.5"
             >
               <Plus className="h-2.5 w-2.5" />
             </button>
@@ -1934,7 +2120,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           {videoRefCount > 1 && (
             <button
               onClick={handleRemoveVideoRef}
-              className="w-4 h-4 rounded-full flex items-center justify-center bg-[#27272a] border border-[#3f3f46] text-[#A1A1AA] hover:border-red-500 hover:text-red-400 transition-colors ml-0.5"
+              className="w-4 h-4 rounded-full flex items-center justify-center bg-[var(--an-bg-card)] border border-[var(--an-border-input)] text-[var(--an-text-muted)] hover:border-red-500 hover:text-red-400 transition-colors ml-0.5"
             >
               <Minus className="h-2.5 w-2.5" />
             </button>
@@ -1943,7 +2129,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       )}
 
       {/* ── Header ───────────────────────────────────────────────────── */}
-      <div className="flex-shrink-0 flex items-center gap-2 px-3.5 py-2.5 border-b border-[#27272a]">
+      <div className="flex-shrink-0 flex items-center gap-2 px-3.5 py-2.5 border-b border-[var(--an-border)]">
         <div
           className="h-7 w-7 rounded-[7px] flex items-center justify-center"
           style={{ backgroundColor: headerConfig.iconBg }}
@@ -1951,20 +2137,27 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           <Clapperboard className="h-3.5 w-3.5" style={{ color: headerConfig.iconColor }} />
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="text-[13px] font-semibold text-[#FAFAFA] leading-tight truncate">
+          <h3 className="text-[13px] font-semibold text-[var(--an-text-heading)] leading-tight truncate">
             {data.name || 'Animation Generator'}
           </h3>
           <p className="text-[10px] leading-tight" style={{ color: headerConfig.statusColor }}>
             {headerConfig.statusText}
           </p>
         </div>
+        <button
+          onClick={handleOpenSettings}
+          className="w-6 h-6 rounded-md flex items-center justify-center text-[var(--an-text-dim)] hover:text-[var(--an-text-muted)] hover:bg-[var(--an-bg-hover)] transition-colors"
+          title="Settings"
+        >
+          <Settings className="h-3.5 w-3.5" />
+        </button>
       </div>
 
       {/* ── Chat area (scrollable) ───────────────────────────────────── */}
       {hasTimelineContent && (
         <div
           ref={chatScrollRef}
-          className="nowheel flex-1 overflow-y-auto overflow-x-hidden min-h-0 scrollbar-hidden"
+          className="nowheel nopan nodrag cursor-text select-text flex-1 overflow-y-auto overflow-x-hidden min-h-0 scrollbar-hidden"
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}
           onWheel={(e) => { if (!e.ctrlKey) e.stopPropagation(); }}
         >
@@ -2011,6 +2204,18 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
                   />
                 );
               }
+              if (item.kind === 'thinking') {
+                return (
+                  <ThinkingBlock
+                    key={item.id}
+                    thinking={item.label}
+                    reasoning={item.reasoning}
+                    isStreaming={!!item.isActive}
+                    startedAt={item.ts}
+                    endedAt={item.isActive ? undefined : (item.duration !== undefined ? new Date(new Date(item.ts).getTime() + item.duration * 1000).toISOString() : undefined)}
+                  />
+                );
+              }
               return null;
             })}
 
@@ -2048,7 +2253,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
 
             {/* Complete output */}
             {state.phase === 'complete' && state.output && (
-              <div className="rounded-lg overflow-hidden bg-[#14161A] border border-[#3f3f46]">
+              <div className="rounded-lg overflow-hidden bg-[var(--an-bg-elevated)] border border-[var(--an-border-input)]">
                 <video
                   src={state.output.videoUrl}
                   controls
@@ -2059,7 +2264,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
                   <span className="text-[10px] text-[#22C55E] font-medium">Animation complete</span>
                   <button
                     onClick={handleReset}
-                    className="px-2.5 py-1 rounded-md bg-[#27272a] text-[#A1A1AA] text-[10px] font-medium hover:bg-[#3f3f46] transition-colors"
+                    className="px-2.5 py-1 rounded-md bg-[var(--an-bg-card)] text-[var(--an-text-muted)] text-[10px] font-medium hover:bg-[var(--an-bg-hover)] transition-colors"
                   >
                     New Animation
                   </button>
@@ -2070,10 +2275,10 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
             {/* Error display */}
             {state.phase === 'error' && state.error && (
               <div className="space-y-2">
-                <div className="px-2.5 py-2 rounded-md bg-[#1C1011] border border-[#7F1D1D]">
+                <div className="px-2.5 py-2 rounded-md bg-[var(--an-bg-error)] border border-[var(--an-border-error)]">
                   <p className="text-[11px] text-[#FCA5A5] font-medium">{state.error.message}</p>
                   {state.error.details && (
-                    <p className="text-[10px] text-[#71717A] mt-1">{state.error.details}</p>
+                    <p className="text-[10px] text-[var(--an-text-dim)] mt-1">{state.error.details}</p>
                   )}
                 </div>
                 {state.error.canRetry && <RetryButton onRetry={handleRetry} />}
@@ -2092,16 +2297,16 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
 
       {/* ── Media strip (thumbnails of attached media) */}
       {media.length > 0 && (
-        <div className="flex-shrink-0 px-3 py-1.5 border-t border-[#27272a]">
-          <div className="flex gap-1.5 overflow-x-auto scrollbar-hidden items-center">
+        <div className="flex-shrink-0 px-3 py-1 border-t border-[var(--an-border)]">
+          <div className="flex gap-1 overflow-x-auto scrollbar-hidden items-center">
             {media.map((m) => (
               <div key={m.id} className="relative group flex-shrink-0">
-                <div className="w-10 h-10 rounded bg-[#27272a] overflow-hidden border border-[#3f3f46]">
+                <div className="w-8 h-8 rounded bg-[var(--an-bg-card)] overflow-hidden border border-[var(--an-border-input)]">
                   {m.type === 'image' ? (
                     <img src={m.dataUrl} alt={m.name} className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
-                      <Video className="w-4 h-4 text-purple-400" />
+                      <Video className="w-3 h-3 text-purple-400" />
                     </div>
                   )}
                 </div>
@@ -2113,18 +2318,23 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
                     <X className="w-2 h-2 text-white" />
                   </button>
                 )}
-                <span className="absolute bottom-0 left-0 right-0 text-[7px] text-center text-zinc-400 bg-black/60 truncate px-0.5">
-                  {m.type === 'video' && m.duration ? `${m.duration.toFixed(1)}s` : ''}
-                  {m.source === 'edge' ? '⚡' : ''}
-                </span>
+                {(m.source === 'edge' || (m.type === 'video' && m.duration)) && (
+                  <span className="absolute bottom-0 left-0 right-0 text-[6px] text-center text-zinc-400 bg-black/60 truncate px-0.5">
+                    {m.type === 'video' && m.duration ? `${m.duration.toFixed(1)}s` : ''}
+                    {m.source === 'edge' ? '⚡' : ''}
+                  </span>
+                )}
               </div>
             ))}
           </div>
         </div>
       )}
 
+      {/* Spacer: pushes chat input to bottom when no timeline content */}
+      {!hasTimelineContent && <div className="flex-1" />}
+
       {/* ── Chat input (always visible) ──────────────────────────────── */}
-      <div className="shrink-0">
+      <div className="shrink-0 nopan nodrag nowheel">
         <ChatInput
           onSubmit={handleInputSubmit}
           isGenerating={isStreaming}
@@ -2132,10 +2342,17 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           onStop={() => abortStream()}
           placeholder={inputPlaceholder}
           engine={engine}
-          onEngineChange={handleEngineChange}
-          engineLocked={state.messages.length > 0}
           aspectRatio={aspectRatio}
-          onAspectRatioChange={handleAspectRatioChange}
+          duration={duration}
+          techniques={techniques}
+          onOpenSettings={() => {
+            const nodeEl = document.querySelector(`[data-id="${id}"]`);
+            if (nodeEl) {
+              const rect = nodeEl.getBoundingClientRect();
+              setSettingsPosition({ x: rect.right + 10, y: rect.top });
+              setShowSettings(true);
+            }
+          }}
           onMediaUpload={handleMediaUpload}
           onNodeReference={handleNodeReference}
           availableNodeOutputs={availableNodeOutputs}
@@ -2154,6 +2371,30 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           className="!absolute !top-1/2 !left-1/2 !-translate-x-1/2 !-translate-y-1/2 !w-5 !h-5 !bg-transparent !border-0"
         />
       </div>
+
+      {/* ── Settings Panel (portal) ──────────────────────────────────── */}
+      {showSettings && (
+        <AnimationSettingsPanel
+          nodeId={id}
+          position={settingsPosition}
+          onClose={() => setShowSettings(false)}
+          engine={engine}
+          aspectRatio={aspectRatio}
+          duration={duration}
+          techniques={techniques}
+          designSpec={data.designSpec}
+          fps={data.fps}
+          resolution={data.resolution}
+          engineLocked={state.messages.length > 0}
+          onEngineChange={handleEngineChange}
+          onAspectRatioChange={handleAspectRatioChange}
+          onDurationChange={handleDurationChange}
+          onTechniquesChange={handleTechniquesChange}
+          onDesignSpecChange={handleDesignSpecChange}
+          onFpsChange={handleFpsChange}
+          onResolutionChange={handleResolutionChange}
+        />
+      )}
     </div>
   );
 }

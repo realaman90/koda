@@ -13,6 +13,6 @@ export const remotionCodeGeneratorAgent = new Agent({
   id: 'remotion-code-generator',
   name: 'Remotion Code Generator',
   instructions: REMOTION_CODE_GENERATOR_INSTRUCTIONS,
-  model: 'anthropic/claude-opus-4-6',
+  model: 'google/gemini-3-flash-preview',
   // No tools — pure generation
 });

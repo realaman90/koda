@@ -57,7 +57,7 @@ export const animationAgent = new Agent({
   id: 'animation-orchestrator',
   name: 'Animation Orchestrator',
   instructions: ANIMATION_AGENT_INSTRUCTIONS,
-  model: 'anthropic/claude-opus-4-6',
+  model: 'google/gemini-3-flash-preview',
   tools: {
     // UI Tools
     update_todo: updateTodoTool,

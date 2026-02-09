@@ -7,8 +7,11 @@
  * Design matches the reference with collapsible queue section.
  */
 
-import { useState, useCallback, useRef, useEffect, KeyboardEvent } from 'react';
-import { ArrowUp, Square, Paperclip, ChevronDown, ChevronUp, Image, Video, Link2, Pencil, Trash2 } from 'lucide-react';
+import React, { useState, useCallback, useRef, useEffect, KeyboardEvent } from 'react';
+import {
+  ArrowUp, Square, Paperclip, ChevronDown, ChevronUp, Image, Video, Link2, Pencil, Trash2,
+  Settings,
+} from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,21 +21,6 @@ import {
   DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
 import type { AnimationEngine } from '../types';
-
-const ENGINES: { id: AnimationEngine; label: string }[] = [
-  { id: 'remotion', label: 'Remotion' },
-  { id: 'theatre', label: 'Theatre.js' },
-];
-
-export type AspectRatio = '16:9' | '9:16' | '1:1' | '4:3' | '21:9';
-
-const ASPECT_RATIOS: { id: AspectRatio; label: string }[] = [
-  { id: '16:9', label: '16:9' },
-  { id: '9:16', label: '9:16' },
-  { id: '1:1', label: '1:1' },
-  { id: '4:3', label: '4:3' },
-  { id: '21:9', label: '21:9' },
-];
 
 interface QueuedMessage {
   id: string;
@@ -47,12 +35,13 @@ interface ChatInputProps {
   hasActiveTool?: boolean;
   disabled?: boolean;
   placeholder?: string;
+  /** Compact summary values for the settings bar */
   engine?: AnimationEngine;
-  onEngineChange?: (engine: AnimationEngine) => void;
-  /** Lock the engine dropdown (e.g. after first message is sent) */
-  engineLocked?: boolean;
-  aspectRatio?: AspectRatio;
-  onAspectRatioChange?: (aspectRatio: AspectRatio) => void;
+  aspectRatio?: string;
+  duration?: number;
+  techniques?: string[];
+  /** Open the settings panel */
+  onOpenSettings?: () => void;
   /** Upload files to data.media[] */
   onMediaUpload?: (files: FileList) => void;
   /** Reference a canvas node output → data.media[] */
@@ -68,10 +57,10 @@ export function ChatInput({
   disabled,
   placeholder = 'Describe the animation you want...',
   engine = 'remotion',
-  onEngineChange,
-  engineLocked = false,
   aspectRatio = '16:9',
-  onAspectRatioChange,
+  duration = 10,
+  techniques = [],
+  onOpenSettings,
   onMediaUpload,
   onNodeReference,
   availableNodeOutputs = [],
@@ -85,9 +74,6 @@ export function ChatInput({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
-
-  const selectedEngine = ENGINES.find((e) => e.id === engine) || ENGINES[0];
-  const selectedAspectRatio = ASPECT_RATIOS.find((a) => a.id === aspectRatio) || ASPECT_RATIOS[0];
 
   // Show busy state if streaming OR if tool is active
   const isBusy = isGenerating || hasActiveTool;
@@ -217,14 +203,14 @@ export function ChatInput({
   const canSend = !disabled && message.trim().length > 0;
 
   return (
-    <div className="px-3 pt-2 pb-2.5 border-t border-[#27272a]">
+    <div className="px-3 pt-2 pb-2.5 border-t border-[var(--an-border)]">
       {/* Queued messages section */}
       {queue.length > 0 && (
-        <div className="mb-2 rounded-lg bg-[#1e1e20] border border-[#3f3f46] overflow-hidden">
+        <div className="mb-2 rounded-lg bg-[var(--an-bg-elevated)] border border-[var(--an-border-input)] overflow-hidden">
           {/* Collapsible header */}
           <button
             onClick={() => setQueueExpanded(!queueExpanded)}
-            className="w-full flex items-center gap-1.5 px-3 py-2 text-[12px] text-[#71717A] hover:text-[#A1A1AA] transition-colors"
+            className="w-full flex items-center gap-1.5 px-3 py-2 text-[12px] text-[var(--an-text-dim)] hover:text-[var(--an-text-muted)] transition-colors"
           >
             {queueExpanded ? (
               <ChevronDown className="w-3.5 h-3.5" />
@@ -243,7 +229,7 @@ export function ChatInput({
                   className="flex items-center gap-2 group"
                 >
                   {/* Circle indicator */}
-                  <div className="w-4 h-4 rounded-full border border-[#52525B] shrink-0" />
+                  <div className="w-4 h-4 rounded-full border border-[var(--an-border-hover)] shrink-0" />
 
                   {/* Message text or edit input */}
                   {editingId === item.id ? (
@@ -254,10 +240,10 @@ export function ChatInput({
                       onChange={(e) => setEditText(e.target.value)}
                       onKeyDown={handleEditKeyDown}
                       onBlur={handleSaveEdit}
-                      className="flex-1 bg-[#27272a] border border-[#3f3f46] rounded px-2 py-1 text-[12px] text-[#FAFAFA] outline-none focus:border-[#52525B]"
+                      className="flex-1 bg-[var(--an-bg-input)] border border-[var(--an-border-input)] rounded px-2 py-1 text-[12px] text-[var(--an-text)] outline-none focus:border-[var(--an-border-hover)]"
                     />
                   ) : (
-                    <span className="flex-1 text-[12px] text-[#A1A1AA] truncate">
+                    <span className="flex-1 text-[12px] text-[var(--an-text-muted)] truncate">
                       {item.text}
                     </span>
                   )}
@@ -267,21 +253,21 @@ export function ChatInput({
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
                         onClick={() => handleStartEdit(item)}
-                        className="p-1 text-[#52525B] hover:text-[#A1A1AA] transition-colors"
+                        className="p-1 text-[var(--an-text-placeholder)] hover:text-[var(--an-text-muted)] transition-colors"
                         title="Edit"
                       >
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={() => handleSendQueued(item)}
-                        className="p-1 text-[#52525B] hover:text-[#A1A1AA] transition-colors"
+                        className="p-1 text-[var(--an-text-placeholder)] hover:text-[var(--an-text-muted)] transition-colors"
                         title="Stop current and send this"
                       >
                         <ArrowUp className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={() => handleDeleteQueued(item.id)}
-                        className="p-1 text-[#52525B] hover:text-[#EF4444] transition-colors"
+                        className="p-1 text-[var(--an-text-placeholder)] hover:text-[#EF4444] transition-colors"
                         title="Delete"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -296,7 +282,7 @@ export function ChatInput({
       )}
 
       {/* Input box */}
-      <div className="rounded-[10px] bg-[#27272a] border border-[#3f3f46] overflow-hidden">
+      <div className="rounded-[10px] border border-[var(--an-border-input)] overflow-hidden" style={{ backgroundColor: 'var(--an-bg-card)' }}>
         {/* Textarea area */}
         <div className="px-3 pt-2.5 pb-1.5">
           <textarea
@@ -307,70 +293,25 @@ export function ChatInput({
             placeholder={inputPlaceholder}
             disabled={disabled}
             rows={1}
-            className="w-full resize-none bg-transparent text-[13px] text-[#FAFAFA] placeholder:text-[#52525B] outline-none leading-[1.4]"
-            style={{ minHeight: '20px', maxHeight: '100px' }}
+            className="w-full resize-none text-[13px] text-[var(--an-text)] outline-none leading-[1.4]"
+            style={{ minHeight: '20px', maxHeight: '100px', backgroundColor: 'transparent' }}
           />
         </div>
 
         {/* Bottom bar */}
         <div className="flex items-center justify-between px-2 py-1 pb-2">
-          {/* Engine & Aspect Ratio selectors */}
-          <div className="flex items-center gap-1">
-            {/* Engine selector */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  className={`flex items-center gap-1 px-1.5 py-1 rounded text-[11px] transition-colors ${engineLocked ? 'text-[#52525B] cursor-default' : 'text-[#71717A] hover:text-[#A1A1AA]'}`}
-                  disabled={disabled || engineLocked}
-                >
-                  {selectedEngine.label}
-                  {!engineLocked && <ChevronDown className="w-2.5 h-2.5 text-[#52525B]" />}
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-40">
-                <DropdownMenuLabel className="text-xs text-zinc-500">Animation Engine</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {ENGINES.map((e) => (
-                  <DropdownMenuItem
-                    key={e.id}
-                    onSelect={() => onEngineChange?.(e.id)}
-                    className={engine === e.id ? 'bg-zinc-800' : ''}
-                  >
-                    <span className="text-sm">{e.label}</span>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            {/* Separator */}
-            <span className="text-[#3f3f46]">•</span>
-
-            {/* Aspect Ratio selector */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  className="flex items-center gap-1 px-1.5 py-1 rounded text-[11px] text-[#71717A] hover:text-[#A1A1AA] transition-colors"
-                  disabled={disabled}
-                >
-                  {selectedAspectRatio.label}
-                  <ChevronDown className="w-2.5 h-2.5 text-[#52525B]" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-32">
-                <DropdownMenuLabel className="text-xs text-zinc-500">Aspect Ratio</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {ASPECT_RATIOS.map((a) => (
-                  <DropdownMenuItem
-                    key={a.id}
-                    onSelect={() => onAspectRatioChange?.(a.id)}
-                    className={aspectRatio === a.id ? 'bg-zinc-800' : ''}
-                  >
-                    <span className="text-sm">{a.label}</span>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+          {/* Settings summary — click to open panel */}
+          <button
+            onClick={onOpenSettings}
+            className="flex items-center gap-1 px-1.5 py-1 rounded text-[10px] text-[var(--an-text-placeholder)] hover:text-[var(--an-text-muted)] transition-colors"
+            disabled={disabled}
+          >
+            <Settings className="w-3 h-3" />
+            <span>
+              {engine === 'remotion' ? 'Remotion' : 'Theatre'} · {aspectRatio} · {duration}s
+              {techniques.length > 0 ? ` · ${techniques.length} preset${techniques.length > 1 ? 's' : ''}` : ''}
+            </span>
+          </button>
 
           {/* Action buttons */}
           <div className="flex items-center gap-1.5">
@@ -378,7 +319,7 @@ export function ChatInput({
             <DropdownMenu open={showAttachMenu} onOpenChange={setShowAttachMenu}>
               <DropdownMenuTrigger asChild>
                 <button
-                  className="flex items-center justify-center w-7 h-7 rounded-md text-[#52525B] hover:text-[#71717A] transition-colors"
+                  className="flex items-center justify-center w-7 h-7 rounded-md text-[var(--an-text-placeholder)] hover:text-[var(--an-text-dim)] transition-colors"
                   disabled={disabled}
                 >
                   <Paperclip className="w-4 h-4" />
@@ -419,7 +360,7 @@ export function ChatInput({
             {isBusy && (
               <button
                 onClick={handleStop}
-                className="flex items-center justify-center w-7 h-7 rounded-full bg-zinc-700 hover:bg-zinc-600 transition-colors"
+                className="flex items-center justify-center w-7 h-7 rounded-full bg-[var(--an-bg-hover)] hover:bg-[var(--an-border-hover)] transition-colors"
                 title="Stop generation"
               >
                 <Square className="w-3 h-3 text-white" />
@@ -432,8 +373,8 @@ export function ChatInput({
               disabled={!canSend}
               className={`flex items-center justify-center w-7 h-7 rounded-full transition-colors ${
                 canSend
-                  ? 'bg-[#3B82F6] hover:bg-[#2563EB]'
-                  : 'bg-[#3B82F6] opacity-40 cursor-not-allowed'
+                  ? 'bg-[var(--an-accent)] hover:bg-[var(--an-accent-hover)]'
+                  : 'bg-[var(--an-accent)] opacity-40 cursor-not-allowed'
               }`}
               title={isBusy ? 'Queue message' : 'Send message'}
             >

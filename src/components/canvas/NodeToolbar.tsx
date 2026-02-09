@@ -42,6 +42,7 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import { PluginLauncher } from '@/components/plugins/PluginLauncher';
+import { uploadAsset } from '@/lib/assets/upload';
 // Import official plugins to register them
 import '@/lib/plugins/official/storyboard-generator';
 import '@/lib/plugins/official/product-shot';
@@ -84,7 +85,9 @@ export function NodeToolbar({ onPluginLaunch }: NodeToolbarProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [utilitiesExpanded, setUtilitiesExpanded] = useState(false);
   const addMenuRef = useRef<HTMLDivElement>(null);
+  const addMenuDropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [addMenuPosition, setAddMenuPosition] = useState({ x: -9999, y: -9999 });
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -98,9 +101,28 @@ export function NodeToolbar({ onPluginLaunch }: NodeToolbarProps) {
       document.addEventListener('mousedown', handleClickOutside);
       // Focus search input when menu opens
       setTimeout(() => searchInputRef.current?.focus(), 50);
+      // Position dropdown clamped to viewport
+      requestAnimationFrame(() => {
+        const btn = addMenuRef.current;
+        const dropdown = addMenuDropdownRef.current;
+        if (btn && dropdown) {
+          const btnRect = btn.getBoundingClientRect();
+          const dropRect = dropdown.getBoundingClientRect();
+          const pad = 8;
+          const x = btnRect.right + 8;
+          let y = btnRect.top;
+          // Clamp bottom
+          if (y + dropRect.height > window.innerHeight - pad) {
+            y = window.innerHeight - dropRect.height - pad;
+          }
+          y = Math.max(pad, y);
+          setAddMenuPosition({ x, y });
+        }
+      });
     } else {
       setSearchQuery('');
       setUtilitiesExpanded(false);
+      setAddMenuPosition({ x: -9999, y: -9999 });
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showAddMenu]);
@@ -126,12 +148,17 @@ export function NodeToolbar({ onPluginLaunch }: NodeToolbarProps) {
       const files = (e.target as HTMLInputElement).files;
       if (files) {
         const position = getViewportCenter();
-        Array.from(files).forEach((file, index) => {
-          const url = URL.createObjectURL(file);
+        Array.from(files).forEach(async (file, index) => {
           const isVideo = file.type.startsWith('video/');
           const node = createMediaNode({ x: position.x + index * 50, y: position.y + index * 50 });
-          node.data = { ...node.data, url, type: isVideo ? 'video' : 'image' };
-          addNode(node);
+          try {
+            // Upload to server-side asset storage (local disk or R2)
+            const asset = await uploadAsset(file, { nodeId: node.id });
+            node.data = { ...node.data, url: asset.url, type: isVideo ? 'video' : 'image' };
+            addNode(node);
+          } catch (err) {
+            console.error('[NodeToolbar] Upload failed:', err);
+          }
         });
       }
     };
@@ -303,7 +330,16 @@ export function NodeToolbar({ onPluginLaunch }: NodeToolbarProps) {
 
           {/* Add Menu Dropdown */}
           {showAddMenu && (
-            <div className="absolute top-0 left-full ml-2 w-[220px] bg-popover border border-border rounded-xl shadow-xl overflow-hidden z-50 animate-in fade-in slide-in-from-left-2 duration-150">
+            <div
+              ref={addMenuDropdownRef}
+              className="fixed w-[220px] bg-popover border border-border rounded-xl shadow-xl overflow-hidden z-50 animate-in fade-in slide-in-from-left-2 duration-150 flex flex-col"
+              style={{
+                left: addMenuPosition.x,
+                top: addMenuPosition.y,
+                maxHeight: addMenuPosition.y > 0 ? `calc(100vh - ${addMenuPosition.y}px - 8px)` : undefined,
+                visibility: addMenuPosition.x === -9999 ? 'hidden' : 'visible',
+              }}
+            >
               {/* Search Input */}
               <div className="p-2 border-b border-border">
                 <div className="flex items-center gap-2 px-2 py-1.5 bg-muted/50 rounded-lg">
@@ -320,7 +356,7 @@ export function NodeToolbar({ onPluginLaunch }: NodeToolbarProps) {
               </div>
 
               {/* Menu Sections */}
-              <div className="py-1 max-h-[400px] overflow-y-auto">
+              <div className="py-1 min-h-0 flex-1 overflow-y-auto">
                 {filteredSections.map((section, sectionIndex) => {
                   const isUtilities = section.title === 'UTILITIES';
                   const isCollapsible = section.collapsible;

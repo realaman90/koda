@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import {
   ReactFlow,
   Background,
@@ -87,6 +87,21 @@ export function Canvas() {
 
   // Enable keyboard shortcuts
   useKeyboardShortcuts();
+
+  // Mouse-tracking mask on background dots
+  const containerRef = useRef<HTMLDivElement>(null);
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    const el = containerRef.current?.querySelector('.react-flow__background') as HTMLElement | null;
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * 100;
+      const y = ((e.clientY - rect.top) / rect.height) * 100;
+      el.style.maskImage =
+        `radial-gradient(circle at ${x}% ${y}%, black 15%, transparent 40%)`;
+      el.style.webkitMaskImage =
+        `radial-gradient(circle at ${x}% ${y}%, black 15%, transparent 40%)`;
+    }
+  }, []);
 
   // Handle right-click context menu
   const handleContextMenu = useCallback(
@@ -195,7 +210,7 @@ export function Canvas() {
   );
 
   return (
-    <div className="w-full h-full relative" style={{ backgroundColor: 'var(--canvas-bg)' }}>
+    <div ref={containerRef} className="w-full h-full relative" style={{ backgroundColor: 'var(--canvas-bg)' }} onMouseMove={handleMouseMove}>
       <NodeToolbar onPluginLaunch={handlePluginLaunch} />
       <WelcomeOverlay />
       <SettingsPanel />
@@ -243,8 +258,8 @@ export function Canvas() {
       >
         <Background
           variant={BackgroundVariant.Dots}
-          gap={20}
-          size={1}
+          gap={18}
+          size={1.2}
           color="var(--canvas-dots)"
         />
         <ZoomControls />

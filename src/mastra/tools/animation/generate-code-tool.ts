@@ -13,13 +13,20 @@ import { z } from 'zod';
 import { codeGeneratorAgent } from '../../agents/code-generator-agent';
 import { dockerProvider } from '@/lib/sandbox/docker-provider';
 
+type ToolContext = { requestContext?: { get: (key: string) => any; set: (key: string, value: any) => void } };
+
+/** Resolve sandboxId: prefer input arg, fallback to requestContext */
+function resolveSandboxId(input: string | undefined, context?: ToolContext): string | undefined {
+  return input || context?.requestContext?.get('sandboxId') || undefined;
+}
+
 const GenerateCodeInputSchema = z.object({
   task: z.enum(['initial_setup', 'create_component', 'create_scene', 'modify_existing'])
     .describe('Type of code generation task'),
 
   // Sandbox ID — when provided, files are written directly to the sandbox
   // and ONLY paths/sizes are returned (saves tokens)
-  sandboxId: z.string().optional().describe('Sandbox ID to write generated files directly (recommended — saves tokens)'),
+  sandboxId: z.string().optional().describe('Override sandbox ID (auto-resolved from context if omitted)'),
 
   // For initial_setup
   style: z.string().optional().describe('Animation style (e.g. playful, smooth, cinematic)'),
@@ -72,9 +79,9 @@ Use this for ALL code generation tasks:
 - create_scene: Create/update the scene compositor (MainScene.tsx)
 - modify_existing: Modify an existing file based on feedback
 
-IMPORTANT: Always pass sandboxId so files are written directly to the sandbox.
-This avoids passing large file contents through the conversation and saves tokens.
-You do NOT need to call sandbox_write_file after generate_code when sandboxId is provided.`,
+sandboxId is auto-resolved from server context — you do NOT need to pass it.
+Files are written directly to the sandbox (saves tokens).
+You do NOT need to call sandbox_write_file after this tool.`,
 
   inputSchema: GenerateCodeInputSchema,
   outputSchema: z.object({
@@ -84,19 +91,32 @@ You do NOT need to call sandbox_write_file after generate_code when sandboxId is
     })),
     summary: z.string(),
     writtenToSandbox: z.boolean(),
+    reasoning: z.string().optional(),
   }),
 
-  execute: async (inputData) => {
+  execute: async (inputData, context) => {
+    const sandboxId = resolveSandboxId(inputData.sandboxId, context as ToolContext);
+
+    // Log what the orchestrator passed (critical for debugging quality issues)
+    console.log(`[generate_code] task=${inputData.task}, sandboxId=${sandboxId || 'NONE'}`);
+
     // Format the request for the code generator subagent
     const prompt = formatCodeGenerationPrompt(inputData);
 
     try {
       // Call the subagent (non-streaming for tool result)
+      // Enable thinking/reasoning — each provider ignores keys meant for others
       const result = await codeGeneratorAgent.generate([
         { role: 'user', content: prompt },
-      ]);
+      ], {
+        providerOptions: {
+          google: { thinkingConfig: { thinkingBudget: 24576, includeThoughts: true } },
+          anthropic: { thinking: { type: 'enabled', budgetTokens: 10000 } },
+        },
+      });
 
       const fullResponse = result.text;
+      const reasoning = (result as Record<string, unknown>).reasoningText as string | undefined;
 
       // Parse the JSON response from the subagent
       // Try multiple extraction strategies: markdown code blocks first, then raw JSON
@@ -122,18 +142,18 @@ You do NOT need to call sandbox_write_file after generate_code when sandboxId is
         }
       }
 
-      // If sandboxId is provided, write files directly to the sandbox
-      // and return only paths/sizes (saves massive token usage)
-      if (inputData.sandboxId) {
+      // Write files directly to the sandbox (saves massive token usage)
+      if (sandboxId) {
         const writeResults: Array<{ path: string; size: number }> = [];
         for (const file of files) {
-          await dockerProvider.writeFile(inputData.sandboxId, file.path, file.content);
+          await dockerProvider.writeFile(sandboxId, file.path, file.content);
           writeResults.push({ path: file.path, size: file.content.length });
         }
         return {
           files: writeResults,
           summary: typeof parsed.summary === 'string' ? parsed.summary : 'Code generated and written to sandbox',
           writtenToSandbox: true,
+          reasoning,
         };
       }
 
@@ -142,6 +162,7 @@ You do NOT need to call sandbox_write_file after generate_code when sandboxId is
         files: files.map(f => ({ path: f.path, size: f.content.length })),
         summary: typeof parsed.summary === 'string' ? parsed.summary : 'Code generated (no sandbox — files not written)',
         writtenToSandbox: false,
+        reasoning,
       };
     } catch (error) {
       if (error instanceof SyntaxError) {
@@ -283,7 +304,20 @@ function formatCodeGenerationPrompt(params: z.infer<typeof GenerateCodeInputSche
     }
   }
 
-  parts.push(``, `Return ONLY valid JSON with the "files" array and "summary". No explanation before or after the JSON.`);
+  // Output format + quality checklist
+  parts.push(``, `Return ONLY valid JSON: { "files": [{ "path": "...", "content": "..." }], "summary": "..." }`);
+
+  if (params.task !== 'modify_existing') {
+    parts.push(``);
+    parts.push(`QUALITY CHECKLIST — verify before returning:`);
+    parts.push(`□ Background uses a gradient, not a flat solid color`);
+    parts.push(`□ Hero text is large (80-120px), not default small`);
+    parts.push(`□ Spring configs use specific values, not generic defaults`);
+    parts.push(`□ At least 2 premium effects (gradient text, glow, glass, particles)`);
+    parts.push(`□ Staggered timing — elements enter one by one, NOT all at once`);
+    parts.push(`□ Visual hierarchy — ONE dominant element, rest supporting`);
+    parts.push(`If ANY fail, fix before returning.`);
+  }
 
   return parts.join('\n');
 }

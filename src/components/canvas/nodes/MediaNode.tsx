@@ -1,17 +1,19 @@
 'use client';
 
 import { memo, useCallback, useState, useRef, useEffect } from 'react';
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import { Handle, Position, useUpdateNodeInternals, type NodeProps } from '@xyflow/react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useCanvasStore } from '@/stores/canvas-store';
 import type { MediaNode as MediaNodeType } from '@/lib/types';
 import { Image as ImageIcon, Upload, Trash2, X, Link } from 'lucide-react';
+import { uploadAsset } from '@/lib/assets/upload';
 
 function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
   const deleteNode = useCanvasStore((state) => state.deleteNode);
   const isReadOnly = useCanvasStore((state) => state.isReadOnly);
+  const updateNodeInternals = useUpdateNodeInternals();
   const [isEditingName, setIsEditingName] = useState(false);
   const [nodeName, setNodeName] = useState('Media');
   const [isDragging, setIsDragging] = useState(false);
@@ -28,6 +30,11 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
     }
   }, [isEditingName]);
 
+  // Update React Flow handle positions when image URL changes (node resizes)
+  useEffect(() => {
+    updateNodeInternals(id);
+  }, [id, data.url, updateNodeInternals]);
+
   const handleNameSubmit = useCallback(() => {
     setIsEditingName(false);
   }, []);
@@ -41,19 +48,20 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
   }, [id, updateNodeData]);
 
   const handleFileSelect = useCallback(
-    (file: File) => {
+    async (file: File) => {
       if (!file.type.startsWith('image/')) {
         toast.error('Please select an image file');
         return;
       }
 
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const url = e.target?.result as string;
-        updateNodeData(id, { url, type: 'image' });
+      try {
+        const asset = await uploadAsset(file, { nodeId: id });
+        updateNodeData(id, { url: asset.url, type: 'image' });
         toast.success('Image uploaded');
-      };
-      reader.readAsDataURL(file);
+      } catch (err) {
+        console.error('[MediaNode] Upload failed:', err);
+        toast.error('Upload failed');
+      }
     },
     [id, updateNodeData]
   );
@@ -183,13 +191,14 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
       >
         {/* Content Area */}
         <div className="relative min-h-[160px]">
-          {data.url ? (
+          {data.url && !data.url.startsWith('cached:') ? (
             /* Image Preview */
             <div className="relative">
               <img
                 src={data.url}
                 alt="Media"
                 className="w-full h-auto"
+                onLoad={() => updateNodeInternals(id)}
               />
             </div>
           ) : (
