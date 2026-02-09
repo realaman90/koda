@@ -16,6 +16,7 @@ import { getSandboxProvider } from '@/lib/sandbox/sandbox-factory';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
+export const bodySizeLimit = '50mb';
 
 // Tools that should NEVER run in the same stream as generate_plan.
 // Gemini ignores instruction-level stop rules, so we enforce at the code level.
@@ -604,7 +605,12 @@ export async function POST(request: Request) {
               case 'tool-result': {
                 const resultElapsed = ((Date.now() - serverStart) / 1000).toFixed(1);
                 const isErr = chunk.payload.isError;
-                console.log(`⏱ [Animation API] Tool result: ${chunk.payload.toolName} at +${resultElapsed}s ${isErr ? '❌' : '✅'}`);
+                // For render tools, log success field so we can see actual render failures (not just isError)
+                const resultPayload = chunk.payload.result as Record<string, unknown> | undefined;
+                const renderInfo = (chunk.payload.toolName === 'render_final' || chunk.payload.toolName === 'render_preview')
+                  ? ` [success=${resultPayload?.success}, msg=${typeof resultPayload?.message === 'string' ? resultPayload.message.slice(0, 120) : 'none'}]`
+                  : '';
+                console.log(`⏱ [Animation API] Tool result: ${chunk.payload.toolName} at +${resultElapsed}s ${isErr ? '❌' : '✅'}${renderInfo}`);
 
                 // Track generate_plan from tool-result too (in case tool-call was missed)
                 if (chunk.payload.toolName === 'generate_plan' && !isErr) {

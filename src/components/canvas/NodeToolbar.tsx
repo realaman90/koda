@@ -47,6 +47,7 @@ import { uploadAsset } from '@/lib/assets/upload';
 import '@/lib/plugins/official/storyboard-generator';
 import '@/lib/plugins/official/product-shot';
 import '@/lib/plugins/official/agents/animation-generator';
+import '@/lib/plugins/official/agents/motion-analyzer';
 import {
   Tooltip,
   TooltipContent,

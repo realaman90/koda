@@ -347,10 +347,11 @@ export function useAnimationStream(): UseAnimationStreamReturn {
         }
 
         const errorMessage = err instanceof Error ? err.message : 'Stream failed';
+        console.error('[useAnimationStream] Stream error:', errorMessage);
         setError(errorMessage);
         setIsStreaming(false);
         callbacks?.onError?.(errorMessage);
-        throw err;
+        return fullText;
       }
     },
     [abort]

@@ -14,13 +14,12 @@ import { pluginRegistry } from '@/lib/plugins/registry';
 
 // Import plugin-defined node components
 import { AnimationNode } from '@/lib/plugins/official/agents/animation-generator';
+import { MotionAnalyzerNode } from '@/lib/plugins/official/agents/motion-analyzer';
 
 // Component registry - maps pluginId to component
 const PLUGIN_COMPONENTS: Record<string, React.ComponentType<NodeProps<Node<PluginNodeData, 'pluginNode'>>>> = {
   'animation-generator': AnimationNode as unknown as React.ComponentType<NodeProps<Node<PluginNodeData, 'pluginNode'>>>,
-  // Future plugins:
-  // 'brand-extractor': BrandExtractorNode,
-  // 'code-sandbox': CodeSandboxNode,
+  'motion-analyzer': MotionAnalyzerNode as unknown as React.ComponentType<NodeProps<Node<PluginNodeData, 'pluginNode'>>>,
 };
 
 export type PluginNodeType = Node<PluginNodeData, 'pluginNode'>;

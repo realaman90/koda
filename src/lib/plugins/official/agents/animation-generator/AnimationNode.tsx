@@ -565,7 +565,10 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           textFlushTimerRef.current = null;
         }
         const ls = getLatestState();
-        const trimmed = fullText.trim();
+        console.log(`[AnimationNode] onComplete: phase=${ls.phase}, versionsCount=${ls.versions?.length ?? 0}, hasPreview=${!!ls.preview?.videoUrl}`);
+        // Strip any HTML tags from agent output — the LLM sometimes outputs <div> markup
+        // (e.g. video-card divs) that should be handled by tool results, not displayed as text
+        const trimmed = fullText.replace(/<[^>]*>/g, '').trim();
         const updatedMessages = [...ls.messages];
 
         // Check if stream completed without generating text (tool-only response)
@@ -950,10 +953,11 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
 
         if (event.toolName === 'render_final') {
           console.log(`[AnimationNode] Render tool result:`, JSON.stringify(event.result, null, 2));
+          console.log(`[AnimationNode] Current state: phase=${ls.phase}, versionsCount=${ls.versions?.length ?? 0}, existingUrls=${(ls.versions || []).map(v => v.videoUrl.split('?')[0].slice(-20)).join(', ')}`);
           const result = event.result as { success?: boolean; videoUrl?: string; duration?: number; versionId?: string; message?: string };
           if (result.success === false || event.isError) {
             // Log technical details, show friendly message
-            console.error(`[AnimationNode] Render failed:`, result.message);
+            console.error(`[AnimationNode] Render failed:`, result.message, `isError=${event.isError}`);
             addUserMessage('Video rendering encountered an issue. Retrying...');
           } else if (result.videoUrl && result.videoUrl.length > 0) {
             // Skip duplicate: if this URL (without query params) already exists in a version, don't add again.
@@ -1062,6 +1066,9 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
               console.warn('[AnimationNode] No sandboxId available to save video - URL will be ephemeral');
             }
             } // close alreadyExists else
+          } else {
+            // success is not false, but videoUrl is missing or empty
+            console.warn(`[AnimationNode] render_final returned success but no videoUrl:`, { success: result.success, videoUrl: result.videoUrl, message: result.message });
           }
         }
 
@@ -1298,8 +1305,9 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
             },
           });
         }
-      } catch {
-        // Error handled by onError callback
+      } catch (err) {
+        console.error('[AnimationNode] handleAnalyzePrompt error:', err);
+        // Error state is set by onError callback in createStreamCallbacks
       }
     },
     [id, media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
@@ -1579,8 +1587,9 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
             state: { ...latest, phase: 'plan', execution: undefined, updatedAt: new Date().toISOString() },
           });
         }
-      } catch {
-        // Error handled by callback
+      } catch (err) {
+        console.error('[AnimationNode] stream error:', err);
+        // Error state is set by onError callback in createStreamCallbacks
       }
     },
     [id, media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs, buildConversationHistory]
@@ -1614,9 +1623,17 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         updatedAt: new Date().toISOString(),
       };
 
-      // Transition to executing when user sends a message and plan was already accepted
-      // This covers: plan phase (failed execution), preview phase (edit request), complete phase (follow-up)
-      if (ls.planAccepted) {
+      // Auto-accept plan when user sends ANY message during plan phase with a plan present.
+      // The placeholder says "Type 'yes' to accept, or suggest changes..." — any text input implies engagement.
+      // If the user wanted to reject, they'd click the "Reject" button instead.
+      if (ls.phase === 'plan' && ls.plan && !ls.planAccepted) {
+        stateUpdate.planAccepted = true;
+      }
+
+      // Transition to executing when plan is accepted (either previously via button, or auto-accepted above)
+      // This covers: plan phase (text acceptance), plan phase (failed execution retry),
+      // preview phase (edit request), complete phase (follow-up)
+      if (ls.planAccepted || stateUpdate.planAccepted) {
         stateUpdate.phase = 'executing';
         stateUpdate.execution = {
           todos: ls.execution?.todos || [],
@@ -1643,7 +1660,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       // Build a contextual prompt with instructions
       let userContent = content;
       if (ls.planAccepted && (ls.phase === 'plan' || ls.phase === 'executing')) {
-        // User is giving feedback after execution — emphasize retry, not replan
+        // User is giving feedback after failed execution — emphasize retry, not replan
         userContent = [
           content,
           '',
@@ -1652,16 +1669,29 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           'fix the issue (check vite logs, file contents, etc.), and retry.',
           ls.sandboxId ? `Active sandbox: ${ls.sandboxId}` : 'No sandbox — create one first with sandbox_create.',
         ].join('\n');
+      } else if (ls.planAccepted && (ls.phase === 'preview' || ls.phase === 'complete')) {
+        // User is requesting edits to a working animation — emphasize modify, not replan
+        userContent = [
+          content,
+          '',
+          'IMPORTANT: The plan has already been approved and the animation was rendered successfully.',
+          'Do NOT re-generate the plan. Modify the existing code to implement the requested changes,',
+          'then call render_final to produce the updated video.',
+          ls.sandboxId ? `Active sandbox: ${ls.sandboxId}` : 'No sandbox — create one first with sandbox_create.',
+        ].join('\n');
       }
 
       // Send full conversation history so the agent has context of prior exchanges.
       // This is critical for edit requests — the agent needs to know what was built before.
       const conversationMessages = buildConversationHistory(ls.messages, userContent);
 
+      // Use the UPDATED phase (after stateUpdate), not the stale ls.phase
+      const effectivePhase = stateUpdate.phase || ls.phase;
+
       try {
         await streamToAgent(conversationMessages, {
           nodeId: id,
-          phase: ls.phase,
+          phase: effectivePhase,
           plan: ls.plan,
           todos: ls.execution?.todos,
           sandboxId: ls.sandboxId,
@@ -1675,8 +1705,9 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           fps,
           resolution,
         }, callbacks);
-      } catch {
-        // Error handled by callback
+      } catch (err) {
+        console.error('[AnimationNode] stream error:', err);
+        // Error state is set by onError callback in createStreamCallbacks
       }
     },
     [id, media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs, buildConversationHistory]
@@ -1903,7 +1934,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       case 'question':
         return { iconColor: '#FBBF24', statusColor: '#FBBF24', statusText: 'Question', iconBg: '#422006' };
       case 'plan':
-        return { iconColor: 'var(--an-accent)', statusColor: 'var(--an-text-placeholder)', statusText: 'Idle', iconBg: 'var(--an-accent-bg)' };
+        return { iconColor: '#FBBF24', statusColor: '#FBBF24', statusText: 'Planning', iconBg: '#422006' };
       case 'executing':
         return { iconColor: 'var(--an-accent)', statusColor: 'var(--an-accent)', statusText: 'Generating', iconBg: 'var(--an-accent-bg)' };
       case 'preview':

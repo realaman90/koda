@@ -76,6 +76,9 @@ export function Canvas() {
         // Animation Generator uses the pluginNode type
         const node = createPluginNode(position, pluginId, 'Animation Generator');
         addNode(node);
+      } else if (pluginId === 'motion-analyzer') {
+        const node = createPluginNode(position, pluginId, 'Motion Analyzer');
+        addNode(node);
       } else {
         // Other plugins still open as modals. Maybe not needed anymore. We'll see.
         // Other plugins open as modals

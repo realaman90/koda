@@ -135,10 +135,10 @@ async function analyzeImage(
   mimeType?: string
 ): Promise<z.infer<typeof MediaAnalysisResultSchema>> {
   try {
-    // Build multimodal content for Mastra
-    const imageContent: Array<{ type: 'text'; text: string } | { type: 'image'; image: string }> = [];
+    // Build multimodal content (AI SDK v5 format — `data` + `mediaType`)
+    const imageContent: Array<{ type: 'text'; text: string } | { type: 'image'; image: string; mediaType?: string }> = [];
 
-    // Add image - Mastra accepts URL or base64
+    // Add image - AI SDK v5 accepts URL or data URI string in `image` field
     if (imageBase64) {
       imageContent.push({
         type: 'image',
@@ -219,24 +219,20 @@ async function analyzeVideo(
   mimeType?: string
 ): Promise<z.infer<typeof MediaAnalysisResultSchema>> {
   try {
-    // Build the message with video
-    // Mastra/Gemini supports video via URL or base64
-    const videoContent: Array<{ type: 'text'; text: string } | { type: 'file'; file: { url: string } } | { type: 'file'; file: { base64: string; mimeType: string } }> = [];
+    // Build the message with video (AI SDK v5 format — `data` + `mediaType`)
+    const videoContent: Array<{ type: 'text'; text: string } | { type: 'file'; data: string; mediaType: string }> = [];
 
     if (videoBase64 && mimeType) {
       videoContent.push({
         type: 'file',
-        file: {
-          base64: videoBase64,
-          mimeType: mimeType,
-        },
+        data: videoBase64,
+        mediaType: mimeType,
       });
     } else {
       videoContent.push({
         type: 'file',
-        file: {
-          url: videoUrl,
-        },
+        data: videoUrl,
+        mediaType: mimeType || 'video/mp4',
       });
     }
 
@@ -248,7 +244,7 @@ async function analyzeVideo(
     const result = await geminiVideoAnalyzer.generate([
       {
         role: 'user',
-        content: videoContent as any, // Mastra accepts this format for multimodal
+        content: videoContent,
       },
     ]);
 
@@ -369,10 +365,20 @@ Example:
   execute: async (input, context) => {
     let { mediaUrl, mediaBase64, mimeType } = input;
 
-    // ── Resolve media data from sandbox or requestContext ──
-    // The orchestrator may pass a sandbox-internal path like "public/media/photo.jpg"
-    // which isn't accessible to external APIs. We need to read the actual data.
+    // ── Resolve media data from RequestContext or sandbox ──
     const sandboxId = resolveSandboxId(undefined, context as ToolContext);
+
+    // Strategy 0: Check RequestContext for pre-loaded video (set by motion-analyzer route.ts)
+    // This handles the case where the route decoded a data: URL into base64 and stored it
+    if (!mediaBase64) {
+      const rcBase64 = (context as ToolContext)?.requestContext?.get('videoBase64') as string | undefined;
+      const rcMimeType = (context as ToolContext)?.requestContext?.get('videoMimeType') as string | undefined;
+      if (rcBase64) {
+        mediaBase64 = rcBase64;
+        if (!mimeType) mimeType = rcMimeType || 'video/mp4';
+        console.log(`[analyze_media] Resolved from RequestContext videoBase64 (${Math.round(rcBase64.length * 0.75 / 1024)}KB)`);
+      }
+    }
 
     // If no base64 provided and mediaUrl looks like a sandbox path (not a real URL),
     // resolve the actual image data from requestContext or sandbox.

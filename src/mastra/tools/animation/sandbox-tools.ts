@@ -1325,6 +1325,32 @@ export const renderFinalTool = createTool({
     if (!sandboxId) {
       return { success: false, videoUrl: '', thumbnailUrl: '', duration: inputData.duration, resolution: inputData.resolution || '1080p', message: 'No active sandbox. Create one first with sandbox_create.' };
     }
+
+    // Wait for any in-flight code generation to finish before rendering.
+    // Models often call generate_*_code + render_final in parallel — rendering stale code
+    // causes failures and retry loops. Same polling pattern as resolveSandboxId.
+    const ctx = context as ToolContext;
+    const codeGenActive = (ctx?.requestContext?.get('codeGenActive') as number) || 0;
+    if (codeGenActive > 0 && ctx?.requestContext) {
+      console.log(`[render_final] Code generation in progress (codeGenActive=${codeGenActive}) — waiting...`);
+      for (let i = 0; i < 120; i++) { // 120 × 500ms = 60s max wait
+        await new Promise(r => setTimeout(r, 500));
+        const current = (ctx.requestContext.get('codeGenActive') as number) || 0;
+        if (current === 0) {
+          console.log(`[render_final] Code generation finished after ${(i + 1) * 0.5}s — proceeding with render`);
+          break;
+        }
+        const closed = ctx.requestContext.get('streamClosed') as boolean | undefined;
+        if (closed) {
+          console.log(`[render_final] Stream closed while waiting for code gen — aborting`);
+          return { success: false, videoUrl: '', thumbnailUrl: '', duration: inputData.duration, resolution: inputData.resolution || '1080p', message: 'Stream closed during code generation wait.' };
+        }
+        if (i === 119) {
+          console.warn(`[render_final] Timed out waiting for code gen after 60s — proceeding anyway`);
+        }
+      }
+    }
+
     const resolution = inputData.resolution || '1080p';
     const engine = resolveEngine(inputData.engine, context as ToolContext);
     const outputPath = '/app/output/final.mp4';
@@ -1458,13 +1484,18 @@ export const renderFinalTool = createTool({
       // Detect composition ID if not provided
       let compositionId = inputData.compositionId;
       if (!compositionId) {
-        // Filter for lines containing "fps" to skip bundling progress noise
+        // Remotion v4+ output format: "CompName    30      1920x1080      300 (10.00 sec)"
+        // Older format had "fps" in the line — newer format uses columns.
+        // Match any line with dimensions pattern (NNNNxNNNN) to skip noise/warnings.
         const listResult = await getSandboxProvider().runCommand(
           sandboxId,
-          `cd /app && bunx remotion compositions src/index.ts --props='{}' 2>&1 | grep 'fps' | head -1 | awk '{print $1}'`,
+          `cd /app && bunx remotion compositions src/index.ts --props='{}' 2>&1 | grep -E '[0-9]+x[0-9]+' | head -1 | awk '{print $1}'`,
           { timeout: 30_000 }
         );
         compositionId = listResult.stdout.trim();
+        if (compositionId) {
+          console.log(`[render_final] Detected composition via remotion CLI: "${compositionId}"`);
+        }
 
         if (!compositionId) {
           const rootCheck = await getSandboxProvider().runCommand(
@@ -1473,46 +1504,80 @@ export const renderFinalTool = createTool({
             { timeout: 5_000 }
           );
           compositionId = rootCheck.stdout.trim() || 'MainVideo';
+          console.log(`[render_final] Fallback composition from Root.tsx grep: "${compositionId}"`);
         }
       }
 
-      console.log(`[render_final] Using composition ID: ${compositionId}`);
+      console.log(`[render_final] Rendering: compositionId=${compositionId}, resolution=${resolution}, scale=${scaleFlag || 'none'}`);
 
       // Use Remotion's built-in renderer with high quality settings
-      const result = await getSandboxProvider().runCommand(
+      const renderStart = Date.now();
+      let result = await getSandboxProvider().runCommand(
         sandboxId,
         `cd /app && bunx remotion render src/index.ts ${compositionId} ${outputPath} --props='{}' ${scaleFlag} 2>&1`,
         { timeout: 300_000 } // 5 minutes for final render
       );
+      let renderDuration = ((Date.now() - renderStart) / 1000).toFixed(1);
+      console.log(`[render_final] Render command finished in ${renderDuration}s (success=${result.success})`);
+
+      // Auto-retry with correct composition ID if mismatch detected
+      // Remotion error: "Could not find composition with ID X. Available compositions: Y, Z"
+      if (!result.success) {
+        const output = result.stderr || result.stdout || '';
+        const mismatch = output.match(/Available compositions:\s*(.+)/);
+        if (mismatch) {
+          const availableId = mismatch[1].split(',')[0].trim();
+          if (availableId && availableId !== compositionId) {
+            console.log(`[render_final] Composition mismatch — retrying with "${availableId}" (was "${compositionId}")`);
+            compositionId = availableId;
+            const retryStart = Date.now();
+            result = await getSandboxProvider().runCommand(
+              sandboxId,
+              `cd /app && bunx remotion render src/index.ts ${compositionId} ${outputPath} --props='{}' ${scaleFlag} 2>&1`,
+              { timeout: 300_000 }
+            );
+            renderDuration = ((Date.now() - retryStart) / 1000).toFixed(1);
+            console.log(`[render_final] Retry render finished in ${renderDuration}s (success=${result.success})`);
+          }
+        }
+      }
 
       if (!result.success) {
+        const renderOutput = (result.stderr || result.stdout || '');
+        // Log last 2000 chars — the actual error is usually at the end, after bundling/font noise
+        console.error(`[render_final] ❌ Remotion render FAILED (exit code non-zero). Output (last 2000 chars):\n${renderOutput.slice(-2000)}`);
         return {
           success: false,
           videoUrl: '',
           thumbnailUrl: '',
           duration: inputData.duration,
           resolution,
-          message: `Render failed: ${result.stderr || result.stdout}`.slice(0, 500),
+          message: `Render failed: ${renderOutput.slice(-500)}`,
         };
       }
 
       // Check if the file was created
       const checkFile = await getSandboxProvider().runCommand(
         sandboxId,
-        `test -f ${outputPath} && echo "OK" || echo "MISSING"`,
+        `test -f ${outputPath} && wc -c < ${outputPath} || echo "MISSING"`,
         { timeout: 5_000 }
       );
 
-      if (checkFile.stdout.trim() !== 'OK') {
+      const fileCheckOutput = checkFile.stdout.trim();
+      if (fileCheckOutput === 'MISSING' || fileCheckOutput === '') {
+        // Render command succeeded but no file — dump last 20 lines of render output for diagnosis
+        console.error(`[render_final] ❌ Render command succeeded but ${outputPath} not found. Render output:\n${(result.stdout || '').slice(-500)}`);
         return {
           success: false,
           videoUrl: '',
           thumbnailUrl: '',
           duration: inputData.duration,
           resolution,
-          message: 'Video file was not created',
+          message: 'Video file was not created. Render output: ' + (result.stdout || '').slice(-300),
         };
       }
+
+      console.log(`[render_final] File created: ${outputPath} (${fileCheckOutput} bytes)`);
 
       const nodeId_rf = (context as ToolContext)?.requestContext?.get('nodeId');
       console.log(`[render_final] Remotion render success. nodeId=${nodeId_rf}, sandboxId=${sandboxId}`);
@@ -1553,12 +1618,15 @@ export const renderFinalTool = createTool({
         message: 'Video rendered successfully',
       };
     } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[render_final] ❌ Unhandled error in render_final: ${errMsg}`, error);
       return {
         success: false,
         videoUrl: '',
         thumbnailUrl: '',
         duration: inputData.duration,
         resolution,
+        message: `Render error: ${errMsg}`.slice(0, 500),
       };
     }
   },

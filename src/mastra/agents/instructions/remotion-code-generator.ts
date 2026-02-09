@@ -318,6 +318,11 @@ Return the COMPLETE updated file, not a diff.
   \`import { Img, staticFile, OffthreadVideo } from 'remotion';\`
   \`<Img src={staticFile("media/photo.jpg")} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />\`
 - User-provided media = HERO element. Feature it prominently, not as a tiny thumbnail.
+- FORBIDDEN: NEVER use http://localhost, http://127.0.0.1, or ANY http/https URL for local media files.
+  These URLs WILL FAIL because there is NO dev server during rendering.
+  The ONLY correct way to load local files: staticFile("media/filename.ext")
+  WRONG: src="http://localhost:3000/public/media/logo.png"
+  CORRECT: src={staticFile("media/logo.png")}
 </media-rules>
 </remotion-rules>
 

@@ -22,6 +22,11 @@ const SANDBOX_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour (E2B hobby limit)
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 
+/** Runtime env setup prefix for E2B sandboxes.
+ *  E2B's `envs` option on commands.run() doesn't reliably override PATH.
+ *  Prepending export statements to each command is the most reliable approach. */
+const ENV_PREFIX = 'export PATH="/home/user/.bun/bin:$PATH" && export REMOTION_CHROME_EXECUTABLE=/usr/bin/chromium && export PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium && ';
+
 /** Map sandboxId → E2B Sandbox instance */
 const activeSandboxes = new Map<string, { sandbox: Sandbox; instance: SandboxInstance }>();
 
@@ -29,7 +34,14 @@ function getTemplateId(template: SandboxTemplate = 'remotion'): string {
   if (template === 'remotion') {
     return process.env.E2B_TEMPLATE_ID_REMOTION || process.env.E2B_TEMPLATE_ID || 'base';
   }
-  return process.env.E2B_TEMPLATE_ID_THEATRE || process.env.E2B_TEMPLATE_ID || 'base';
+  const theatreId = process.env.E2B_TEMPLATE_ID_THEATRE;
+  if (!theatreId) {
+    throw new Error(
+      'Theatre.js is not available on E2B — no E2B_TEMPLATE_ID_THEATRE configured. ' +
+      'Please use the Remotion engine instead, or set SANDBOX_PROVIDER=docker for Theatre.js support.'
+    );
+  }
+  return theatreId;
 }
 
 function resolveContainerPath(path: string): string {
@@ -47,6 +59,54 @@ function touchActivity(sandboxId: string): void {
   const entry = activeSandboxes.get(sandboxId);
   if (entry) {
     entry.instance.lastActivityAt = new Date().toISOString();
+  }
+}
+
+/**
+ * Attempt to reconnect to an E2B sandbox that's alive but not in our in-memory map.
+ * This happens when the server restarts — the in-memory map is lost, but E2B sandboxes
+ * keep running in the cloud. Uses metadata filtering to find our sandbox by custom ID.
+ */
+async function attemptReconnect(sandboxId: string): Promise<{ sandbox: Sandbox; instance: SandboxInstance } | null> {
+  try {
+    // Search E2B for running sandboxes with matching custom sandboxId in metadata
+    const paginator = Sandbox.list({
+      query: {
+        metadata: { sandboxId },
+        state: ['running'],
+      },
+    });
+
+    const results = await paginator.nextItems();
+    if (results.length === 0) return null;
+
+    const match = results[0];
+    console.log(`[E2BProvider] Reconnecting to sandbox ${sandboxId} (e2b: ${match.sandboxId})`);
+
+    const sandbox = await Sandbox.connect(match.sandboxId);
+
+    const now = new Date().toISOString();
+    const instance: SandboxInstance = {
+      id: sandboxId,
+      projectId: match.metadata?.projectId || 'unknown',
+      status: 'ready',
+      containerId: match.sandboxId,
+      createdAt: match.startedAt?.toISOString() || now,
+      lastActivityAt: now,
+    };
+
+    // Restore the proxy URL
+    const host = sandbox.getHost(5173);
+    instance.proxyBaseUrl = `https://${host}`;
+
+    // Store back in memory so subsequent tool calls find it
+    activeSandboxes.set(sandboxId, { sandbox, instance });
+
+    console.log(`[E2BProvider] Successfully reconnected to ${sandboxId}`);
+    return { sandbox, instance };
+  } catch (err) {
+    console.warn(`[E2BProvider] Failed to reconnect to sandbox ${sandboxId}:`, err);
+    return null;
   }
 }
 
@@ -89,7 +149,14 @@ export const e2bProvider: SandboxProvider = {
   },
 
   async destroy(sandboxId: string): Promise<void> {
-    const entry = activeSandboxes.get(sandboxId);
+    let entry = activeSandboxes.get(sandboxId);
+
+    // If not in memory, try to reconnect so we can kill it
+    if (!entry) {
+      const recovered = await attemptReconnect(sandboxId);
+      if (recovered) entry = recovered;
+    }
+
     if (entry) {
       try {
         await entry.sandbox.kill();
@@ -175,8 +242,10 @@ export const e2bProvider: SandboxProvider = {
     }
 
     try {
+      const wrappedCommand = `${ENV_PREFIX}${command}`;
+
       if (options?.background) {
-        await entry.sandbox.commands.run(command, {
+        await entry.sandbox.commands.run(wrappedCommand, {
           background: true,
           timeoutMs: timeout,
         });
@@ -184,7 +253,7 @@ export const e2bProvider: SandboxProvider = {
         return { success: true, stdout: '', stderr: '', exitCode: 0 };
       }
 
-      const result = await entry.sandbox.commands.run(command, { timeoutMs: timeout });
+      const result = await entry.sandbox.commands.run(wrappedCommand, { timeoutMs: timeout });
       if (entry.instance) entry.instance.status = 'ready';
 
       return {
@@ -193,8 +262,18 @@ export const e2bProvider: SandboxProvider = {
         stderr: result.stderr,
         exitCode: result.exitCode,
       };
-    } catch (error) {
+    } catch (error: unknown) {
       if (entry.instance) entry.instance.status = 'ready';
+      // E2B throws CommandExitError with a .result property on non-zero exit
+      const e2bResult = (error as { result?: { stdout?: string; stderr?: string; exitCode?: number } }).result;
+      if (e2bResult) {
+        return {
+          success: false,
+          stdout: e2bResult.stdout || '',
+          stderr: e2bResult.stderr || '',
+          exitCode: e2bResult.exitCode ?? 1,
+        };
+      }
       return {
         success: false,
         stdout: '',
@@ -248,8 +327,14 @@ export const e2bProvider: SandboxProvider = {
   },
 
   async getStatus(sandboxId: string): Promise<SandboxInstance | null> {
-    const entry = activeSandboxes.get(sandboxId);
-    if (!entry) return null;
+    let entry = activeSandboxes.get(sandboxId);
+
+    // If not in memory, try to reconnect to the running E2B sandbox
+    if (!entry) {
+      const recovered = await attemptReconnect(sandboxId);
+      if (!recovered) return null;
+      entry = recovered;
+    }
 
     try {
       const running = await entry.sandbox.isRunning();
@@ -325,10 +410,9 @@ export const e2bProvider: SandboxProvider = {
     const entry = activeSandboxes.get(sandboxId);
     if (entry) return entry.instance;
 
-    // Try to reconnect to a running E2B sandbox by its E2B ID
-    // This is tricky because we store our own sandboxId, not E2B's.
-    // For now, if it's not in our map, it's gone.
-    return undefined;
+    // Try to reconnect to a running E2B sandbox via metadata lookup
+    const recovered = await attemptReconnect(sandboxId);
+    return recovered?.instance;
   },
 };
 

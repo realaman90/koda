@@ -136,6 +136,36 @@ You do NOT need to call sandbox_write_file after this tool.`,
   }),
 
   execute: async (inputData, context) => {
+    const ctx = context as ToolContext;
+
+    // Serialize code generation — wait if another code gen is already in progress.
+    const currentActive = (ctx?.requestContext?.get('codeGenActive') as number) || 0;
+    if (currentActive > 0 && ctx?.requestContext) {
+      console.log(`[generate_code] Another code gen in progress (codeGenActive=${currentActive}) — waiting...`);
+      for (let i = 0; i < 120; i++) {
+        await new Promise(r => setTimeout(r, 500));
+        const c = (ctx.requestContext.get('codeGenActive') as number) || 0;
+        if (c === 0) {
+          console.log(`[generate_code] Previous code gen finished after ${(i + 1) * 0.5}s — proceeding`);
+          break;
+        }
+        const closed = ctx.requestContext.get('streamClosed') as boolean | undefined;
+        if (closed) {
+          console.log(`[generate_code] Stream closed while waiting — aborting`);
+          return { files: [], summary: 'Stream closed', writtenToSandbox: false };
+        }
+        if (i === 119) {
+          console.warn(`[generate_code] Timed out waiting for previous code gen after 60s — proceeding anyway`);
+        }
+      }
+    }
+
+    // Signal that code generation is in progress — render_final will wait for this
+    const activeCount = (ctx?.requestContext?.get('codeGenActive') as number) || 0;
+    ctx?.requestContext?.set('codeGenActive', activeCount + 1);
+    console.log(`[generate_code] codeGenActive incremented to ${activeCount + 1}`);
+
+    try {
     const sandboxId = await resolveSandboxId(inputData.sandboxId, context as ToolContext);
 
     // Auto-resolve designSpec from RequestContext if not passed as input arg
@@ -230,6 +260,12 @@ You do NOT need to call sandbox_write_file after this tool.`,
         throw new Error(`Code generator returned invalid JSON: ${error.message}`);
       }
       throw error;
+    }
+    } finally {
+      // Signal code generation complete — render_final can proceed
+      const current = (ctx?.requestContext?.get('codeGenActive') as number) || 1;
+      ctx?.requestContext?.set('codeGenActive', Math.max(0, current - 1));
+      console.log(`[generate_code] codeGenActive decremented to ${Math.max(0, current - 1)}`);
     }
   },
 });

@@ -169,14 +169,12 @@ Pass threshold: score >= 7. Below 7, use fixInstructions to call generate_remoti
         .replace('{designSpec}', input.designSpec || 'No specific design spec provided')
         .replace('{duration}', String(input.duration));
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const videoContent: any[] = [
+      // AI SDK v5 format — Mastra's memory pipeline requires `data` + `mediaType` (not `file.base64`)
+      const videoContent: Array<{ type: 'file'; data: string; mediaType: string } | { type: 'text'; text: string }> = [
         {
           type: 'file',
-          file: {
-            base64: base64Video,
-            mimeType: 'video/mp4',
-          },
+          data: base64Video,
+          mediaType: 'video/mp4',
         },
         {
           type: 'text',
