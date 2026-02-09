@@ -8,11 +8,12 @@
 
 import { Agent } from '@mastra/core/agent';
 import { CODE_GENERATOR_INSTRUCTIONS } from './instructions/code-generator';
+import { THEATRE_CODE_GEN_MODEL } from '../models';
 
 export const codeGeneratorAgent = new Agent({
   id: 'theatre-code-generator',
   name: 'Theatre.js Code Generator',
   instructions: CODE_GENERATOR_INSTRUCTIONS,
-  model: 'google/gemini-3-flash-preview',
+  model: THEATRE_CODE_GEN_MODEL,
   // No tools — pure generation
 });

@@ -8,11 +8,12 @@
 
 import { Agent } from '@mastra/core/agent';
 import { REMOTION_CODE_GENERATOR_INSTRUCTIONS } from './instructions/remotion-code-generator';
+import { REMOTION_CODE_GEN_MODEL } from '../models';
 
 export const remotionCodeGeneratorAgent = new Agent({
   id: 'remotion-code-generator',
   name: 'Remotion Code Generator',
   instructions: REMOTION_CODE_GENERATOR_INSTRUCTIONS,
-  model: 'google/gemini-3-flash-preview',
+  model: REMOTION_CODE_GEN_MODEL,
   // No tools — pure generation
 });

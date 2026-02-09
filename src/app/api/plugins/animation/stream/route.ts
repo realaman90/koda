@@ -378,8 +378,9 @@ export async function POST(request: Request) {
     const hasSandbox = !!context?.sandboxId;
     // Planning phase: no approved plan AND no existing sandbox (not a revision)
     // Give limited steps — enough for enhance + plan + approval request
-    // Execution/revision phase: full 50 steps
-    const maxSteps = (hasApprovedPlan || hasSandbox) ? 50 : 12;
+    // Execution/revision phase: full 75 steps (50 was too few — render_preview
+    // often lands on the last step and its tool-result gets dropped by the SDK)
+    const maxSteps = (hasApprovedPlan || hasSandbox) ? 75 : 12;
 
     console.log(`⏱ [Animation API] Stream request — engine: ${engine}, messages: ${agentMessages.length}, sandboxId: ${context?.sandboxId || 'NONE'}, phase: ${context?.phase || 'unknown'}, techniques: ${context?.techniques?.length || 0}${recipeContent ? ` (~${Math.round(recipeContent.length / 4)} tokens)` : ''}, maxSteps: ${maxSteps}, hasApprovedPlan: ${hasApprovedPlan}, designSpec: ${context?.designSpec ? JSON.stringify(context.designSpec) : 'NONE'}`);
 
