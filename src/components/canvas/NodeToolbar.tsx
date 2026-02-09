@@ -45,6 +45,7 @@ import { PluginLauncher } from '@/components/plugins/PluginLauncher';
 import { uploadAsset } from '@/lib/assets/upload';
 // Import official plugins to register them
 import '@/lib/plugins/official/storyboard-generator';
+import '@/lib/plugins/official/product-shot';
 import '@/lib/plugins/official/agents/animation-generator';
 import {
   Tooltip,

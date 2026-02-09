@@ -31,6 +31,7 @@ import { pluginRegistry } from '@/lib/plugins/registry';
 import { uploadAsset } from '@/lib/assets/upload';
 // Import official plugins to register them
 import '@/lib/plugins/official/storyboard-generator';
+import '@/lib/plugins/official/product-shot';
 import '@/lib/plugins/official/agents/animation-generator';
 
 interface MenuItem {
@@ -62,6 +63,7 @@ export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
   const openSettingsPanel = useCanvasStore((state) => state.openSettingsPanel);
   const selectedNodeIds = useCanvasStore((state) => state.selectedNodeIds);
   const addNode = useCanvasStore((state) => state.addNode);
+  const groupSelected = useCanvasStore((state) => state.groupSelected);
   const clipboard = useCanvasStore((state) => state.clipboard);
   const nodes = useCanvasStore((state) => state.nodes);
 
@@ -169,11 +171,12 @@ export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
     { id: 'copy', icon: <Copy className="h-4 w-4" />, label: 'Copy', shortcut: '⌘C', action: copySelected, disabled: selectedNodeIds.length === 0 },
     { id: 'cut', icon: <Scissors className="h-4 w-4" />, label: 'Cut', shortcut: '⌘X', action: cutSelected, disabled: selectedNodeIds.length === 0 },
     { id: 'duplicate', icon: <Duplicate className="h-4 w-4" />, label: 'Duplicate', shortcut: '⌘D', action: duplicateSelected, disabled: selectedNodeIds.length === 0 },
+    { id: 'group', icon: <Group className="h-4 w-4" />, label: 'Group Selected', shortcut: '⌘G', action: () => { groupSelected(); hideContextMenu(); }, disabled: selectedNodeIds.length < 2 },
     { id: 'divider1', divider: true },
     { id: 'settings', icon: <Settings className="h-4 w-4" />, label: 'Settings', action: () => selectedNodeIds[0] && openSettingsPanel(selectedNodeIds[0], { x: contextMenu.x + 10, y: contextMenu.y }), disabled: selectedNodeIds.length !== 1 },
     { id: 'divider2', divider: true },
     { id: 'delete', icon: <Trash2 className="h-4 w-4" />, label: 'Delete', shortcut: '⌫', action: deleteSelected, disabled: selectedNodeIds.length === 0, danger: true },
-  ] : [], [contextMenu, copySelected, cutSelected, duplicateSelected, deleteSelected, openSettingsPanel, selectedNodeIds]);
+  ] : [], [contextMenu, copySelected, cutSelected, duplicateSelected, groupSelected, deleteSelected, hideContextMenu, openSettingsPanel, selectedNodeIds]);
 
   // Canvas menu sections
   const canvasMenuSections: MenuSection[] = useMemo(() => [

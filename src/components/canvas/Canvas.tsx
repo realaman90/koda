@@ -12,7 +12,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
-import { useCanvasStore, createStoryboardNode, createPluginNode } from '@/stores/canvas-store';
+import { useCanvasStore, createStoryboardNode, createProductShotNode, createPluginNode } from '@/stores/canvas-store';
 import type { AppNode, ImageGeneratorNodeData, VideoGeneratorNodeData, ImageModelType, VideoModelType } from '@/lib/types';
 import { MODEL_CAPABILITIES, VIDEO_MODEL_CAPABILITIES } from '@/lib/types';
 import { nodeTypes } from './nodes';
@@ -55,7 +55,8 @@ export function Canvas() {
   // Handle plugin launch - create node for node-based plugins, open sandbox for others
   const handlePluginLaunch = useCallback(
     (pluginId: string) => {
-      // Calculate viewport center position
+
+      // Create a canvas node at viewport center
       let position = { x: 400, y: 300 };
       if (reactFlowInstance) {
         const viewport = reactFlowInstance.getViewport();
@@ -66,16 +67,17 @@ export function Canvas() {
           y: (-viewport.y + height / 2 - 200) / viewport.zoom,
         };
       }
-
-      // Handle specific plugins that render as nodes
-      if (pluginId === 'storyboard-generator') {
-        const node = createStoryboardNode(position, 'Storyboard');
+      if (pluginId === 'storyboard-generator' || pluginId === 'product-shot') {
+        const node = pluginId === 'product-shot'
+          ? createProductShotNode(position, 'Product Shots')
+          : createStoryboardNode(position, 'Storyboard');
         addNode(node);
       } else if (pluginId === 'animation-generator') {
         // Animation Generator uses the pluginNode type
         const node = createPluginNode(position, pluginId, 'Animation Generator');
         addNode(node);
       } else {
+        // Other plugins still open as modals. Maybe not needed anymore. We'll see.
         // Other plugins open as modals
         openSandbox(pluginId);
       }

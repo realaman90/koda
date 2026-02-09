@@ -10,7 +10,7 @@ import type { z } from 'zod';
 import type { AIService, AIServiceOptions } from './types';
 
 /** Default model for plugin AI calls */
-const DEFAULT_MODEL = 'anthropic/claude-sonnet-4-20250514';
+const DEFAULT_MODEL = 'google/gemini-3-pro-preview';
 
 /**
  * Mastra-based AI Service implementation
@@ -40,6 +40,14 @@ export class MastraAIService implements AIService {
       },
       modelSettings: {
         temperature: options?.temperature,
+      },
+      providerOptions: {
+        google: {
+          thinkingConfig: {
+            thinkingBudget: 10000,
+            includeThoughts: true,
+          },
+        },
       },
     });
 

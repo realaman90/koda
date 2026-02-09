@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { fal } from '@fal-ai/client';
 import { FAL_AUDIO_MODELS } from '@/lib/types';
 
+export const maxDuration = 300;
+
 // Configure Fal client
 fal.config({
   credentials: process.env.FAL_KEY,

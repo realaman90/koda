@@ -8,6 +8,7 @@
 
 import { Agent } from '@mastra/core/agent';
 import { ANIMATION_AGENT_INSTRUCTIONS } from './instructions/animation';
+import { ORCHESTRATOR_MODEL } from '../models';
 import {
   // UI Tools
   updateTodoTool,
@@ -57,7 +58,7 @@ export const animationAgent = new Agent({
   id: 'animation-orchestrator',
   name: 'Animation Orchestrator',
   instructions: ANIMATION_AGENT_INSTRUCTIONS,
-  model: 'google/gemini-3-flash-preview',
+  model: ORCHESTRATOR_MODEL,
   tools: {
     // UI Tools
     update_todo: updateTodoTool,

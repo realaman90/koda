@@ -9,6 +9,7 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { Agent } from '@mastra/core/agent';
+import { ANIMATION_PROMPT_ENHANCER_MODEL } from '../../models';
 
 const PROMPT_ENHANCER_INSTRUCTIONS = `You are a world-class motion designer AND UI designer who has worked at Linear, Vercel, Stripe, and Apple. Your job is to transform simple animation ideas into PREMIUM, production-ready specs.
 
@@ -372,7 +373,7 @@ const promptEnhancerAgent = new Agent({
   id: 'animation-prompt-enhancer',
   name: 'animation-prompt-enhancer',
   instructions: PROMPT_ENHANCER_INSTRUCTIONS,
-  model: 'anthropic/claude-haiku-4-5',
+  model: ANIMATION_PROMPT_ENHANCER_MODEL,
 });
 
 export const enhanceAnimationPromptTool = createTool({

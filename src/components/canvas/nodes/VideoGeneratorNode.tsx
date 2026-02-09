@@ -178,6 +178,15 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
 
     updateNodeData(id, { isGenerating: true, error: undefined, progress: 0 });
 
+    // Debug: Log what we're sending
+    console.log('[VideoGenerator] Sending request:', {
+      nodeId: id,
+      model: data.model,
+      hasReferenceUrl: !!connectedInputs.referenceUrl,
+      hasFirstFrameUrl: !!connectedInputs.firstFrameUrl,
+      hasLastFrameUrl: !!connectedInputs.lastFrameUrl,
+    });
+
     try {
       const response = await fetch('/api/generate-video', {
         method: 'POST',

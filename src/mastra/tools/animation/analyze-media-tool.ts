@@ -10,6 +10,7 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { Agent } from '@mastra/core/agent';
 import { dockerProvider } from '@/lib/sandbox/docker-provider';
+import { IMAGE_ANALYZER_MODEL, VIDEO_ANALYZER_MODEL } from '../../models';
 
 type ToolContext = { requestContext?: { get: (key: string) => any; set: (key: string, value: any) => void } };
 
@@ -111,7 +112,7 @@ const imageAnalyzer = new Agent({
   name: 'image-analyzer',
   instructions: `You are an image analysis expert. Analyze images and return structured JSON for animation planning.
 Always return valid JSON matching the requested schema. Be detailed about composition, objects, and animation opportunities.`,
-  model: 'google/gemini-3-flash-preview',
+  model: IMAGE_ANALYZER_MODEL,
 });
 
 /**
@@ -122,7 +123,7 @@ const geminiVideoAnalyzer = new Agent({
   name: 'gemini-video-analyzer',
   instructions: `You are a video analysis expert. Analyze videos and return structured JSON for animation planning.
 Always return valid JSON matching the requested schema. Be detailed about timestamps, scene changes, and animation opportunities.`,
-  model: 'google/gemini-3-flash-preview',
+  model: VIDEO_ANALYZER_MODEL,
 });
 
 /**
