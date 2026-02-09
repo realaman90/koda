@@ -485,11 +485,15 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
       const styleLabel = data.style || 'cinematic';
       const needsProduct = !productRefNodeId && !!data.product?.trim();
       const needsCharacter = !characterRefNodeId && !!data.character?.trim();
-      const preStepCount = (needsProduct ? 1 : 0) + (needsCharacter ? 1 : 0);
 
-      // Position pre-step nodes centered above the scene row
+      // Total ref count includes both already-connected and to-be-created refs
+      // so positioning is consistent regardless of source
+      const totalRefCount = (productRefNodeId || needsProduct ? 1 : 0)
+                          + (characterRefNodeId || needsCharacter ? 1 : 0);
+
+      // Position ref nodes centered above the scene row
       const preStepY = storyboardY - PRE_STEP_Y_OFFSET;
-      const preStepGroupWidth = preStepCount > 1 ? PRE_STEP_H_SPACING : 0;
+      const preStepGroupWidth = totalRefCount > 1 ? PRE_STEP_H_SPACING : 0;
       const preStepStartX = sceneCenterX - preStepGroupWidth / 2;
 
       if (needsProduct) {
@@ -530,6 +534,35 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
         }
         if (preStepCharacterIndex >= 0) {
           characterRefNodeId = preStepNodeIds[preStepCharacterIndex];
+        }
+      }
+
+      // Reposition already-connected ref nodes above scene row
+      {
+        const positionChanges: { type: 'position'; id: string; position: { x: number; y: number } }[] = [];
+        let slotIndex = 0;
+
+        if (productEdge && productEdge.source) {
+          positionChanges.push({
+            type: 'position' as const,
+            id: productEdge.source,
+            position: { x: preStepStartX + slotIndex * PRE_STEP_H_SPACING, y: preStepY },
+          });
+          slotIndex++;
+        }
+
+        if (characterEdge && characterEdge.source) {
+          // If product was auto-created (not via edge), character still takes slot after product
+          const charSlot = productRefNodeId && !productEdge ? 1 : slotIndex;
+          positionChanges.push({
+            type: 'position' as const,
+            id: characterEdge.source,
+            position: { x: preStepStartX + charSlot * PRE_STEP_H_SPACING, y: preStepY },
+          });
+        }
+
+        if (positionChanges.length > 0) {
+          useCanvasStore.getState().onNodesChange(positionChanges);
         }
       }
 
