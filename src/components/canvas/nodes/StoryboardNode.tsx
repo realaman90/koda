@@ -23,7 +23,8 @@ import type {
   StoryboardDraft,
 } from '@/lib/types';
 import type { CreateNodeInput } from '@/lib/plugins/types';
-import { Clapperboard, Trash2, Sparkles, Grid3X3, ChevronRight, Image as ImageIcon, User, ArrowLeftRight, LayoutGrid, ArrowLeft } from 'lucide-react';
+import { Clapperboard, Trash2, Sparkles, Grid3X3, ChevronRight, Image as ImageIcon, User, ArrowLeftRight, LayoutGrid, ArrowLeft, Info } from 'lucide-react';
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import { ThinkingBlock, UserBubble } from '@/lib/plugins/official/agents/animation-generator/components/ChatMessages';
 import { StoryboardDraftCard } from './storyboard/StoryboardDraftCard';
@@ -758,6 +759,16 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
             >
               <ArrowLeftRight className="w-3.5 h-3.5" />
               Transition
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="w-3 h-3 text-muted-foreground/60 hover:text-muted-foreground cursor-help shrink-0" />
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="bg-zinc-800 border-zinc-700 text-zinc-200 max-w-[200px]">
+                    <p className="text-xs">Creates smooth video transitions between consecutive scenes, blending the end of one scene into the start of the next.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </button>
             <button
               onClick={() => updateField('mode', 'single-shot')}
@@ -769,6 +780,16 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
             >
               <LayoutGrid className="w-3.5 h-3.5" />
               Single Shot
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="w-3 h-3 text-muted-foreground/60 hover:text-muted-foreground cursor-help shrink-0" />
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="bg-zinc-800 border-zinc-700 text-zinc-200 max-w-[200px]">
+                    <p className="text-xs">Each scene generates an independent video clip. Best for distinct, self-contained scenes.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </button>
           </div>
           <p className="text-[10px] text-muted-foreground/80">
