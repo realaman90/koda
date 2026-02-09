@@ -23,7 +23,8 @@ import type {
   StoryboardDraft,
 } from '@/lib/types';
 import type { CreateNodeInput } from '@/lib/plugins/types';
-import { Clapperboard, Trash2, Sparkles, Grid3X3, ChevronRight, Image as ImageIcon, User, ArrowLeftRight, LayoutGrid, ArrowLeft } from 'lucide-react';
+import { Clapperboard, Trash2, Sparkles, Grid3X3, ChevronRight, Image as ImageIcon, User, ArrowLeftRight, LayoutGrid, ArrowLeft, Info } from 'lucide-react';
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import { ThinkingBlock, UserBubble } from '@/lib/plugins/official/agents/animation-generator/components/ChatMessages';
 import { StoryboardDraftCard } from './storyboard/StoryboardDraftCard';
@@ -446,9 +447,13 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
     const mode = data.mode || 'transition';
 
     try {
-      const connectedInputs = useCanvasStore.getState().getConnectedInputs(id);
-      const productImageUrl = connectedInputs.productImageUrl;
-      const characterImageUrl = connectedInputs.characterImageUrl;
+      // --- Step 1: Find connected source node IDs via edges ---
+      const storeState = useCanvasStore.getState();
+      const allEdges = storeState.edges;
+      const productEdge = allEdges.find(e => e.target === id && e.targetHandle === 'productImage');
+      const characterEdge = allEdges.find(e => e.target === id && e.targetHandle === 'characterImage');
+      let productRefNodeId: string | null = productEdge?.source ?? null;
+      let characterRefNodeId: string | null = characterEdge?.source ?? null;
 
       const viewportCenter = canvas.getViewportCenter();
       const nodeInputs: CreateNodeInput[] = [];
@@ -457,22 +462,147 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
       const VIDEO_NODE_WIDTH = 420;
       const STORYBOARD_NODE_WIDTH = 320;
       const RIGHT_MARGIN = 200;
+      const PRE_STEP_Y_OFFSET = 400; // How far above scene row pre-step nodes sit
+      const PRE_STEP_H_SPACING = 350; // Horizontal gap between side-by-side pre-step nodes
 
-      const storyboardNode = useCanvasStore.getState().nodes.find((n) => n.id === id);
+      const storyboardNode = storeState.nodes.find((n) => n.id === id);
       const storyboardRight = storyboardNode
         ? storyboardNode.position.x + STORYBOARD_NODE_WIDTH + RIGHT_MARGIN
         : viewportCenter.x;
       const storyboardY = storyboardNode?.position.y ?? viewportCenter.y;
 
-      const firstSceneReferenceUrls = [productImageUrl, characterImageUrl].filter((url): url is string => !!url);
+      // Scene startX is always the same — pre-step nodes go above, not to the left
+      const sceneStartX = storyboardRight;
+
+      // --- Step 2: Create pre-step nodes when no images are connected ---
+      // We need to know the scene layout to center them, so compute center of scene row first
+      const sceneSpacing = mode === 'single-shot' ? 450 : 380;
+      const sceneCount = activeDraft.scenes.length;
+      const sceneCenterX = sceneStartX + ((sceneCount - 1) * sceneSpacing) / 2;
+
+      const preStepNodeInputs: CreateNodeInput[] = [];
+      let preStepProductIndex = -1;
+      let preStepCharacterIndex = -1;
+      const styleLabel = data.style || 'cinematic';
+      const needsProduct = !productRefNodeId && !!data.product?.trim();
+      const needsCharacter = !characterRefNodeId && !!data.character?.trim();
+
+      // Total ref count includes both already-connected and to-be-created refs
+      // so positioning is consistent regardless of source
+      const totalRefCount = (productRefNodeId || needsProduct ? 1 : 0)
+                          + (characterRefNodeId || needsCharacter ? 1 : 0);
+
+      // Position ref nodes centered above the scene row
+      const preStepY = storyboardY - PRE_STEP_Y_OFFSET;
+      const preStepGroupWidth = totalRefCount > 1 ? PRE_STEP_H_SPACING : 0;
+      const preStepStartX = sceneCenterX - preStepGroupWidth / 2;
+
+      if (needsProduct) {
+        preStepProductIndex = preStepNodeInputs.length;
+        preStepNodeInputs.push({
+          type: 'imageGenerator',
+          position: { x: preStepStartX, y: preStepY },
+          name: 'Product Reference',
+          data: {
+            prompt: `Product photo of ${data.product!.trim()}, ${styleLabel} style, clean background, centered composition, studio lighting, high detail`,
+            model: 'nanobanana-pro',
+          },
+        });
+      }
+
+      if (needsCharacter) {
+        preStepCharacterIndex = preStepNodeInputs.length;
+        preStepNodeInputs.push({
+          type: 'imageGenerator',
+          position: {
+            x: needsProduct ? preStepStartX + PRE_STEP_H_SPACING : preStepStartX,
+            y: preStepY,
+          },
+          name: 'Character Reference',
+          data: {
+            prompt: `Portrait of ${data.character!.trim()}, ${styleLabel} style, neutral background, detailed features, professional photography`,
+            model: 'nanobanana-pro',
+          },
+        });
+      }
+
+      // Create pre-step nodes if any
+      let preStepNodeIds: string[] = [];
+      if (preStepNodeInputs.length > 0) {
+        preStepNodeIds = await canvas.createNodes(preStepNodeInputs);
+        if (preStepProductIndex >= 0) {
+          productRefNodeId = preStepNodeIds[preStepProductIndex];
+        }
+        if (preStepCharacterIndex >= 0) {
+          characterRefNodeId = preStepNodeIds[preStepCharacterIndex];
+        }
+      }
+
+      // Reposition already-connected ref nodes above scene row
+      {
+        const positionChanges: { type: 'position'; id: string; position: { x: number; y: number } }[] = [];
+        let slotIndex = 0;
+
+        if (productEdge && productEdge.source) {
+          positionChanges.push({
+            type: 'position' as const,
+            id: productEdge.source,
+            position: { x: preStepStartX + slotIndex * PRE_STEP_H_SPACING, y: preStepY },
+          });
+          slotIndex++;
+        }
+
+        if (characterEdge && characterEdge.source) {
+          // If product was auto-created (not via edge), character still takes slot after product
+          const charSlot = productRefNodeId && !productEdge ? 1 : slotIndex;
+          positionChanges.push({
+            type: 'position' as const,
+            id: characterEdge.source,
+            position: { x: preStepStartX + charSlot * PRE_STEP_H_SPACING, y: preStepY },
+          });
+        }
+
+        if (positionChanges.length > 0) {
+          useCanvasStore.getState().onNodesChange(positionChanges);
+        }
+      }
+
+      // --- Step 3: Determine refHandleCount for scene nodes ---
+      const hasProduct = !!productRefNodeId;
+      const hasCharacter = !!characterRefNodeId;
+      const refCount = (hasProduct ? 1 : 0) + (hasCharacter ? 1 : 0);
+
+      // Helper: get handle assignments for a scene
+      // Returns { productHandle, characterHandle, refHandleCount } for a given scene index
+      const getHandleAssignments = (sceneIndex: number) => {
+        // In transition mode, scene 1+ gets continuity chain on 'reference' (idx 0)
+        const hasContinuity = mode === 'transition' && sceneIndex > 0;
+
+        let productHandle: string | null = null;
+        let characterHandle: string | null = null;
+        let handleCount: number;
+
+        if (hasContinuity) {
+          // continuity chain takes 'reference' (idx 0)
+          // product gets 'ref2' (idx 1), character gets 'ref3' (idx 2)
+          if (hasProduct) productHandle = 'ref2';
+          if (hasCharacter) characterHandle = hasProduct ? 'ref3' : 'ref2';
+          handleCount = 1 + refCount; // 1 for continuity + product/character
+        } else {
+          // scene 0 or single-shot: product gets 'reference' (idx 0), character gets 'ref2' (idx 1)
+          if (hasProduct) productHandle = 'reference';
+          if (hasCharacter) characterHandle = hasProduct ? 'ref2' : 'reference';
+          handleCount = refCount;
+        }
+
+        return { productHandle, characterHandle, refHandleCount: Math.max(handleCount, 1) };
+      };
 
       if (mode === 'single-shot') {
-        const sceneCount = activeDraft.scenes.length;
-
         const HORIZONTAL_SPACING = 450;
         const VIDEO_Y_OFFSET = 350;
 
-        const startX = storyboardRight;
+        const startX = sceneStartX;
         const startY = storyboardY;
 
         const imagePositions: { x: number; y: number }[] = [];
@@ -485,7 +615,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
           };
           imagePositions.push(position);
 
-          const isFirstScene = index === 0;
+          const { refHandleCount: sceneRefCount } = getHandleAssignments(index);
           nodeInputs.push({
             type: 'imageGenerator',
             position,
@@ -493,10 +623,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
             data: {
               prompt: scene.prompt,
               model: 'nanobanana-pro',
-              ...(isFirstScene && firstSceneReferenceUrls.length > 0 && {
-                referenceUrl: firstSceneReferenceUrls[0],
-                referenceUrls: firstSceneReferenceUrls.length > 1 ? firstSceneReferenceUrls : undefined,
-              }),
+              refHandleCount: sceneRefCount,
             },
           });
         });
@@ -528,22 +655,38 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
 
         const nodeIds = await canvas.createNodes(nodeInputs);
 
+        // Image → Video edges
         for (let i = 0; i < activeDraft.scenes.length; i++) {
           const imageNodeId = nodeIds[imageNodeStartIndex + i];
           const videoNodeId = nodeIds[videoNodeStartIndex + i];
           await canvas.createEdge(imageNodeId, 'output', videoNodeId, 'reference');
         }
 
+        // --- Step 5: Product/Character → ALL scene image generators ---
+        for (let i = 0; i < activeDraft.scenes.length; i++) {
+          const imageNodeId = nodeIds[imageNodeStartIndex + i];
+          const { productHandle, characterHandle } = getHandleAssignments(i);
+          if (productRefNodeId && productHandle) {
+            await canvas.createEdge(productRefNodeId, 'output', imageNodeId, productHandle);
+          }
+          if (characterRefNodeId && characterHandle) {
+            await canvas.createEdge(characterRefNodeId, 'output', imageNodeId, characterHandle);
+          }
+        }
+
         canvas.fitView();
+        const preStepMsg = preStepNodeIds.length > 0
+          ? ` (+ ${preStepNodeIds.length} reference node${preStepNodeIds.length > 1 ? 's' : ''})`
+          : '';
         toast.success(
-          `Created ${activeDraft.scenes.length} scene nodes and ${activeDraft.scenes.length} video nodes. Click "Run All" to generate.`
+          `Created ${activeDraft.scenes.length} scene nodes and ${activeDraft.scenes.length} video nodes${preStepMsg}. Click "Run All" to generate.`
         );
       } else {
         const IMAGE_SPACING = 380;
         const VIDEO_Y_OFFSET = 450;
         const imageNodeStartIndex = nodeInputs.length;
 
-        const imageStartX = storyboardRight;
+        const imageStartX = sceneStartX;
         const imageStartY = storyboardY;
 
         const imagePositions: { x: number; y: number }[] = [];
@@ -555,7 +698,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
           };
           imagePositions.push(position);
 
-          const isFirstScene = index === 0;
+          const { refHandleCount: sceneRefCount } = getHandleAssignments(index);
           nodeInputs.push({
             type: 'imageGenerator',
             position,
@@ -563,10 +706,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
             data: {
               prompt: scene.prompt,
               model: 'nanobanana-pro',
-              ...(isFirstScene && firstSceneReferenceUrls.length > 0 && {
-                referenceUrl: firstSceneReferenceUrls[0],
-                referenceUrls: firstSceneReferenceUrls.length > 1 ? firstSceneReferenceUrls : undefined,
-              }),
+              refHandleCount: sceneRefCount,
             },
           });
         });
@@ -603,12 +743,14 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
 
         const nodeIds = await canvas.createNodes(nodeInputs);
 
+        // Continuity chain edges (scene[i] → scene[i+1] on 'reference' handle)
         for (let i = 0; i < activeDraft.scenes.length - 1; i++) {
           const sourceImageId = nodeIds[imageNodeStartIndex + i];
           const targetImageId = nodeIds[imageNodeStartIndex + i + 1];
           await canvas.createEdge(sourceImageId, 'output', targetImageId, 'reference');
         }
 
+        // Video transition edges
         const videoNodeCount = activeDraft.scenes.length - 1;
         for (let i = 0; i < videoNodeCount; i++) {
           const sourceImageId = nodeIds[imageNodeStartIndex + i];
@@ -618,15 +760,30 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
           await canvas.createEdge(targetImageId, 'output', videoNodeId, 'lastFrame');
         }
 
+        // --- Step 5: Product/Character → ALL scene image generators ---
+        for (let i = 0; i < activeDraft.scenes.length; i++) {
+          const imageNodeId = nodeIds[imageNodeStartIndex + i];
+          const { productHandle, characterHandle } = getHandleAssignments(i);
+          if (productRefNodeId && productHandle) {
+            await canvas.createEdge(productRefNodeId, 'output', imageNodeId, productHandle);
+          }
+          if (characterRefNodeId && characterHandle) {
+            await canvas.createEdge(characterRefNodeId, 'output', imageNodeId, characterHandle);
+          }
+        }
+
         canvas.fitView();
+        const preStepMsg = preStepNodeIds.length > 0
+          ? ` (+ ${preStepNodeIds.length} reference node${preStepNodeIds.length > 1 ? 's' : ''})`
+          : '';
         toast.success(
-          `Created ${activeDraft.scenes.length} scene nodes and ${videoNodeCount} video nodes. Click "Run All" to generate images, then videos.`
+          `Created ${activeDraft.scenes.length} scene nodes and ${videoNodeCount} video nodes${preStepMsg}. Click "Run All" to generate images, then videos.`
         );
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create nodes');
     }
-  }, [activeDraft, data.mode, canvas, id, generateFallbackTransition, generateFallbackMotion]);
+  }, [activeDraft, data.mode, data.product, data.character, data.style, canvas, id, generateFallbackTransition, generateFallbackMotion]);
 
   // Build sorted timeline from chat messages, completed thinking blocks, and drafts
   const timelineItems = useMemo((): TimelineItem[] => {
@@ -758,6 +915,16 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
             >
               <ArrowLeftRight className="w-3.5 h-3.5" />
               Transition
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="w-3 h-3 text-muted-foreground/60 hover:text-muted-foreground cursor-help shrink-0" />
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="bg-zinc-800 border-zinc-700 text-zinc-200 max-w-[200px]">
+                    <p className="text-xs">Creates smooth video transitions between consecutive scenes, blending the end of one scene into the start of the next.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </button>
             <button
               onClick={() => updateField('mode', 'single-shot')}
@@ -769,6 +936,16 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
             >
               <LayoutGrid className="w-3.5 h-3.5" />
               Single Shot
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="w-3 h-3 text-muted-foreground/60 hover:text-muted-foreground cursor-help shrink-0" />
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="bg-zinc-800 border-zinc-700 text-zinc-200 max-w-[200px]">
+                    <p className="text-xs">Each scene generates an independent video clip. Best for distinct, self-contained scenes.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </button>
           </div>
           <p className="text-[10px] text-muted-foreground/80">
@@ -938,7 +1115,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
       {/* Main Node Card */}
       <div
         className={`
-          w-[400px] rounded-2xl overflow-hidden flex flex-col
+          animation-node w-[400px] rounded-2xl overflow-hidden flex flex-col
           transition-[box-shadow,ring-color] duration-150
           ${selected
             ? 'ring-[2.5px] ring-indigo-500 shadow-lg shadow-indigo-500/10'
@@ -947,6 +1124,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
         `}
         style={{
           backgroundColor: 'var(--node-card-bg)',
+          border: 'none',
           '--tw-ring-color': selected ? undefined : 'var(--node-ring)',
           minHeight: data.viewState === 'chat' ? '450px' : undefined,
           maxHeight: data.viewState === 'chat' ? '620px' : undefined,

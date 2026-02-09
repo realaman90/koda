@@ -315,7 +315,7 @@ export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
       collapsible: true,
       items: pluginRegistry.getAll().map((plugin) => ({
         id: plugin.id,
-        icon: <span className="text-base leading-none">{plugin.icon}</span>,
+        icon: <plugin.icon className="w-4 h-4" />,
         label: plugin.name,
         action: () => {
           if (onPluginLaunch) {

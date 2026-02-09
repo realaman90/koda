@@ -370,14 +370,8 @@ function summarizeToolOutput(toolName: string, output: string | undefined): stri
         // Hide command output unless it's an error
         return null;
 
-      case 'sandbox_start_preview':
-        return parsed.previewUrl ? 'Preview server started' : null;
-
       case 'sandbox_screenshot':
         return parsed.imageUrl ? 'Captured screenshot' : null;
-
-      case 'render_preview':
-        return parsed.videoUrl ? 'Preview video ready' : null;
 
       case 'render_final':
         return parsed.videoUrl ? 'Final video rendered' : null;
@@ -402,10 +396,8 @@ function getFriendlyErrorMessage(toolName: string, rawError: string): string {
   // Map tool names to user-friendly error messages
   const toolErrorMessages: Record<string, string> = {
     sandbox_create: 'Setup taking longer than expected',
-    sandbox_start_preview: 'Preview server starting...',
     sandbox_run_command: 'Processing step encountered an issue',
     sandbox_write_file: 'File save issue, retrying...',
-    render_preview: 'Video render in progress...',
     render_final: 'Final render in progress...',
     generate_code: 'Code generation retry needed',
   };
@@ -442,14 +434,8 @@ function getRunningContext(toolName: string, args?: Record<string, unknown>): st
       return 'Generating animation code...';
     }
 
-    case 'render_preview':
-      return 'Capturing frames and encoding video...';
-
     case 'render_final':
-      return 'Rendering high-quality video...';
-
-    case 'sandbox_start_preview':
-      return 'Starting development server...';
+      return 'Rendering video...';
 
     default:
       return null;
@@ -1124,13 +1110,12 @@ const TOOL_ACTIVITY_TEXT: Record<string, string> = {
   sandbox_read_file: 'Reading file...',
   sandbox_run_command: 'Running command...',
   sandbox_list_files: 'Checking files...',
-  sandbox_start_preview: 'Starting preview server...',
   sandbox_screenshot: 'Capturing screenshot...',
   generate_code: 'Generating code...',
   generate_plan: 'Creating animation plan...',
   analyze_prompt: 'Analyzing your request...',
-  render_preview: 'Rendering preview...',
   render_final: 'Rendering final video...',
+  verify_animation: 'Reviewing animation quality...',
   update_todo: 'Updating progress...',
   set_thinking: 'Processing...',
 };

@@ -8,14 +8,43 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { remotionCodeGeneratorAgent } from '../../agents/remotion-code-generator-agent';
-import { dockerProvider } from '@/lib/sandbox/docker-provider';
+import { getSandboxProvider } from '@/lib/sandbox/sandbox-factory';
 import { loadRecipes } from '../../recipes';
 
 type ToolContext = { requestContext?: { get: (key: string) => any; set: (key: string, value: any) => void } };
 
-/** Resolve sandboxId: prefer input arg, fallback to requestContext */
-function resolveSandboxId(input: string | undefined, context?: ToolContext): string | undefined {
-  return input || context?.requestContext?.get('sandboxId') || undefined;
+/** Resolve sandboxId: prefer requestContext (server-set, correct), fallback to input (may be hallucinated by LLM).
+ *  If requestContext has no sandboxId and input looks hallucinated (not matching koda-sandbox-* pattern),
+ *  poll requestContext briefly — Gemini often fires sandbox_create + generate_remotion_code in parallel. */
+async function resolveSandboxId(input: string | undefined, context?: ToolContext): Promise<string | undefined> {
+  const fromCtx = context?.requestContext?.get('sandboxId') as string | undefined;
+  if (fromCtx) return fromCtx;
+
+  // If input looks like a real sandbox ID (matches Docker naming pattern), use it
+  if (input && input.startsWith('koda-sandbox-')) return input;
+
+  // Input is missing or looks hallucinated — wait for sandbox_create to populate requestContext
+  // This handles Gemini's parallel tool call pattern where code gen starts before sandbox is ready
+  if (context?.requestContext) {
+    console.log(`[generate_remotion_code] No valid sandboxId yet (input="${input}") — waiting for sandbox_create...`);
+    for (let i = 0; i < 60; i++) { // 60 × 500ms = 30s max wait
+      await new Promise(r => setTimeout(r, 500));
+      const polled = context.requestContext.get('sandboxId') as string | undefined;
+      if (polled) {
+        console.log(`[generate_remotion_code] Resolved sandboxId from requestContext after ${(i + 1) * 0.5}s: ${polled}`);
+        return polled;
+      }
+      // Check if stream was closed (abort signal)
+      const closed = context.requestContext.get('streamClosed') as boolean | undefined;
+      if (closed) {
+        console.log(`[generate_remotion_code] Stream closed while waiting for sandboxId — aborting`);
+        return undefined;
+      }
+    }
+    console.warn(`[generate_remotion_code] Timed out waiting for sandboxId after 30s`);
+  }
+
+  return input || undefined;
 }
 
 const GenerateRemotionCodeInputSchema = z.object({
@@ -111,7 +140,7 @@ This injects recipe patterns (tested code snippets) directly into the code gener
   }),
 
   execute: async (inputData, context) => {
-    const sandboxId = resolveSandboxId(inputData.sandboxId, context as ToolContext);
+    const sandboxId = await resolveSandboxId(inputData.sandboxId, context as ToolContext);
 
     // Validate sandboxId is available (critical for writing files)
     if (!sandboxId) {
@@ -126,7 +155,7 @@ This injects recipe patterns (tested code snippets) directly into the code gener
     if (inputData.task === 'modify_existing' && !inputData.currentContent && inputData.file) {
       try {
         const filePath = inputData.file.startsWith('/') ? inputData.file : `/app/${inputData.file}`;
-        const fileContent = await dockerProvider.readFile(sandboxId, filePath);
+        const fileContent = await getSandboxProvider().readFile(sandboxId, filePath);
         if (fileContent) {
           inputData = { ...inputData, currentContent: fileContent };
           console.log(`[generate_remotion_code] Auto-read ${inputData.file} (${fileContent.length} chars) for modify_existing`);
@@ -139,7 +168,7 @@ This injects recipe patterns (tested code snippets) directly into the code gener
     // For modify_existing without a specific file: read ALL src files so the subagent has full context
     if (inputData.task === 'modify_existing' && !inputData.file) {
       try {
-        const listResult = await dockerProvider.runCommand(
+        const listResult = await getSandboxProvider().runCommand(
           sandboxId,
           `find /app/src -name '*.tsx' -o -name '*.ts' | head -20`,
           { timeout: 5_000 }
@@ -148,7 +177,7 @@ This injects recipe patterns (tested code snippets) directly into the code gener
         const fileContents: string[] = [];
         for (const f of srcFiles) {
           try {
-            const content = await dockerProvider.readFile(sandboxId, f);
+            const content = await getSandboxProvider().readFile(sandboxId, f);
             if (content) {
               const relativePath = f.replace('/app/', '');
               fileContents.push(`--- ${relativePath} ---\n${content}`);
@@ -247,7 +276,7 @@ This injects recipe patterns (tested code snippets) directly into the code gener
       if (sandboxId) {
         const writeResults: Array<{ path: string; size: number }> = [];
         for (const file of files) {
-          await dockerProvider.writeFile(sandboxId, file.path, file.content);
+          await getSandboxProvider().writeFile(sandboxId, file.path, file.content);
           writeResults.push({ path: file.path, size: file.content.length });
         }
         return {
@@ -448,7 +477,13 @@ function formatRemotionCodeGenerationPrompt(params: z.infer<typeof GenerateRemot
       parts.push(`- [${mf.type}] staticFile("${remotionRef}")${mf.description ? ` — ${mf.description}` : ''}`);
     }
     parts.push(`Import: { Img, OffthreadVideo, staticFile } from 'remotion'`);
-    parts.push(`Feature these prominently — the user provided them for a reason.`);
+    parts.push(`Feature ALL of these prominently — the user provided them for a reason.`);
+    parts.push(`ROLE HINTS: Check descriptions and the design spec for assigned roles:`);
+    parts.push(`- Logo/brand → centered placement, scale-in animation, optional subtle pulse or glow, use in intro/outro`);
+    parts.push(`- Product/hero → full-screen or large showcase, smooth entrance, highlight effects`);
+    parts.push(`- Portrait → circular crop or framed, parallax motion, name/title overlay if appropriate`);
+    parts.push(`- Background → full-bleed behind content, slow pan/zoom/parallax layers`);
+    parts.push(`If the design spec assigns specific roles to files, follow those assignments exactly.`);
     parts.push(``);
   }
 
@@ -462,6 +497,21 @@ function formatRemotionCodeGenerationPrompt(params: z.infer<typeof GenerateRemot
       parts.push(``);
     }
   }
+
+  // ── Font loading guidance ──
+  parts.push(``);
+  parts.push(`## FONTS`);
+  parts.push(`Use @remotion/google-fonts for custom typography. Import pattern:`);
+  parts.push(`\`\`\``);
+  parts.push(`import { loadFont } from "@remotion/google-fonts/Inter";`);
+  parts.push(`const { fontFamily } = loadFont();`);
+  parts.push(`// Then use: style={{ fontFamily }}`);
+  parts.push(`\`\`\``);
+  parts.push(`Font module names: remove spaces from Google Font name → PascalCase.`);
+  parts.push(`Example: "Playfair Display" → PlayfairDisplay, "Space Grotesk" → SpaceGrotesk`);
+  parts.push(`SAFE fonts (guaranteed available): Inter, Roboto, Lato, Montserrat, Oswald, Raleway, Poppins, Ubuntu, Nunito, PlayfairDisplay, SpaceGrotesk, DMSans, Manrope, Sora`);
+  parts.push(`If you need a font NOT in this list, it may still work — but prefer these for reliability.`);
+  parts.push(``);
 
   // ── Output format + quality checklist ──
   parts.push(``);

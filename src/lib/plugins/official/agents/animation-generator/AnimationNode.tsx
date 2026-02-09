@@ -66,13 +66,12 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
   sandbox_read_file: 'Checking file',
   sandbox_run_command: 'Processing',
   sandbox_list_files: 'Checking files',
-  sandbox_start_preview: 'Preparing preview',
   sandbox_screenshot: 'Capturing frame',
   sandbox_create: 'Setting up workspace',
   sandbox_destroy: 'Cleaning up',
-  render_preview: 'Creating preview video',
   render_final: 'Rendering final video',
   generate_plan: 'Planning animation',
+  verify_animation: 'Checking quality',
 };
 
 /** UI tools that update state silently — not shown in the timeline */
@@ -190,6 +189,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
 
   // Design spec fields for stream context (passed to agent on every call)
   const designSpec = data.designSpec;
+  const logo = data.logo;
   const fps = data.fps;
   const resolution = data.resolution;
 
@@ -609,9 +609,16 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           };
         }
 
+        // Defensive: if versions exist but phase is still 'executing', force 'preview'
+        // This catches edge cases where render_final result handler's state update was lost
+        const resolvedPhase = (ls.phase === 'executing' && ls.versions && ls.versions.length > 0)
+          ? 'preview' as const
+          : ls.phase;
+
         updateNodeData(id, {
           state: {
             ...ls,
+            phase: resolvedPhase,
             messages: updatedMessages,
             thinkingBlocks,
             execution: ls.execution
@@ -657,10 +664,9 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           sandbox_create: 'Setting up workspace...',
           generate_remotion_code: 'Writing animation code...',
           generate_code: 'Writing animation code...',
-          sandbox_start_preview: 'Starting preview...',
           sandbox_screenshot: 'Checking the animation...',
-          render_preview: 'Rendering preview video...',
           render_final: 'Rendering final video...',
+          verify_animation: 'Reviewing your animation...',
           analyze_media: 'Analyzing your media...',
         };
         const autoLabel = TOOL_THINKING_LABELS[event.toolName];
@@ -942,45 +948,33 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           }
         }
 
-        if (event.toolName === 'sandbox_start_preview') {
-          const result = event.result as { success?: boolean; previewUrl?: string; message?: string };
-          if (result.success === false || event.isError) {
-            // Log technical details, show friendly message
-            console.error(`[AnimationNode] Preview failed:`, result.message);
-            addUserMessage('Preview is taking longer than expected. Retrying...');
-          } else if (result.previewUrl) {
-            // Append cache-busting timestamp so the iframe actually reloads
-            // (same URL string = React skips re-render = browser shows stale/broken content)
-            const bustUrl = `${result.previewUrl}?t=${Date.now()}`;
-            const now = new Date().toISOString();
-            updateNodeData(id, {
-              state: { ...ls, previewUrl: bustUrl, previewUrlTimestamp: now, previewState: 'active', updatedAt: now },
-            });
-            ls = { ...ls, previewUrl: bustUrl, previewUrlTimestamp: now, previewState: 'active' };
-            // Mark post-processing done (preview means we're past it)
-            autoMarkTodo('postprocess', 'done');
-            autoMarkTodo('render', 'active');
-          }
-        }
-
-        if (event.toolName === 'render_preview' || event.toolName === 'render_final') {
+        if (event.toolName === 'render_final') {
           console.log(`[AnimationNode] Render tool result:`, JSON.stringify(event.result, null, 2));
-          const result = event.result as { success?: boolean; videoUrl?: string; duration?: number; message?: string };
+          const result = event.result as { success?: boolean; videoUrl?: string; duration?: number; versionId?: string; message?: string };
           if (result.success === false || event.isError) {
             // Log technical details, show friendly message
             console.error(`[AnimationNode] Render failed:`, result.message);
             addUserMessage('Video rendering encountered an issue. Retrying...');
           } else if (result.videoUrl && result.videoUrl.length > 0) {
+            // Skip duplicate: if this URL (without query params) already exists in a version, don't add again.
+            // This prevents the video-ready recovery SSE from creating a duplicate when the tool-result was also received.
+            const baseUrl = result.videoUrl.split('?')[0];
+            const alreadyExists = ls.versions?.some(v => v.videoUrl.split('?')[0] === baseUrl);
+            if (alreadyExists) {
+              console.log(`[AnimationNode] Skipping duplicate video version (URL already exists): ${baseUrl.slice(0, 60)}...`);
+            } else {
             console.log(`[AnimationNode] Creating video version with URL:`, result.videoUrl);
             // Add cache-busting timestamp to prevent browser from serving stale video
             const separator = result.videoUrl.includes('?') ? '&' : '?';
-            const sandboxVideoUrl = `${result.videoUrl}${separator}t=${Date.now()}`;
+            const videoUrlWithCacheBust = `${result.videoUrl}${separator}t=${Date.now()}`;
+            const isPermanentUrl = result.videoUrl.startsWith('/api/assets/');
             const duration = result.duration || ls.plan?.totalDuration || 7;
 
-            // Immediately show the sandbox video URL (for instant feedback)
+            // Immediately show the video URL
+            // Use server-provided versionId if available (from render_final or video-ready recovery)
             const tempVersion: AnimationVersion = {
-              id: `v${Date.now()}`,
-              videoUrl: sandboxVideoUrl,
+              id: result.versionId || `v${Date.now()}`,
+              videoUrl: videoUrlWithCacheBust,
               duration,
               prompt: data.prompt || '',
               createdAt: new Date().toISOString(),
@@ -991,7 +985,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
               phase: 'preview' as const,
               versions: [...existingVersions, tempVersion],
               activeVersionId: tempVersion.id,
-              preview: { videoUrl: sandboxVideoUrl, duration },
+              preview: { videoUrl: videoUrlWithCacheBust, duration },
               previewTimestamp: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
             };
@@ -999,7 +993,8 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
               versionCount: newState.versions.length,
               activeVersionId: newState.activeVersionId,
               phase: newState.phase,
-              videoUrl: sandboxVideoUrl.slice(0, 50) + '...',
+              videoUrl: videoUrlWithCacheBust.slice(0, 50) + '...',
+              isPermanent: isPermanentUrl,
             });
             updateNodeData(id, { state: newState });
             // Force update ls reference for subsequent handlers
@@ -1007,11 +1002,14 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
             autoMarkTodo('render', 'done');
 
             // Persist video to storage in background (async)
-            // This replaces the temp sandbox URL with a permanent storage URL
+            // Skip if URL is already a permanent storage URL (from video-ready recovery)
+            if (isPermanentUrl) {
+              console.log(`[AnimationNode] Video URL is already permanent — skipping save-video`);
+            } else
             if (ls.sandboxId) {
               // Extract the file path from the sandbox URL
               // Format: /api/plugins/animation/sandbox/{id}/file?path=output/preview.mp4
-              const pathMatch = sandboxVideoUrl.match(/[?&]path=([^&]+)/);
+              const pathMatch = videoUrlWithCacheBust.match(/[?&]path=([^&]+)/);
               const filePath = pathMatch ? decodeURIComponent(pathMatch[1]) : 'output/preview.mp4';
               const versionId = tempVersion.id; // Capture for async callback
 
@@ -1026,6 +1024,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
                   nodeId: id,
                   prompt: data.prompt,
                   duration,
+                  versionId,
                 }),
               })
                 .then((res) => {
@@ -1062,6 +1061,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
             } else {
               console.warn('[AnimationNode] No sandboxId available to save video - URL will be ephemeral');
             }
+            } // close alreadyExists else
           }
         }
 
@@ -1161,6 +1161,11 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
 
   const handleDesignSpecChange = useCallback(
     (spec: AnimationNodeData['designSpec']) => updateNodeData(id, { designSpec: spec }),
+    [id, updateNodeData]
+  );
+
+  const handleLogoChange = useCallback(
+    (logo: AnimationNodeData['logo']) => updateNodeData(id, { logo }),
     [id, updateNodeData]
   );
 
@@ -1268,7 +1273,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       try {
         await streamToAgent(
           `Analyze this animation request and either ask a clarifying question (if style is unclear) or generate a plan directly:\n\n${prompt}`,
-          { nodeId: id, phase: 'idle', media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution },
+          { nodeId: id, phase: 'idle', media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution },
           callbacks
         );
         // Fallback if agent didn't use tools
@@ -1286,7 +1291,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
                 ],
                 totalDuration: 7,
                 style: 'smooth',
-                fps: 60,
+                fps: fps || 30,
               },
               planTimestamp: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
@@ -1297,7 +1302,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         // Error handled by onError callback
       }
     },
-    [id, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
+    [id, media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
   );
 
   const handleSelectStyle = useCallback(
@@ -1337,7 +1342,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       try {
         await streamToAgent(
           `Generate an animation plan for this request with style "${selectedStyle}":\n\n${data.prompt || 'Animation request'}`,
-          { nodeId: id, phase: 'question', media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution },
+          { nodeId: id, phase: 'question', media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution },
           callbacks
         );
         const latest = getLatestState();
@@ -1354,7 +1359,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
                 ],
                 totalDuration: 7,
                 style: selectedStyle,
-                fps: 60,
+                fps: fps || 30,
               },
               planTimestamp: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
@@ -1365,7 +1370,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         // Error handled by callback
       }
     },
-    [id, data.prompt, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
+    [id, data.prompt, media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
   );
 
   const handleFormSubmit = useCallback(
@@ -1420,7 +1425,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         const answersJson = JSON.stringify(answers, null, 2);
         await streamToAgent(
           `User answered the form:\n${answersJson}\n\nProceed with generating a plan based on these answers.\n\nOriginal prompt: ${data.prompt || 'Animation request'}`,
-          { nodeId: id, phase: 'question', media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution },
+          { nodeId: id, phase: 'question', media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution },
           callbacks
         );
         const latest = getLatestState();
@@ -1437,7 +1442,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
                 ],
                 totalDuration: 7,
                 style: 'smooth',
-                fps: 60,
+                fps: fps || 30,
               },
               planTimestamp: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
@@ -1448,7 +1453,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         // Error handled by callback
       }
     },
-    [id, data.prompt, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
+    [id, data.prompt, media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
   );
 
   const handleAcceptPlan = useCallback(async () => {
@@ -1520,13 +1525,13 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
 
       await streamToAgent(
         conversationMessages,
-        { nodeId: id, phase: 'executing', plan: ls.plan, todos: [], sandboxId: ls.sandboxId, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution },
+        { nodeId: id, phase: 'executing', plan: ls.plan, todos: [], sandboxId: ls.sandboxId, media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution },
         callbacks
       );
     } catch {
       // Error handled by callback
     }
-  }, [id, data.prompt, engine, media, duration, techniques, designSpec, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs, buildConversationHistory]);
+  }, [id, data.prompt, engine, media, duration, techniques, designSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs, buildConversationHistory]);
 
   const handleRejectPlan = useCallback(() => {
     updateState({ phase: 'idle', plan: undefined, question: undefined, planAccepted: undefined });
@@ -1565,7 +1570,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       try {
         await streamToAgent(
           conversationMessages,
-          { nodeId: id, phase: 'plan', plan: ls.plan, sandboxId: ls.sandboxId, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution },
+          { nodeId: id, phase: 'plan', plan: ls.plan, sandboxId: ls.sandboxId, media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution },
           callbacks
         );
         const latest = getLatestState();
@@ -1578,7 +1583,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         // Error handled by callback
       }
     },
-    [id, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs, buildConversationHistory]
+    [id, media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs, buildConversationHistory]
   );
 
   const handleSendMessage = useCallback(
@@ -1666,6 +1671,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           duration,
           techniques,
           designSpec,
+          logo,
           fps,
           resolution,
         }, callbacks);
@@ -1673,7 +1679,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         // Error handled by callback
       }
     },
-    [id, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs, buildConversationHistory]
+    [id, media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs, buildConversationHistory]
   );
 
   const handleAcceptPreview = useCallback(async () => {
@@ -1752,13 +1758,13 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     try {
       await streamToAgent(
         `Regenerate the animation from the plan. Execute all steps again.\n\nPrompt: ${data.prompt || 'Animation request'}`,
-        { nodeId: id, phase: 'executing', plan: ls.plan, todos, sandboxId: ls.sandboxId, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution },
+        { nodeId: id, phase: 'executing', plan: ls.plan, todos, sandboxId: ls.sandboxId, media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution },
         callbacks
       );
     } catch {
       // Error handled by callback
     }
-  }, [id, data.prompt, engine, media, duration, techniques, designSpec, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
+  }, [id, data.prompt, engine, media, duration, techniques, designSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
 
   const handleExportVideo = useCallback(async () => {
     const ls = getLatestState();
@@ -1800,16 +1806,16 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         [
           'The user clicked Export. Render the final video now.',
           '',
-          'Use render_preview to create the video.',
+          'Use render_final to create the video.',
           `Active sandbox: ${ls.sandboxId}`,
         ].join('\n'),
-        { nodeId: id, phase: 'executing', plan: ls.plan, sandboxId: ls.sandboxId, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution },
+        { nodeId: id, phase: 'executing', plan: ls.plan, sandboxId: ls.sandboxId, media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution },
         callbacks
       );
     } catch {
       // Error handled by callback
     }
-  }, [id, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
+  }, [id, media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
 
   const handleRetry = useCallback(() => {
     if (state.plan) {
@@ -1823,6 +1829,8 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     abortStream();
     reasoningTextRef.current = '';
     streamingTextRef.current = '';
+    // Delete code snapshot for this node (fire-and-forget)
+    fetch(`/api/plugins/animation/snapshot/${id}`, { method: 'DELETE' }).catch(() => {});
     updateNodeData(id, { prompt: '', media: [], state: createDefaultState(id) });
   }, [id, updateNodeData, abortStream]);
 
@@ -2383,6 +2391,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           duration={duration}
           techniques={techniques}
           designSpec={data.designSpec}
+          logo={data.logo}
           fps={data.fps}
           resolution={data.resolution}
           engineLocked={state.messages.length > 0}
@@ -2391,6 +2400,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           onDurationChange={handleDurationChange}
           onTechniquesChange={handleTechniquesChange}
           onDesignSpecChange={handleDesignSpecChange}
+          onLogoChange={handleLogoChange}
           onFpsChange={handleFpsChange}
           onResolutionChange={handleResolutionChange}
         />

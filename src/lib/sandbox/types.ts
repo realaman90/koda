@@ -17,6 +17,8 @@ export interface SandboxInstance {
   lastActivityAt: string;
   port?: number;
   template?: SandboxTemplate;
+  /** For E2B: full proxy URL (e.g. https://xyz.e2b.dev:5173). When set, proxy route uses this instead of localhost:port. */
+  proxyBaseUrl?: string;
 }
 
 export interface SandboxFile {
@@ -59,4 +61,16 @@ export interface SandboxProvider {
 
   /** Get sandbox status */
   getStatus(sandboxId: string): Promise<SandboxInstance | null>;
+
+  /** Export a snapshot of sandbox code as a tar.gz Buffer */
+  exportSnapshot(sandboxId: string, paths?: string[]): Promise<Buffer>;
+
+  /** Import a snapshot (tar.gz Buffer) into a sandbox */
+  importSnapshot(sandboxId: string, data: Buffer): Promise<boolean>;
+
+  /** Read raw binary data from a file in the sandbox */
+  readFileRaw(sandboxId: string, path: string): Promise<Buffer>;
+
+  /** Look up a sandbox instance by ID (includes recovery from lost in-memory state) */
+  getInstance(sandboxId: string): Promise<SandboxInstance | undefined>;
 }

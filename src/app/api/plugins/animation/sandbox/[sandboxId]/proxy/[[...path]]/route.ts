@@ -15,7 +15,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSandboxInstance } from '@/lib/sandbox/docker-provider';
+import { getSandboxInstance } from '@/lib/sandbox/sandbox-factory';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -91,7 +91,7 @@ export async function GET(
   const { sandboxId, path } = await params;
   const instance = await getSandboxInstance(sandboxId);
 
-  if (!instance || !instance.port) {
+  if (!instance || (!instance.port && !instance.proxyBaseUrl)) {
     return NextResponse.json(
       { error: 'Sandbox not found or no port allocated' },
       { status: 404 }
@@ -118,7 +118,9 @@ export async function GET(
     search = search ? `${search}&selected=MainVideo` : '?selected=MainVideo';
   }
 
-  const targetUrl = `http://localhost:${instance.port}${subPath}${search}`;
+  // E2B provides a full proxy URL; Docker uses localhost:port
+  const targetOrigin = instance.proxyBaseUrl || `http://localhost:${instance.port}`;
+  const targetUrl = `${targetOrigin}${subPath}${search}`;
 
   const proxyBase = `/api/plugins/animation/sandbox/${sandboxId}/proxy`;
 

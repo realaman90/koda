@@ -604,6 +604,153 @@ export const dockerProvider: SandboxProvider = {
       return null;
     }
   },
+
+  /**
+   * Export a snapshot of sandbox code as a tar.gz Buffer.
+   * Tars src/ and public/media/ inside the container, then copies to host.
+   */
+  async exportSnapshot(sandboxId: string, paths?: string[]): Promise<Buffer> {
+    const tarPaths = paths?.join(' ') || 'src/ public/media/';
+    // Create tarball inside the container
+    const tarResult = await execCommand(
+      'docker',
+      ['exec', sandboxId, 'sh', '-c', `cd /app && tar czf /tmp/snapshot.tar.gz --ignore-failed-read ${tarPaths} 2>/dev/null; echo "TAR_EXIT=$?"`],
+      15_000
+    );
+
+    if (!tarResult.success && !tarResult.stdout.includes('TAR_EXIT=0')) {
+      const checkTar = await execCommand(
+        'docker',
+        ['exec', sandboxId, 'sh', '-c', 'test -f /tmp/snapshot.tar.gz && echo "OK" || echo "MISSING"'],
+        5_000
+      );
+      if (checkTar.stdout.trim() !== 'OK') {
+        throw new Error(`Snapshot tar failed: ${tarResult.stderr}`);
+      }
+    }
+
+    // Read the tarball as binary from the container
+    const buffer = await new Promise<Buffer>((resolve, reject) => {
+      execFile(
+        'docker',
+        ['exec', sandboxId, 'cat', '/tmp/snapshot.tar.gz'],
+        { encoding: 'buffer' as unknown as string, maxBuffer: 100 * 1024 * 1024, timeout: 30_000 },
+        (error, stdout) => {
+          if (error) {
+            reject(new Error(`Failed to read snapshot: ${error.message}`));
+            return;
+          }
+          resolve(Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout));
+        }
+      );
+    });
+
+    // Cleanup temp file (non-critical)
+    execCommand('docker', ['exec', sandboxId, 'rm', '-f', '/tmp/snapshot.tar.gz'], 5_000).catch(() => {});
+
+    return buffer;
+  },
+
+  /**
+   * Import a snapshot (tar.gz Buffer) into a sandbox.
+   */
+  async importSnapshot(sandboxId: string, data: Buffer): Promise<boolean> {
+    // Pipe the tar.gz into the container and extract
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const proc = execFile(
+          'docker',
+          ['exec', '-i', sandboxId, 'sh', '-c', 'cat > /tmp/snapshot.tar.gz'],
+          { timeout: 30_000, maxBuffer: 100 * 1024 * 1024 },
+          (error) => {
+            if (error) reject(error);
+            else resolve();
+          }
+        );
+        proc.stdin?.write(data);
+        proc.stdin?.end();
+      });
+
+      // Extract over the template code
+      const extractResult = await execCommand(
+        'docker',
+        ['exec', sandboxId, 'sh', '-c', 'cd /app && tar xzf /tmp/snapshot.tar.gz 2>&1'],
+        15_000
+      );
+
+      // Cleanup temp file (non-critical)
+      execCommand('docker', ['exec', sandboxId, 'rm', '-f', '/tmp/snapshot.tar.gz'], 5_000).catch(() => {});
+
+      if (!extractResult.success) {
+        console.warn(`[DockerProvider] importSnapshot extract failed: ${extractResult.stderr}`);
+        return false;
+      }
+
+      return true;
+    } catch (err) {
+      console.warn(`[DockerProvider] importSnapshot failed:`, err);
+      return false;
+    }
+  },
+
+  /**
+   * Read raw binary data from a file in the sandbox.
+   */
+  async readFileRaw(sandboxId: string, path: string): Promise<Buffer> {
+    validatePath(path);
+    const containerPath = resolveContainerPath(path);
+    return new Promise((resolve, reject) => {
+      execFile(
+        'docker',
+        ['exec', sandboxId, 'cat', containerPath],
+        { encoding: 'buffer' as unknown as string, maxBuffer: 100 * 1024 * 1024, timeout: 30_000 },
+        (error, stdout) => {
+          if (error) {
+            reject(new Error(`Failed to read file: ${error.message}`));
+            return;
+          }
+          resolve(Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout));
+        }
+      );
+    });
+  },
+
+  /**
+   * Look up a sandbox instance by ID.
+   * Falls back to Docker inspect + port detection if the in-memory map is empty.
+   */
+  async getInstance(sandboxId: string): Promise<SandboxInstance | undefined> {
+    const cached = activeSandboxes.get(sandboxId);
+    if (cached) return cached;
+
+    try {
+      const { stdout } = await execAsync(
+        'docker',
+        ['inspect', '--format', '{{.State.Status}}||{{(index (index .NetworkSettings.Ports "5173/tcp") 0).HostPort}}', sandboxId],
+        5_000
+      );
+      const [status, portStr] = stdout.trim().split('||');
+      if (status !== 'running') return undefined;
+
+      const port = parseInt(portStr, 10);
+      if (isNaN(port)) return undefined;
+
+      const now = new Date().toISOString();
+      const recovered: SandboxInstance = {
+        id: sandboxId,
+        projectId: 'recovered',
+        status: 'ready',
+        createdAt: now,
+        lastActivityAt: now,
+        port,
+      };
+      activeSandboxes.set(sandboxId, recovered);
+      usedPorts.add(port);
+      return recovered;
+    } catch {
+      return undefined;
+    }
+  },
 };
 
 /**
@@ -647,68 +794,17 @@ function startIdleCleanup(): void {
 startIdleCleanup();
 
 /**
- * Look up a sandbox instance by ID. Used by API routes for proxying/file serving.
- *
- * Falls back to Docker inspect + port detection if the in-memory map is empty
- * (e.g. after a dev server restart / HMR module reload).
+ * Thin wrapper — delegates to dockerProvider.getInstance().
+ * Kept for backward compatibility with existing imports.
  */
-export async function getSandboxInstance(sandboxId: string): Promise<SandboxInstance | undefined> {
-  const cached = activeSandboxes.get(sandboxId);
-  if (cached) return cached;
-
-  // Fallback: the container may still be running but the in-memory map was lost.
-  // Ask Docker for its status and published port.
-  try {
-    const { stdout } = await execAsync(
-      'docker',
-      ['inspect', '--format', '{{.State.Status}}||{{(index (index .NetworkSettings.Ports "5173/tcp") 0).HostPort}}', sandboxId],
-      5_000
-    );
-    const [status, portStr] = stdout.trim().split('||');
-    if (status !== 'running') return undefined;
-
-    const port = parseInt(portStr, 10);
-    if (isNaN(port)) return undefined;
-
-    const now = new Date().toISOString();
-    const recovered: SandboxInstance = {
-      id: sandboxId,
-      projectId: 'recovered',
-      status: 'ready',
-      createdAt: now,
-      lastActivityAt: now,
-      port,
-    };
-    activeSandboxes.set(sandboxId, recovered);
-    usedPorts.add(port);
-    return recovered;
-  } catch {
-    return undefined;
-  }
+export function getSandboxInstance(sandboxId: string): Promise<SandboxInstance | undefined> {
+  return dockerProvider.getInstance(sandboxId);
 }
 
 /**
- * Read raw binary data from a file in the sandbox.
- * Returns a Buffer (used for serving videos/images).
+ * Thin wrapper — delegates to dockerProvider.readFileRaw().
+ * Kept for backward compatibility with existing imports.
  */
-export function readSandboxFileRaw(
-  sandboxId: string,
-  filePath: string
-): Promise<Buffer> {
-  validatePath(filePath);
-  const containerPath = resolveContainerPath(filePath);
-  return new Promise((resolve, reject) => {
-    execFile(
-      'docker',
-      ['exec', sandboxId, 'cat', containerPath],
-      { encoding: 'buffer' as unknown as string, maxBuffer: 100 * 1024 * 1024, timeout: 30_000 },
-      (error, stdout) => {
-        if (error) {
-          reject(new Error(`Failed to read file: ${error.message}`));
-          return;
-        }
-        resolve(Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout));
-      }
-    );
-  });
+export function readSandboxFileRaw(sandboxId: string, filePath: string): Promise<Buffer> {
+  return dockerProvider.readFileRaw(sandboxId, filePath);
 }

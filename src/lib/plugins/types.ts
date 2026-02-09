@@ -6,9 +6,14 @@
  * own schemas and prompts, while the AIService handles execution.
  */
 
-import type { ComponentType } from 'react';
+import type { ComponentType, SVGProps } from 'react';
 import type { z } from 'zod';
 import type { AppNode, AppEdge } from '@/lib/types';
+
+/**
+ * Icon component type - accepts className for sizing/styling
+ */
+export type IconComponent = ComponentType<{ className?: string }>;
 
 // ============================================
 // PLUGIN BASE TYPES
@@ -44,7 +49,7 @@ export interface PluginBase {
   id: string;
   name: string;
   description: string;
-  icon: string;  // Emoji or icon identifier
+  icon: IconComponent;  // Lucide icon component
   category: PluginCategory;
   author: PluginAuthor;
   version: string;

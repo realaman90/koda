@@ -137,7 +137,7 @@ export function AgentSandbox({ plugin, onClose }: AgentSandboxModalProps) {
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 shrink-0">
           <div className="flex items-center gap-2">
-            <span className="text-lg">{plugin.icon}</span>
+            <plugin.icon className="w-5 h-5 text-zinc-400" />
             <span className="text-base font-medium text-zinc-200">
               {sandboxTitle}
             </span>

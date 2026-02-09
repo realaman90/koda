@@ -8,6 +8,7 @@
  * Spec Reference: docs/ANIMATION_PLUGIN.md Part 9
  */
 
+import { Film } from 'lucide-react';
 import { pluginRegistry } from '@/lib/plugins/registry';
 import type { AgentPlugin } from '@/lib/plugins/types';
 
@@ -19,7 +20,7 @@ export const animationGeneratorPlugin: AgentPlugin = {
   id: 'animation-generator',
   name: 'Animation Generator',
   description: 'Create Theatre.js animations from text descriptions',
-  icon: '🎬',
+  icon: Film,
   category: 'planning',
   type: 'agent',
   version: '1.0.0',

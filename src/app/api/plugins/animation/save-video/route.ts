@@ -9,7 +9,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { readSandboxFileRaw, getSandboxInstance } from '@/lib/sandbox/docker-provider';
+import { readSandboxFileRaw, getSandboxInstance } from '@/lib/sandbox/sandbox-factory';
 import { getAssetStorageType } from '@/lib/assets';
 import type { SaveAssetOptions } from '@/lib/assets';
 
@@ -67,11 +67,46 @@ export async function POST(request: NextRequest) {
       savedAsset = await provider.saveFromBuffer(Buffer.from(buffer), options);
     }
 
+    // Persist version in DB (non-critical — wrapped in try/catch)
+    const versionId = body.versionId || `v${Date.now()}`;
+    try {
+      const { upsertProject, addVersion } = await import('@/lib/db/animation-queries');
+      const now = new Date();
+
+      if (nodeId) {
+        await upsertProject({
+          id: nodeId,
+          canvasId: body.canvasId,
+          engine: body.engine,
+          activeVersionId: versionId,
+          sandboxId,
+          updatedAt: now,
+          createdAt: now,
+        });
+
+        await addVersion({
+          id: versionId,
+          projectId: nodeId,
+          videoUrl: savedAsset.url,
+          snapshotKey: body.snapshotKey,
+          thumbnailUrl: thumbnailUrl || undefined,
+          prompt: prompt?.slice(0, 2000),
+          duration,
+          sizeBytes: buffer.length,
+          createdAt: now,
+        });
+      }
+    } catch (dbErr) {
+      // DB persistence is non-critical — log and continue
+      console.warn('[save-video] DB write failed (non-critical):', dbErr);
+    }
+
     return NextResponse.json({
       success: true,
       videoUrl: savedAsset.url,
       thumbnailUrl,
       assetId: savedAsset.id,
+      versionId,
       duration,
       sizeBytes: buffer.length,
     });
