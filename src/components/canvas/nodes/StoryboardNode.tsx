@@ -3,19 +3,32 @@
 /**
  * Storyboard Node
  *
- * Canvas node for generating storyboards. Renders the same UI as the
- * deprecated StoryboardSandbox modal, but directly on the canvas.
+ * Canvas node for generating storyboards with iterative chat-based refinement.
+ * Flow: Form → Generate → Chat timeline with thinking + draft cards → Refine via chat.
  */
 
-import { memo, useCallback, useState, useRef, useEffect } from 'react';
+import { memo, useCallback, useState, useRef, useEffect, useMemo } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { Button } from '@/components/ui/button';
 import { useCanvasStore } from '@/stores/canvas-store';
 import { useCanvasAPI } from '@/lib/plugins/canvas-api';
-import type { StoryboardNode as StoryboardNodeType, StoryboardNodeData, StoryboardSceneData, StoryboardStyle } from '@/lib/types';
+import type {
+  StoryboardNode as StoryboardNodeType,
+  StoryboardNodeData,
+  StoryboardSceneData,
+  StoryboardStyle,
+  StoryboardMode,
+  StoryboardChatMessage,
+  StoryboardThinkingBlock,
+  StoryboardDraft,
+} from '@/lib/types';
 import type { CreateNodeInput } from '@/lib/plugins/types';
-import { Clapperboard, Trash2, Loader2, Sparkles, Grid3X3, ChevronRight, Image as ImageIcon, User } from 'lucide-react';
+import { Clapperboard, Trash2, Sparkles, Grid3X3, ChevronRight, Image as ImageIcon, User, ArrowLeftRight, LayoutGrid, ArrowLeft, Info } from 'lucide-react';
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
+import { ThinkingBlock, UserBubble } from '@/lib/plugins/official/agents/animation-generator/components/ChatMessages';
+import { StoryboardDraftCard } from './storyboard/StoryboardDraftCard';
+import { StoryboardChatInput } from './storyboard/StoryboardChatInput';
 
 // Style options
 const STYLE_OPTIONS: { value: StoryboardStyle; label: string }[] = [
@@ -28,6 +41,12 @@ const STYLE_OPTIONS: { value: StoryboardStyle; label: string }[] = [
 
 // Scene count options
 const SCENE_COUNTS = [4, 5, 6, 8] as const;
+
+// Timeline item union for sorted rendering
+type TimelineItem =
+  | { type: 'user'; seq: number; message: StoryboardChatMessage }
+  | { type: 'thinking'; seq: number; block: StoryboardThinkingBlock }
+  | { type: 'draft'; seq: number; draft: StoryboardDraft; index: number };
 
 function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNodeType>) {
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
@@ -44,6 +63,19 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
   const [isEditingName, setIsEditingName] = useState(false);
   const [nodeName, setNodeName] = useState(data.name || 'Storyboard');
   const nameInputRef = useRef<HTMLInputElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+
+  // Sequence counter for ordering timeline items
+  const seqRef = useRef(0);
+  const nextSeq = () => ++seqRef.current;
+
+  // Abort controller for cancelling streams
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Batched reasoning accumulator (avoid updating store on every delta)
+  const reasoningBufferRef = useRef('');
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeThinkingIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (isEditingName && nameInputRef.current) {
@@ -51,6 +83,49 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
       nameInputRef.current.select();
     }
   }, [isEditingName]);
+
+  // Sync seqRef to persisted data on mount
+  useEffect(() => {
+    const allSeqs = [
+      ...(data.chatMessages || []).map((m) => m.seq),
+      ...(data.thinkingBlocks || []).map((t) => t.seq),
+      ...(data.drafts || []).map((d) => d.seq),
+    ];
+    if (allSeqs.length > 0) {
+      seqRef.current = Math.max(...allSeqs);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Backward compatibility: migrate old data.result into drafts
+  useEffect(() => {
+    if (data.result && (!data.drafts || data.drafts.length === 0)) {
+      const syntheticDraft: StoryboardDraft = {
+        id: `draft_migrated_${Date.now()}`,
+        scenes: data.result.scenes,
+        summary: data.result.summary,
+        createdAt: new Date().toISOString(),
+        seq: nextSeq(),
+      };
+      updateNodeData(id, {
+        drafts: [syntheticDraft],
+        chatPhase: 'draft-ready',
+        viewState: data.viewState === 'preview' ? 'chat' : data.viewState,
+        // Clear old fields
+        result: undefined,
+        thinkingText: undefined,
+        reasoningText: undefined,
+        thinkingStartedAt: undefined,
+        isStreaming: undefined,
+      });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-scroll chat to bottom when new items appear
+  useEffect(() => {
+    if (data.viewState === 'chat' && chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
+  }, [data.viewState, data.chatMessages?.length, data.thinkingBlocks?.length, data.drafts?.length, data.chatPhase]);
 
   const handleNameSubmit = useCallback(() => {
     setIsEditingName(false);
@@ -72,180 +147,675 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
   // Validation
   const isValid = (data.product?.trim().length ?? 0) > 0 && (data.concept?.trim().length ?? 0) > 0;
 
-  // Generate storyboard
-  const handleGenerate = useCallback(async () => {
-    if (!isValid) return;
+  // Helper to flush batched reasoning to store
+  const flushReasoning = useCallback(() => {
+    if (flushTimerRef.current) {
+      clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
+    const thinkingId = activeThinkingIdRef.current;
+    const buffered = reasoningBufferRef.current;
+    if (!thinkingId || !buffered) return;
 
-    updateNodeData(id, { viewState: 'loading', error: undefined });
+    const currentNode = useCanvasStore.getState().nodes.find((n) => n.id === id);
+    if (!currentNode) return;
+    const nodeData = currentNode.data as StoryboardNodeData;
+    const blocks = [...(nodeData.thinkingBlocks || [])];
+    const idx = blocks.findIndex((b) => b.id === thinkingId);
+    if (idx >= 0) {
+      blocks[idx] = { ...blocks[idx], reasoning: buffered };
+      updateNodeData(id, { thinkingBlocks: blocks });
+    }
+  }, [id, updateNodeData]);
+
+  // Stream SSE from the storyboard API
+  const streamGeneration = useCallback(async (
+    body: Record<string, unknown>,
+    thinkingLabel: string,
+  ) => {
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    const thinkingId = `thinking_${Date.now()}`;
+    const startedAt = new Date().toISOString();
+    activeThinkingIdRef.current = thinkingId;
+    reasoningBufferRef.current = '';
+
+    // Add thinking block
+    const currentNode = useCanvasStore.getState().nodes.find((n) => n.id === id);
+    const nodeData = currentNode?.data as StoryboardNodeData | undefined;
+    const existingBlocks = nodeData?.thinkingBlocks || [];
+    const newThinking: StoryboardThinkingBlock = {
+      id: thinkingId,
+      label: thinkingLabel,
+      startedAt,
+      seq: nextSeq(),
+    };
+
+    updateNodeData(id, {
+      thinkingBlocks: [...existingBlocks, newThinking],
+      chatPhase: 'streaming',
+    });
 
     try {
-      const input = {
-        product: data.product.trim(),
-        character: data.character?.trim() || undefined,
-        concept: data.concept.trim(),
-        sceneCount: data.sceneCount,
-        style: data.style,
-      };
-
       const response = await fetch('/api/plugins/storyboard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
+        body: JSON.stringify(body),
+        signal: controller.signal,
       });
 
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Generation failed');
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        throw new Error(errorBody.error || `HTTP ${response.status}`);
       }
 
-      updateNodeData(id, {
-        viewState: 'preview',
-        result: { scenes: result.scenes, summary: result.summary },
-      });
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No response stream');
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const jsonStr = line.slice(6).trim();
+          if (!jsonStr) continue;
+
+          let event: { type: string; text?: string; error?: string; success?: boolean; scenes?: unknown[]; summary?: string };
+          try {
+            event = JSON.parse(jsonStr);
+          } catch {
+            continue;
+          }
+
+          switch (event.type) {
+            case 'reasoning-delta': {
+              reasoningBufferRef.current += event.text || '';
+              // Batch flush every 100ms
+              if (!flushTimerRef.current) {
+                flushTimerRef.current = setTimeout(flushReasoning, 100);
+              }
+              break;
+            }
+            case 'result': {
+              // Final flush of reasoning
+              flushReasoning();
+
+              if (event.success && event.scenes) {
+                const scenes = event.scenes as StoryboardSceneData[];
+                const summary = event.summary || '';
+                const draftId = `draft_${Date.now()}`;
+                const endedAt = new Date().toISOString();
+
+                // Get latest state
+                const latestNode = useCanvasStore.getState().nodes.find((n) => n.id === id);
+                const latestData = latestNode?.data as StoryboardNodeData | undefined;
+                const currentBlocks = [...(latestData?.thinkingBlocks || [])];
+                const currentDrafts = [...(latestData?.drafts || [])];
+
+                // Finalize thinking block
+                const tIdx = currentBlocks.findIndex((b) => b.id === thinkingId);
+                if (tIdx >= 0) {
+                  currentBlocks[tIdx] = { ...currentBlocks[tIdx], endedAt };
+                }
+
+                // Add draft
+                const newDraft: StoryboardDraft = {
+                  id: draftId,
+                  scenes,
+                  summary,
+                  createdAt: endedAt,
+                  seq: nextSeq(),
+                };
+                currentDrafts.push(newDraft);
+
+                updateNodeData(id, {
+                  thinkingBlocks: currentBlocks,
+                  drafts: currentDrafts,
+                  chatPhase: 'draft-ready',
+                  error: undefined,
+                });
+              } else {
+                throw new Error('Invalid result from AI service');
+              }
+              return;
+            }
+            case 'error': {
+              throw new Error(event.error || 'Generation failed');
+            }
+          }
+        }
+      }
+
+      // Stream ended without a result event
+      const checkNode = useCanvasStore.getState().nodes.find((n) => n.id === id);
+      const checkData = checkNode?.data as StoryboardNodeData | undefined;
+      if (checkData?.chatPhase === 'streaming') {
+        throw new Error('Stream ended without result');
+      }
     } catch (err) {
+      if ((err as Error).name === 'AbortError') {
+        // User aborted — finalize thinking block and go to draft-ready
+        flushReasoning();
+        const latestNode = useCanvasStore.getState().nodes.find((n) => n.id === id);
+        const latestData = latestNode?.data as StoryboardNodeData | undefined;
+        const currentBlocks = [...(latestData?.thinkingBlocks || [])];
+        const tIdx = currentBlocks.findIndex((b) => b.id === thinkingId);
+        if (tIdx >= 0) {
+          currentBlocks[tIdx] = { ...currentBlocks[tIdx], endedAt: new Date().toISOString() };
+        }
+        updateNodeData(id, {
+          thinkingBlocks: currentBlocks,
+          chatPhase: (latestData?.drafts?.length ?? 0) > 0 ? 'draft-ready' : 'idle',
+        });
+        return;
+      }
+
+      flushReasoning();
+      // Finalize thinking block
+      const latestNode = useCanvasStore.getState().nodes.find((n) => n.id === id);
+      const latestData = latestNode?.data as StoryboardNodeData | undefined;
+      const currentBlocks = [...(latestData?.thinkingBlocks || [])];
+      const tIdx = currentBlocks.findIndex((b) => b.id === thinkingId);
+      if (tIdx >= 0) {
+        currentBlocks[tIdx] = { ...currentBlocks[tIdx], endedAt: new Date().toISOString() };
+      }
       updateNodeData(id, {
-        viewState: 'form',
+        thinkingBlocks: currentBlocks,
+        chatPhase: 'error',
         error: err instanceof Error ? err.message : 'Generation failed',
       });
+    } finally {
+      activeThinkingIdRef.current = null;
+      abortRef.current = null;
     }
-  }, [id, data.product, data.character, data.concept, data.sceneCount, data.style, isValid, updateNodeData]);
+  }, [id, updateNodeData, flushReasoning]);
+
+  // Initial generation from form
+  const handleGenerate = useCallback(async () => {
+    if (!isValid) return;
+
+    const mode = data.mode || 'transition';
+
+    // Synthesize user message from form fields
+    const characterLine = data.character?.trim() ? ` with character: ${data.character.trim()}` : '';
+    const userContent = `Generate a ${data.sceneCount}-scene ${data.style} storyboard for: ${data.product.trim()}${characterLine}. Concept: ${data.concept.trim()}`;
+    const userMsg: StoryboardChatMessage = {
+      id: `msg_${Date.now()}`,
+      role: 'user',
+      content: userContent,
+      timestamp: new Date().toISOString(),
+      seq: nextSeq(),
+    };
+
+    // Transition to chat view
+    updateNodeData(id, {
+      viewState: 'chat',
+      chatMessages: [...(data.chatMessages || []), userMsg],
+      error: undefined,
+    });
+
+    const input = {
+      product: data.product.trim(),
+      character: data.character?.trim() || undefined,
+      concept: data.concept.trim(),
+      sceneCount: data.sceneCount,
+      style: data.style,
+      mode,
+    };
+
+    await streamGeneration(input, 'Generating storyboard');
+  }, [id, data, isValid, updateNodeData, streamGeneration]);
+
+  // Refinement from chat input
+  const handleRefinement = useCallback(async (feedback: string) => {
+    const latestNode = useCanvasStore.getState().nodes.find((n) => n.id === id);
+    const latestData = latestNode?.data as StoryboardNodeData | undefined;
+    const drafts = latestData?.drafts || [];
+    if (drafts.length === 0) return;
+
+    const latestDraft = drafts[drafts.length - 1];
+    const mode = data.mode || 'transition';
+
+    // Add user message
+    const userMsg: StoryboardChatMessage = {
+      id: `msg_${Date.now()}`,
+      role: 'user',
+      content: feedback,
+      timestamp: new Date().toISOString(),
+      seq: nextSeq(),
+    };
+
+    const currentMessages = latestData?.chatMessages || [];
+    updateNodeData(id, {
+      chatMessages: [...currentMessages, userMsg],
+    });
+
+    // Build refinement request
+    const body = {
+      previousDraft: {
+        scenes: latestDraft.scenes,
+        summary: latestDraft.summary,
+      },
+      feedback,
+      mode,
+      product: data.product.trim(),
+      character: data.character?.trim() || undefined,
+      concept: data.concept.trim(),
+      sceneCount: data.sceneCount,
+      style: data.style,
+    };
+
+    await streamGeneration(body, 'Refining storyboard');
+  }, [id, data, updateNodeData, streamGeneration]);
+
+  // Stop streaming
+  const handleStop = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
 
   // Helper function to generate fallback transition prompt
-  const generateFallbackTransition = (fromScene: StoryboardSceneData, toScene: StoryboardSceneData): string => {
+  const generateFallbackTransition = useCallback((fromScene: StoryboardSceneData, toScene: StoryboardSceneData): string => {
     return `Cinematic transition from "${fromScene.title}" to "${toScene.title}". ${fromScene.camera} transitioning smoothly, maintaining ${fromScene.mood} atmosphere.`;
-  };
+  }, []);
 
-  // Create nodes on canvas
+  // Helper function to generate fallback motion prompt for single-shot mode
+  const generateFallbackMotion = useCallback((scene: StoryboardSceneData): string => {
+    return `${scene.description} ${scene.camera}, ${scene.mood} atmosphere.`;
+  }, []);
+
+  // Get the active draft (latest or explicitly selected)
+  const activeDraft = useMemo(() => {
+    const drafts = data.drafts || [];
+    if (drafts.length === 0) return null;
+    const idx = data.activeDraftIndex ?? drafts.length - 1;
+    return drafts[idx] || drafts[drafts.length - 1];
+  }, [data.drafts, data.activeDraftIndex]);
+
+  // Create nodes on canvas from the active draft
   const handleCreateOnCanvas = useCallback(async () => {
-    if (!data.result) return;
+    if (!activeDraft) return;
+
+    const mode = data.mode || 'transition';
 
     try {
-      // Get connected product/character images
-      const connectedInputs = useCanvasStore.getState().getConnectedInputs(id);
-      const productImageUrl = connectedInputs.productImageUrl;
-      const characterImageUrl = connectedInputs.characterImageUrl;
+      // --- Step 1: Find connected source node IDs via edges ---
+      const storeState = useCanvasStore.getState();
+      const allEdges = storeState.edges;
+      const productEdge = allEdges.find(e => e.target === id && e.targetHandle === 'productImage');
+      const characterEdge = allEdges.find(e => e.target === id && e.targetHandle === 'characterImage');
+      let productRefNodeId: string | null = productEdge?.source ?? null;
+      let characterRefNodeId: string | null = characterEdge?.source ?? null;
 
       const viewportCenter = canvas.getViewportCenter();
       const nodeInputs: CreateNodeInput[] = [];
 
-      // Track the starting index for image nodes
-      const imageNodeStartIndex = nodeInputs.length;
-
-      // Layout constants
       const IMAGE_NODE_WIDTH = 280;
       const VIDEO_NODE_WIDTH = 420;
-      const IMAGE_SPACING = 380;
-      const VIDEO_Y_OFFSET = 450;
+      const STORYBOARD_NODE_WIDTH = 320;
+      const RIGHT_MARGIN = 200;
+      const PRE_STEP_Y_OFFSET = 400; // How far above scene row pre-step nodes sit
+      const PRE_STEP_H_SPACING = 350; // Horizontal gap between side-by-side pre-step nodes
 
-      // Calculate starting X to center the layout
-      const totalImageWidth = (data.result.scenes.length - 1) * IMAGE_SPACING + IMAGE_NODE_WIDTH;
-      const imageStartX = viewportCenter.x - totalImageWidth / 2;
-      const imageStartY = viewportCenter.y - 200;
+      const storyboardNode = storeState.nodes.find((n) => n.id === id);
+      const storyboardRight = storyboardNode
+        ? storyboardNode.position.x + STORYBOARD_NODE_WIDTH + RIGHT_MARGIN
+        : viewportCenter.x;
+      const storyboardY = storyboardNode?.position.y ?? viewportCenter.y;
 
-      // Store image positions for video node placement
-      const imagePositions: { x: number; y: number }[] = [];
+      // Scene startX is always the same — pre-step nodes go above, not to the left
+      const sceneStartX = storyboardRight;
 
-      // Build reference URLs for the first scene
-      const firstSceneReferenceUrls = [productImageUrl, characterImageUrl].filter((url): url is string => !!url);
+      // --- Step 2: Create pre-step nodes when no images are connected ---
+      // We need to know the scene layout to center them, so compute center of scene row first
+      const sceneSpacing = mode === 'single-shot' ? 450 : 380;
+      const sceneCount = activeDraft.scenes.length;
+      const sceneCenterX = sceneStartX + ((sceneCount - 1) * sceneSpacing) / 2;
 
-      // Create image generator nodes in a horizontal row
-      data.result.scenes.forEach((scene, index) => {
-        const position = {
-          x: imageStartX + index * IMAGE_SPACING,
-          y: imageStartY,
-        };
-        imagePositions.push(position);
+      const preStepNodeInputs: CreateNodeInput[] = [];
+      let preStepProductIndex = -1;
+      let preStepCharacterIndex = -1;
+      const styleLabel = data.style || 'cinematic';
+      const needsProduct = !productRefNodeId && !!data.product?.trim();
+      const needsCharacter = !characterRefNodeId && !!data.character?.trim();
 
-        // Only the first scene gets the product/character image references
-        // Subsequent scenes will get their reference from the previous scene via chain connections
-        const isFirstScene = index === 0;
+      // Total ref count includes both already-connected and to-be-created refs
+      // so positioning is consistent regardless of source
+      const totalRefCount = (productRefNodeId || needsProduct ? 1 : 0)
+                          + (characterRefNodeId || needsCharacter ? 1 : 0);
 
-        nodeInputs.push({
+      // Position ref nodes centered above the scene row
+      const preStepY = storyboardY - PRE_STEP_Y_OFFSET;
+      const preStepGroupWidth = totalRefCount > 1 ? PRE_STEP_H_SPACING : 0;
+      const preStepStartX = sceneCenterX - preStepGroupWidth / 2;
+
+      if (needsProduct) {
+        preStepProductIndex = preStepNodeInputs.length;
+        preStepNodeInputs.push({
           type: 'imageGenerator',
-          position,
-          name: `Scene ${scene.number}: ${scene.title}`,
+          position: { x: preStepStartX, y: preStepY },
+          name: 'Product Reference',
           data: {
-            prompt: scene.prompt,
+            prompt: `Product photo of ${data.product!.trim()}, ${styleLabel} style, clean background, centered composition, studio lighting, high detail`,
             model: 'nanobanana-pro',
-            // Pass reference images to first scene only
-            ...(isFirstScene && firstSceneReferenceUrls.length > 0 && {
-              referenceUrl: firstSceneReferenceUrls[0],
-              referenceUrls: firstSceneReferenceUrls.length > 1 ? firstSceneReferenceUrls : undefined,
-            }),
           },
         });
-      });
+      }
 
-      // Track the starting index for video nodes
-      const videoNodeStartIndex = nodeInputs.length;
-
-      // Create video generator nodes between consecutive image pairs
-      for (let i = 0; i < data.result.scenes.length - 1; i++) {
-        const sourcePos = imagePositions[i];
-        const targetPos = imagePositions[i + 1];
-        const currentScene = data.result.scenes[i];
-        const nextScene = data.result.scenes[i + 1];
-
-        // Position video node below and centered between source and target image nodes
-        const videoPosition = {
-          x: (sourcePos.x + targetPos.x) / 2 + (IMAGE_NODE_WIDTH - VIDEO_NODE_WIDTH) / 2,
-          y: imageStartY + VIDEO_Y_OFFSET,
-        };
-
-        // Use AI-generated transition or fallback
-        const transitionPrompt = currentScene.transition || generateFallbackTransition(currentScene, nextScene);
-
-        nodeInputs.push({
-          type: 'videoGenerator',
-          position: videoPosition,
-          name: `Transition ${i + 1}`,
+      if (needsCharacter) {
+        preStepCharacterIndex = preStepNodeInputs.length;
+        preStepNodeInputs.push({
+          type: 'imageGenerator',
+          position: {
+            x: needsProduct ? preStepStartX + PRE_STEP_H_SPACING : preStepStartX,
+            y: preStepY,
+          },
+          name: 'Character Reference',
           data: {
-            prompt: transitionPrompt,
-            model: 'veo-3.1-flf',
-            aspectRatio: '16:9',
-            duration: 4,
-            resolution: '720p',
-            generateAudio: true,
+            prompt: `Portrait of ${data.character!.trim()}, ${styleLabel} style, neutral background, detailed features, professional photography`,
+            model: 'nanobanana-pro',
           },
         });
       }
 
-      // Create all nodes
-      const nodeIds = await canvas.createNodes(nodeInputs);
-
-      // Create edges connecting image nodes in a chain (for style reference)
-      for (let i = 0; i < data.result.scenes.length - 1; i++) {
-        const sourceImageId = nodeIds[imageNodeStartIndex + i];
-        const targetImageId = nodeIds[imageNodeStartIndex + i + 1];
-        await canvas.createEdge(sourceImageId, 'output', targetImageId, 'reference');
+      // Create pre-step nodes if any
+      let preStepNodeIds: string[] = [];
+      if (preStepNodeInputs.length > 0) {
+        preStepNodeIds = await canvas.createNodes(preStepNodeInputs);
+        if (preStepProductIndex >= 0) {
+          productRefNodeId = preStepNodeIds[preStepProductIndex];
+        }
+        if (preStepCharacterIndex >= 0) {
+          characterRefNodeId = preStepNodeIds[preStepCharacterIndex];
+        }
       }
 
-      // Create edges connecting image nodes to video nodes
-      const videoNodeCount = data.result.scenes.length - 1;
-      for (let i = 0; i < videoNodeCount; i++) {
-        const sourceImageId = nodeIds[imageNodeStartIndex + i];
-        const targetImageId = nodeIds[imageNodeStartIndex + i + 1];
-        const videoNodeId = nodeIds[videoNodeStartIndex + i];
+      // Reposition already-connected ref nodes above scene row
+      {
+        const positionChanges: { type: 'position'; id: string; position: { x: number; y: number } }[] = [];
+        let slotIndex = 0;
 
-        // Source image -> firstFrame
-        await canvas.createEdge(sourceImageId, 'output', videoNodeId, 'firstFrame');
-        // Target image -> lastFrame
-        await canvas.createEdge(targetImageId, 'output', videoNodeId, 'lastFrame');
+        if (productEdge && productEdge.source) {
+          positionChanges.push({
+            type: 'position' as const,
+            id: productEdge.source,
+            position: { x: preStepStartX + slotIndex * PRE_STEP_H_SPACING, y: preStepY },
+          });
+          slotIndex++;
+        }
+
+        if (characterEdge && characterEdge.source) {
+          // If product was auto-created (not via edge), character still takes slot after product
+          const charSlot = productRefNodeId && !productEdge ? 1 : slotIndex;
+          positionChanges.push({
+            type: 'position' as const,
+            id: characterEdge.source,
+            position: { x: preStepStartX + charSlot * PRE_STEP_H_SPACING, y: preStepY },
+          });
+        }
+
+        if (positionChanges.length > 0) {
+          useCanvasStore.getState().onNodesChange(positionChanges);
+        }
       }
 
-      // Fit view to show all nodes
-      canvas.fitView();
+      // --- Step 3: Determine refHandleCount for scene nodes ---
+      const hasProduct = !!productRefNodeId;
+      const hasCharacter = !!characterRefNodeId;
+      const refCount = (hasProduct ? 1 : 0) + (hasCharacter ? 1 : 0);
 
-      // Notify success
-      const videoCount = data.result.scenes.length - 1;
-      toast.success(
-        `Created ${data.result.scenes.length} scene nodes and ${videoCount} video nodes. Click "Run All" to generate images, then videos.`
-      );
+      // Helper: get handle assignments for a scene
+      // Returns { productHandle, characterHandle, refHandleCount } for a given scene index
+      const getHandleAssignments = (sceneIndex: number) => {
+        // In transition mode, scene 1+ gets continuity chain on 'reference' (idx 0)
+        const hasContinuity = mode === 'transition' && sceneIndex > 0;
+
+        let productHandle: string | null = null;
+        let characterHandle: string | null = null;
+        let handleCount: number;
+
+        if (hasContinuity) {
+          // continuity chain takes 'reference' (idx 0)
+          // product gets 'ref2' (idx 1), character gets 'ref3' (idx 2)
+          if (hasProduct) productHandle = 'ref2';
+          if (hasCharacter) characterHandle = hasProduct ? 'ref3' : 'ref2';
+          handleCount = 1 + refCount; // 1 for continuity + product/character
+        } else {
+          // scene 0 or single-shot: product gets 'reference' (idx 0), character gets 'ref2' (idx 1)
+          if (hasProduct) productHandle = 'reference';
+          if (hasCharacter) characterHandle = hasProduct ? 'ref2' : 'reference';
+          handleCount = refCount;
+        }
+
+        return { productHandle, characterHandle, refHandleCount: Math.max(handleCount, 1) };
+      };
+
+      if (mode === 'single-shot') {
+        const HORIZONTAL_SPACING = 450;
+        const VIDEO_Y_OFFSET = 350;
+
+        const startX = sceneStartX;
+        const startY = storyboardY;
+
+        const imagePositions: { x: number; y: number }[] = [];
+        const imageNodeStartIndex = nodeInputs.length;
+
+        activeDraft.scenes.forEach((scene, index) => {
+          const position = {
+            x: startX + index * HORIZONTAL_SPACING,
+            y: startY,
+          };
+          imagePositions.push(position);
+
+          const { refHandleCount: sceneRefCount } = getHandleAssignments(index);
+          nodeInputs.push({
+            type: 'imageGenerator',
+            position,
+            name: `Scene ${scene.number}: ${scene.title}`,
+            data: {
+              prompt: scene.prompt,
+              model: 'nanobanana-pro',
+              refHandleCount: sceneRefCount,
+            },
+          });
+        });
+
+        const videoNodeStartIndex = nodeInputs.length;
+
+        activeDraft.scenes.forEach((scene, index) => {
+          const imagePos = imagePositions[index];
+          const videoPosition = {
+            x: imagePos.x + (IMAGE_NODE_WIDTH - VIDEO_NODE_WIDTH) / 2,
+            y: startY + VIDEO_Y_OFFSET,
+          };
+          const motionPrompt = scene.motion || generateFallbackMotion(scene);
+
+          nodeInputs.push({
+            type: 'videoGenerator',
+            position: videoPosition,
+            name: `Video ${scene.number}: ${scene.title}`,
+            data: {
+              prompt: motionPrompt,
+              model: 'veo-3.1-i2v',
+              aspectRatio: '16:9',
+              duration: 8,
+              resolution: '720p',
+              generateAudio: true,
+            },
+          });
+        });
+
+        const nodeIds = await canvas.createNodes(nodeInputs);
+
+        // Image → Video edges
+        for (let i = 0; i < activeDraft.scenes.length; i++) {
+          const imageNodeId = nodeIds[imageNodeStartIndex + i];
+          const videoNodeId = nodeIds[videoNodeStartIndex + i];
+          await canvas.createEdge(imageNodeId, 'output', videoNodeId, 'reference');
+        }
+
+        // --- Step 5: Product/Character → ALL scene image generators ---
+        for (let i = 0; i < activeDraft.scenes.length; i++) {
+          const imageNodeId = nodeIds[imageNodeStartIndex + i];
+          const { productHandle, characterHandle } = getHandleAssignments(i);
+          if (productRefNodeId && productHandle) {
+            await canvas.createEdge(productRefNodeId, 'output', imageNodeId, productHandle);
+          }
+          if (characterRefNodeId && characterHandle) {
+            await canvas.createEdge(characterRefNodeId, 'output', imageNodeId, characterHandle);
+          }
+        }
+
+        canvas.fitView();
+        const preStepMsg = preStepNodeIds.length > 0
+          ? ` (+ ${preStepNodeIds.length} reference node${preStepNodeIds.length > 1 ? 's' : ''})`
+          : '';
+        toast.success(
+          `Created ${activeDraft.scenes.length} scene nodes and ${activeDraft.scenes.length} video nodes${preStepMsg}. Click "Run All" to generate.`
+        );
+      } else {
+        const IMAGE_SPACING = 380;
+        const VIDEO_Y_OFFSET = 450;
+        const imageNodeStartIndex = nodeInputs.length;
+
+        const imageStartX = sceneStartX;
+        const imageStartY = storyboardY;
+
+        const imagePositions: { x: number; y: number }[] = [];
+
+        activeDraft.scenes.forEach((scene, index) => {
+          const position = {
+            x: imageStartX + index * IMAGE_SPACING,
+            y: imageStartY,
+          };
+          imagePositions.push(position);
+
+          const { refHandleCount: sceneRefCount } = getHandleAssignments(index);
+          nodeInputs.push({
+            type: 'imageGenerator',
+            position,
+            name: `Scene ${scene.number}: ${scene.title}`,
+            data: {
+              prompt: scene.prompt,
+              model: 'nanobanana-pro',
+              refHandleCount: sceneRefCount,
+            },
+          });
+        });
+
+        const videoNodeStartIndex = nodeInputs.length;
+
+        for (let i = 0; i < activeDraft.scenes.length - 1; i++) {
+          const sourcePos = imagePositions[i];
+          const targetPos = imagePositions[i + 1];
+          const currentScene = activeDraft.scenes[i];
+          const nextScene = activeDraft.scenes[i + 1];
+
+          const videoPosition = {
+            x: (sourcePos.x + targetPos.x) / 2 + (IMAGE_NODE_WIDTH - VIDEO_NODE_WIDTH) / 2,
+            y: imageStartY + VIDEO_Y_OFFSET,
+          };
+
+          const transitionPrompt = currentScene.transition || generateFallbackTransition(currentScene, nextScene);
+
+          nodeInputs.push({
+            type: 'videoGenerator',
+            position: videoPosition,
+            name: `Transition ${i + 1}`,
+            data: {
+              prompt: transitionPrompt,
+              model: 'veo-3.1-flf',
+              aspectRatio: '16:9',
+              duration: 4,
+              resolution: '720p',
+              generateAudio: true,
+            },
+          });
+        }
+
+        const nodeIds = await canvas.createNodes(nodeInputs);
+
+        // Continuity chain edges (scene[i] → scene[i+1] on 'reference' handle)
+        for (let i = 0; i < activeDraft.scenes.length - 1; i++) {
+          const sourceImageId = nodeIds[imageNodeStartIndex + i];
+          const targetImageId = nodeIds[imageNodeStartIndex + i + 1];
+          await canvas.createEdge(sourceImageId, 'output', targetImageId, 'reference');
+        }
+
+        // Video transition edges
+        const videoNodeCount = activeDraft.scenes.length - 1;
+        for (let i = 0; i < videoNodeCount; i++) {
+          const sourceImageId = nodeIds[imageNodeStartIndex + i];
+          const targetImageId = nodeIds[imageNodeStartIndex + i + 1];
+          const videoNodeId = nodeIds[videoNodeStartIndex + i];
+          await canvas.createEdge(sourceImageId, 'output', videoNodeId, 'firstFrame');
+          await canvas.createEdge(targetImageId, 'output', videoNodeId, 'lastFrame');
+        }
+
+        // --- Step 5: Product/Character → ALL scene image generators ---
+        for (let i = 0; i < activeDraft.scenes.length; i++) {
+          const imageNodeId = nodeIds[imageNodeStartIndex + i];
+          const { productHandle, characterHandle } = getHandleAssignments(i);
+          if (productRefNodeId && productHandle) {
+            await canvas.createEdge(productRefNodeId, 'output', imageNodeId, productHandle);
+          }
+          if (characterRefNodeId && characterHandle) {
+            await canvas.createEdge(characterRefNodeId, 'output', imageNodeId, characterHandle);
+          }
+        }
+
+        canvas.fitView();
+        const preStepMsg = preStepNodeIds.length > 0
+          ? ` (+ ${preStepNodeIds.length} reference node${preStepNodeIds.length > 1 ? 's' : ''})`
+          : '';
+        toast.success(
+          `Created ${activeDraft.scenes.length} scene nodes and ${videoNodeCount} video nodes${preStepMsg}. Click "Run All" to generate images, then videos.`
+        );
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create nodes');
     }
-  }, [data.result, canvas]);
+  }, [activeDraft, data.mode, data.product, data.character, data.style, canvas, id, generateFallbackTransition, generateFallbackMotion]);
+
+  // Build sorted timeline from chat messages, completed thinking blocks, and drafts
+  const timelineItems = useMemo((): TimelineItem[] => {
+    const items: TimelineItem[] = [];
+
+    // User messages
+    for (const msg of data.chatMessages || []) {
+      items.push({ type: 'user', seq: msg.seq, message: msg });
+    }
+
+    // Completed thinking blocks (not the currently-streaming one)
+    for (const block of data.thinkingBlocks || []) {
+      if (block.endedAt) {
+        items.push({ type: 'thinking', seq: block.seq, block });
+      }
+    }
+
+    // Drafts
+    (data.drafts || []).forEach((draft, index) => {
+      items.push({ type: 'draft', seq: draft.seq, draft, index });
+    });
+
+    items.sort((a, b) => a.seq - b.seq);
+    return items;
+  }, [data.chatMessages, data.thinkingBlocks, data.drafts]);
+
+  // Currently streaming thinking block
+  const streamingThinking = useMemo(() => {
+    if (data.chatPhase !== 'streaming') return null;
+    const blocks = data.thinkingBlocks || [];
+    return blocks.find((b) => !b.endedAt) || null;
+  }, [data.chatPhase, data.thinkingBlocks]);
 
   // Render form view
   const renderForm = () => (
@@ -330,6 +900,63 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
         </div>
       </div>
 
+      {/* Mode Toggle */}
+      {!isReadOnly && (
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-muted-foreground">Video Mode</label>
+          <div className="flex gap-1 p-0.5 bg-muted rounded-lg">
+            <button
+              onClick={() => updateField('mode', 'transition')}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-md text-xs font-medium transition-colors nodrag ${
+                (data.mode || 'transition') === 'transition'
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <ArrowLeftRight className="w-3.5 h-3.5" />
+              Transition
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="w-3 h-3 text-muted-foreground/60 hover:text-muted-foreground cursor-help shrink-0" />
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="bg-zinc-800 border-zinc-700 text-zinc-200 max-w-[200px]">
+                    <p className="text-xs">Creates smooth video transitions between consecutive scenes, blending the end of one scene into the start of the next.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </button>
+            <button
+              onClick={() => updateField('mode', 'single-shot')}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-md text-xs font-medium transition-colors nodrag ${
+                data.mode === 'single-shot'
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              Single Shot
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="w-3 h-3 text-muted-foreground/60 hover:text-muted-foreground cursor-help shrink-0" />
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="bg-zinc-800 border-zinc-700 text-zinc-200 max-w-[200px]">
+                    <p className="text-xs">Each scene generates an independent video clip. Best for distinct, self-contained scenes.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </button>
+          </div>
+          <p className="text-[10px] text-muted-foreground/80">
+            {(data.mode || 'transition') === 'transition'
+              ? 'Video transitions between consecutive scenes'
+              : 'Each scene generates its own video clip'
+            }
+          </p>
+        </div>
+      )}
+
       {/* Error message */}
       {data.error && (
         <div className="p-2 bg-red-900/30 border border-red-700 rounded-lg text-red-200 text-xs">
@@ -351,57 +978,93 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
     </div>
   );
 
-  // Render loading view
-  const renderLoading = () => (
-    <div className="flex flex-col items-center justify-center p-8 space-y-3">
-      <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
-      <p className="text-muted-foreground text-sm">Generating your storyboard...</p>
-    </div>
-  );
+  // Render chat timeline view
+  const renderChat = () => (
+    <div className="flex flex-col h-full">
+      {/* Scrollable timeline */}
+      <div
+        ref={chatScrollRef}
+        className="flex-1 overflow-y-auto nowheel p-3 space-y-3"
+        onWheel={(e) => !e.ctrlKey && e.stopPropagation()}
+      >
+        {timelineItems.map((item) => {
+          switch (item.type) {
+            case 'user':
+              return (
+                <div key={item.message.id} className="flex justify-end">
+                  <div className="max-w-[85%]">
+                    <UserBubble content={item.message.content} />
+                  </div>
+                </div>
+              );
+            case 'thinking':
+              return (
+                <div key={item.block.id}>
+                  <ThinkingBlock
+                    thinking={item.block.label}
+                    reasoning={item.block.reasoning}
+                    isStreaming={false}
+                    startedAt={item.block.startedAt}
+                    endedAt={item.block.endedAt}
+                    maxReasoningHeight={120}
+                  />
+                </div>
+              );
+            case 'draft':
+              return (
+                <div key={item.draft.id}>
+                  <StoryboardDraftCard
+                    draft={item.draft}
+                    draftIndex={item.index}
+                    mode={data.mode || 'transition'}
+                    isLatest={item.index === (data.drafts?.length ?? 0) - 1}
+                    onCreateNodes={handleCreateOnCanvas}
+                    isReadOnly={isReadOnly}
+                  />
+                </div>
+              );
+            default:
+              return null;
+          }
+        })}
 
-  // Render preview view
-  const renderPreview = () => {
-    if (!data.result) return null;
-
-    return (
-      <div className="p-4 space-y-3">
-        {/* Summary */}
-        <div className="p-2 bg-muted rounded-lg">
-          <h3 className="text-xs font-medium text-muted-foreground mb-1">Summary</h3>
-          <p className="text-xs text-foreground">{data.result.summary}</p>
-        </div>
-
-        {/* Scenes preview */}
-        <div className="space-y-2">
-          <h3 className="text-xs font-medium text-muted-foreground">Scenes</h3>
-          <div className="space-y-1 max-h-[200px] overflow-y-auto nowheel" onWheel={(e) => !e.ctrlKey && e.stopPropagation()}>
-            {data.result.scenes.map((scene) => (
-              <ScenePreview key={scene.number} scene={scene} />
-            ))}
+        {/* Currently streaming thinking block (not yet in timeline) */}
+        {streamingThinking && (
+          <div>
+            <ThinkingBlock
+              thinking={streamingThinking.label}
+              reasoning={streamingThinking.reasoning}
+              isStreaming={true}
+              startedAt={streamingThinking.startedAt}
+              maxReasoningHeight={120}
+            />
           </div>
-        </div>
+        )}
 
-        {/* Actions - hidden in read-only mode */}
-        {!isReadOnly && (
-          <div className="flex gap-2 pt-1">
-            <button
-              onClick={() => updateNodeData(id, { viewState: 'form' })}
-              className="flex-1 py-2 px-3 bg-muted hover:bg-muted/80 text-foreground text-sm font-medium rounded-lg transition-colors nodrag"
-            >
-              Back to Edit
-            </button>
-            <button
-              onClick={handleCreateOnCanvas}
-              className="flex-1 py-2 px-3 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-1.5 nodrag"
-            >
-              <Grid3X3 className="w-3.5 h-3.5" />
-              Create Nodes
-            </button>
+        {/* Error in chat */}
+        {data.chatPhase === 'error' && data.error && (
+          <div className="p-2 bg-red-900/30 border border-red-700 rounded-lg text-red-200 text-xs">
+            {data.error}
           </div>
         )}
       </div>
-    );
-  };
+
+      {/* Chat input — pinned at bottom */}
+      {!isReadOnly && (
+        <StoryboardChatInput
+          onSubmit={handleRefinement}
+          onStop={handleStop}
+          isGenerating={data.chatPhase === 'streaming'}
+          disabled={data.chatPhase === 'streaming'}
+          placeholder={
+            (data.drafts?.length ?? 0) > 0
+              ? 'Refine the storyboard...'
+              : 'Waiting for generation...'
+          }
+        />
+      )}
+    </div>
+  );
 
   return (
     <div className="relative">
@@ -452,7 +1115,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
       {/* Main Node Card */}
       <div
         className={`
-          w-[400px] rounded-2xl overflow-hidden
+          animation-node w-[400px] rounded-2xl overflow-hidden flex flex-col
           transition-[box-shadow,ring-color] duration-150
           ${selected
             ? 'ring-[2.5px] ring-indigo-500 shadow-lg shadow-indigo-500/10'
@@ -461,23 +1124,73 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
         `}
         style={{
           backgroundColor: 'var(--node-card-bg)',
-          '--tw-ring-color': selected ? undefined : 'var(--node-ring)'
+          border: 'none',
+          '--tw-ring-color': selected ? undefined : 'var(--node-ring)',
+          minHeight: data.viewState === 'chat' ? '450px' : undefined,
+          maxHeight: data.viewState === 'chat' ? '620px' : undefined,
+          height: data.viewState === 'chat' ? '580px' : undefined,
         } as React.CSSProperties}
       >
         {/* Header */}
-        <div className="px-4 py-3 border-b border-border flex items-center gap-2">
-          <Clapperboard className="w-4 h-4 text-indigo-400" />
-          <span className="text-sm font-medium text-foreground">Create Storyboard</span>
+        <div className="px-4 py-3 border-b border-border flex items-center shrink-0">
+          {data.viewState === 'chat' && !isReadOnly ? (
+            <button
+              onClick={() => updateNodeData(id, { viewState: 'form' })}
+              className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors nodrag"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Edit Form
+            </button>
+          ) : (
+            <span className="text-sm font-medium text-foreground">Create</span>
+          )}
         </div>
 
         {/* Content */}
-        {data.viewState === 'form' && renderForm()}
-        {data.viewState === 'loading' && renderLoading()}
-        {data.viewState === 'preview' && renderPreview()}
+        {data.viewState === 'form' ? (
+          <div className="h-[580px] overflow-y-auto nowheel" onWheel={(e) => !e.ctrlKey && e.stopPropagation()}>
+            {renderForm()}
+          </div>
+        ) : data.viewState === 'chat' ? (
+          <div className="flex-1 min-h-0 flex flex-col">
+            {renderChat()}
+          </div>
+        ) : data.viewState === 'loading' ? (
+          /* Legacy loading state — show thinking block */
+          <div className="h-[580px] overflow-y-auto nowheel p-4 flex flex-col justify-center" onWheel={(e) => !e.ctrlKey && e.stopPropagation()}>
+            <ThinkingBlock
+              thinking={data.thinkingText || 'Generating storyboard'}
+              reasoning={data.reasoningText}
+              isStreaming={data.isStreaming ?? true}
+              startedAt={data.thinkingStartedAt}
+              maxReasoningHeight={400}
+            />
+          </div>
+        ) : data.viewState === 'preview' ? (
+          /* Legacy preview state — show old result */
+          <div className="h-[580px] overflow-y-auto nowheel" onWheel={(e) => !e.ctrlKey && e.stopPropagation()}>
+            {data.result && (
+              <div className="p-4 space-y-3">
+                <div className="p-2 bg-muted rounded-lg">
+                  <h3 className="text-xs font-medium text-muted-foreground mb-1">Summary</h3>
+                  <p className="text-xs text-foreground">{data.result.summary}</p>
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-xs font-medium text-muted-foreground">Scenes</h3>
+                  <div className="space-y-1">
+                    {data.result.scenes.map((scene) => (
+                      <ScenePreview key={scene.number} scene={scene} />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : null}
       </div>
 
-      {/* Input Handles - Left side (only shown in form view) */}
-      {data.viewState === 'form' && (
+      {/* Input Handles - Left side (shown in form and chat views) */}
+      {(data.viewState === 'form' || data.viewState === 'chat') && (
         <>
           {/* Product Image Handle */}
           <div className="absolute -left-3 group" style={{ top: '95px' }}>
@@ -486,13 +1199,11 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
                 type="target"
                 position={Position.Left}
                 id="productImage"
-                className={`!relative !transform-none !w-6 !h-6 !rounded-md !border-2 node-handle hover:!border-indigo-500 ${
-                  hasProductImage ? '!border-green-500' : ''
-                }`}
+                className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-red-400 !border-zinc-900 hover:!border-zinc-700"
               />
-              <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none" style={{ color: hasProductImage ? '#4ade80' : 'var(--text-muted)' }} />
+              <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
             </div>
-            <span className="absolute left-8 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
+            <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
               {hasProductImage ? 'Product Image (connected)' : 'Product Image'}
             </span>
           </div>
@@ -504,13 +1215,11 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
                 type="target"
                 position={Position.Left}
                 id="characterImage"
-                className={`!relative !transform-none !w-6 !h-6 !rounded-md !border-2 node-handle hover:!border-indigo-500 ${
-                  hasCharacterImage ? '!border-green-500' : ''
-                }`}
+                className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-indigo-400 !border-zinc-900 hover:!border-zinc-700"
               />
-              <User className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none" style={{ color: hasCharacterImage ? '#4ade80' : 'var(--text-muted)' }} />
+              <User className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
             </div>
-            <span className="absolute left-8 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
+            <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
               {hasCharacterImage ? 'Character Image (connected)' : 'Character Image'}
             </span>
           </div>
@@ -520,7 +1229,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
   );
 }
 
-// Scene preview card
+// Scene preview card (kept for legacy preview state)
 function ScenePreview({ scene }: { scene: StoryboardSceneData }) {
   const [expanded, setExpanded] = useState(false);
 

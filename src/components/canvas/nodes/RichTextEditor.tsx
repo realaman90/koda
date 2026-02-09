@@ -260,7 +260,7 @@ export function EditorToolbar({
   if (!editor) return null;
 
   return (
-    <div className="flex items-center gap-0.5 bg-zinc-800/95 backdrop-blur rounded-lg px-2 py-1.5 border border-zinc-700/50 shadow-xl">
+    <div className="flex items-center gap-0.5 px-2 py-1.5">
       {/* Expand/Minimize */}
       <ToolbarButton onClick={onToggleExpand} title={isExpanded ? 'Minimize' : 'Expand'}>
         {isExpanded ? (

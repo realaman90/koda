@@ -1,10 +1,10 @@
 'use client';
 
 import { useCallback } from 'react';
-import { useCanvasStore, createImageGeneratorNode, createVideoGeneratorNode, createTextNode, createMediaNode } from '@/stores/canvas-store';
+import { useCanvasStore, createImageGeneratorNode, createVideoGeneratorNode, createMediaNode } from '@/stores/canvas-store';
 import {
   ImageIcon,
-  Type,
+  LayoutGrid,
   Video,
   FileImage,
 } from 'lucide-react';
@@ -17,7 +17,11 @@ interface NodeTypeCard {
   onClick: () => void;
 }
 
-export function WelcomeOverlay() {
+interface WelcomeOverlayProps {
+  onPluginLaunch?: (pluginId: string) => void;
+}
+
+export function WelcomeOverlay({ onPluginLaunch }: WelcomeOverlayProps) {
   const addNode = useCanvasStore((state) => state.addNode);
   const nodes = useCanvasStore((state) => state.nodes);
 
@@ -30,9 +34,9 @@ export function WelcomeOverlay() {
     addNode(createImageGeneratorNode(getCenterPosition()));
   }, [addNode, getCenterPosition]);
 
-  const handleAddText = useCallback(() => {
-    addNode(createTextNode(getCenterPosition()));
-  }, [addNode, getCenterPosition]);
+  const handleAddStoryboard = useCallback(() => {
+    onPluginLaunch?.('storyboard-generator');
+  }, [onPluginLaunch]);
 
   const handleAddMedia = useCallback(() => {
     addNode(createMediaNode(getCenterPosition()));
@@ -54,13 +58,6 @@ export function WelcomeOverlay() {
       onClick: handleAddMedia,
     },
     {
-      id: 'text',
-      label: 'Text',
-      icon: <Type className="h-6 w-6" />,
-      color: 'text-teal-400',
-      onClick: handleAddText,
-    },
-    {
       id: 'imageGenerator',
       label: 'Image Generator',
       icon: <ImageIcon className="h-6 w-6" />,
@@ -73,6 +70,13 @@ export function WelcomeOverlay() {
       icon: <Video className="h-6 w-6" />,
       color: 'text-pink-400',
       onClick: handleAddVideoGenerator,
+    },
+    {
+      id: 'storyboard',
+      label: 'Storyboard',
+      icon: <LayoutGrid className="h-6 w-6" />,
+      color: 'text-teal-400',
+      onClick: handleAddStoryboard,
     },
   ];
 

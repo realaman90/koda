@@ -5,6 +5,7 @@
  * Generates multiple ImageGenerator nodes with AI-written prompts.
  */
 
+import { LayoutGrid } from 'lucide-react';
 import { pluginRegistry } from '@/lib/plugins/registry';
 import type { AgentPlugin } from '@/lib/plugins/types';
 import { StoryboardSandbox } from './StoryboardSandbox';
@@ -16,11 +17,11 @@ export const storyboardGeneratorPlugin: AgentPlugin = {
   id: 'storyboard-generator',
   name: 'Storyboard Generator',
   description: 'Create a complete storyboard from a concept with AI-generated scene prompts',
-  icon: '🎬',
+  icon: LayoutGrid,
   category: 'planning',
   author: {
     type: 'official',
-    name: 'GenFlow',
+    name: 'Koda',
     verified: true,
   },
   version: '1.0.0',

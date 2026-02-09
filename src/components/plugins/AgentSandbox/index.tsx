@@ -53,6 +53,17 @@ function AgentSandboxContent({ plugin, onClose }: AgentSandboxModalProps) {
     []
   );
 
+  // Guard: node-based plugins don't have sandbox components
+  if (!plugin.sandbox) {
+    return (
+      <div className="p-6 text-center">
+        <p className="text-zinc-400">
+          This plugin renders as a canvas node. Add it from the toolbar or context menu.
+        </p>
+      </div>
+    );
+  }
+
   const SandboxComponent = plugin.sandbox.component;
 
   return (
@@ -106,6 +117,10 @@ export function AgentSandbox({ plugin, onClose }: AgentSandboxModalProps) {
     return null;
   }
 
+  // For node-based plugins without sandbox, show a simple info modal
+  const sandboxSize = plugin.sandbox?.size || 'small';
+  const sandboxTitle = plugin.sandbox?.title || plugin.name;
+
   const modal = (
     <div
       className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-150"
@@ -115,16 +130,16 @@ export function AgentSandbox({ plugin, onClose }: AgentSandboxModalProps) {
         ref={modalRef}
         className={cn(
           'bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col',
-          sizeClasses[plugin.sandbox.size]
+          sizeClasses[sandboxSize]
         )}
         onWheel={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 shrink-0">
           <div className="flex items-center gap-2">
-            <span className="text-lg">{plugin.icon}</span>
+            <plugin.icon className="w-5 h-5 text-zinc-400" />
             <span className="text-base font-medium text-zinc-200">
-              {plugin.sandbox.title}
+              {sandboxTitle}
             </span>
           </div>
           <button

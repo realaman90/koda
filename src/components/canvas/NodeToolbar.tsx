@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   useCanvasStore,
@@ -14,6 +14,7 @@ import {
   createMusicGeneratorNode,
   createSpeechNode,
   createVideoAudioNode,
+  createPluginNode,
 } from '@/stores/canvas-store';
 import {
   Plus,
@@ -34,10 +35,19 @@ import {
   Music,
   Mic,
   Film,
+  Clapperboard,
+  Search,
+  Upload,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { PluginLauncher } from '@/components/plugins/PluginLauncher';
+import { uploadAsset } from '@/lib/assets/upload';
 // Import official plugins to register them
 import '@/lib/plugins/official/storyboard-generator';
+import '@/lib/plugins/official/product-shot';
+import '@/lib/plugins/official/agents/animation-generator';
+import '@/lib/plugins/official/agents/motion-analyzer';
 import {
   Tooltip,
   TooltipContent,
@@ -73,7 +83,12 @@ export function NodeToolbar({ onPluginLaunch }: NodeToolbarProps) {
     return !!data.prompt;
   });
   const [showAddMenu, setShowAddMenu] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [utilitiesExpanded, setUtilitiesExpanded] = useState(false);
   const addMenuRef = useRef<HTMLDivElement>(null);
+  const addMenuDropdownRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const [addMenuPosition, setAddMenuPosition] = useState({ x: -9999, y: -9999 });
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -85,6 +100,30 @@ export function NodeToolbar({ onPluginLaunch }: NodeToolbarProps) {
 
     if (showAddMenu) {
       document.addEventListener('mousedown', handleClickOutside);
+      // Focus search input when menu opens
+      setTimeout(() => searchInputRef.current?.focus(), 50);
+      // Position dropdown clamped to viewport
+      requestAnimationFrame(() => {
+        const btn = addMenuRef.current;
+        const dropdown = addMenuDropdownRef.current;
+        if (btn && dropdown) {
+          const btnRect = btn.getBoundingClientRect();
+          const dropRect = dropdown.getBoundingClientRect();
+          const pad = 8;
+          const x = btnRect.right + 8;
+          let y = btnRect.top;
+          // Clamp bottom
+          if (y + dropRect.height > window.innerHeight - pad) {
+            y = window.innerHeight - dropRect.height - pad;
+          }
+          y = Math.max(pad, y);
+          setAddMenuPosition({ x, y });
+        }
+      });
+    } else {
+      setSearchQuery('');
+      setUtilitiesExpanded(false);
+      setAddMenuPosition({ x: -9999, y: -9999 });
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showAddMenu]);
@@ -101,11 +140,65 @@ export function NodeToolbar({ onPluginLaunch }: NodeToolbarProps) {
     setShowAddMenu(false);
   };
 
-  const addMenuItems = [
+  const handleUpload = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*,video/*';
+    input.multiple = true;
+    input.onchange = (e) => {
+      const files = (e.target as HTMLInputElement).files;
+      if (files) {
+        const position = getViewportCenter();
+        Array.from(files).forEach(async (file, index) => {
+          const isVideo = file.type.startsWith('video/');
+          const node = createMediaNode({ x: position.x + index * 50, y: position.y + index * 50 });
+          try {
+            // Upload to server-side asset storage (local disk or R2)
+            const asset = await uploadAsset(file, { nodeId: node.id });
+            node.data = { ...node.data, url: asset.url, type: isVideo ? 'video' : 'image' };
+            addNode(node);
+          } catch (err) {
+            console.error('[NodeToolbar] Upload failed:', err);
+          }
+        });
+      }
+    };
+    input.click();
+    setShowAddMenu(false);
+  };
+
+  const addMenuSections = useMemo(() => [
     {
-      section: 'NODES',
+      title: '',
       items: [
         {
+          id: 'upload',
+          icon: <Upload className="h-4 w-4" />,
+          label: 'Upload',
+          action: handleUpload,
+          keywords: ['upload', 'file', 'import'],
+        },
+        {
+          id: 'media',
+          icon: <ImageIcon className="h-4 w-4" />,
+          label: 'Media',
+          action: () => handleAddNode(createMediaNode as any),
+          keywords: ['media', 'image', 'photo', 'picture'],
+        },
+      ],
+    },
+    {
+      title: 'NODES',
+      items: [
+        {
+          id: 'text',
+          icon: <Type className="h-4 w-4 text-zinc-400" />,
+          label: 'Text',
+          action: () => handleAddNode(createTextNode as any, 'Text'),
+          keywords: ['text', 'prompt', 'write'],
+        },
+        {
+          id: 'imageGenerator',
           icon: (
             <div className="relative h-4 w-4">
               <ImageIcon className="h-4 w-4 text-emerald-400" />
@@ -113,66 +206,99 @@ export function NodeToolbar({ onPluginLaunch }: NodeToolbarProps) {
             </div>
           ),
           label: 'Image Generator',
-          onClick: () => handleAddNode(createImageGeneratorNode, 'Image Generator'),
+          action: () => handleAddNode(createImageGeneratorNode, 'Image Generator'),
+          keywords: ['image', 'generate', 'ai', 'picture', 'create'],
         },
         {
-          icon: <Video className="h-4 w-4 text-blue-400" />,
+          id: 'videoGenerator',
+          icon: <Video className="h-4 w-4 text-purple-400" />,
           label: 'Video Generator',
-          onClick: () => handleAddNode(createVideoGeneratorNode, 'Video Generator'),
+          action: () => handleAddNode(createVideoGeneratorNode, 'Video Generator'),
+          keywords: ['video', 'generate', 'ai', 'movie', 'clip'],
         },
         {
-          icon: <Type className="h-4 w-4 text-zinc-400" />,
-          label: 'Text',
-          onClick: () => handleAddNode(createTextNode as any),
-        },
-        {
-          icon: <ImageIcon className="h-4 w-4 text-zinc-400" />,
-          label: 'Media',
-          onClick: () => handleAddNode(createMediaNode as any),
+          id: 'animationGenerator',
+          icon: <Clapperboard className="h-4 w-4 text-blue-400" />,
+          label: 'Animation Generator',
+          action: () => handleAddNode(
+            (pos, name) => createPluginNode(pos, 'animation-generator', name),
+            'Animation Generator'
+          ),
+          keywords: ['animation', 'animate', 'motion', 'theatre'],
         },
       ],
     },
     {
-      section: 'AUDIO',
+      title: 'AUDIO',
       items: [
         {
+          id: 'musicGenerator',
           icon: <Music className="h-4 w-4 text-orange-400" />,
           label: 'Music Generator',
-          onClick: () => handleAddNode(createMusicGeneratorNode, 'Music Generator'),
+          action: () => handleAddNode(createMusicGeneratorNode, 'Music Generator'),
+          keywords: ['music', 'audio', 'sound', 'song', 'generate'],
         },
         {
+          id: 'speech',
           icon: <Mic className="h-4 w-4 text-cyan-400" />,
           label: 'Speech',
-          onClick: () => handleAddNode(createSpeechNode, 'Speech'),
+          action: () => handleAddNode(createSpeechNode, 'Speech'),
+          keywords: ['speech', 'voice', 'tts', 'text-to-speech', 'narration'],
         },
         {
+          id: 'videoAudio',
           icon: <Film className="h-4 w-4 text-pink-400" />,
           label: 'Video Audio',
-          onClick: () => handleAddNode(createVideoAudioNode, 'Video Audio'),
+          action: () => handleAddNode(createVideoAudioNode, 'Video Audio'),
+          keywords: ['video', 'audio', 'sync', 'sound', 'foley'],
         },
       ],
     },
     {
-      section: 'UTILITIES',
+      title: 'UTILITIES',
+      collapsible: true,
       items: [
         {
+          id: 'stickyNote',
           icon: <StickyNote className="h-4 w-4 text-yellow-400" />,
           label: 'Sticky Note',
-          onClick: () => handleAddNode(createStickyNoteNode as any),
+          action: () => handleAddNode(createStickyNoteNode as any),
+          keywords: ['sticky', 'note', 'comment', 'annotation'],
         },
         {
+          id: 'sticker',
           icon: <Smile className="h-4 w-4 text-zinc-400" />,
           label: 'Sticker',
-          onClick: () => handleAddNode(createStickerNode as any),
+          action: () => handleAddNode(createStickerNode as any),
+          keywords: ['sticker', 'emoji', 'icon'],
         },
         {
+          id: 'group',
           icon: <Group className="h-4 w-4 text-indigo-400" />,
           label: 'Group',
-          onClick: () => handleAddNode(createGroupNode, 'Group'),
+          action: () => handleAddNode(createGroupNode, 'Group'),
+          keywords: ['group', 'container', 'organize'],
         },
       ],
     },
-  ];
+  ], []);
+
+  // Filter sections based on search query
+  const filteredSections = useMemo(() => {
+    if (!searchQuery.trim()) return addMenuSections;
+
+    const query = searchQuery.toLowerCase();
+    return addMenuSections
+      .map((section) => ({
+        ...section,
+        items: section.items.filter(
+          (item) =>
+            item.label.toLowerCase().includes(query) ||
+            item.keywords?.some((k) => k.includes(query))
+        ),
+      }))
+      .filter((section) => section.items.length > 0);
+  }, [searchQuery, addMenuSections]);
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -205,25 +331,74 @@ export function NodeToolbar({ onPluginLaunch }: NodeToolbarProps) {
 
           {/* Add Menu Dropdown */}
           {showAddMenu && (
-            <div className="absolute top-0 left-full ml-2 w-[180px] bg-popover border border-border rounded-xl shadow-xl overflow-hidden z-50 animate-in fade-in slide-in-from-left-2 duration-150">
-              {addMenuItems.map((section, idx) => (
-                <div key={section.section}>
-                  {idx > 0 && <div className="border-t border-border" />}
-                  <div className="px-3 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                    {section.section}
-                  </div>
-                  {section.items.map((item) => (
-                    <button
-                      key={item.label}
-                      onClick={item.onClick}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-muted cursor-pointer transition-colors"
-                    >
-                      {item.icon}
-                      <span>{item.label}</span>
-                    </button>
-                  ))}
+            <div
+              ref={addMenuDropdownRef}
+              className="fixed w-[220px] bg-popover border border-border rounded-xl shadow-xl overflow-hidden z-50 animate-in fade-in slide-in-from-left-2 duration-150 flex flex-col"
+              style={{
+                left: addMenuPosition.x,
+                top: addMenuPosition.y,
+                maxHeight: addMenuPosition.y > 0 ? `calc(100vh - ${addMenuPosition.y}px - 8px)` : undefined,
+                visibility: addMenuPosition.x === -9999 ? 'hidden' : 'visible',
+              }}
+            >
+              {/* Search Input */}
+              <div className="p-2 border-b border-border">
+                <div className="flex items-center gap-2 px-2 py-1.5 bg-muted/50 rounded-lg">
+                  <Search className="h-4 w-4 text-muted-foreground" />
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    placeholder="Search"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="flex-1 bg-transparent text-sm text-foreground placeholder-muted-foreground outline-none"
+                  />
                 </div>
-              ))}
+              </div>
+
+              {/* Menu Sections */}
+              <div className="py-1 min-h-0 flex-1 overflow-y-auto">
+                {filteredSections.map((section, sectionIndex) => {
+                  const isUtilities = section.title === 'UTILITIES';
+                  const isCollapsible = section.collapsible;
+                  const isExpanded = isUtilities ? utilitiesExpanded : true;
+                  const shouldShowItems = !isCollapsible || isExpanded || searchQuery;
+
+                  return (
+                    <div key={section.title || sectionIndex}>
+                      {section.title && (
+                        <div
+                          className={`px-4 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider flex items-center justify-between ${isCollapsible ? 'cursor-pointer hover:bg-muted/50' : ''}`}
+                          onClick={() => {
+                            if (isUtilities) setUtilitiesExpanded(!utilitiesExpanded);
+                          }}
+                        >
+                          <span>{section.title}</span>
+                          {isCollapsible && !searchQuery && (
+                            isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                          )}
+                        </div>
+                      )}
+                      {shouldShowItems && section.items.map((item) => (
+                        <button
+                          key={item.id}
+                          onClick={item.action}
+                          className="w-full flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-muted cursor-pointer transition-colors"
+                        >
+                          {item.icon}
+                          <span>{item.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })}
+
+                {filteredSections.length === 0 && (
+                  <div className="px-4 py-6 text-sm text-muted-foreground text-center">
+                    No results found
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

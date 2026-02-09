@@ -421,6 +421,7 @@ class RunwayGen3Adapter implements VideoModelAdapter {
 const videoAdapters: Record<VideoModelType, VideoModelAdapter> = {
   'veo-3': new Veo3Adapter(),
   'veo-3.1-i2v': new Veo31I2VAdapter(),
+  'veo-3.1-fast-i2v': new Veo31I2VAdapter(), // Uses same adapter as regular I2V
   'veo-3.1-ref': new Veo31RefAdapter(),
   'veo-3.1-flf': new Veo31FLFAdapter(),
   'veo-3.1-fast-flf': new Veo31FLFAdapter(), // Uses same adapter as regular FLF

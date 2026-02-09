@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import {
   ReactFlow,
   Background,
@@ -12,7 +12,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
-import { useCanvasStore, createStoryboardNode } from '@/stores/canvas-store';
+import { useCanvasStore, createStoryboardNode, createProductShotNode, createPluginNode } from '@/stores/canvas-store';
 import type { AppNode, ImageGeneratorNodeData, VideoGeneratorNodeData, ImageModelType, VideoModelType } from '@/lib/types';
 import { MODEL_CAPABILITIES, VIDEO_MODEL_CAPABILITIES } from '@/lib/types';
 import { nodeTypes } from './nodes';
@@ -52,25 +52,36 @@ export function Canvas() {
   const addNode = useCanvasStore((state) => state.addNode);
   const reactFlowInstance = useCanvasStore((state) => state.reactFlowInstance);
 
-  // Handle plugin launch - create node for storyboard, open sandbox for others
+  // Handle plugin launch - create node for node-based plugins, open sandbox for others
   const handlePluginLaunch = useCallback(
     (pluginId: string) => {
-      if (pluginId === 'storyboard-generator') {
-        // Create a storyboard node at viewport center
-        let position = { x: 400, y: 300 };
-        if (reactFlowInstance) {
-          const viewport = reactFlowInstance.getViewport();
-          const width = window.innerWidth;
-          const height = window.innerHeight;
-          position = {
-            x: (-viewport.x + width / 2 - 200) / viewport.zoom,
-            y: (-viewport.y + height / 2 - 200) / viewport.zoom,
-          };
-        }
-        const node = createStoryboardNode(position, 'Storyboard');
+
+      // Create a canvas node at viewport center
+      let position = { x: 400, y: 300 };
+      if (reactFlowInstance) {
+        const viewport = reactFlowInstance.getViewport();
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        position = {
+          x: (-viewport.x + width / 2 - 200) / viewport.zoom,
+          y: (-viewport.y + height / 2 - 200) / viewport.zoom,
+        };
+      }
+      if (pluginId === 'storyboard-generator' || pluginId === 'product-shot') {
+        const node = pluginId === 'product-shot'
+          ? createProductShotNode(position, 'Product Shots')
+          : createStoryboardNode(position, 'Storyboard');
+        addNode(node);
+      } else if (pluginId === 'animation-generator') {
+        // Animation Generator uses the pluginNode type
+        const node = createPluginNode(position, pluginId, 'Animation Generator');
+        addNode(node);
+      } else if (pluginId === 'motion-analyzer') {
+        const node = createPluginNode(position, pluginId, 'Motion Analyzer');
         addNode(node);
       } else {
-        // Other plugins still open as modals
+        // Other plugins still open as modals. Maybe not needed anymore. We'll see.
+        // Other plugins open as modals
         openSandbox(pluginId);
       }
     },
@@ -79,6 +90,21 @@ export function Canvas() {
 
   // Enable keyboard shortcuts
   useKeyboardShortcuts();
+
+  // Mouse-tracking mask on background dots
+  const containerRef = useRef<HTMLDivElement>(null);
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    const el = containerRef.current?.querySelector('.react-flow__background') as HTMLElement | null;
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * 100;
+      const y = ((e.clientY - rect.top) / rect.height) * 100;
+      el.style.maskImage =
+        `radial-gradient(circle at ${x}% ${y}%, black 15%, transparent 40%)`;
+      el.style.webkitMaskImage =
+        `radial-gradient(circle at ${x}% ${y}%, black 15%, transparent 40%)`;
+    }
+  }, []);
 
   // Handle right-click context menu
   const handleContextMenu = useCallback(
@@ -165,15 +191,31 @@ export function Canvas() {
         return sourceNode.type === 'text';
       }
 
+      // Animation node video ref handles — only allow from videoGenerator, only for Remotion engine
+      if (targetHandle.startsWith('video-ref-')) {
+        if (sourceNode.type !== 'videoGenerator') return false;
+        // Block video connections to Theatre.js animation nodes
+        if (targetNode.type === 'pluginNode') {
+          const animData = targetNode.data as Record<string, unknown>;
+          if (animData.engine === 'theatre') return false;
+        }
+        return true;
+      }
+
+      // Animation node image ref handles
+      if (targetHandle.startsWith('image-ref-')) {
+        return isImageSource;
+      }
+
       return true;
     },
     [nodes]
   );
 
   return (
-    <div className="w-full h-full relative" style={{ backgroundColor: 'var(--canvas-bg)' }}>
+    <div ref={containerRef} className="w-full h-full relative" style={{ backgroundColor: 'var(--canvas-bg)' }} onMouseMove={handleMouseMove}>
       <NodeToolbar onPluginLaunch={handlePluginLaunch} />
-      <WelcomeOverlay />
+      <WelcomeOverlay onPluginLaunch={handlePluginLaunch} />
       <SettingsPanel />
       <VideoSettingsPanel />
       <ContextMenu onPluginLaunch={handlePluginLaunch} />
@@ -219,8 +261,8 @@ export function Canvas() {
       >
         <Background
           variant={BackgroundVariant.Dots}
-          gap={20}
-          size={1}
+          gap={18}
+          size={1.2}
           color="var(--canvas-dots)"
         />
         <ZoomControls />

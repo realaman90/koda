@@ -27,6 +27,7 @@ export interface ApiKeys {
   falAi: string;
   anthropic: string;
   openAi: string;
+ 
 }
 
 // Default generation settings

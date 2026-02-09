@@ -21,6 +21,7 @@ const shortcuts = [
     { keys: ['⌘', 'X'], description: 'Cut selected' },
     { keys: ['⌘', 'V'], description: 'Paste' },
     { keys: ['⌘', 'D'], description: 'Duplicate selected' },
+    { keys: ['⌘', 'G'], description: 'Group selected' },
     { keys: ['⌫'], description: 'Delete selected' },
   ]},
   { category: 'Tools', items: [

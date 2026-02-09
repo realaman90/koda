@@ -14,7 +14,7 @@ import {
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useCanvasStore, createMediaNode } from '@/stores/canvas-store';
 import type { ImageGeneratorNode as ImageGeneratorNodeType, RecraftStyle, IdeogramStyle } from '@/lib/types';
-import { MODEL_CAPABILITIES, getApproxDimensions, FLUX_IMAGE_SIZES, RECRAFT_STYLE_LABELS, IDEOGRAM_STYLE_LABELS, type FluxImageSize, type NanoBananaResolution } from '@/lib/types';
+import { MODEL_CAPABILITIES, ENABLED_IMAGE_MODELS, getApproxDimensions, FLUX_IMAGE_SIZES, RECRAFT_STYLE_LABELS, IDEOGRAM_STYLE_LABELS, type FluxImageSize, type NanoBananaResolution } from '@/lib/types';
 import {
   ImageIcon,
   Play,
@@ -521,10 +521,10 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
                 <SearchableSelect
                   value={data.model}
                   onValueChange={handleModelChange}
-                  options={Object.entries(MODEL_CAPABILITIES).map(([key, cap]) => ({
+                  options={ENABLED_IMAGE_MODELS.map(key => ({
                     value: key,
-                    label: cap.label,
-                    description: cap.description,
+                    label: MODEL_CAPABILITIES[key].label,
+                    description: MODEL_CAPABILITIES[key].description,
                   }))}
                   placeholder="Select model"
                   searchPlaceholder="Search models..."
@@ -658,11 +658,11 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
             type="target"
             position={Position.Left}
             id="text"
-            className="!relative !transform-none !w-6 !h-6 !border-2 !rounded-md node-handle hover:!border-blue-500"
+            className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-yellow-400 !border-zinc-900 hover:!border-zinc-700"
           />
-          <Type className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none" style={{ color: 'var(--text-muted)' }} />
+          <Type className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
         </div>
-        <span className="absolute left-8 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
+        <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
           Text
         </span>
       </div>
@@ -685,11 +685,11 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
                     type="target"
                     position={Position.Left}
                     id={index === 0 ? 'reference' : `ref${index + 1}`}
-                    className="!relative !transform-none !w-6 !h-6 !border-2 !rounded-md node-handle hover:!border-blue-500"
+                    className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-red-400 !border-zinc-900 hover:!border-zinc-700"
                   />
-                  <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none" style={{ color: 'var(--text-muted)' }} />
+                  <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
                 </div>
-                <span className="absolute left-8 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
+                <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
                   {refHandleCount > 1 ? `Ref ${index + 1}` : 'Reference'}
                 </span>
               </div>
@@ -733,11 +733,11 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
             type="source"
             position={Position.Right}
             id="output"
-            className="!relative !transform-none !w-6 !h-6 !border-2 !rounded-md node-handle hover:!border-green-500"
+            className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-teal-500 !border-zinc-900 hover:!border-zinc-700"
           />
-          <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none" style={{ color: 'var(--text-muted)' }} />
+          <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
         </div>
-        <span className="absolute right-8 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
+        <span className="absolute right-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
           Generated image
         </span>
       </div>

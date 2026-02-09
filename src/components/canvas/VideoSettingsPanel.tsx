@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/select';
 import { useCanvasStore } from '@/stores/canvas-store';
 import type { VideoGeneratorNodeData, VideoModelType, VideoAspectRatio, VideoDuration, VideoResolution } from '@/lib/types';
-import { VIDEO_MODEL_CAPABILITIES } from '@/lib/types';
+import { VIDEO_MODEL_CAPABILITIES, ENABLED_VIDEO_MODELS } from '@/lib/types';
 import {
   X,
   Play,
@@ -314,9 +314,9 @@ export function VideoSettingsPanel() {
               <SelectValue>{modelCapabilities.label}</SelectValue>
             </SelectTrigger>
             <SelectContent className="bg-zinc-800 border-zinc-700">
-              {Object.entries(VIDEO_MODEL_CAPABILITIES).map(([key, cap]) => (
+              {ENABLED_VIDEO_MODELS.map(key => (
                 <SelectItem key={key} value={key} className="flex flex-col items-start">
-                  <span>{cap.label}</span>
+                  <span>{VIDEO_MODEL_CAPABILITIES[key].label}</span>
                 </SelectItem>
               ))}
             </SelectContent>

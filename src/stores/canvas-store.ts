@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import {
   applyNodeChanges,
   applyEdgeChanges,
@@ -8,7 +9,7 @@ import {
   type Connection,
   type ReactFlowInstance,
 } from '@xyflow/react';
-import type { AppNode, AppEdge, ImageGeneratorNodeData, VideoGeneratorNodeData, TextNodeData, MediaNodeData, StickyNoteNodeData, StickerNodeData, GroupNodeData, StoryboardNodeData, MusicGeneratorNodeData, SpeechNodeData, VideoAudioNodeData } from '@/lib/types';
+import type { AppNode, AppEdge, ImageGeneratorNodeData, VideoGeneratorNodeData, TextNodeData, MediaNodeData, StickyNoteNodeData, StickerNodeData, GroupNodeData, StoryboardNodeData,ProductShotNodeData, MusicGeneratorNodeData, SpeechNodeData, VideoAudioNodeData, PluginNodeData } from '@/lib/types';
 
 // History snapshot type
 interface HistorySnapshot {
@@ -76,6 +77,7 @@ interface CanvasState {
   paste: (position?: { x: number; y: number }) => void;
   deleteSelected: () => void;
   duplicateSelected: () => void;
+  groupSelected: () => void;
 
   // History actions
   undo: () => void;
@@ -155,7 +157,7 @@ export const createImageGeneratorNode = (position: { x: number; y: number }, nam
   position,
   data: {
     prompt: '',
-    model: 'flux-schnell',
+    model: 'nanobanana-pro',
     aspectRatio: '1:1',
     isGenerating: false,
     name,
@@ -187,9 +189,9 @@ export const createVideoGeneratorNode = (position: { x: number; y: number }, nam
   position,
   data: {
     prompt: '',
-    model: 'veo-3',
+    model: 'veo-3.1-fast-i2v',
     aspectRatio: '16:9',
-    duration: 8, // Veo-3 supports 4, 6, 8 - use 8 as default
+    duration: 8, // Veo 3.1 Fast supports 4, 6, 8 - use 8 as default
     resolution: '720p',
     generateAudio: true,
     isGenerating: false,
@@ -241,8 +243,27 @@ export const createStoryboardNode = (position: { x: number; y: number }, name?: 
     concept: '',
     sceneCount: 4,
     style: 'cinematic',
+    mode: 'transition',
     viewState: 'form',
+    chatMessages: [],
+    thinkingBlocks: [],
+    drafts: [],
+    chatPhase: 'idle',
   } as StoryboardNodeData,
+});
+
+export const createProductShotNode = (position: { x: number; y: number }, name?: string): AppNode => ({
+  id: generateId(),
+  type: 'productShot',
+  position,
+  data: {
+    name: name || 'Product Shots',
+    productName: '',
+    shotCount: 4,
+    background: 'studio-white',
+    lighting: 'soft',
+    viewState: 'form',
+  } as ProductShotNodeData,
 });
 
 export const createMusicGeneratorNode = (position: { x: number; y: number }, name?: string): AppNode => ({
@@ -286,8 +307,29 @@ export const createVideoAudioNode = (position: { x: number; y: number }, name?: 
   } as VideoAudioNodeData,
 });
 
+/**
+ * Create a plugin node with initial state
+ * Used for plugin-defined nodes like Animation Generator
+ */
+export const createPluginNode = (
+  position: { x: number; y: number },
+  pluginId: string,
+  name?: string,
+  initialState?: Record<string, unknown>
+): AppNode => ({
+  id: generateId(),
+  type: 'pluginNode',
+  position,
+  data: {
+    pluginId,
+    name,
+    state: initialState || {},
+  } as PluginNodeData,
+});
+
 export const useCanvasStore = create<CanvasState>()(
-  (set, get) => ({
+  persist(
+    (set, get) => ({
     // Initial state
     nodes: [],
     edges: [],
@@ -592,6 +634,41 @@ export const useCanvasStore = create<CanvasState>()(
         paste({ x: avgX + 50, y: avgY + 50 });
       },
 
+      groupSelected: () => {
+        const { nodes, selectedNodeIds, _pushHistory } = get() as CanvasState & { _pushHistory: () => void };
+
+        // Need at least 2 non-group nodes selected
+        const selectedNodes = nodes.filter(
+          (n) => selectedNodeIds.includes(n.id) && n.type !== 'group'
+        );
+        if (selectedNodes.length < 2) return;
+
+        // Calculate bounding box of selected nodes
+        const padding = 40;
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const node of selectedNodes) {
+          const w = node.measured?.width || 280;
+          const h = node.measured?.height || 150;
+          minX = Math.min(minX, node.position.x);
+          minY = Math.min(minY, node.position.y);
+          maxX = Math.max(maxX, node.position.x + w);
+          maxY = Math.max(maxY, node.position.y + h);
+        }
+
+        const groupNode = createGroupNode(
+          { x: minX - padding, y: minY - padding },
+          `Group ${nodes.filter((n) => n.type === 'group').length + 1}`
+        );
+        (groupNode.data as GroupNodeData).width = maxX - minX + padding * 2;
+        (groupNode.data as GroupNodeData).height = maxY - minY + padding * 2;
+
+        // Insert at beginning so it renders behind other nodes
+        set((state) => ({
+          nodes: [groupNode, ...state.nodes] as AppNode[],
+        }));
+        _pushHistory();
+      },
+
       // History actions
       undo: () => {
         const { history, historyIndex } = get();
@@ -850,6 +927,14 @@ export const useCanvasStore = create<CanvasState>()(
             return (node.data as VideoGeneratorNodeData).outputUrl;
           } else if (node.type === 'videoAudio') {
             return (node.data as VideoAudioNodeData).outputUrl;
+          } else if (node.type === 'pluginNode') {
+            // Support animation plugin output
+            const pluginData = node.data as PluginNodeData;
+            if (pluginData.pluginId === 'animation-generator') {
+              const state = pluginData.state as { preview?: { videoUrl?: string }; output?: { videoUrl?: string }; versions?: Array<{ videoUrl: string }> };
+              // Priority: final output > current preview > latest version
+              return state.output?.videoUrl || state.preview?.videoUrl || state.versions?.[state.versions.length - 1]?.videoUrl;
+            }
           }
           return undefined;
         };
@@ -988,5 +1073,87 @@ export const useCanvasStore = create<CanvasState>()(
         const { _pushHistory } = get() as CanvasState & { _pushHistory: () => void };
         _pushHistory();
       },
-    })
+    }),
+    {
+      name: 'spaces-canvas-storage',
+      storage: createJSONStorage(() => ({
+        getItem: (name: string) => localStorage.getItem(name),
+        setItem: (name: string, value: string) => {
+          try {
+            localStorage.setItem(name, value);
+          } catch (e) {
+            // QuotaExceededError — log but don't crash. State is still in memory.
+            console.warn('[canvas-store] localStorage quota exceeded, state not persisted:', e);
+          }
+        },
+        removeItem: (name: string) => localStorage.removeItem(name),
+      })),
+      // Only persist nodes and edges - not UI state like selections, clipboard, etc.
+      // Animation nodes carry heavy runtime state (messages, tool calls, thinking blocks,
+      // video versions) that can easily blow the ~5MB localStorage quota.
+      // Strip it down to config-only data for persistence.
+      partialize: (state) => ({
+        nodes: state.nodes.map((node) => {
+          // Strip data: URLs from MediaNode — they're cached in IndexedDB
+          if (node.type === 'media' && node.data && typeof node.data === 'object') {
+            const d = node.data as Record<string, unknown>;
+            if (typeof d.url === 'string' && (d.url as string).startsWith('data:')) {
+              return { ...node, data: { ...d, url: `cached:${node.id}` } };
+            }
+          }
+          // Strip animation plugin heavy state
+          if (node.type === 'pluginNode' && node.data && typeof node.data === 'object' && 'state' in node.data) {
+            const d = node.data as Record<string, unknown>;
+            const animState = d.state as Record<string, unknown> | undefined;
+            return {
+              ...node,
+              data: {
+                ...d,
+                // Keep only essential state — drop conversation history, tool calls, etc.
+                state: animState ? {
+                  nodeId: animState.nodeId,
+                  phase: animState.phase === 'executing' || animState.phase === 'preview' ? 'idle' : animState.phase,
+                  messages: [],
+                  toolCalls: [],
+                  thinkingBlocks: [],
+                  sandboxId: animState.sandboxId,
+                  // Persist plan (small JSON, needed for context on snapshot restore)
+                  plan: animState.plan,
+                  // Persist versions with permanent URLs only (filter out sandbox-local URLs)
+                  versions: Array.isArray(animState.versions)
+                    ? (animState.versions as Array<Record<string, unknown>>).filter(
+                        (v) => typeof v.videoUrl === 'string' && !(v.videoUrl as string).includes('/sandbox/')
+                      )
+                    : undefined,
+                  createdAt: animState.createdAt,
+                  updatedAt: animState.updatedAt,
+                } : d.state,
+                // Drop cached media data URLs (they're in IndexedDB via media-cache)
+                media: Array.isArray(d.media)
+                  ? (d.media as Array<Record<string, unknown>>).map((m) => ({
+                      ...m,
+                      dataUrl: typeof m.dataUrl === 'string' && (m.dataUrl as string).startsWith('data:')
+                        ? `cached:${m.id}` // placeholder — real data is in IndexedDB
+                        : m.dataUrl,
+                    }))
+                  : d.media,
+                // Strip logo data URLs (persist URL logos only)
+                logo: d.logo && typeof (d.logo as Record<string, unknown>).url === 'string'
+                  && (((d.logo as Record<string, unknown>).url as string).startsWith('data:'))
+                  ? undefined  // data URLs are too large for localStorage
+                  : d.logo,
+                // Strip video from motion-analyzer (base64 videos are too large for localStorage)
+                video: d.video && typeof (d.video as Record<string, unknown>).dataUrl === 'string'
+                  && ((d.video as Record<string, unknown>).dataUrl as string).startsWith('data:')
+                  ? undefined
+                  : d.video,
+              },
+            };
+          }
+          return node;
+        }),
+        edges: state.edges,
+      }),
+    }
+  )
 );

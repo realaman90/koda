@@ -1,12 +1,17 @@
 import { Mastra } from '@mastra/core';
 import { promptEnhancerAgent } from './agents/prompt-enhancer';
-import { creativeAssistantAgent } from './agents/creative-assistant';
+import { animationAgent } from './agents/animation-agent';
+import { motionAnalyzerAgent } from './agents/motion-analyzer-agent';
 
 export const mastra = new Mastra({
   agents: {
     promptEnhancer: promptEnhancerAgent,
-    creativeAssistant: creativeAssistantAgent,
+    animationAgent: animationAgent,
+    motionAnalyzer: motionAnalyzerAgent,
   },
 });
 
-export { promptEnhancerAgent, creativeAssistantAgent };
+export { promptEnhancerAgent, animationAgent, motionAnalyzerAgent };
+
+// Re-export animation tools for use in API routes
+export * from './tools/animation';
