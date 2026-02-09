@@ -4,6 +4,8 @@ import { FAL_AUDIO_MODELS } from '@/lib/types';
 import type { MusicGenerateRequest } from '@/lib/model-adapters';
 import { getAssetStorageType, getExtensionFromUrl, type AssetStorageProvider } from '@/lib/assets';
 
+export const maxDuration = 300;
+
 // Configure Fal client
 fal.config({
   credentials: process.env.FAL_KEY,

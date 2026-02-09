@@ -4,6 +4,8 @@ import { FAL_VIDEO_MODELS, type VideoModelType } from '@/lib/types';
 import { getVideoModelAdapter, type VideoGenerateRequest } from '@/lib/model-adapters';
 import { getAssetStorageType, getExtensionFromUrl, type AssetStorageProvider } from '@/lib/assets';
 
+export const maxDuration = 300;
+
 // Configure Fal client
 fal.config({
   credentials: process.env.FAL_KEY,

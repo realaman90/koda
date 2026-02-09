@@ -3,6 +3,8 @@ import { fal } from '@fal-ai/client';
 import { FAL_AUDIO_MODELS, type ElevenLabsVoice } from '@/lib/types';
 import { getAssetStorageType, getExtensionFromUrl, type AssetStorageProvider } from '@/lib/assets';
 
+export const maxDuration = 300;
+
 // Configure Fal client
 fal.config({
   credentials: process.env.FAL_KEY,

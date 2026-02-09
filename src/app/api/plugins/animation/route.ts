@@ -15,6 +15,8 @@ import type {
 } from '@/lib/plugins/official/agents/animation-generator/types';
 import { dockerProvider, getSandboxInstance } from '@/lib/sandbox/docker-provider';
 
+export const maxDuration = 300;
+
 export async function POST(request: Request) {
   try {
     const body: AnimationAPIRequest = await request.json();

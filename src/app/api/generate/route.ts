@@ -4,6 +4,8 @@ import { FAL_MODELS, type ImageModelType } from '@/lib/types';
 import { getModelAdapter, type GenerateRequest } from '@/lib/model-adapters';
 import { getAssetStorageType, getExtensionFromUrl, type AssetStorageProvider } from '@/lib/assets';
 
+export const maxDuration = 300;
+
 // Configure Fal client
 fal.config({
   credentials: process.env.FAL_KEY,
