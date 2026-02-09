@@ -9,13 +9,13 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, ChevronDown } from 'lucide-react';
+import { X, ChevronDown, ImagePlus, Trash2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import {
   Type, Sparkles, Box, BarChart3, Layers, Blend, Zap, Clapperboard, Aperture, SunMoon,
 } from 'lucide-react';
 import { TECHNIQUE_PRESETS } from '@/mastra/recipes';
-import { STYLE_PRESETS, FONT_OPTIONS, FPS_OPTIONS, RESOLUTION_OPTIONS } from '../presets';
+import { STYLE_PRESETS, THEME_PRESETS, FONT_OPTIONS, FPS_OPTIONS, RESOLUTION_OPTIONS } from '../presets';
 import type { AnimationEngine, AspectRatio, AnimationNodeData } from '../types';
 
 // ─── Icon map for technique presets ────────────────────────────────────
@@ -55,6 +55,7 @@ interface AnimationSettingsPanelProps {
   duration: number;
   techniques: string[];
   designSpec?: AnimationNodeData['designSpec'];
+  logo?: AnimationNodeData['logo'];
   fps?: number;
   resolution?: string;
   engineLocked?: boolean;
@@ -63,6 +64,7 @@ interface AnimationSettingsPanelProps {
   onDurationChange: (d: number) => void;
   onTechniquesChange: (t: string[]) => void;
   onDesignSpecChange: (spec: AnimationNodeData['designSpec']) => void;
+  onLogoChange: (logo: AnimationNodeData['logo']) => void;
   onFpsChange: (fps: number) => void;
   onResolutionChange: (res: string) => void;
 }
@@ -152,6 +154,7 @@ export function AnimationSettingsPanel({
   duration,
   techniques,
   designSpec,
+  logo,
   fps = 30,
   resolution = '1080p',
   engineLocked,
@@ -160,10 +163,12 @@ export function AnimationSettingsPanel({
   onDurationChange,
   onTechniquesChange,
   onDesignSpecChange,
+  onLogoChange,
   onFpsChange,
   onResolutionChange,
 }: AnimationSettingsPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
   const [adjustedPosition, setAdjustedPosition] = useState(position);
 
   // Adjust position to stay in viewport
@@ -253,13 +258,46 @@ export function AnimationSettingsPanel({
     (presetId: string) => {
       const preset = STYLE_PRESETS.find((p) => p.id === presetId);
       if (!preset) return;
+      // Style sets aesthetic direction + default colors/fonts
       onDesignSpecChange({
+        ...designSpec,
         style: preset.id,
         colors: { ...preset.colors },
         fonts: { ...preset.fonts },
       });
     },
-    [onDesignSpecChange]
+    [designSpec, onDesignSpecChange]
+  );
+
+  const selectThemePreset = useCallback(
+    (presetId: string) => {
+      const preset = THEME_PRESETS.find((p) => p.id === presetId);
+      if (!preset) return;
+      // Theme overrides colors/fonts without changing style
+      onDesignSpecChange({
+        ...designSpec,
+        theme: presetId,
+        colors: { ...preset.colors },
+        fonts: { ...preset.fonts },
+      });
+    },
+    [designSpec, onDesignSpecChange]
+  );
+
+  // ─── Logo handlers ────────────────────────────────────────────────────
+  const handleLogoFileChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        onLogoChange({ url: reader.result as string, name: file.name });
+      };
+      reader.readAsDataURL(file);
+      // Reset so the same file can be re-selected
+      e.target.value = '';
+    },
+    [onLogoChange]
   );
 
   // ─── Render via portal ───────────────────────────────────────────────
@@ -317,7 +355,46 @@ export function AnimationSettingsPanel({
           </div>
         </div>
 
-        {/* ── Style Presets ───────────────────────────────────────────── */}
+        {/* ── Logo ─────────────────────────────────────────────────── */}
+        <div>
+          <SectionLabel>Logo</SectionLabel>
+          <input
+            ref={logoInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleLogoFileChange}
+            className="hidden"
+          />
+          {logo?.url ? (
+            <div className="flex items-center gap-2 p-2 rounded-md bg-[var(--an-bg-card)] border border-[var(--an-border-input)]">
+              <img
+                src={logo.url}
+                alt={logo.name || 'Logo'}
+                className="w-8 h-8 rounded object-contain bg-white/10"
+              />
+              <span className="flex-1 text-[10px] text-[var(--an-text-muted)] truncate">
+                {logo.name || 'Logo'}
+              </span>
+              <button
+                onClick={() => onLogoChange(undefined)}
+                className="w-5 h-5 rounded flex items-center justify-center text-[var(--an-text-dim)] hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                title="Remove logo"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => logoInputRef.current?.click()}
+              className="w-full flex items-center justify-center gap-1.5 px-2 py-2 rounded-md text-[10px] font-medium border border-dashed border-[var(--an-border-input)] text-[var(--an-text-dim)] hover:border-[var(--an-border-hover)] hover:text-[var(--an-text-muted)] transition-colors"
+            >
+              <ImagePlus className="w-3.5 h-3.5" />
+              <span>Upload logo</span>
+            </button>
+          )}
+        </div>
+
+        {/* ── Style Presets (with images) ─────────────────────────────── */}
         <div>
           <SectionLabel>Style</SectionLabel>
           <div className="flex gap-1.5 overflow-x-auto scrollbar-hidden pb-0.5" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
@@ -327,11 +404,49 @@ export function AnimationSettingsPanel({
                 <button
                   key={preset.id}
                   onClick={() => selectStylePreset(preset.id)}
+                  className={`shrink-0 w-[80px] rounded-lg overflow-hidden border transition-all ${
+                    isSelected
+                      ? 'border-[var(--an-accent)] ring-1 ring-[var(--an-accent)]/30'
+                      : 'border-[var(--an-border-input)] hover:border-[var(--an-border-hover)]'
+                  }`}
+                  title={preset.description}
+                >
+                  {/* Preview image */}
+                  <div className="aspect-square overflow-hidden bg-[var(--an-bg-card)]">
+                    <img
+                      src={preset.image}
+                      alt={preset.label}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                    />
+                  </div>
+                  <div className="px-1.5 py-1 bg-[var(--an-bg-card)]">
+                    <span className="text-[9px] font-medium text-[var(--an-text-muted)]">
+                      {preset.label}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ── Theme Presets (color/font combos) ─────────────────────── */}
+        <div>
+          <SectionLabel>Theme</SectionLabel>
+          <div className="flex gap-1.5 overflow-x-auto scrollbar-hidden pb-0.5" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
+            {THEME_PRESETS.map((preset) => {
+              const isSelected = designSpec?.theme === preset.id;
+              return (
+                <button
+                  key={preset.id}
+                  onClick={() => selectThemePreset(preset.id)}
                   className={`shrink-0 w-[72px] rounded-md overflow-hidden border transition-all ${
                     isSelected
                       ? 'border-[var(--an-accent)] ring-1 ring-[var(--an-accent)]/30'
                       : 'border-[var(--an-border-input)] hover:border-[var(--an-border-hover)]'
                   }`}
+                  title={preset.description}
                 >
                   {/* Color bar preview */}
                   <div className="h-5 flex">

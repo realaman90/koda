@@ -62,6 +62,28 @@ const SCHEMA_SQL_STATEMENTS = [
     updated_at INTEGER NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS idx_canvases_updated ON canvases(updated_at DESC)`,
+  `CREATE TABLE IF NOT EXISTS animation_projects (
+    id TEXT PRIMARY KEY,
+    canvas_id TEXT,
+    engine TEXT,
+    plan TEXT,
+    active_version_id TEXT,
+    sandbox_id TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS animation_versions (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    video_url TEXT,
+    snapshot_key TEXT,
+    thumbnail_url TEXT,
+    prompt TEXT,
+    duration INTEGER,
+    size_bytes INTEGER,
+    created_at INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_animation_versions_project ON animation_versions(project_id, created_at DESC)`,
 ];
 
 async function migrateLocal(dbPath: string) {

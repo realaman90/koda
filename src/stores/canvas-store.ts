@@ -1117,6 +1117,14 @@ export const useCanvasStore = create<CanvasState>()(
                   toolCalls: [],
                   thinkingBlocks: [],
                   sandboxId: animState.sandboxId,
+                  // Persist plan (small JSON, needed for context on snapshot restore)
+                  plan: animState.plan,
+                  // Persist versions with permanent URLs only (filter out sandbox-local URLs)
+                  versions: Array.isArray(animState.versions)
+                    ? (animState.versions as Array<Record<string, unknown>>).filter(
+                        (v) => typeof v.videoUrl === 'string' && !(v.videoUrl as string).includes('/sandbox/')
+                      )
+                    : undefined,
                   createdAt: animState.createdAt,
                   updatedAt: animState.updatedAt,
                 } : d.state,
@@ -1129,6 +1137,11 @@ export const useCanvasStore = create<CanvasState>()(
                         : m.dataUrl,
                     }))
                   : d.media,
+                // Strip logo data URLs (persist URL logos only)
+                logo: d.logo && typeof (d.logo as Record<string, unknown>).url === 'string'
+                  && (((d.logo as Record<string, unknown>).url as string).startsWith('data:'))
+                  ? undefined  // data URLs are too large for localStorage
+                  : d.logo,
               },
             };
           }

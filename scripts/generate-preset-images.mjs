@@ -266,6 +266,26 @@ const presets = {
       prompt: 'Professional product photography of a Fujifilm X100V compact digital camera, silver body, isolated on clean white background, studio lighting, sharp detail, commercial product shot, high quality',
     },
   ],
+
+  // Animation style presets — high-end motion design frame references
+  'animation-styles': [
+    {
+      id: 'minimal',
+      prompt: 'Beautiful motion design frame, clean white space with elegant floating glass morphism UI card, subtle shadow, thin rounded corners, soft blue gradient accent element, abstract geometric shapes gently scattered, a sleek toggle switch and progress bar, Apple WWDC keynote aesthetic, premium product reveal style, cinematic depth of field, ultra high quality 3D render',
+    },
+    {
+      id: 'corporate',
+      prompt: 'Premium motion design frame for business presentation, dark navy gradient background, floating 3D isometric office building made of glass, holographic data visualization charts orbiting around it, golden accent lines and nodes connecting, executive boardroom presentation style, McKinsey or Deloitte brand video aesthetic, cinematic lighting, ultra high quality 3D render',
+    },
+    {
+      id: 'fashion',
+      prompt: 'Cinematic motion design frame for luxury fashion, dramatic studio lighting on elegant fabric draped over geometric shapes, bold serif typography "STYLE" partially visible, film grain texture overlay, warm copper and cream tones on deep black, Prada runway show opening sequence aesthetic, editorial mood, ultra high quality 3D render',
+    },
+    {
+      id: 'marketing',
+      prompt: 'Dynamic motion design frame for product launch, vibrant gradient mesh background in purple magenta and orange, floating glassmorphism notification cards with star icons and badges, 3D smartphone mockup with glowing screen, animated light streaks and bokeh particles, Product Hunt launch day energy, ultra high quality 3D render',
+    },
+  ],
 };
 
 // Main function

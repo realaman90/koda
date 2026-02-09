@@ -34,7 +34,7 @@ export const PlanSchema = z.object({
   scenes: z.array(SceneSchema),
   totalDuration: z.number(),
   style: z.string(),
-  fps: z.number().default(60),
+  fps: z.number().default(30),
   designSpec: z.string().optional().describe('Full design specification with exact colors, typography, spring configs, and effects'),
 });
 
@@ -147,19 +147,21 @@ This tool validates your plan and generates the todo list for execution.`,
     scenes: z.array(SceneSchema).describe('Array of animation scenes'),
     totalDuration: z.number().describe('Total animation duration in seconds'),
     style: z.string().describe('Animation style (e.g. playful, smooth, cinematic)'),
-    fps: z.number().optional().describe('Frames per second (default 60)'),
+    fps: z.number().optional().describe('Frames per second (default 30)'),
     designSpec: z.string().optional().describe('Complete design specification with colors, typography, motion design, and effects'),
   }),
   outputSchema: z.object({
     plan: PlanSchema,
     todos: z.array(TodoSchema),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, context) => {
+    // Auto-resolve fps from RequestContext (user's settings) when LLM doesn't pass it
+    const ctxFps = (context as { requestContext?: { get: (key: string) => unknown } })?.requestContext?.get('fps') as number | undefined;
     const plan = {
       scenes: inputData.scenes,
       totalDuration: inputData.totalDuration,
       style: inputData.style,
-      fps: inputData.fps || 60,
+      fps: inputData.fps || ctxFps || 30,
       designSpec: inputData.designSpec,
     };
 

@@ -9,8 +9,9 @@ import { NextResponse } from 'next/server';
 import { animationAgent } from '@/mastra';
 import { getEngineInstructions } from '@/mastra/agents/instructions/animation';
 import { loadRecipes } from '@/mastra/recipes';
+import { STYLE_PRESETS } from '@/lib/plugins/official/agents/animation-generator/presets';
 import { RequestContext } from '@mastra/core/di';
-import { dockerProvider } from '@/lib/sandbox/docker-provider';
+import { getSandboxProvider } from '@/lib/sandbox/sandbox-factory';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -21,10 +22,11 @@ export const maxDuration = 120;
 const EXECUTION_TOOLS = new Set([
   'sandbox_create', 'sandbox_destroy',
   'sandbox_write_file', 'sandbox_read_file', 'sandbox_run_command', 'sandbox_list_files',
-  'sandbox_start_preview', 'sandbox_screenshot',
+  'sandbox_screenshot',
   'sandbox_upload_media', 'sandbox_write_binary', 'extract_video_frames',
   'generate_code', 'generate_remotion_code',
-  'render_preview', 'render_final',
+  'render_final',
+  'verify_animation',
 ]);
 
 interface StreamRequestBody {
@@ -42,11 +44,15 @@ interface StreamRequestBody {
     aspectRatio?: '16:9' | '9:16' | '1:1' | '4:3' | '21:9';
     duration?: number;
     techniques?: string[];
+    /** When editing from a past version, restore this version's snapshot */
+    restoreVersionId?: string;
     designSpec?: {
       style?: string;
+      theme?: string;
       colors?: { primary: string; secondary: string; accent?: string };
       fonts?: { title: string; body: string };
     };
+    logo?: { url: string; name?: string };
     fps?: number;
     resolution?: string;
   };
@@ -98,6 +104,26 @@ export async function POST(request: Request) {
     if ((context?.plan as Record<string, unknown>)?.designSpec) {
       requestContext.set('designSpec' as never, (context!.plan as Record<string, unknown>).designSpec as never);
     }
+    // Pass nodeId, phase, and plan flag so sandbox_create can decide whether to restore snapshots
+    console.log(`[Animation API] RequestContext: nodeId=${context?.nodeId}, phase=${context?.phase}, hasPlan=${!!context?.plan}, sandboxId=${context?.sandboxId}`);
+    if (context?.nodeId) {
+      requestContext.set('nodeId' as never, context.nodeId as never);
+    }
+    if (context?.phase) {
+      requestContext.set('phase' as never, context.phase as never);
+    }
+    if (context?.plan) {
+      requestContext.set('plan' as never, true as never);
+    }
+    if (context?.duration) {
+      requestContext.set('duration' as never, context.duration as never);
+    }
+    if (context?.fps) {
+      requestContext.set('fps' as never, context.fps as never);
+    }
+    if (context?.restoreVersionId) {
+      requestContext.set('restoreVersionId' as never, context.restoreVersionId as never);
+    }
 
     // Prepend context as a system-style user message if provided
     if (context) {
@@ -110,8 +136,35 @@ export async function POST(request: Request) {
       if (context.duration) {
         contextParts.push(`Target duration: ${context.duration} seconds`);
       }
+
+      // ── Dead sandbox detection ──────────────────────────────────────
+      // If sandboxId points at a dead container, clear it and check for snapshot.
+      // This avoids a wasted error/retry cycle where the agent tries to use
+      // the dead container, gets an error, then has to create a new one.
       if (context.sandboxId) {
-        contextParts.push(`Active sandbox ID: ${context.sandboxId}`);
+        try {
+          const status = await getSandboxProvider().getStatus(context.sandboxId);
+          if (!status) {
+            console.log(`[Animation API] Sandbox ${context.sandboxId} is dead — will auto-restore from snapshot`);
+            requestContext.set('sandboxId' as never, undefined as never);
+            // Check if a code snapshot exists so we can inform the agent
+            const { getSnapshotProvider } = await import('@/lib/sandbox/snapshot');
+            const hasSnapshot = context.nodeId ? await getSnapshotProvider().exists(context.nodeId) : false;
+            if (hasSnapshot) {
+              contextParts.push(`Previous sandbox expired. A code snapshot exists — when you call sandbox_create, your previous code will be auto-restored. Proceed with sandbox_create, then modify the code as needed.`);
+            } else {
+              contextParts.push(`Previous sandbox expired and no snapshot exists. Create a new sandbox and regenerate from the plan.`);
+            }
+            context.sandboxId = undefined;
+          } else {
+            contextParts.push(`Active sandbox ID: ${context.sandboxId}`);
+          }
+        } catch {
+          // getStatus can throw — treat as sandbox dead
+          console.warn(`[Animation API] Failed to check sandbox status for ${context.sandboxId} — treating as dead`);
+          requestContext.set('sandboxId' as never, undefined as never);
+          context.sandboxId = undefined;
+        }
       }
       // Log media for debugging (always, even if empty)
       console.log(`[Animation API] Media received: ${context.media?.length ?? 0} items`, context.media?.map(m => ({ name: m.name, source: m.source, type: m.type, urlPrefix: m.dataUrl?.slice(0, 30) })));
@@ -218,7 +271,7 @@ export async function POST(request: Request) {
         for (const { m, buffer, destPath } of mediaBuffersLocal) {
           if (context.sandboxId) {
             try {
-              await dockerProvider.writeBinary(context.sandboxId, destPath, buffer);
+              await getSandboxProvider().writeBinary(context.sandboxId, destPath, buffer);
               uploadedPaths.set(m.id, destPath);
               console.log(`[Animation API] Phase 3: Pre-uploaded ${m.name} (${Math.round(buffer.length / 1024)}KB) → ${destPath}`);
             } catch (err) {
@@ -236,6 +289,41 @@ export async function POST(request: Request) {
           requestContext.set('pendingMedia' as never, pendingMediaForSandbox as never);
         } else if (mediaBuffersLocal.length === 0 && context.media.length > 0) {
           console.error(`[Animation API] Phase 3: WARNING — ${context.media.length} media entries received but 0 buffers decoded! Media URLs: ${context.media.map(m => m.dataUrl.slice(0, 40)).join(', ')}`);
+        }
+
+        // ── Phase 3b: Handle logo upload ──
+        if (context.logo?.url) {
+          const logoUrl = context.logo.url;
+          const logoName = context.logo.name || 'logo.png';
+          const logoDestPath = `public/media/${logoName}`;
+          let logoBuffer: Buffer | null = null;
+
+          if (logoUrl.startsWith('data:')) {
+            const base64Data = logoUrl.split(',')[1];
+            if (base64Data) logoBuffer = Buffer.from(base64Data, 'base64');
+          } else if (logoUrl.startsWith('http')) {
+            try {
+              const resp = await fetch(logoUrl, { signal: AbortSignal.timeout(15_000) });
+              if (resp.ok) logoBuffer = Buffer.from(await resp.arrayBuffer());
+            } catch (err) {
+              console.warn(`[Animation API] Logo download failed:`, err);
+            }
+          }
+
+          if (logoBuffer) {
+            if (context.sandboxId) {
+              try {
+                await getSandboxProvider().writeBinary(context.sandboxId, logoDestPath, logoBuffer);
+                console.log(`[Animation API] Logo pre-uploaded → ${logoDestPath} (${Math.round(logoBuffer.length / 1024)}KB)`);
+              } catch (err) {
+                console.error(`[Animation API] Logo pre-upload failed:`, err);
+              }
+            } else {
+              pendingMediaForSandbox.push({ id: 'logo', name: logoName, data: logoBuffer, destPath: logoDestPath, type: 'image', source: 'upload' });
+            }
+            // Store logo path for code gen
+            requestContext.set('logoPath' as never, logoDestPath as never);
+          }
         }
 
         // Store mediaFiles in requestContext for generate_remotion_code to auto-resolve.
@@ -263,18 +351,22 @@ export async function POST(request: Request) {
         const edgeMedia = context.media.filter(m => m.source === 'edge');
         const uploadMedia = context.media.filter(m => m.source !== 'edge');
 
+        // Engine-aware media reference format
+        const mediaRef = engine === 'remotion'
+          ? (fileName: string) => `staticFile("media/${fileName}")`
+          : (fileName: string) => `"/media/${fileName}"`;
+
         const formatMedia = (m: typeof context.media[0]) => {
           const uploaded = uploadedPaths.has(m.id);
           const pending = pendingMediaForSandbox.some(p => p.id === m.id);
           const desc = m.description ? ` — "${m.description}"` : '';
-          // Use the actual dest path (with ensured extension) for staticFile references
           const dp = destPathMap.get(m.id) || `public/media/${m.name}`;
           const fileName = dp.split('/').pop()!;
           if (uploaded) {
-            return `- [${m.type}] "${m.name}"${desc} (source: ${m.source}) ALREADY UPLOADED to ${uploadedPaths.get(m.id)} — reference as staticFile("media/${fileName}") in code`;
+            return `- [${m.type}] "${m.name}"${desc} (source: ${m.source}) ALREADY UPLOADED to ${uploadedPaths.get(m.id)} — reference as ${mediaRef(fileName)} in code`;
           }
           if (pending) {
-            return `- [${m.type}] "${m.name}"${desc} (source: ${m.source}) WILL BE AUTO-UPLOADED to ${dp} after sandbox creation — reference as staticFile("media/${fileName}") in code`;
+            return `- [${m.type}] "${m.name}"${desc} (source: ${m.source}) WILL BE AUTO-UPLOADED to ${dp} after sandbox creation — reference as ${mediaRef(fileName)} in code`;
           }
           // blob: or cached: URLs that couldn't be resolved — skip with warning
           if (m.dataUrl.startsWith('blob:') || m.dataUrl.startsWith('cached:')) {
@@ -291,8 +383,9 @@ export async function POST(request: Request) {
         if (uploadMedia.length > 0) {
           contextParts.push(`📎 UPLOADED MEDIA — Determine purpose from prompt context (content vs reference):\n${uploadMedia.map(formatMedia).join('\n')}`);
         }
+        const codeGenToolName = engine === 'remotion' ? 'generate_remotion_code' : 'generate_code';
         contextParts.push(
-          'For CONTENT media: Pass file paths via mediaFiles to generate_remotion_code. ' +
+          `For CONTENT media: Pass file paths via mediaFiles to ${codeGenToolName}. ` +
           'For REFERENCE media: Use analyze_media for design cues, do NOT upload to sandbox. ' +
           'For URL media: Use sandbox_upload_media to download to public/media/. ' +
           'For videos, call analyze_media first for scene understanding, then extract_video_frames for key frame images.'
@@ -309,12 +402,25 @@ export async function POST(request: Request) {
       }
       if (context.designSpec) {
         const ds = context.designSpec;
-        if (ds.style) contextParts.push(`Design style preset: ${ds.style}`);
+        if (ds.style) {
+          contextParts.push(`Design style: ${ds.style}`);
+          // Look up and inject style-specific instructions
+          const stylePreset = STYLE_PRESETS.find(p => p.id === ds.style);
+          if (stylePreset?.instructions) {
+            contextParts.push(`<style-instructions>\n${stylePreset.instructions}\n</style-instructions>`);
+          }
+        }
+        if (ds.theme) contextParts.push(`Color theme preset: ${ds.theme}`);
         if (ds.colors) contextParts.push(`Color palette — Primary: ${ds.colors.primary}, Secondary: ${ds.colors.secondary}${ds.colors.accent ? `, Accent: ${ds.colors.accent}` : ''}`);
         if (ds.fonts) contextParts.push(`Typography — Title font: ${ds.fonts.title}, Body font: ${ds.fonts.body}`);
       } else if (!(context?.plan as Record<string, unknown>)?.designSpec) {
         // When NO designSpec is set at all, add guidance to prevent dark-mode default
         contextParts.push(`No design spec selected. You MUST choose colors appropriate to the content — NOT default dark/indigo. Light backgrounds for product/lifestyle/corporate, dark for tech/developer, colorful for creative/brand. Include your chosen palette in generate_plan's designSpec field.`);
+      }
+      if (context.logo?.url) {
+        const logoName = context.logo.name || 'logo.png';
+        const logoPath = `public/media/${logoName}`;
+        contextParts.push(`<logo>\nThe user has provided a logo image that MUST be prominently featured in the animation.\nLogo file: ${logoPath} (already uploaded to sandbox)\nUse <Img src={staticFile("media/${logoName}")} /> in Remotion to display it.\nFeature it in intros, outros, or as a persistent element. Ensure it's well-positioned and properly sized.\n</logo>`);
       }
       if (context.phase) {
         contextParts.push(`Current phase: ${context.phase}`);
@@ -378,17 +484,23 @@ export async function POST(request: Request) {
     const hasSandbox = !!context?.sandboxId;
     // Planning phase: no approved plan AND no existing sandbox (not a revision)
     // Give limited steps — enough for enhance + plan + approval request
-    // Execution/revision phase: full 75 steps (50 was too few — render_preview
+    // Execution/revision phase: full 75 steps (50 was too few — render_final
     // often lands on the last step and its tool-result gets dropped by the SDK)
     const maxSteps = (hasApprovedPlan || hasSandbox) ? 75 : 12;
 
     console.log(`⏱ [Animation API] Stream request — engine: ${engine}, messages: ${agentMessages.length}, sandboxId: ${context?.sandboxId || 'NONE'}, phase: ${context?.phase || 'unknown'}, techniques: ${context?.techniques?.length || 0}${recipeContent ? ` (~${Math.round(recipeContent.length / 4)} tokens)` : ''}, maxSteps: ${maxSteps}, hasApprovedPlan: ${hasApprovedPlan}, designSpec: ${context?.designSpec ? JSON.stringify(context.designSpec) : 'NONE'}`);
+
+    // AbortController to kill the agent loop when we close the stream early
+    // (e.g. plan gate). Without this, Mastra continues executing tool calls
+    // in the background even after we stop reading — creating orphan containers.
+    const agentAbort = new AbortController();
 
     const result = await animationAgent.stream(
       agentMessages as Parameters<typeof animationAgent.stream>[0],
       {
         maxSteps,
         requestContext,
+        abortSignal: agentAbort.signal,
         providerOptions: {
           // Each provider ignores keys meant for other providers
           google: { thinkingConfig: { thinkingBudget: 8192, includeThoughts: true } },
@@ -426,9 +538,11 @@ export async function POST(request: Request) {
           }
         };
 
-        // Close early when the client disconnects
+        // Close early when the client disconnects — also abort agent loop
         request.signal.addEventListener('abort', () => {
           closed = true;
+          requestContext.set('streamClosed' as never, true as never);
+          agentAbort.abort();
           safeClose();
         });
 
@@ -470,6 +584,8 @@ export async function POST(request: Request) {
                     text: '',
                     finishReason: 'plan-approval-required',
                   })}\n\n`));
+                  requestContext.set('streamClosed' as never, true as never);
+                  agentAbort.abort();
                   reader.cancel();
                   safeClose();
                   sseData = null; // Don't forward the blocked tool-call
@@ -517,6 +633,9 @@ export async function POST(request: Request) {
                       text: '',
                       finishReason: 'plan-approval-sent',
                     })}\n\n`));
+                    // Abort the agent loop to prevent tool leaks (sandbox_create etc.)
+                    requestContext.set('streamClosed' as never, true as never);
+                    agentAbort.abort();
                     reader.cancel();
                     safeClose();
                     sseData = null; // Already forwarded manually
@@ -622,6 +741,24 @@ export async function POST(request: Request) {
           const serverTotal = ((Date.now() - serverStart) / 1000).toFixed(1);
           console.log(`⏱ [Animation API] Stream complete — total: ${serverTotal}s`);
 
+          // Recovery: if render_final saved a video but the tool-result may have been
+          // lost (e.g., maxSteps hit during render), emit a video-ready SSE event so
+          // the client can create a version from the permanent URL.
+          if (!closed) {
+            const lastVideoUrl = requestContext.get('lastVideoUrl' as never) as string | undefined;
+            if (lastVideoUrl) {
+              const duration = requestContext.get('duration' as never) as number | undefined;
+              const lastVersionId = requestContext.get('lastVersionId' as never) as string | undefined;
+              console.log(`⏱ [Animation API] Emitting video-ready recovery event: ${lastVideoUrl} (versionId=${lastVersionId})`);
+              safeEnqueue(encoder.encode(`data: ${JSON.stringify({
+                type: 'video-ready',
+                videoUrl: lastVideoUrl,
+                versionId: lastVersionId,
+                duration: duration || 7,
+              })}\n\n`));
+            }
+          }
+
           // Send final complete event (ALWAYS — even if aggregation fails)
           // This is critical: the client relies on 'complete' to know the stream ended
           if (!closed) {
@@ -717,11 +854,11 @@ export async function GET(request: Request) {
       'sandbox_read_file',
       'sandbox_run_command',
       'sandbox_list_files',
-      // Preview & Visual
-      'sandbox_start_preview',
+      // Visual Verification
       'sandbox_screenshot',
+      // Video Verification
+      'verify_animation',
       // Rendering
-      'render_preview',
       'render_final',
     ],
   });
