@@ -332,6 +332,58 @@ This injects recipe patterns (tested code snippets) directly into the code gener
           }
           file.content = fixedContent;
         }
+
+        // Post-processing: auto-fix loadFont("bold") / loadFont("italic") → loadFont()
+        // Code gen models sometimes pass weight/style strings to loadFont() which crashes Remotion.
+        const loadFontArgPattern = /loadFont\(\s*["'](?:bold|italic|normal|thin|light|medium|semibold|extrabold|black|\d{3})['"]\s*\)/gi;
+        if (loadFontArgPattern.test(file.content)) {
+          const beforeFix = file.content;
+          file.content = file.content.replace(loadFontArgPattern, 'loadFont()');
+          if (file.content !== beforeFix) {
+            console.warn(`[generate_remotion_code] ⚠️ Auto-fixed loadFont("...") → loadFont() in ${file.path}`);
+          }
+        }
+
+        // Post-processing: auto-fix string easing values → Easing.bezier()
+        // Code gen models sometimes use easing: "ease-in-out" or easing: "easeInOut" (strings, not functions).
+        const stringEasingPattern = /easing:\s*["'](?:ease[-\s]?in[-\s]?out|ease[-\s]?in|ease[-\s]?out|ease|linear|easeInOut|easeIn|easeOut)["']/gi;
+        if (stringEasingPattern.test(file.content)) {
+          const beforeFix = file.content;
+          file.content = file.content.replace(stringEasingPattern, 'easing: Easing.out(Easing.exp)');
+          if (file.content !== beforeFix) {
+            // Ensure Easing is imported
+            const remotionImport = /import\s*{([^}]*)}\s*from\s*['"]remotion['"]/;
+            const im = file.content.match(remotionImport);
+            if (im && !im[1].includes('Easing')) {
+              file.content = file.content.replace(remotionImport, `import {${im[1]}, Easing} from 'remotion'`);
+            }
+            console.warn(`[generate_remotion_code] ⚠️ Auto-fixed string easing → Easing.out(Easing.exp) in ${file.path}`);
+          }
+        }
+
+        // Post-processing: auto-fix WRONG Easing method names → correct Remotion names.
+        // Models confuse React Native / CSS easing names with Remotion's.
+        // Easing.expo → Easing.exp, Easing.sine → Easing.sin, etc.
+        const easingRenames: [RegExp, string][] = [
+          [/Easing\.expo\b/g, 'Easing.exp'],
+          [/Easing\.exponential\b/g, 'Easing.exp'],
+          [/Easing\.sine\b/g, 'Easing.sin'],
+          [/Easing\.easeIn\b(?!\()/g, 'Easing.in(Easing.quad)'],
+          [/Easing\.easeOut\b(?!\()/g, 'Easing.out(Easing.quad)'],
+          [/Easing\.easeInOut\b(?!\()/g, 'Easing.inOut(Easing.quad)'],
+          [/Easing\.back\b/g, 'Easing.exp'],
+          [/Easing\.bounce\b/g, 'Easing.exp'],
+          [/Easing\.elastic\b/g, 'Easing.exp'],
+        ];
+        {
+          const beforeFix = file.content;
+          for (const [pattern, replacement] of easingRenames) {
+            file.content = file.content.replace(pattern, replacement);
+          }
+          if (file.content !== beforeFix) {
+            console.warn(`[generate_remotion_code] ⚠️ Auto-fixed wrong Easing method names in ${file.path}`);
+          }
+        }
       }
 
       // Write files directly to the sandbox
@@ -580,6 +632,39 @@ function formatRemotionCodeGenerationPrompt(params: z.infer<typeof GenerateRemot
   parts.push(`SAFE fonts (guaranteed available): Inter, Roboto, Lato, Montserrat, Oswald, Raleway, Poppins, Ubuntu, Nunito, PlayfairDisplay, SpaceGrotesk, DMSans, Manrope, Sora`);
   parts.push(`If you need a font NOT in this list, it may still work — but prefer these for reliability.`);
   parts.push(``);
+  parts.push(`### FONT RULES — CRITICAL`);
+  parts.push(`- loadFont() takes NO arguments. NEVER call loadFont("bold") or loadFont("italic") — this CRASHES the render.`);
+  parts.push(`- For bold text: use CSS \`fontWeight: 700\` (or 600, 800, 900). Example:`);
+  parts.push(`\`\`\``);
+  parts.push(`const { fontFamily } = loadFont(); // NO args!`);
+  parts.push(`<span style={{ fontFamily, fontWeight: 700 }}>Bold text</span>`);
+  parts.push(`\`\`\``);
+  parts.push(`- For italic text: use CSS \`fontStyle: "italic"\``);
+  parts.push(`- WRONG: loadFont("bold"), loadFont("italic"), loadFont("700")`);
+  parts.push(`- RIGHT: loadFont() then style={{ fontFamily, fontWeight: 700 }}`);
+  parts.push(``);
+
+  // ── Easing / interpolation guidance ──
+  parts.push(`## EASING & INTERPOLATION — CRITICAL`);
+  parts.push(`The \`easing\` option in \`interpolate()\` MUST be a function. Import from 'remotion':`);
+  parts.push(`\`\`\``);
+  parts.push(`import { interpolate, Easing } from "remotion";`);
+  parts.push(`const val = interpolate(frame, [0, 30], [0, 1], { easing: Easing.out(Easing.exp) });`);
+  parts.push(`\`\`\``);
+  parts.push(`### EXACT valid Easing curve methods (only these exist):`);
+  parts.push(`- Curves: Easing.quad, Easing.sin, Easing.exp, Easing.circle, Easing.cubic, Easing.poly(n)`);
+  parts.push(`- Standalone: Easing.ease, Easing.linear`);
+  parts.push(`- Combinators: Easing.in(curve), Easing.out(curve), Easing.inOut(curve)`);
+  parts.push(`- Custom: Easing.bezier(x1, y1, x2, y2)`);
+  parts.push(`### Common WRONG names that DO NOT EXIST — will CRASH:`);
+  parts.push(`- Easing.expo ← DOES NOT EXIST, use Easing.exp`);
+  parts.push(`- Easing.sine ← DOES NOT EXIST, use Easing.sin`);
+  parts.push(`- Easing.exponential ← DOES NOT EXIST, use Easing.exp`);
+  parts.push(`- Easing.easeIn, Easing.easeOut, Easing.easeInOut ← DO NOT EXIST, use Easing.in(Easing.quad), Easing.out(Easing.quad), Easing.inOut(Easing.quad)`);
+  parts.push(`- Easing.back, Easing.bounce, Easing.elastic ← DO NOT EXIST in Remotion`);
+  parts.push(`- easing: "ease-in-out" ← WRONG, must be a function not a string`);
+  parts.push(`If unsure, use: { easing: Easing.out(Easing.exp) } — universal safe choice.`);
+  parts.push(``);
 
   // ── Output format + quality checklist ──
   parts.push(``);
@@ -605,7 +690,9 @@ function formatRemotionCodeGenerationPrompt(params: z.infer<typeof GenerateRemot
     parts.push(`□ Staggered timing — elements enter one by one, NOT all at once`);
     parts.push(`□ Visual hierarchy — ONE dominant element per scene, rest supporting`);
     parts.push(`□ Generous whitespace (padding 48-80px)`);
-    parts.push(`If ANY fail, your output will look amateur. Fix before returning.`);
+    parts.push(`□ loadFont() called with NO arguments (never "bold"/"italic") — use fontWeight/fontStyle CSS`);
+    parts.push(`□ Every easing uses EXACT Remotion names: Easing.exp (NOT expo), Easing.sin (NOT sine) — wrong names CRASH`);
+    parts.push(`If ANY fail, your output will look amateur or CRASH. Fix before returning.`);
   }
 
   return parts.join('\n');
