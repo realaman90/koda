@@ -938,7 +938,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
       {/* Main Node Card */}
       <div
         className={`
-          w-[400px] rounded-2xl overflow-hidden flex flex-col
+          animation-node w-[400px] rounded-2xl overflow-hidden flex flex-col
           transition-[box-shadow,ring-color] duration-150
           ${selected
             ? 'ring-[2.5px] ring-indigo-500 shadow-lg shadow-indigo-500/10'
@@ -947,6 +947,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
         `}
         style={{
           backgroundColor: 'var(--node-card-bg)',
+          border: 'none',
           '--tw-ring-color': selected ? undefined : 'var(--node-ring)',
           minHeight: data.viewState === 'chat' ? '450px' : undefined,
           maxHeight: data.viewState === 'chat' ? '620px' : undefined,
