@@ -1099,6 +1099,10 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
             updateNodeData(id, {
               state: { ...ls, phase: 'question', question: result.question, updatedAt: new Date().toISOString() },
             });
+          } else {
+            // needsClarification=false — agent should call generate_plan next.
+            // Just log it; the generate_plan handler will do the phase transition.
+            console.log('[AnimationNode] analyze_prompt: no clarification needed, expecting generate_plan next');
           }
         }
       },
@@ -1283,20 +1287,26 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           { nodeId: id, phase: 'idle', media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution },
           callbacks
         );
-        // Fallback if agent didn't use tools
+        // Fallback if agent didn't call generate_plan (stayed in 'executing')
         const latest = getLatestState();
         if (latest.phase === 'executing') {
+          console.warn('[AnimationNode] handleAnalyzePrompt fallback — agent did not generate a plan, creating default');
+          // Distribute user's selected duration across 3 scenes
+          const targetDur = duration || 10;
+          const introDur = Math.round(targetDur * 0.2 * 10) / 10;
+          const outroDur = Math.round(targetDur * 0.2 * 10) / 10;
+          const mainDur = Math.round((targetDur - introDur - outroDur) * 10) / 10;
           updateNodeData(id, {
             state: {
               ...latest,
               phase: 'plan',
               plan: {
                 scenes: [
-                  { number: 1, title: 'Intro', duration: 2, description: 'Opening animation' },
-                  { number: 2, title: 'Main', duration: 3, description: prompt.slice(0, 100) },
-                  { number: 3, title: 'Outro', duration: 2, description: 'Closing animation' },
+                  { number: 1, title: 'Intro', duration: introDur, description: 'Opening animation' },
+                  { number: 2, title: 'Main', duration: mainDur, description: prompt.slice(0, 100) },
+                  { number: 3, title: 'Outro', duration: outroDur, description: 'Closing animation' },
                 ],
-                totalDuration: 7,
+                totalDuration: targetDur,
                 style: 'smooth',
                 fps: fps || 30,
               },
