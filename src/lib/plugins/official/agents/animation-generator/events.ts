@@ -73,6 +73,15 @@ export interface SandboxCreatedSSEEvent {
   sandboxId: string;
 }
 
+/** Custom SSE event: video was rendered and saved to permanent storage.
+ *  Recovery mechanism: emitted at stream end so the client can show the video
+ *  even if the render_final tool-result was lost (e.g., stream hit maxSteps). */
+export interface VideoReadySSEEvent {
+  type: 'video-ready';
+  videoUrl: string;
+  duration: number;
+}
+
 /** Union of all SSE event types */
 export type AnimationStreamEvent =
   | TextDeltaEvent
@@ -83,7 +92,8 @@ export type AnimationStreamEvent =
   | CompleteEvent
   | ErrorEvent
   | ReasoningDeltaEvent
-  | SandboxCreatedSSEEvent;
+  | SandboxCreatedSSEEvent
+  | VideoReadySSEEvent;
 
 // ============================================
 // APPLICATION-LEVEL EVENT TYPES
@@ -249,7 +259,6 @@ export const SANDBOX_TOOL_NAMES = [
   'sandbox_read_file',
   'sandbox_run_command',
   'sandbox_list_files',
-  'sandbox_start_preview',
   'sandbox_screenshot',
 ] as const;
 
@@ -261,8 +270,12 @@ export const CODE_GEN_TOOL_NAMES = [
 
 /** Rendering tools — tool-result is used */
 export const RENDER_TOOL_NAMES = [
-  'render_preview',
   'render_final',
+] as const;
+
+/** Verification tools — tool-result is used */
+export const VERIFICATION_TOOL_NAMES = [
+  'verify_animation',
 ] as const;
 
 export type UIToolName = typeof UI_TOOL_NAMES[number];
@@ -270,7 +283,8 @@ export type PlanningToolName = typeof PLANNING_TOOL_NAMES[number];
 export type SandboxToolName = typeof SANDBOX_TOOL_NAMES[number];
 export type CodeGenToolName = typeof CODE_GEN_TOOL_NAMES[number];
 export type RenderToolName = typeof RENDER_TOOL_NAMES[number];
-export type AnimationToolName = UIToolName | PlanningToolName | SandboxToolName | CodeGenToolName | RenderToolName;
+export type VerificationToolName = typeof VERIFICATION_TOOL_NAMES[number];
+export type AnimationToolName = UIToolName | PlanningToolName | SandboxToolName | CodeGenToolName | RenderToolName | VerificationToolName;
 
 /**
  * Map a tool-call event to an application-level event.
@@ -361,23 +375,10 @@ export function toolResultToAppEvent(toolName: string, result: Record<string, un
         kind: 'file_written',
         path: result.path as string,
       };
-    case 'sandbox_start_preview':
-      return {
-        kind: 'preview_ready',
-        previewUrl: result.previewUrl as string,
-      };
     case 'sandbox_screenshot':
       return {
         kind: 'screenshot_captured',
         screenshots: (result.screenshots as Array<{ imageUrl: string; timestamp: number }>) || [],
-      };
-    case 'render_preview':
-      return {
-        kind: 'render_complete',
-        videoUrl: result.videoUrl as string,
-        thumbnailUrl: result.thumbnailUrl as string,
-        duration: result.duration as number,
-        quality: 'preview',
       };
     case 'render_final':
       return {

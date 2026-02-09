@@ -66,13 +66,12 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
   sandbox_read_file: 'Checking file',
   sandbox_run_command: 'Processing',
   sandbox_list_files: 'Checking files',
-  sandbox_start_preview: 'Preparing preview',
   sandbox_screenshot: 'Capturing frame',
   sandbox_create: 'Setting up workspace',
   sandbox_destroy: 'Cleaning up',
-  render_preview: 'Creating preview video',
   render_final: 'Rendering final video',
   generate_plan: 'Planning animation',
+  verify_animation: 'Checking quality',
 };
 
 /** UI tools that update state silently — not shown in the timeline */
@@ -609,9 +608,16 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           };
         }
 
+        // Defensive: if versions exist but phase is still 'executing', force 'preview'
+        // This catches edge cases where render_final result handler's state update was lost
+        const resolvedPhase = (ls.phase === 'executing' && ls.versions && ls.versions.length > 0)
+          ? 'preview' as const
+          : ls.phase;
+
         updateNodeData(id, {
           state: {
             ...ls,
+            phase: resolvedPhase,
             messages: updatedMessages,
             thinkingBlocks,
             execution: ls.execution
@@ -657,10 +663,9 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           sandbox_create: 'Setting up workspace...',
           generate_remotion_code: 'Writing animation code...',
           generate_code: 'Writing animation code...',
-          sandbox_start_preview: 'Starting preview...',
           sandbox_screenshot: 'Checking the animation...',
-          render_preview: 'Rendering preview video...',
           render_final: 'Rendering final video...',
+          verify_animation: 'Reviewing your animation...',
           analyze_media: 'Analyzing your media...',
         };
         const autoLabel = TOOL_THINKING_LABELS[event.toolName];
@@ -942,28 +947,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           }
         }
 
-        if (event.toolName === 'sandbox_start_preview') {
-          const result = event.result as { success?: boolean; previewUrl?: string; message?: string };
-          if (result.success === false || event.isError) {
-            // Log technical details, show friendly message
-            console.error(`[AnimationNode] Preview failed:`, result.message);
-            addUserMessage('Preview is taking longer than expected. Retrying...');
-          } else if (result.previewUrl) {
-            // Append cache-busting timestamp so the iframe actually reloads
-            // (same URL string = React skips re-render = browser shows stale/broken content)
-            const bustUrl = `${result.previewUrl}?t=${Date.now()}`;
-            const now = new Date().toISOString();
-            updateNodeData(id, {
-              state: { ...ls, previewUrl: bustUrl, previewUrlTimestamp: now, previewState: 'active', updatedAt: now },
-            });
-            ls = { ...ls, previewUrl: bustUrl, previewUrlTimestamp: now, previewState: 'active' };
-            // Mark post-processing done (preview means we're past it)
-            autoMarkTodo('postprocess', 'done');
-            autoMarkTodo('render', 'active');
-          }
-        }
-
-        if (event.toolName === 'render_preview' || event.toolName === 'render_final') {
+        if (event.toolName === 'render_final') {
           console.log(`[AnimationNode] Render tool result:`, JSON.stringify(event.result, null, 2));
           const result = event.result as { success?: boolean; videoUrl?: string; duration?: number; message?: string };
           if (result.success === false || event.isError) {
@@ -971,16 +955,24 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
             console.error(`[AnimationNode] Render failed:`, result.message);
             addUserMessage('Video rendering encountered an issue. Retrying...');
           } else if (result.videoUrl && result.videoUrl.length > 0) {
+            // Skip duplicate: if this URL (without query params) already exists in a version, don't add again.
+            // This prevents the video-ready recovery SSE from creating a duplicate when the tool-result was also received.
+            const baseUrl = result.videoUrl.split('?')[0];
+            const alreadyExists = ls.versions?.some(v => v.videoUrl.split('?')[0] === baseUrl);
+            if (alreadyExists) {
+              console.log(`[AnimationNode] Skipping duplicate video version (URL already exists): ${baseUrl.slice(0, 60)}...`);
+            } else {
             console.log(`[AnimationNode] Creating video version with URL:`, result.videoUrl);
             // Add cache-busting timestamp to prevent browser from serving stale video
             const separator = result.videoUrl.includes('?') ? '&' : '?';
-            const sandboxVideoUrl = `${result.videoUrl}${separator}t=${Date.now()}`;
+            const videoUrlWithCacheBust = `${result.videoUrl}${separator}t=${Date.now()}`;
+            const isPermanentUrl = result.videoUrl.startsWith('/api/assets/');
             const duration = result.duration || ls.plan?.totalDuration || 7;
 
-            // Immediately show the sandbox video URL (for instant feedback)
+            // Immediately show the video URL
             const tempVersion: AnimationVersion = {
               id: `v${Date.now()}`,
-              videoUrl: sandboxVideoUrl,
+              videoUrl: videoUrlWithCacheBust,
               duration,
               prompt: data.prompt || '',
               createdAt: new Date().toISOString(),
@@ -991,7 +983,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
               phase: 'preview' as const,
               versions: [...existingVersions, tempVersion],
               activeVersionId: tempVersion.id,
-              preview: { videoUrl: sandboxVideoUrl, duration },
+              preview: { videoUrl: videoUrlWithCacheBust, duration },
               previewTimestamp: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
             };
@@ -999,7 +991,8 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
               versionCount: newState.versions.length,
               activeVersionId: newState.activeVersionId,
               phase: newState.phase,
-              videoUrl: sandboxVideoUrl.slice(0, 50) + '...',
+              videoUrl: videoUrlWithCacheBust.slice(0, 50) + '...',
+              isPermanent: isPermanentUrl,
             });
             updateNodeData(id, { state: newState });
             // Force update ls reference for subsequent handlers
@@ -1007,11 +1000,14 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
             autoMarkTodo('render', 'done');
 
             // Persist video to storage in background (async)
-            // This replaces the temp sandbox URL with a permanent storage URL
+            // Skip if URL is already a permanent storage URL (from video-ready recovery)
+            if (isPermanentUrl) {
+              console.log(`[AnimationNode] Video URL is already permanent — skipping save-video`);
+            } else
             if (ls.sandboxId) {
               // Extract the file path from the sandbox URL
               // Format: /api/plugins/animation/sandbox/{id}/file?path=output/preview.mp4
-              const pathMatch = sandboxVideoUrl.match(/[?&]path=([^&]+)/);
+              const pathMatch = videoUrlWithCacheBust.match(/[?&]path=([^&]+)/);
               const filePath = pathMatch ? decodeURIComponent(pathMatch[1]) : 'output/preview.mp4';
               const versionId = tempVersion.id; // Capture for async callback
 
@@ -1062,6 +1058,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
             } else {
               console.warn('[AnimationNode] No sandboxId available to save video - URL will be ephemeral');
             }
+            } // close alreadyExists else
           }
         }
 
@@ -1286,7 +1283,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
                 ],
                 totalDuration: 7,
                 style: 'smooth',
-                fps: 60,
+                fps: fps || 30,
               },
               planTimestamp: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
@@ -1354,7 +1351,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
                 ],
                 totalDuration: 7,
                 style: selectedStyle,
-                fps: 60,
+                fps: fps || 30,
               },
               planTimestamp: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
@@ -1437,7 +1434,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
                 ],
                 totalDuration: 7,
                 style: 'smooth',
-                fps: 60,
+                fps: fps || 30,
               },
               planTimestamp: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
@@ -1800,7 +1797,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         [
           'The user clicked Export. Render the final video now.',
           '',
-          'Use render_preview to create the video.',
+          'Use render_final to create the video.',
           `Active sandbox: ${ls.sandboxId}`,
         ].join('\n'),
         { nodeId: id, phase: 'executing', plan: ls.plan, sandboxId: ls.sandboxId, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution },
@@ -1823,6 +1820,8 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     abortStream();
     reasoningTextRef.current = '';
     streamingTextRef.current = '';
+    // Delete code snapshot for this node (fire-and-forget)
+    fetch(`/api/plugins/animation/snapshot/${id}`, { method: 'DELETE' }).catch(() => {});
     updateNodeData(id, { prompt: '', media: [], state: createDefaultState(id) });
   }, [id, updateNodeData, abortStream]);
 

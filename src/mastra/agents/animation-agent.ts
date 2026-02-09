@@ -28,6 +28,8 @@ import {
   enhanceAnimationPromptTool,
   // Media Analysis
   analyzeMediaTool,
+  // Video Verification (subagent-as-tool)
+  verifyAnimationTool,
   // Sandbox Tools
   sandboxCreateTool,
   sandboxDestroyTool,
@@ -38,9 +40,7 @@ import {
   sandboxUploadMediaTool,
   sandboxWriteBinaryTool,
   extractVideoFramesTool,
-  sandboxStartPreviewTool,
   sandboxScreenshotTool,
-  renderPreviewTool,
   renderFinalTool,
 } from '../tools/animation';
 
@@ -90,11 +90,11 @@ export const animationAgent = new Agent({
     sandbox_write_binary: sandboxWriteBinaryTool,
     // Media Processing
     extract_video_frames: extractVideoFramesTool,
-    // Preview & Visual
-    sandbox_start_preview: sandboxStartPreviewTool,
+    // Visual Verification
     sandbox_screenshot: sandboxScreenshotTool,
+    // Video Verification
+    verify_animation: verifyAnimationTool,
     // Rendering
-    render_preview: renderPreviewTool,
     render_final: renderFinalTool,
   },
 });

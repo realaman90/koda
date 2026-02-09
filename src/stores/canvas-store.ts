@@ -1117,6 +1117,14 @@ export const useCanvasStore = create<CanvasState>()(
                   toolCalls: [],
                   thinkingBlocks: [],
                   sandboxId: animState.sandboxId,
+                  // Persist plan (small JSON, needed for context on snapshot restore)
+                  plan: animState.plan,
+                  // Persist versions with permanent URLs only (filter out sandbox-local URLs)
+                  versions: Array.isArray(animState.versions)
+                    ? (animState.versions as Array<Record<string, unknown>>).filter(
+                        (v) => typeof v.videoUrl === 'string' && !(v.videoUrl as string).includes('/sandbox/')
+                      )
+                    : undefined,
                   createdAt: animState.createdAt,
                   updatedAt: animState.updatedAt,
                 } : d.state,

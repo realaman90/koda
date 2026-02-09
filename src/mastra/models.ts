@@ -8,13 +8,13 @@
 // -- Animation Plugin Models --
 
 /** Orchestrator agent — coordinates planning, tool calls, and subagents */
-export const ORCHESTRATOR_MODEL = 'anthropic/claude-opus-4-6';
+export const ORCHESTRATOR_MODEL = 'google/gemini-3-flash-preview';
 
 /** Remotion (2D) code generator subagent */
-export const REMOTION_CODE_GEN_MODEL = 'anthropic/claude-opus-4-6';
+export const REMOTION_CODE_GEN_MODEL = 'google/gemini-3-flash-preview';
 
 /** Theatre.js (3D) code generator subagent */
-export const THEATRE_CODE_GEN_MODEL = 'anthropic/claude-opus-4-6';
+export const THEATRE_CODE_GEN_MODEL = 'google/gemini-3-flash-preview';
 
 /** Image analysis (vision) */
 export const IMAGE_ANALYZER_MODEL = 'google/gemini-3-flash-preview';
@@ -23,9 +23,9 @@ export const IMAGE_ANALYZER_MODEL = 'google/gemini-3-flash-preview';
 export const VIDEO_ANALYZER_MODEL = 'google/gemini-3-flash-preview';
 
 /** Animation prompt enhancer (design spec generation) */
-export const ANIMATION_PROMPT_ENHANCER_MODEL = 'anthropic/claude-haiku-4-5';
+export const ANIMATION_PROMPT_ENHANCER_MODEL = 'google/gemini-3-pro-preview';
 
 // -- General Agents --
 
 /** Image generation prompt enhancer */
-export const PROMPT_ENHANCER_MODEL = 'anthropic/claude-haiku-4-5';
+export const PROMPT_ENHANCER_MODEL = 'google/gemini-3-pro-preview';

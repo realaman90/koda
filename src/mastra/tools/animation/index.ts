@@ -39,6 +39,9 @@ export { enhanceAnimationPromptTool } from './enhance-prompt-tool';
 // Media Analysis Tool
 export { analyzeMediaTool, SceneAnalysisSchema, MediaAnalysisResultSchema } from './analyze-media-tool';
 
+// Video Verification Tool (subagent-as-tool)
+export { verifyAnimationTool } from './verify-animation-tool';
+
 // Sandbox Tools
 export {
   sandboxCreateTool,
@@ -50,8 +53,6 @@ export {
   sandboxUploadMediaTool,
   sandboxWriteBinaryTool,
   extractVideoFramesTool,
-  sandboxStartPreviewTool,
   sandboxScreenshotTool,
-  renderPreviewTool,
   renderFinalTool,
 } from './sandbox-tools';

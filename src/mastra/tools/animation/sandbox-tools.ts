@@ -7,7 +7,50 @@
 
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
-import { dockerProvider } from '@/lib/sandbox/docker-provider';
+import { dockerProvider, readSandboxFileRaw } from '@/lib/sandbox/docker-provider';
+
+// ── Permanent video save helper ─────────────────────────────────────
+// After render, copy the video out of the sandbox into permanent storage
+// (data/generations/) so it survives container death and page refresh.
+async function saveVideoToPermanentStorage(
+  sandboxId: string,
+  sandboxFilePath: string,
+  nodeId?: string,
+): Promise<string | null> {
+  try {
+    console.log(`[saveVideo] Reading ${sandboxFilePath} from sandbox ${sandboxId}...`);
+    const buffer = await readSandboxFileRaw(sandboxId, sandboxFilePath);
+    console.log(`[saveVideo] Got ${Math.round(buffer.length / 1024)}KB, saving to permanent storage...`);
+
+    const { getAssetStorageType } = await import('@/lib/assets');
+    const storageType = getAssetStorageType();
+
+    const options = {
+      type: 'video' as const,
+      extension: 'mp4',
+      metadata: {
+        mimeType: 'video/mp4',
+        nodeId,
+        extra: { source: 'animation-generator' },
+      },
+    };
+
+    let savedAsset;
+    if (storageType === 'local') {
+      const { getLocalAssetProvider } = await import('@/lib/assets/local-provider');
+      savedAsset = await getLocalAssetProvider().saveFromBuffer(buffer, options);
+    } else {
+      const { getS3AssetProvider } = await import('@/lib/assets/s3-provider');
+      savedAsset = await getS3AssetProvider(storageType).saveFromBuffer(buffer, options);
+    }
+
+    console.log(`[saveVideo] Saved permanently: ${savedAsset.url} (${Math.round(buffer.length / 1024)}KB)`);
+    return savedAsset.url;
+  } catch (err) {
+    console.warn(`[saveVideo] Failed to save video permanently (non-critical):`, err);
+    return null;
+  }
+}
 
 // ── Token-saving helpers ──────────────────────────────────────────
 /** Max chars for command output to keep token usage manageable */
@@ -25,9 +68,9 @@ function truncateOutput(text: string, max = MAX_OUTPUT_CHARS): string {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ToolContext = { requestContext?: { get: (key: string) => any; set: (key: string, value: any) => void } };
 
-/** Resolve sandboxId: prefer input arg, fallback to requestContext */
+/** Resolve sandboxId: prefer requestContext (server-set, correct), fallback to input (may be hallucinated by LLM) */
 function resolveSandboxId(input: string | undefined, context?: ToolContext): string | undefined {
-  return input || context?.requestContext?.get('sandboxId') || undefined;
+  return context?.requestContext?.get('sandboxId') || input || undefined;
 }
 
 /** Resolve engine: prefer input arg, fallback to requestContext, default 'remotion' */
@@ -56,11 +99,53 @@ The engine/template is auto-resolved from server context. Call this before writi
   }),
   execute: async (inputData, context) => {
     try {
-      const template = resolveEngine(inputData.template, context as ToolContext);
+      const ctx = context as ToolContext;
+
+      // ── Guard: if stream was already closed (plan gate), skip execution ──
+      // The AbortController should prevent this, but as belt-and-suspenders
+      // we check the flag to avoid creating orphan containers.
+      if (ctx?.requestContext?.get('streamClosed')) {
+        console.log(`[sandbox_create] Stream already closed (plan gate) — skipping to prevent orphan container`);
+        return {
+          success: false,
+          sandboxId: '',
+          status: 'skipped',
+          previewUrl: '',
+          template: 'remotion',
+          message: 'Stream closed — sandbox creation skipped.',
+        };
+      }
+
+      const template = resolveEngine(inputData.template, ctx);
+
+      // ── Guard: if a live sandbox already exists, reuse it ──────────
+      // Gemini sometimes calls sandbox_create even when one is active.
+      // Creating a duplicate wastes resources and causes sandboxId mismatch.
+      const existingSandboxId = resolveSandboxId(undefined, ctx);
+      if (existingSandboxId) {
+        try {
+          const status = await dockerProvider.getStatus(existingSandboxId);
+          if (status) {
+            console.log(`[sandbox_create] Reusing existing live sandbox ${existingSandboxId} (skipping duplicate creation)`);
+            return {
+              success: true,
+              sandboxId: existingSandboxId,
+              status: status.status,
+              previewUrl: `/api/plugins/animation/sandbox/${existingSandboxId}/proxy`,
+              template,
+              message: `Sandbox already active: ${existingSandboxId}. Reusing existing sandbox.`,
+            };
+          }
+          console.log(`[sandbox_create] Existing sandbox ${existingSandboxId} is dead — creating new one`);
+        } catch {
+          console.log(`[sandbox_create] Could not check existing sandbox ${existingSandboxId} — creating new one`);
+        }
+      }
+
       const instance = await dockerProvider.create(inputData.projectId, template);
+      console.log(`[sandbox_create] Created new sandbox ${instance.id} (template=${template})`);
 
       // Store sandboxId in requestContext so all subsequent tools auto-resolve it
-      const ctx = context as ToolContext;
       ctx?.requestContext?.set('sandboxId', instance.id);
 
       // Auto-upload any pending media stored in requestContext by route.ts.
@@ -99,8 +184,36 @@ The engine/template is auto-resolved from server context. Call this before writi
         console.log(`[sandbox_create] No pending media to auto-upload`);
       }
 
+      // Check for code snapshot to restore (edit/revision flow after container died)
+      let snapshotRestored = false;
+      const nodeId = ctx?.requestContext?.get('nodeId');
+      const phase = ctx?.requestContext?.get('phase');
+      const hasPlan = !!ctx?.requestContext?.get('plan');
+
+      console.log(`[sandbox_create] Snapshot check: nodeId=${nodeId}, phase=${phase}, hasPlan=${hasPlan}`);
+
+      if (nodeId && (phase !== 'idle' || hasPlan)) {
+        console.log(`[sandbox_create] Attempting snapshot restore for node ${nodeId} into sandbox ${instance.id}...`);
+        try {
+          const { getSnapshotProvider } = await import('@/lib/sandbox/snapshot');
+          const exists = await getSnapshotProvider().exists(nodeId);
+          console.log(`[sandbox_create] Snapshot exists on disk: ${exists}`);
+          if (exists) {
+            snapshotRestored = await getSnapshotProvider().restore(nodeId, instance.id);
+            console.log(`[sandbox_create] Snapshot restore result: ${snapshotRestored}`);
+          }
+        } catch (err) {
+          console.warn(`[sandbox_create] Snapshot restore failed (starting fresh):`, err);
+        }
+      } else {
+        console.log(`[sandbox_create] Skipping snapshot restore (fresh generation or no nodeId)`);
+      }
+
       const mediaMsg = uploadedFiles.length > 0
         ? ` Media auto-uploaded: ${uploadedFiles.join(', ')}`
+        : '';
+      const restoreMsg = snapshotRestored
+        ? ' Previous code restored from snapshot.'
         : '';
 
       return {
@@ -109,7 +222,7 @@ The engine/template is auto-resolved from server context. Call this before writi
         status: instance.status,
         previewUrl: `/api/plugins/animation/sandbox/${instance.id}/proxy`,
         template,
-        message: `Sandbox created with ${template} template: ${instance.id}.${mediaMsg}`,
+        message: `Sandbox created with ${template} template: ${instance.id}.${mediaMsg}${restoreMsg}`,
       };
     } catch (error) {
       return {
@@ -1049,9 +1162,27 @@ export const renderPreviewTool = createTool({
           };
         }
 
+        // Save code snapshot + video to permanent storage (non-critical)
+        const nodeId_tp = (context as ToolContext)?.requestContext?.get('nodeId');
+        console.log(`[render_preview] Theatre render success. nodeId=${nodeId_tp}, sandboxId=${sandboxId}`);
+        if (nodeId_tp && sandboxId) {
+          try {
+            console.log(`[render_preview] Saving snapshot for node ${nodeId_tp}...`);
+            const { getSnapshotProvider } = await import('@/lib/sandbox/snapshot');
+            await getSnapshotProvider().save(nodeId_tp, sandboxId, { engine });
+            console.log(`[render_preview] Snapshot saved for node ${nodeId_tp}`);
+          } catch (err) {
+            console.warn(`[render_preview] Snapshot save failed (non-critical):`, err);
+          }
+        }
+
+        // Save video to permanent storage so it survives container death
+        const permanentUrl_tp = await saveVideoToPermanentStorage(sandboxId, 'output/preview.mp4', nodeId_tp);
+        const videoUrl_tp = permanentUrl_tp || `/api/plugins/animation/sandbox/${sandboxId}/file?path=output/preview.mp4`;
+
         return {
           success: true,
-          videoUrl: `/api/plugins/animation/sandbox/${sandboxId}/file?path=output/preview.mp4`,
+          videoUrl: videoUrl_tp,
           thumbnailUrl: '',
           duration: inputData.duration,
           message: `Video rendered successfully [theatre, preview quality]`,
@@ -1121,9 +1252,27 @@ export const renderPreviewTool = createTool({
         };
       }
 
+      // Save code snapshot + video to permanent storage (non-critical)
+      const nodeId_rp = (context as ToolContext)?.requestContext?.get('nodeId');
+      console.log(`[render_preview] Remotion render success. nodeId=${nodeId_rp}, sandboxId=${sandboxId}`);
+      if (nodeId_rp && sandboxId) {
+        try {
+          console.log(`[render_preview] Saving snapshot for node ${nodeId_rp}...`);
+          const { getSnapshotProvider } = await import('@/lib/sandbox/snapshot');
+          await getSnapshotProvider().save(nodeId_rp, sandboxId, { engine });
+          console.log(`[render_preview] Snapshot saved for node ${nodeId_rp}`);
+        } catch (err) {
+          console.warn(`[render_preview] Snapshot save failed (non-critical):`, err);
+        }
+      }
+
+      // Save video to permanent storage so it survives container death
+      const permanentUrl_rp = await saveVideoToPermanentStorage(sandboxId, 'output/preview.mp4', nodeId_rp);
+      const videoUrl_rp = permanentUrl_rp || `/api/plugins/animation/sandbox/${sandboxId}/file?path=output/preview.mp4`;
+
       return {
         success: true,
-        videoUrl: `/api/plugins/animation/sandbox/${sandboxId}/file?path=output/preview.mp4`,
+        videoUrl: videoUrl_rp,
         thumbnailUrl: '',
         duration: inputData.duration,
         message: `Video rendered successfully (composition: ${compositionId})`,
@@ -1247,9 +1396,33 @@ export const renderFinalTool = createTool({
           };
         }
 
+        const nodeId_tf = (context as ToolContext)?.requestContext?.get('nodeId');
+        console.log(`[render_final] Theatre render success. nodeId=${nodeId_tf}, sandboxId=${sandboxId}`);
+
+        // Fire-and-forget: snapshot save (non-critical, only for restoring dead containers)
+        if (nodeId_tf && sandboxId) {
+          void (async () => {
+            try {
+              const { getSnapshotProvider } = await import('@/lib/sandbox/snapshot');
+              await getSnapshotProvider().save(nodeId_tf, sandboxId, { engine });
+              console.log(`[render_final] Background: snapshot saved for node ${nodeId_tf}`);
+            } catch (err) {
+              console.warn(`[render_final] Background: snapshot save failed:`, err);
+            }
+          })();
+        }
+
+        // Permanent save MUST complete before returning — if sandbox dies, video is lost otherwise
+        const permanentUrl_tf = await saveVideoToPermanentStorage(sandboxId, 'output/final.mp4', nodeId_tf);
+        const videoUrl_tf = permanentUrl_tf || `/api/plugins/animation/sandbox/${sandboxId}/file?path=output/final.mp4`;
+
+        if (permanentUrl_tf && (context as ToolContext)?.requestContext) {
+          (context as ToolContext).requestContext!.set('lastVideoUrl', videoUrl_tf);
+        }
+
         return {
           success: true,
-          videoUrl: `/api/plugins/animation/sandbox/${sandboxId}/file?path=output/final.mp4`,
+          videoUrl: videoUrl_tf,
           thumbnailUrl: '',
           duration: inputData.duration,
           resolution,
@@ -1325,9 +1498,33 @@ export const renderFinalTool = createTool({
         };
       }
 
+      const nodeId_rf = (context as ToolContext)?.requestContext?.get('nodeId');
+      console.log(`[render_final] Remotion render success. nodeId=${nodeId_rf}, sandboxId=${sandboxId}`);
+
+      // Fire-and-forget: snapshot save (non-critical, only for restoring dead containers)
+      if (nodeId_rf && sandboxId) {
+        void (async () => {
+          try {
+            const { getSnapshotProvider } = await import('@/lib/sandbox/snapshot');
+            await getSnapshotProvider().save(nodeId_rf, sandboxId, { engine });
+            console.log(`[render_final] Background: snapshot saved for node ${nodeId_rf}`);
+          } catch (err) {
+            console.warn(`[render_final] Background: snapshot save failed:`, err);
+          }
+        })();
+      }
+
+      // Permanent save MUST complete before returning — if sandbox dies, video is lost otherwise
+      const permanentUrl_rf = await saveVideoToPermanentStorage(sandboxId, 'output/final.mp4', nodeId_rf);
+      const videoUrl_rf = permanentUrl_rf || `/api/plugins/animation/sandbox/${sandboxId}/file?path=output/final.mp4`;
+
+      if (permanentUrl_rf && (context as ToolContext)?.requestContext) {
+        (context as ToolContext).requestContext!.set('lastVideoUrl', videoUrl_rf);
+      }
+
       return {
         success: true,
-        videoUrl: `/api/plugins/animation/sandbox/${sandboxId}/file?path=output/final.mp4`,
+        videoUrl: videoUrl_rf,
         thumbnailUrl: '',
         duration: inputData.duration,
         resolution,

@@ -295,6 +295,27 @@ export function useAnimationStream(): UseAnimationStreamReturn {
                   break;
                 }
 
+                // video-ready: recovery event from server when render_final saved a video
+                // but the tool-result may have been lost (e.g., stream hit maxSteps during render).
+                // Synthesize a render_final tool-result so the UI creates a version.
+                case 'video-ready': {
+                  const videoData = data as { type: 'video-ready'; videoUrl: string; duration: number };
+                  if (videoData.videoUrl) {
+                    console.log(`[useAnimationStream] video-ready recovery SSE: ${videoData.videoUrl}`);
+                    callbacks?.onToolResult?.({
+                      toolCallId: `sse_video_recovery_${Date.now()}`,
+                      toolName: 'render_final',
+                      result: {
+                        success: true,
+                        videoUrl: videoData.videoUrl,
+                        duration: videoData.duration || 7,
+                        message: 'Video recovered from server storage',
+                      },
+                    });
+                  }
+                  break;
+                }
+
                 // step-finish, finish — informational, no UI action needed
                 default:
                   break;
