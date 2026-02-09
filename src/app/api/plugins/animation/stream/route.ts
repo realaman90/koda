@@ -113,12 +113,16 @@ export async function POST(request: Request) {
       if (context.sandboxId) {
         contextParts.push(`Active sandbox ID: ${context.sandboxId}`);
       }
+      // Log media for debugging (always, even if empty)
+      console.log(`[Animation API] Media received: ${context.media?.length ?? 0} items`, context.media?.map(m => ({ name: m.name, source: m.source, type: m.type, urlPrefix: m.dataUrl?.slice(0, 30) })));
+
       if (context.media && context.media.length > 0) {
         // ── Server-side media upload ──────────────────────────────────
         // Base64 media is uploaded server-side to avoid bloating the LLM context.
         // - If sandbox exists: upload immediately, tell agent "ALREADY AT path"
         // - If no sandbox: store in requestContext, sandbox_create auto-uploads
         const uploadedPaths: Map<string, string> = new Map(); // mediaId → sandbox path
+        const destPathMap: Map<string, string> = new Map(); // mediaId → destPath (for consistent staticFile refs)
         const pendingMediaForSandbox: Array<{ id: string; name: string; data: Buffer; destPath: string; type: string; source: string }> = [];
 
         // ── Phase 1: Decode data: URLs to buffers ──
@@ -138,25 +142,63 @@ export async function POST(request: Request) {
           // Fallback based on type
           return name + (type === 'video' ? '.mp4' : '.png');
         };
+        const usedPaths = new Set<string>();
         for (const m of context.media) {
-          const safeName = ensureExt(m.name, m.type, m.dataUrl);
-          const destPath = `public/media/${safeName}`;
+          let safeName = ensureExt(m.name, m.type, m.dataUrl);
+          // Deduplicate paths — if two media share a name, append index
+          let destPath = `public/media/${safeName}`;
+          if (usedPaths.has(destPath)) {
+            const dot = safeName.lastIndexOf('.');
+            const base = dot > 0 ? safeName.slice(0, dot) : safeName;
+            const ext = dot > 0 ? safeName.slice(dot) : '.png';
+            let i = 2;
+            while (usedPaths.has(`public/media/${base}_${i}${ext}`)) i++;
+            safeName = `${base}_${i}${ext}`;
+            destPath = `public/media/${safeName}`;
+          }
+          usedPaths.add(destPath);
+          destPathMap.set(m.id, destPath);
           if (m.dataUrl.startsWith('data:')) {
             const base64Part = m.dataUrl.split(',')[1];
-            if (!base64Part) continue;
-            mediaBuffersLocal.push({ m, buffer: Buffer.from(base64Part, 'base64'), destPath });
+            if (!base64Part) {
+              console.warn(`[Animation API] Phase 1: Skipping ${m.name} — no base64 data after comma`);
+              continue;
+            }
+            const buffer = Buffer.from(base64Part, 'base64');
+            console.log(`[Animation API] Phase 1: Decoded ${m.name} → ${destPath} (${Math.round(buffer.length / 1024)}KB)`);
+            mediaBuffersLocal.push({ m, buffer, destPath });
+          } else if (m.dataUrl.startsWith('/api/assets/')) {
+            // Local asset URL — read directly from asset storage (same server, no HTTP needed)
+            try {
+              const { getLocalAssetProvider } = await import('@/lib/assets/local-provider');
+              const assetId = m.dataUrl.split('/api/assets/')[1];
+              const result = await getLocalAssetProvider().getBuffer(assetId);
+              if (result) {
+                console.log(`[Animation API] Phase 1: Read local asset ${m.name} → ${destPath} (${Math.round(result.buffer.length / 1024)}KB)`);
+                mediaBuffersLocal.push({ m, buffer: result.buffer, destPath });
+              } else {
+                console.warn(`[Animation API] Phase 1: Asset not found for ${m.name}: ${m.dataUrl}`);
+              }
+            } catch (err) {
+              console.error(`[Animation API] Phase 1: Failed to read local asset ${m.name}:`, err);
+            }
+          } else if (!m.dataUrl.startsWith('http')) {
+            console.warn(`[Animation API] Phase 1: Unrecognized URL scheme for ${m.name}: ${m.dataUrl.slice(0, 40)}...`);
           }
         }
 
-        // ── Phase 2: Download HTTP URL media to buffers (parallel, 10s timeout) ──
+        // ── Phase 2: Download HTTP URL media to buffers (parallel, 30s timeout) ──
         const httpMedia = context.media.filter(m => m.dataUrl.startsWith('http'));
+        console.log(`[Animation API] Phase 2: ${httpMedia.length} HTTP URLs to download`);
         if (httpMedia.length > 0) {
           const downloads = await Promise.allSettled(
             httpMedia.map(async (m) => {
               const safeName = ensureExt(m.name, m.type, m.dataUrl);
               const destPath = `public/media/${safeName}`;
-              const resp = await fetch(m.dataUrl, { signal: AbortSignal.timeout(10_000) });
-              if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+              destPathMap.set(m.id, destPath);
+              console.log(`[Animation API] Phase 2: Downloading ${m.name} from ${m.dataUrl.slice(0, 80)}...`);
+              const resp = await fetch(m.dataUrl, { signal: AbortSignal.timeout(30_000) });
+              if (!resp.ok) throw new Error(`HTTP ${resp.status} for ${m.dataUrl.slice(0, 80)}`);
               const buffer = Buffer.from(await resp.arrayBuffer());
               return { m, buffer, destPath };
             })
@@ -164,22 +206,23 @@ export async function POST(request: Request) {
           for (const result of downloads) {
             if (result.status === 'fulfilled') {
               mediaBuffersLocal.push(result.value);
-              console.log(`[Animation API] Downloaded HTTP media: ${result.value.m.name} (${Math.round(result.value.buffer.length / 1024)}KB)`);
+              console.log(`[Animation API] Phase 2: Downloaded ${result.value.m.name} → ${result.value.destPath} (${Math.round(result.value.buffer.length / 1024)}KB)`);
             } else {
-              console.warn(`[Animation API] Failed to download HTTP media:`, result.reason);
+              console.error(`[Animation API] Phase 2: FAILED to download HTTP media:`, result.reason);
             }
           }
         }
 
         // ── Phase 3: Upload buffers to sandbox or store as pending ──
+        console.log(`[Animation API] Phase 3: ${mediaBuffersLocal.length} buffers ready, sandboxId=${context.sandboxId || 'NONE'}`);
         for (const { m, buffer, destPath } of mediaBuffersLocal) {
           if (context.sandboxId) {
             try {
               await dockerProvider.writeBinary(context.sandboxId, destPath, buffer);
               uploadedPaths.set(m.id, destPath);
-              console.log(`[Animation API] Pre-uploaded media: ${m.name} (${Math.round(buffer.length / 1024)}KB) → ${destPath}`);
+              console.log(`[Animation API] Phase 3: Pre-uploaded ${m.name} (${Math.round(buffer.length / 1024)}KB) → ${destPath}`);
             } catch (err) {
-              console.warn(`[Animation API] Failed to pre-upload ${m.name}:`, err);
+              console.error(`[Animation API] Phase 3: FAILED to pre-upload ${m.name}:`, err);
             }
           } else {
             pendingMediaForSandbox.push({ id: m.id, name: m.name, data: buffer, destPath, type: m.type, source: m.source });
@@ -188,7 +231,11 @@ export async function POST(request: Request) {
 
         // Store pending media in requestContext for sandbox_create tool
         if (pendingMediaForSandbox.length > 0) {
+          const totalBytes = pendingMediaForSandbox.reduce((sum, p) => sum + p.data.length, 0);
+          console.log(`[Animation API] Phase 3: Storing ${pendingMediaForSandbox.length} pending media (${Math.round(totalBytes / 1024)}KB total) in requestContext for sandbox_create`);
           requestContext.set('pendingMedia' as never, pendingMediaForSandbox as never);
+        } else if (mediaBuffersLocal.length === 0 && context.media.length > 0) {
+          console.error(`[Animation API] Phase 3: WARNING — ${context.media.length} media entries received but 0 buffers decoded! Media URLs: ${context.media.map(m => m.dataUrl.slice(0, 40)).join(', ')}`);
         }
 
         // Store mediaFiles in requestContext for generate_remotion_code to auto-resolve.
@@ -199,15 +246,12 @@ export async function POST(request: Request) {
           type: m.type as 'image' | 'video',
           description: m.description || m.name,
         }));
-        // Also include HTTP media that was downloaded
         if (mediaFilesForCodeGen.length > 0) {
           requestContext.set('mediaFiles' as never, mediaFilesForCodeGen as never);
-          console.log(`[Animation API] Stored ${mediaFilesForCodeGen.length} mediaFiles in requestContext for code gen`);
+          console.log(`[Animation API] Stored ${mediaFilesForCodeGen.length} mediaFiles in requestContext for code gen:`, mediaFilesForCodeGen.map(f => f.path));
         }
 
         // Store media buffers for analyze_media tool to read without needing sandbox access.
-        // Maps media name → { buffer, mimeType } so analyze_media can resolve sandbox-internal paths.
-        // Uses the already-downloaded buffers from Phase 1+2 above.
         const mediaBuffers = new Map<string, { buffer: Buffer; mimeType: string }>();
         for (const { m, buffer } of mediaBuffersLocal) {
           mediaBuffers.set(m.name, { buffer, mimeType: m.mimeType || (m.type === 'video' ? 'video/mp4' : 'image/png') });
@@ -223,11 +267,14 @@ export async function POST(request: Request) {
           const uploaded = uploadedPaths.has(m.id);
           const pending = pendingMediaForSandbox.some(p => p.id === m.id);
           const desc = m.description ? ` — "${m.description}"` : '';
+          // Use the actual dest path (with ensured extension) for staticFile references
+          const dp = destPathMap.get(m.id) || `public/media/${m.name}`;
+          const fileName = dp.split('/').pop()!;
           if (uploaded) {
-            return `- [${m.type}] "${m.name}"${desc} (source: ${m.source}) ALREADY UPLOADED to ${uploadedPaths.get(m.id)} — reference as staticFile("media/${m.name}") in code`;
+            return `- [${m.type}] "${m.name}"${desc} (source: ${m.source}) ALREADY UPLOADED to ${uploadedPaths.get(m.id)} — reference as staticFile("media/${fileName}") in code`;
           }
           if (pending) {
-            return `- [${m.type}] "${m.name}"${desc} (source: ${m.source}) WILL BE AUTO-UPLOADED to public/media/${m.name} after sandbox creation — reference as staticFile("media/${m.name}") in code`;
+            return `- [${m.type}] "${m.name}"${desc} (source: ${m.source}) WILL BE AUTO-UPLOADED to ${dp} after sandbox creation — reference as staticFile("media/${fileName}") in code`;
           }
           // blob: or cached: URLs that couldn't be resolved — skip with warning
           if (m.dataUrl.startsWith('blob:') || m.dataUrl.startsWith('cached:')) {
@@ -235,7 +282,7 @@ export async function POST(request: Request) {
             return `- [${m.type}] "${m.name}"${desc} (source: ${m.source}) ⚠️ UNAVAILABLE — could not be resolved server-side. Skip this file.`;
           }
           // URL-based media — agent downloads via sandbox_upload_media
-          return `- [${m.type}] "${m.name}"${desc} (source: ${m.source}) URL: ${m.dataUrl} — use sandbox_upload_media to download to public/media/${m.name}`;
+          return `- [${m.type}] "${m.name}"${desc} (source: ${m.source}) URL: ${m.dataUrl} — use sandbox_upload_media to download to public/media/${fileName}`;
         };
 
         if (edgeMedia.length > 0) {

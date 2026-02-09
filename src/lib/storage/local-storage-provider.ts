@@ -44,7 +44,18 @@ export class LocalStorageProvider implements StorageProvider {
 
     try {
       const canvases = Array.from(this.canvases.values());
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(canvases));
+      // Use a replacer to strip large data: URLs and heavy state that would
+      // blow the ~5MB localStorage quota (a single base64 image can be 5MB+).
+      const json = JSON.stringify(canvases, (_key, value) => {
+        if (typeof value === 'string' && value.length > 2048) {
+          // Strip base64 data URLs — they're too large for localStorage
+          if (value.startsWith('data:')) return '';
+          // Strip blob URLs — they're session-only and won't work after reload
+          if (value.startsWith('blob:')) return '';
+        }
+        return value;
+      });
+      localStorage.setItem(STORAGE_KEY, json);
     } catch (error) {
       console.error('Failed to persist canvases to localStorage:', error);
     }

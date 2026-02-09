@@ -277,6 +277,9 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       changed = true;
     }
 
+    // Track blob: URLs that need async conversion to data: URLs
+    const blobConversions: Array<{ entryId: string; blobUrl: string; edgeId: string }> = [];
+
     // Add media for new edges
     for (const edge of incomingEdges) {
       if (currentEdgeIds.has(edge.id)) continue; // Already tracked
@@ -303,15 +306,22 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       if (engine === 'theatre' && mediaType === 'video') continue;
 
       if (mediaUrl) {
-        // Build a safe filename with proper extension and edge ID suffix to prevent collisions
+        // Build a safe filename with proper extension and source node suffix to prevent collisions.
+        // NOTE: edge.id starts with "xy-edge__" so slice(0,6) was always "xy-edg" — use source node ID instead.
         const baseName = ((d.name as string) || sourceNode.type || 'media')
           .replace(/[^a-zA-Z0-9_-]/g, '_')
           .toLowerCase();
         const urlExt = mediaUrl.split('?')[0].match(/\.(png|jpg|jpeg|gif|webp|mp4|webm|mov)$/i)?.[1]?.toLowerCase();
         const ext = urlExt || (mediaType === 'video' ? 'mp4' : 'png');
-        const mediaName = `${baseName}_${edge.id.slice(0, 6)}.${ext}`;
+        const mediaName = `${baseName}_${edge.source.slice(-8)}.${ext}`;
 
         const entryId = `edge_${edge.id}`;
+
+        // blob: URLs are browser-only — queue for async conversion to data: URL
+        if (mediaUrl.startsWith('blob:')) {
+          blobConversions.push({ entryId, blobUrl: mediaUrl, edgeId: edge.id });
+        }
+
         updatedEdgeMedia.push({
           id: entryId,
           source: 'edge',
@@ -319,7 +329,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           sourceNodeId: edge.source,
           name: mediaName,
           type: mediaType,
-          dataUrl: cacheIfLarge(entryId, mediaUrl),
+          dataUrl: mediaUrl.startsWith('blob:') ? mediaUrl : cacheIfLarge(entryId, mediaUrl),
           description: mediaDescription,
         });
         changed = true;
@@ -335,7 +345,13 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       // Compare against resolved (real) URL, not the cached placeholder
       const resolvedUrl = entry.dataUrl.startsWith('cached:') ? (getCached(entry.id) || '') : entry.dataUrl;
       if (currentUrl && currentUrl !== resolvedUrl) {
-        entry.dataUrl = cacheIfLarge(entry.id, currentUrl);
+        // New URL could be blob: — queue for conversion
+        if (currentUrl.startsWith('blob:')) {
+          blobConversions.push({ entryId: entry.id, blobUrl: currentUrl, edgeId: entry.edgeId! });
+          entry.dataUrl = currentUrl; // Store temporarily, will be converted async
+        } else {
+          entry.dataUrl = cacheIfLarge(entry.id, currentUrl);
+        }
         changed = true;
       }
       // Update description if source node's prompt changed
@@ -348,6 +364,35 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
 
     if (changed) {
       updateNodeData(id, { media: [...uploadMedia, ...updatedEdgeMedia] });
+    }
+
+    // Async: convert any blob: URLs to data: URLs and update media entries
+    if (blobConversions.length > 0) {
+      (async () => {
+        for (const { entryId, blobUrl } of blobConversions) {
+          try {
+            const response = await fetch(blobUrl);
+            const blob = await response.blob();
+            const dataUrl = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(reader.result as string);
+              reader.onerror = () => reject(reader.error);
+              reader.readAsDataURL(blob);
+            });
+            // Cache the converted data: URL and update the media entry
+            const cachedUrl = cacheIfLarge(entryId, dataUrl);
+            // Re-read current media and update the specific entry
+            const current = (useCanvasStore.getState().nodes.find(n => n.id === id)?.data as Record<string, unknown>)?.media as MediaEntry[] | undefined;
+            if (current) {
+              const updated = current.map(m => m.id === entryId ? { ...m, dataUrl: cachedUrl } : m);
+              updateNodeData(id, { media: updated });
+            }
+            console.log(`[EdgeWatcher] Converted blob: → data: for ${entryId} (${Math.round(dataUrl.length / 1024)}KB)`);
+          } catch (err) {
+            console.warn(`[EdgeWatcher] Failed to convert blob: URL for ${entryId}:`, err);
+          }
+        }
+      })();
     }
   }, [id, incomingEdges, nodes, data.media, updateNodeData]);
 
@@ -1154,6 +1199,28 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     }
   }, []);
 
+  // ─── Conversation history builder ──────────────────────────────────
+  // Builds a messages array from accumulated state for multi-turn continuity.
+  // The agent needs to see prior user/assistant exchanges to understand edits.
+  // Limits to last 20 messages to avoid context window blowup.
+  const buildConversationHistory = useCallback((
+    currentMessages: AnimationMessage[],
+    newUserContent: string,
+  ): Array<{ role: 'user' | 'assistant'; content: string }> => {
+    // Filter to user/assistant messages only (skip internal system messages)
+    const history = currentMessages
+      .filter(m => (m.role === 'user' || m.role === 'assistant') && m.content.trim().length > 0)
+      .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+
+    // Keep last 20 messages to stay within context limits
+    const trimmed = history.length > 20 ? history.slice(-20) : history;
+
+    // Add the new user message as the final message
+    trimmed.push({ role: 'user', content: newUserContent });
+
+    return trimmed;
+  }, []);
+
   // ─── Phase handlers ─────────────────────────────────────────────────
 
   const handleAnalyzePrompt = useCallback(
@@ -1193,6 +1260,10 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       startPipelineTimer('analyzePrompt');
       resetStreamingRefs();
       const callbacks = createStreamCallbacks();
+
+      // Debug: log media being sent with planning request
+      console.log(`[AnimationNode] handleAnalyzePrompt — sending ${media.length} media entries`,
+        media.map(m => ({ name: m.name, type: m.type, source: m.source, urlPrefix: m.dataUrl?.slice(0, 40) })));
 
       try {
         await streamToAgent(
@@ -1409,43 +1480,53 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     resetStreamingRefs();
     const callbacks = createStreamCallbacks();
 
+    // Debug: log media being sent with execution request
+    console.log(`[AnimationNode] handleAcceptPlan — sending ${media.length} media entries, sandboxId=${ls.sandboxId || 'NONE'}`,
+      media.map(m => ({ name: m.name, type: m.type, source: m.source, urlPrefix: m.dataUrl?.slice(0, 40) })));
+
     try {
       const sceneList = ls.plan.scenes.map((s) =>
         `  - Scene ${s.number}: ${s.title} (${s.duration}s) — ${s.description}`
       ).join('\n');
       const mediaInfo = media.length > 0 ? [
         '',
-        `MEDIA FILES TO INCLUDE (${media.length} file${media.length > 1 ? 's' : ''}):`,
-        ...media.map(m => `  - "${m.name}" (${m.type}) — upload to sandbox at public/media/${m.name}`),
-        'Upload these FIRST (step 4a-media), then reference them in your animation code.',
+        `MEDIA FILES (${media.length} file${media.length > 1 ? 's' : ''}) — AUTO-UPLOADED during sandbox creation:`,
+        ...media.map(m => `  - "${m.name}" (${m.type}) → public/media/${m.name} — use staticFile("media/${m.name}") in Remotion code`),
+        'These files are AUTOMATICALLY uploaded to the sandbox when you call sandbox_create.',
+        'Do NOT manually upload them. Just reference them with staticFile() in your animation code.',
       ] : [];
+      const executionPrompt = [
+        'The user has approved the animation plan. Execute it now.',
+        '',
+        'FIRST: Create your task list using batch_update_todos with action="add" for ALL tasks.',
+        'Include tasks for: sandbox setup, each scene, post-processing, and rendering.',
+        'Then IMMEDIATELY start executing — do NOT stop after creating todos.',
+        '',
+        'Plan scenes:',
+        sceneList,
+        ...mediaInfo,
+        '',
+        'RULES:',
+        '- Mark each todo "active" before starting, "done" after completing.',
+        '- NEVER remove completed todos.',
+        '- Prefer batch_update_todos for multiple updates.',
+        '- Work SILENTLY — use set_thinking for status, not text output.',
+        '',
+        `Prompt: ${data.prompt || 'Animation request'}`,
+      ].join('\n');
+
+      // Include conversation history so agent knows the original prompt and plan discussions
+      const conversationMessages = buildConversationHistory(ls.messages, executionPrompt);
+
       await streamToAgent(
-        [
-          'The user has approved the animation plan. Execute it now.',
-          '',
-          'FIRST: Create your task list using batch_update_todos with action="add" for ALL tasks.',
-          'Include tasks for: sandbox setup, each scene, post-processing, and rendering.',
-          'Then IMMEDIATELY start executing — do NOT stop after creating todos.',
-          '',
-          'Plan scenes:',
-          sceneList,
-          ...mediaInfo,
-          '',
-          'RULES:',
-          '- Mark each todo "active" before starting, "done" after completing.',
-          '- NEVER remove completed todos.',
-          '- Prefer batch_update_todos for multiple updates.',
-          '- Work SILENTLY — use set_thinking for status, not text output.',
-          '',
-          `Prompt: ${data.prompt || 'Animation request'}`,
-        ].join('\n'),
+        conversationMessages,
         { nodeId: id, phase: 'executing', plan: ls.plan, todos: [], sandboxId: ls.sandboxId, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution },
         callbacks
       );
     } catch {
       // Error handled by callback
     }
-  }, [id, data.prompt, engine, media, duration, techniques, designSpec, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
+  }, [id, data.prompt, engine, media, duration, techniques, designSpec, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs, buildConversationHistory]);
 
   const handleRejectPlan = useCallback(() => {
     updateState({ phase: 'idle', plan: undefined, question: undefined, planAccepted: undefined });
@@ -1477,9 +1558,13 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       resetStreamingRefs();
       const callbacks = createStreamCallbacks();
 
+      // Send conversation history so agent understands prior discussion about the plan
+      const reviseContent = `The user wants to revise the animation plan. Feedback: "${feedback}"\n\nGenerate an updated plan using the generate_plan tool.`;
+      const conversationMessages = buildConversationHistory(ls.messages, reviseContent);
+
       try {
         await streamToAgent(
-          `The user wants to revise the animation plan. Feedback: "${feedback}"\n\nGenerate an updated plan using the generate_plan tool.`,
+          conversationMessages,
           { nodeId: id, phase: 'plan', plan: ls.plan, sandboxId: ls.sandboxId, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution },
           callbacks
         );
@@ -1493,7 +1578,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         // Error handled by callback
       }
     },
-    [id, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
+    [id, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs, buildConversationHistory]
   );
 
   const handleSendMessage = useCallback(
@@ -1550,11 +1635,11 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       resetStreamingRefs();
       const callbacks = createStreamCallbacks();
 
-      // Build a contextual prompt so the agent understands the situation
-      let prompt = content;
+      // Build a contextual prompt with instructions
+      let userContent = content;
       if (ls.planAccepted && (ls.phase === 'plan' || ls.phase === 'executing')) {
         // User is giving feedback after execution — emphasize retry, not replan
-        prompt = [
+        userContent = [
           content,
           '',
           'IMPORTANT: The plan has already been approved. Do NOT re-generate the plan.',
@@ -1564,8 +1649,12 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         ].join('\n');
       }
 
+      // Send full conversation history so the agent has context of prior exchanges.
+      // This is critical for edit requests — the agent needs to know what was built before.
+      const conversationMessages = buildConversationHistory(ls.messages, userContent);
+
       try {
-        await streamToAgent(prompt, {
+        await streamToAgent(conversationMessages, {
           nodeId: id,
           phase: ls.phase,
           plan: ls.plan,
@@ -1584,7 +1673,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         // Error handled by callback
       }
     },
-    [id, engine, aspectRatio, duration, techniques, designSpec, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
+    [id, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs, buildConversationHistory]
   );
 
   const handleAcceptPreview = useCallback(async () => {

@@ -1021,10 +1021,64 @@ export const useCanvasStore = create<CanvasState>()(
     }),
     {
       name: 'spaces-canvas-storage',
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() => ({
+        getItem: (name: string) => localStorage.getItem(name),
+        setItem: (name: string, value: string) => {
+          try {
+            localStorage.setItem(name, value);
+          } catch (e) {
+            // QuotaExceededError — log but don't crash. State is still in memory.
+            console.warn('[canvas-store] localStorage quota exceeded, state not persisted:', e);
+          }
+        },
+        removeItem: (name: string) => localStorage.removeItem(name),
+      })),
       // Only persist nodes and edges - not UI state like selections, clipboard, etc.
+      // Animation nodes carry heavy runtime state (messages, tool calls, thinking blocks,
+      // video versions) that can easily blow the ~5MB localStorage quota.
+      // Strip it down to config-only data for persistence.
       partialize: (state) => ({
-        nodes: state.nodes,
+        nodes: state.nodes.map((node) => {
+          // Strip data: URLs from MediaNode — they're cached in IndexedDB
+          if (node.type === 'media' && node.data && typeof node.data === 'object') {
+            const d = node.data as Record<string, unknown>;
+            if (typeof d.url === 'string' && (d.url as string).startsWith('data:')) {
+              return { ...node, data: { ...d, url: `cached:${node.id}` } };
+            }
+          }
+          // Strip animation plugin heavy state
+          if (node.type === 'pluginNode' && node.data && typeof node.data === 'object' && 'state' in node.data) {
+            const d = node.data as Record<string, unknown>;
+            const animState = d.state as Record<string, unknown> | undefined;
+            return {
+              ...node,
+              data: {
+                ...d,
+                // Keep only essential state — drop conversation history, tool calls, etc.
+                state: animState ? {
+                  nodeId: animState.nodeId,
+                  phase: animState.phase === 'executing' || animState.phase === 'preview' ? 'idle' : animState.phase,
+                  messages: [],
+                  toolCalls: [],
+                  thinkingBlocks: [],
+                  sandboxId: animState.sandboxId,
+                  createdAt: animState.createdAt,
+                  updatedAt: animState.updatedAt,
+                } : d.state,
+                // Drop cached media data URLs (they're in IndexedDB via media-cache)
+                media: Array.isArray(d.media)
+                  ? (d.media as Array<Record<string, unknown>>).map((m) => ({
+                      ...m,
+                      dataUrl: typeof m.dataUrl === 'string' && (m.dataUrl as string).startsWith('data:')
+                        ? `cached:${m.id}` // placeholder — real data is in IndexedDB
+                        : m.dataUrl,
+                    }))
+                  : d.media,
+              },
+            };
+          }
+          return node;
+        }),
         edges: state.edges,
       }),
     }

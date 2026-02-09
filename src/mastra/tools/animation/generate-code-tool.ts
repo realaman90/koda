@@ -13,13 +13,20 @@ import { z } from 'zod';
 import { codeGeneratorAgent } from '../../agents/code-generator-agent';
 import { dockerProvider } from '@/lib/sandbox/docker-provider';
 
+type ToolContext = { requestContext?: { get: (key: string) => any; set: (key: string, value: any) => void } };
+
+/** Resolve sandboxId: prefer input arg, fallback to requestContext */
+function resolveSandboxId(input: string | undefined, context?: ToolContext): string | undefined {
+  return input || context?.requestContext?.get('sandboxId') || undefined;
+}
+
 const GenerateCodeInputSchema = z.object({
   task: z.enum(['initial_setup', 'create_component', 'create_scene', 'modify_existing'])
     .describe('Type of code generation task'),
 
   // Sandbox ID — when provided, files are written directly to the sandbox
   // and ONLY paths/sizes are returned (saves tokens)
-  sandboxId: z.string().optional().describe('Sandbox ID to write generated files directly (recommended — saves tokens)'),
+  sandboxId: z.string().optional().describe('Override sandbox ID (auto-resolved from context if omitted)'),
 
   // For initial_setup
   style: z.string().optional().describe('Animation style (e.g. playful, smooth, cinematic)'),
@@ -72,9 +79,9 @@ Use this for ALL code generation tasks:
 - create_scene: Create/update the scene compositor (MainScene.tsx)
 - modify_existing: Modify an existing file based on feedback
 
-IMPORTANT: Always pass sandboxId so files are written directly to the sandbox.
-This avoids passing large file contents through the conversation and saves tokens.
-You do NOT need to call sandbox_write_file after generate_code when sandboxId is provided.`,
+sandboxId is auto-resolved from server context — you do NOT need to pass it.
+Files are written directly to the sandbox (saves tokens).
+You do NOT need to call sandbox_write_file after this tool.`,
 
   inputSchema: GenerateCodeInputSchema,
   outputSchema: z.object({
@@ -87,9 +94,11 @@ You do NOT need to call sandbox_write_file after generate_code when sandboxId is
     reasoning: z.string().optional(),
   }),
 
-  execute: async (inputData) => {
+  execute: async (inputData, context) => {
+    const sandboxId = resolveSandboxId(inputData.sandboxId, context as ToolContext);
+
     // Log what the orchestrator passed (critical for debugging quality issues)
-    console.log(`[generate_code] task=${inputData.task}, sandboxId=${inputData.sandboxId || 'NONE'}`);
+    console.log(`[generate_code] task=${inputData.task}, sandboxId=${sandboxId || 'NONE'}`);
 
     // Format the request for the code generator subagent
     const prompt = formatCodeGenerationPrompt(inputData);
@@ -133,12 +142,11 @@ You do NOT need to call sandbox_write_file after generate_code when sandboxId is
         }
       }
 
-      // If sandboxId is provided, write files directly to the sandbox
-      // and return only paths/sizes (saves massive token usage)
-      if (inputData.sandboxId) {
+      // Write files directly to the sandbox (saves massive token usage)
+      if (sandboxId) {
         const writeResults: Array<{ path: string; size: number }> = [];
         for (const file of files) {
-          await dockerProvider.writeFile(inputData.sandboxId, file.path, file.content);
+          await dockerProvider.writeFile(sandboxId, file.path, file.content);
           writeResults.push({ path: file.path, size: file.content.length });
         }
         return {

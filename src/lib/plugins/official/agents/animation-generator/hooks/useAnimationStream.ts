@@ -70,11 +70,14 @@ export interface AnimationStreamCallbacks {
   onAppEvent?: (event: AnimationAppEvent) => void;
 }
 
+/** Input can be a single prompt string or a conversation history array */
+export type StreamInput = string | Array<{ role: 'user' | 'assistant'; content: string }>;
+
 interface UseAnimationStreamReturn {
   isStreaming: boolean;
   streamedText: string;
   error: string | null;
-  stream: (prompt: string, context?: StreamContext, callbacks?: AnimationStreamCallbacks) => Promise<string>;
+  stream: (input: StreamInput, context?: StreamContext, callbacks?: AnimationStreamCallbacks) => Promise<string>;
   abort: () => void;
 }
 
@@ -99,7 +102,7 @@ export function useAnimationStream(): UseAnimationStreamReturn {
   }, []);
 
   const stream = useCallback(
-    async (prompt: string, context?: StreamContext, callbacks?: AnimationStreamCallbacks): Promise<string> => {
+    async (input: StreamInput, context?: StreamContext, callbacks?: AnimationStreamCallbacks): Promise<string> => {
       // Abort any existing stream
       abort();
 
@@ -115,24 +118,55 @@ export function useAnimationStream(): UseAnimationStreamReturn {
 
       try {
         // Resolve cached: placeholders back to real data URLs from memory/IndexedDB,
-        // then filter out anything still unresolvable (blob: URLs are browser-only).
+        // then convert blob: URLs to data: URLs (blob: is browser-only, can't reach server).
+        const rawMedia = context?.media || [];
+        const resolvedMedia = rawMedia.length > 0 ? resolveMediaCache(rawMedia) : [];
+
+        // Convert blob: URLs to data: URLs so they can be sent to the server.
+        // blob: URLs are created by URL.createObjectURL() and only work in the current browser session.
+        const processedMedia = await Promise.all(resolvedMedia.map(async (m) => {
+          if (m.dataUrl.startsWith('blob:')) {
+            try {
+              const response = await fetch(m.dataUrl);
+              const blob = await response.blob();
+              const dataUrl = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.onerror = () => reject(reader.error);
+                reader.readAsDataURL(blob);
+              });
+              console.log(`[useAnimationStream] Converted blob: → data: for ${m.name} (${Math.round(dataUrl.length / 1024)}KB)`);
+              return { ...m, dataUrl };
+            } catch (err) {
+              console.warn(`[useAnimationStream] Failed to convert blob: URL for ${m.name}:`, err);
+              return null;
+            }
+          }
+          if (m.dataUrl.startsWith('cached:')) {
+            console.warn(`[useAnimationStream] Skipping unresolvable cached: media: ${m.name}`);
+            return null;
+          }
+          return m;
+        }));
+        const filteredMedia = processedMedia.filter(Boolean) as typeof resolvedMedia;
+
+        console.log(`[useAnimationStream] Media: ${rawMedia.length} raw → ${resolvedMedia.length} resolved → ${filteredMedia.length} sent`,
+          rawMedia.map(m => ({ name: m.name, source: m.source, urlPrefix: m.dataUrl?.slice(0, 30) })));
+
         const cleanContext = context ? {
           ...context,
-          media: context.media
-            ? resolveMediaCache(context.media).filter(m => {
-                if (m.dataUrl.startsWith('blob:') || m.dataUrl.startsWith('cached:')) {
-                  console.warn(`[useAnimationStream] Skipping unresolvable media: ${m.name} (${m.dataUrl.slice(0, 30)}...)`);
-                  return false;
-                }
-                return true;
-              })
-            : undefined,
+          media: filteredMedia.length > 0 ? filteredMedia : undefined,
         } : context;
+
+        // Send either a single prompt or full conversation history
+        const requestBody = typeof input === 'string'
+          ? { prompt: input, context: cleanContext }
+          : { messages: input, context: cleanContext };
 
         const response = await fetch('/api/plugins/animation/stream', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt, context: cleanContext }),
+          body: JSON.stringify(requestBody),
           signal: abortControllerRef.current.signal,
         });
 

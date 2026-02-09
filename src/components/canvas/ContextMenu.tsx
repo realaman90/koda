@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useMemo } from 'react';
 import { useCanvasStore, createImageGeneratorNode, createVideoGeneratorNode, createTextNode, createMediaNode, createStickyNoteNode, createStickerNode, createGroupNode, createMusicGeneratorNode, createSpeechNode, createVideoAudioNode, createPluginNode } from '@/stores/canvas-store';
 import { useReactFlow } from '@xyflow/react';
 import {
@@ -28,6 +28,7 @@ import {
   Clapperboard,
 } from 'lucide-react';
 import { pluginRegistry } from '@/lib/plugins/registry';
+import { uploadAsset } from '@/lib/assets/upload';
 // Import official plugins to register them
 import '@/lib/plugins/official/storyboard-generator';
 import '@/lib/plugins/official/agents/animation-generator';
@@ -70,6 +71,27 @@ export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [utilitiesExpanded, setUtilitiesExpanded] = useState(false);
   const [pluginsExpanded, setPluginsExpanded] = useState(false);
+
+  // Clamp menu position so it doesn't overflow the viewport
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!contextMenu) {
+      setMenuPos(null);
+      return;
+    }
+    // Defer one frame so the ref is attached after render
+    const raf = requestAnimationFrame(() => {
+      const el = menuRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const pad = 8;
+      const x = Math.min(contextMenu.x, window.innerWidth - rect.width - pad);
+      const y = Math.min(contextMenu.y, window.innerHeight - rect.height - pad);
+      setMenuPos({ x: Math.max(pad, x), y: Math.max(pad, y) });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [contextMenu]);
 
   // Focus search input when menu opens
   useEffect(() => {
@@ -117,7 +139,6 @@ export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
   };
 
   const handleUpload = () => {
-    // Create file input and trigger click
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*,video/*';
@@ -126,12 +147,16 @@ export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
       const files = (e.target as HTMLInputElement).files;
       if (files) {
         const position = getNodePosition();
-        Array.from(files).forEach((file, index) => {
-          const url = URL.createObjectURL(file);
+        Array.from(files).forEach(async (file, index) => {
           const isVideo = file.type.startsWith('video/');
           const node = createMediaNode({ x: position.x + index * 50, y: position.y + index * 50 });
-          node.data = { ...node.data, url, type: isVideo ? 'video' : 'image' };
-          addNode(node);
+          try {
+            const asset = await uploadAsset(file, { nodeId: node.id });
+            node.data = { ...node.data, url: asset.url, type: isVideo ? 'video' : 'image' };
+            addNode(node);
+          } catch (err) {
+            console.error('[ContextMenu] Upload failed:', err);
+          }
         });
       }
     };
@@ -324,8 +349,13 @@ export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
     return (
       <div
         ref={menuRef}
-        className="fixed z-[100] min-w-[180px] bg-popover border border-border rounded-lg shadow-xl py-1 animate-in fade-in zoom-in-95 duration-100"
-        style={{ left: contextMenu.x, top: contextMenu.y }}
+        className="fixed z-[100] min-w-[180px] bg-popover border border-border rounded-lg shadow-xl py-1 animate-in fade-in zoom-in-95 duration-100 overflow-y-auto"
+        style={{
+          left: menuPos?.x ?? -9999,
+          top: menuPos?.y ?? -9999,
+          maxHeight: menuPos ? `calc(100vh - ${menuPos.y}px - 8px)` : undefined,
+          visibility: menuPos ? 'visible' : 'hidden',
+        }}
       >
         {nodeMenuItems.map((item) => {
           if ('divider' in item && item.divider) {
@@ -367,8 +397,13 @@ export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
   return (
     <div
       ref={menuRef}
-      className="fixed z-[100] w-[220px] bg-popover border border-border rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-100"
-      style={{ left: contextMenu.x, top: contextMenu.y }}
+      className="fixed z-[100] w-[220px] bg-popover border border-border rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-100 flex flex-col"
+      style={{
+        left: menuPos?.x ?? -9999,
+        top: menuPos?.y ?? -9999,
+        maxHeight: menuPos ? `calc(100vh - ${menuPos.y}px - 8px)` : undefined,
+        visibility: menuPos ? 'visible' : 'hidden',
+      }}
     >
       {/* Search Input */}
       <div className="p-2 border-b border-border">
@@ -404,7 +439,7 @@ export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
       )}
 
       {/* Menu Sections */}
-      <div className="py-1 max-h-[400px] overflow-y-auto">
+      <div className="py-1 min-h-0 flex-1 overflow-y-auto">
         {filteredSections.map((section, sectionIndex) => {
           const isUtilities = section.title === 'UTILITIES';
           const isPlugins = section.title === 'PLUGINS';

@@ -169,7 +169,7 @@ select {
 :root {
   /* Canvas */
   --canvas-bg: #fafafa;
-  --canvas-dots: #d1d5db;
+  --canvas-dots: #d4d4d8;
 
   /* Node cards - Freepik style */
   --node-card-bg: #ffffff;
@@ -467,11 +467,7 @@ select {
 }
 
 .react-flow__handle {
-  transition: all 0.15s ease;
-}
-
-.react-flow__handle:hover {
-  transform: scale(1.2);
+  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .react-flow__node {
@@ -484,6 +480,13 @@ select {
   border: none !important;
   box-shadow: none !important;
   padding: 0 !important;
+}
+
+/* Dot pattern spotlight — default centered, JS updates on mousemove */
+.react-flow__background {
+  mask-image: radial-gradient(circle at 50% 50%, black 15%, transparent 40%);
+  -webkit-mask-image: radial-gradient(circle at 50% 50%, black 15%, transparent 40%);
+  transition: mask-image 10ms linear, -webkit-mask-image 10ms linear;
 }
 
 /* Hide default React Flow attribution */

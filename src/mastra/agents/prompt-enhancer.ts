@@ -24,5 +24,5 @@ Guidelines:
 5. Use comma-separated descriptors for better model understanding
 
 Output ONLY the enhanced prompt, nothing else.`,
-  model: 'google/gemini-3-pro-preview',
+  model: 'anthropic/claude-haiku-4-5',
 });

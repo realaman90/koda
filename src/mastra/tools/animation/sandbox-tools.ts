@@ -19,23 +19,32 @@ function truncateOutput(text: string, max = MAX_OUTPUT_CHARS): string {
   return text.slice(0, half) + `\n\n... [truncated ${text.length - max} chars] ...\n\n` + text.slice(-half);
 }
 
+// ── RequestContext helpers ────────────────────────────────────────
+// sandboxId and engine are set by route.ts in RequestContext so tools
+// can read them directly, eliminating LLM hallucination of sandbox IDs.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type ToolContext = { requestContext?: { get: (key: string) => any; set: (key: string, value: any) => void } };
+
+/** Resolve sandboxId: prefer input arg, fallback to requestContext */
+function resolveSandboxId(input: string | undefined, context?: ToolContext): string | undefined {
+  return input || context?.requestContext?.get('sandboxId') || undefined;
+}
+
+/** Resolve engine: prefer input arg, fallback to requestContext, default 'remotion' */
+function resolveEngine(input: string | undefined, context?: ToolContext): 'remotion' | 'theatre' {
+  return (input || context?.requestContext?.get('engine') || 'remotion') as 'remotion' | 'theatre';
+}
+
 /**
  * sandbox_create - Create a new sandbox container
  */
 export const sandboxCreateTool = createTool({
   id: 'sandbox_create',
   description: `Create a new isolated Docker sandbox for animation development.
-
-Choose a template matching the engine from context:
-- "remotion" (default): Remotion for 2D motion graphics and text animations
-- "theatre": Theatre.js + React Three Fiber for 3D animations
-
-IMPORTANT: Always use the engine specified in the context. If context says Remotion, use template "remotion". If context says Theatre.js, use template "theatre".
-
-Call this before writing any files or running commands.`,
+The engine/template is auto-resolved from server context. Call this before writing any files or running commands.`,
   inputSchema: z.object({
     projectId: z.string().describe('Unique project identifier for this animation'),
-    template: z.enum(['remotion', 'theatre']).default('remotion').describe('Animation framework template — MUST match the engine from context'),
+    template: z.enum(['remotion', 'theatre']).optional().describe('Override engine template (auto-resolved from context if omitted)'),
   }),
   outputSchema: z.object({
     success: z.boolean(),
@@ -45,17 +54,62 @@ Call this before writing any files or running commands.`,
     template: z.string(),
     message: z.string(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, context) => {
     try {
-      const template = inputData.template || 'remotion';
+      const template = resolveEngine(inputData.template, context as ToolContext);
       const instance = await dockerProvider.create(inputData.projectId, template);
+
+      // Store sandboxId in requestContext so all subsequent tools auto-resolve it
+      const ctx = context as ToolContext;
+      ctx?.requestContext?.set('sandboxId', instance.id);
+
+      // Auto-upload any pending media stored in requestContext by route.ts.
+      // This handles base64 media that arrived before the sandbox existed —
+      // the data never touches the LLM context, preventing context window blowup.
+      const uploadedFiles: string[] = [];
+      const pendingMedia = ctx?.requestContext?.get('pendingMedia') as
+        Array<{ id: string; name: string; data: Buffer; destPath: string }> | undefined;
+      console.log(`[sandbox_create] pendingMedia from requestContext: ${pendingMedia ? `${pendingMedia.length} entries` : 'NULL/UNDEFINED'}`);
+      if (pendingMedia && Array.isArray(pendingMedia) && pendingMedia.length > 0) {
+        for (const media of pendingMedia) {
+          const bufferSize = media.data?.length ?? 0;
+          console.log(`[sandbox_create] Uploading: ${media.name} → ${media.destPath} (buffer=${bufferSize} bytes)`);
+          if (bufferSize === 0) {
+            console.error(`[sandbox_create] SKIPPING ${media.name} — buffer is empty!`);
+            continue;
+          }
+          try {
+            await dockerProvider.writeBinary(instance.id, media.destPath, media.data);
+            uploadedFiles.push(media.destPath);
+            console.log(`[sandbox_create] ✓ Auto-uploaded: ${media.name} → ${media.destPath} (${Math.round(bufferSize / 1024)}KB)`);
+          } catch (err) {
+            console.error(`[sandbox_create] ✗ FAILED to auto-upload ${media.name}:`, err);
+          }
+        }
+        // Verify files actually exist in the container
+        if (uploadedFiles.length > 0) {
+          try {
+            const verifyResult = await dockerProvider.runCommand(instance.id, 'ls -la /app/public/media/ 2>/dev/null || echo "DIR_NOT_FOUND"');
+            console.log(`[sandbox_create] Media verification:\n${verifyResult.stdout}`);
+          } catch (verifyErr) {
+            console.warn(`[sandbox_create] Could not verify media files:`, verifyErr);
+          }
+        }
+      } else {
+        console.log(`[sandbox_create] No pending media to auto-upload`);
+      }
+
+      const mediaMsg = uploadedFiles.length > 0
+        ? ` Media auto-uploaded: ${uploadedFiles.join(', ')}`
+        : '';
+
       return {
         success: true,
         sandboxId: instance.id,
         status: instance.status,
         previewUrl: `/api/plugins/animation/sandbox/${instance.id}/proxy`,
         template,
-        message: `Sandbox created with ${template} template: ${instance.id}`,
+        message: `Sandbox created with ${template} template: ${instance.id}.${mediaMsg}`,
       };
     } catch (error) {
       return {
@@ -63,7 +117,7 @@ Call this before writing any files or running commands.`,
         sandboxId: '',
         status: 'error',
         previewUrl: '',
-        template: inputData.template || 'remotion',
+        template: resolveEngine(inputData.template, context as ToolContext),
         message: error instanceof Error ? error.message : 'Failed to create sandbox',
       };
     }
@@ -75,23 +129,24 @@ Call this before writing any files or running commands.`,
  */
 export const sandboxDestroyTool = createTool({
   id: 'sandbox_destroy',
-  description: 'Destroy a sandbox container and clean up resources.',
+  description: 'Destroy a sandbox container and clean up resources. sandboxId is auto-resolved from context.',
   inputSchema: z.object({
-    sandboxId: z.string().optional().describe('Sandbox ID to destroy'),
+    sandboxId: z.string().optional().describe('Override sandbox ID (auto-resolved from context if omitted)'),
   }),
   outputSchema: z.object({
     success: z.boolean(),
     message: z.string(),
   }),
-  execute: async (inputData) => {
-    if (!inputData.sandboxId) {
+  execute: async (inputData, context) => {
+    const sandboxId = resolveSandboxId(inputData.sandboxId, context as ToolContext);
+    if (!sandboxId) {
       return { success: false, message: 'No active sandbox. Create one first with sandbox_create.' };
     }
     try {
-      await dockerProvider.destroy(inputData.sandboxId);
+      await dockerProvider.destroy(sandboxId);
       return {
         success: true,
-        message: `Sandbox destroyed: ${inputData.sandboxId}`,
+        message: `Sandbox destroyed: ${sandboxId}`,
       };
     } catch (error) {
       return {
@@ -107,7 +162,7 @@ export const sandboxDestroyTool = createTool({
  */
 export const sandboxWriteFileTool = createTool({
   id: 'sandbox_write_file',
-  description: `Write a file to the animation sandbox.
+  description: `Write a file to the animation sandbox. sandboxId is auto-resolved from context.
 
 Common files:
 - src/App.tsx - Root component
@@ -115,7 +170,7 @@ Common files:
 - src/theatre/project.ts - Theatre.js config
 - src/utils/easing.ts - Easing functions`,
   inputSchema: z.object({
-    sandboxId: z.string().optional().describe('Sandbox ID'),
+    sandboxId: z.string().optional().describe('Override sandbox ID (auto-resolved from context if omitted)'),
     path: z.string().describe('File path relative to project root'),
     content: z.string().describe('File content'),
   }),
@@ -124,12 +179,13 @@ Common files:
     path: z.string(),
     message: z.string(),
   }),
-  execute: async (inputData) => {
-    if (!inputData.sandboxId) {
+  execute: async (inputData, context) => {
+    const sandboxId = resolveSandboxId(inputData.sandboxId, context as ToolContext);
+    if (!sandboxId) {
       return { success: false, path: inputData.path, message: 'No active sandbox. Create one first with sandbox_create.' };
     }
     try {
-      await dockerProvider.writeFile(inputData.sandboxId, inputData.path, inputData.content);
+      await dockerProvider.writeFile(sandboxId, inputData.path, inputData.content);
       return {
         success: true,
         path: inputData.path,
@@ -150,21 +206,22 @@ Common files:
  */
 export const sandboxReadFileTool = createTool({
   id: 'sandbox_read_file',
-  description: 'Read a file from the sandbox filesystem.',
+  description: 'Read a file from the sandbox filesystem. sandboxId is auto-resolved from context.',
   inputSchema: z.object({
-    sandboxId: z.string().optional().describe('Sandbox ID'),
+    sandboxId: z.string().optional().describe('Override sandbox ID (auto-resolved from context if omitted)'),
     path: z.string().describe('File path to read'),
   }),
   outputSchema: z.object({
     success: z.boolean(),
     content: z.string(),
   }),
-  execute: async (inputData) => {
-    if (!inputData.sandboxId) {
+  execute: async (inputData, context) => {
+    const sandboxId = resolveSandboxId(inputData.sandboxId, context as ToolContext);
+    if (!sandboxId) {
       return { success: false, content: 'No active sandbox. Create one first with sandbox_create.' };
     }
     try {
-      const content = await dockerProvider.readFile(inputData.sandboxId, inputData.path);
+      const content = await dockerProvider.readFile(sandboxId, inputData.path);
       // Cap file content to save tokens — agent can request specific sections if needed
       return { success: true, content: truncateOutput(content, 5000) };
     } catch (error) {
@@ -181,14 +238,14 @@ export const sandboxReadFileTool = createTool({
  */
 export const sandboxRunCommandTool = createTool({
   id: 'sandbox_run_command',
-  description: `Run a shell command in the sandbox.
+  description: `Run a shell command in the sandbox. sandboxId is auto-resolved from context.
 
 Common commands:
 - bun install - Install dependencies
 - bun run dev - Start dev server (use background: true)
 - bun run build - Build project`,
   inputSchema: z.object({
-    sandboxId: z.string().optional().describe('Sandbox ID'),
+    sandboxId: z.string().optional().describe('Override sandbox ID (auto-resolved from context if omitted)'),
     command: z.string().describe('Shell command'),
     background: z.boolean().optional().describe('Run in background'),
     timeout: z.number().optional().describe('Timeout in milliseconds (max 300000)'),
@@ -199,12 +256,13 @@ Common commands:
     stderr: z.string(),
     exitCode: z.number(),
   }),
-  execute: async (inputData) => {
-    if (!inputData.sandboxId) {
+  execute: async (inputData, context) => {
+    const sandboxId = resolveSandboxId(inputData.sandboxId, context as ToolContext);
+    if (!sandboxId) {
       return { success: false, stdout: '', stderr: 'No active sandbox. Create one first with sandbox_create.', exitCode: 1 };
     }
     try {
-      const result = await dockerProvider.runCommand(inputData.sandboxId, inputData.command, {
+      const result = await dockerProvider.runCommand(sandboxId, inputData.command, {
         background: inputData.background,
         timeout: inputData.timeout,
       });
@@ -229,9 +287,9 @@ Common commands:
  */
 export const sandboxListFilesTool = createTool({
   id: 'sandbox_list_files',
-  description: 'List files in a sandbox directory.',
+  description: 'List files in a sandbox directory. sandboxId is auto-resolved from context.',
   inputSchema: z.object({
-    sandboxId: z.string().optional().describe('Sandbox ID'),
+    sandboxId: z.string().optional().describe('Override sandbox ID (auto-resolved from context if omitted)'),
     path: z.string().describe('Directory path'),
     recursive: z.boolean().optional().describe('Include subdirectories'),
   }),
@@ -242,12 +300,13 @@ export const sandboxListFilesTool = createTool({
       type: z.enum(['file', 'directory']),
     })),
   }),
-  execute: async (inputData) => {
-    if (!inputData.sandboxId) {
+  execute: async (inputData, context) => {
+    const sandboxId = resolveSandboxId(inputData.sandboxId, context as ToolContext);
+    if (!sandboxId) {
       return { success: false, files: [] };
     }
     try {
-      const files = await dockerProvider.listFiles(inputData.sandboxId, inputData.path, inputData.recursive);
+      const files = await dockerProvider.listFiles(sandboxId, inputData.path, inputData.recursive);
       return { success: true, files };
     } catch (error) {
       return {
@@ -263,23 +322,18 @@ export const sandboxListFilesTool = createTool({
  */
 export const sandboxUploadMediaTool = createTool({
   id: 'sandbox_upload_media',
-  description: `Upload an image or video to the sandbox for use in animations.
+  description: `Upload an image or video from a URL to the sandbox. sandboxId is auto-resolved from context.
 
-Use this when:
-- User provides an image they want to animate (Ken Burns effect, parallax, etc.)
-- User provides a video they want to add overlays/effects to
-- Animation code needs to reference user-provided media
-
-The media is downloaded directly into the sandbox container.
+Use this for URL-based media (not base64 — base64 is auto-uploaded server-side).
 Common destination paths:
-- public/assets/image.png - For images
-- public/assets/video.mp4 - For videos
+- public/media/image.png - For images
+- public/media/video.mp4 - For videos
 
-After uploading, reference in code as '/assets/image.png' or '/assets/video.mp4'.`,
+After uploading, reference in code as '/media/image.png' or '/media/video.mp4'.`,
   inputSchema: z.object({
-    sandboxId: z.string().optional().describe('Sandbox ID'),
+    sandboxId: z.string().optional().describe('Override sandbox ID (auto-resolved from context if omitted)'),
     mediaUrl: z.string().describe('URL of the media to upload'),
-    destPath: z.string().describe('Destination path in sandbox (e.g., public/assets/image.png)'),
+    destPath: z.string().describe('Destination path in sandbox (e.g., public/media/image.png)'),
   }),
   outputSchema: z.object({
     success: z.boolean(),
@@ -287,13 +341,14 @@ After uploading, reference in code as '/assets/image.png' or '/assets/video.mp4'
     size: z.number().optional(),
     message: z.string(),
   }),
-  execute: async (inputData) => {
-    if (!inputData.sandboxId) {
+  execute: async (inputData, context) => {
+    const sandboxId = resolveSandboxId(inputData.sandboxId, context as ToolContext);
+    if (!sandboxId) {
       return { success: false, path: inputData.destPath, message: 'No active sandbox. Create one first with sandbox_create.' };
     }
     try {
       const result = await dockerProvider.uploadMedia(
-        inputData.sandboxId,
+        sandboxId,
         inputData.mediaUrl,
         inputData.destPath
       );
@@ -325,15 +380,13 @@ After uploading, reference in code as '/assets/image.png' or '/assets/video.mp4'
  */
 export const sandboxWriteBinaryTool = createTool({
   id: 'sandbox_write_binary',
-  description: `Write binary data (images, videos) to the sandbox from base64-encoded content.
+  description: `Write binary data to the sandbox from base64. sandboxId is auto-resolved from context.
 
-Use this when:
-- User uploaded a file directly (not a URL) and you need to write it to sandbox
-- You need to create binary files from base64 data
-
-For URL-based media, prefer sandbox_upload_media instead (more efficient).`,
+NOTE: User-uploaded base64 media is auto-uploaded server-side — you rarely need this tool.
+Use this only for programmatically generated binary data.
+For URL-based media, prefer sandbox_upload_media instead.`,
   inputSchema: z.object({
-    sandboxId: z.string().optional().describe('Sandbox ID'),
+    sandboxId: z.string().optional().describe('Override sandbox ID (auto-resolved from context if omitted)'),
     path: z.string().describe('Destination path in sandbox (e.g., public/media/image.png)'),
     base64Data: z.string().describe('Base64-encoded binary data'),
   }),
@@ -343,13 +396,14 @@ For URL-based media, prefer sandbox_upload_media instead (more efficient).`,
     size: z.number().optional(),
     message: z.string(),
   }),
-  execute: async (inputData) => {
-    if (!inputData.sandboxId) {
+  execute: async (inputData, context) => {
+    const sandboxId = resolveSandboxId(inputData.sandboxId, context as ToolContext);
+    if (!sandboxId) {
       return { success: false, path: inputData.path, message: 'No active sandbox. Create one first with sandbox_create.' };
     }
     try {
       const buffer = Buffer.from(inputData.base64Data, 'base64');
-      await dockerProvider.writeBinary(inputData.sandboxId, inputData.path, buffer);
+      await dockerProvider.writeBinary(sandboxId, inputData.path, buffer);
       return {
         success: true,
         path: inputData.path,
@@ -382,7 +436,7 @@ Modes:
 
 Frames are saved as JPG images in /app/public/media/frames/.`,
   inputSchema: z.object({
-    sandboxId: z.string().optional().describe('Sandbox ID'),
+    sandboxId: z.string().optional().describe('Override sandbox ID (auto-resolved from context if omitted)'),
     videoPath: z.string().describe('Path to video file in sandbox (e.g., public/media/video.mp4)'),
     mode: z.enum(['fps', 'timestamps']).describe('Extraction mode'),
     timestamps: z.array(z.number()).optional().describe('Specific second timestamps to extract (for "timestamps" mode)'),
@@ -398,8 +452,9 @@ Frames are saved as JPG images in /app/public/media/frames/.`,
     totalFrames: z.number(),
     message: z.string(),
   }),
-  execute: async (inputData) => {
-    if (!inputData.sandboxId) {
+  execute: async (inputData, context) => {
+    const sandboxId = resolveSandboxId(inputData.sandboxId, context as ToolContext);
+    if (!sandboxId) {
       return { success: false, frames: [], totalFrames: 0, message: 'No active sandbox. Create one first with sandbox_create.' };
     }
     try {
@@ -407,7 +462,7 @@ Frames are saved as JPG images in /app/public/media/frames/.`,
       const framesDir = '/app/public/media/frames';
 
       // Ensure frames directory exists
-      await dockerProvider.runCommand(inputData.sandboxId, `mkdir -p ${framesDir}`, { timeout: 5_000 });
+      await dockerProvider.runCommand(sandboxId, `mkdir -p ${framesDir}`, { timeout: 5_000 });
 
       const frames: Array<{ timestamp: number; path: string; url: string }> = [];
 
@@ -418,7 +473,7 @@ Frames are saved as JPG images in /app/public/media/frames/.`,
           const outputPath = `${framesDir}/${filename}`;
 
           const result = await dockerProvider.runCommand(
-            inputData.sandboxId,
+            sandboxId,
             `ffmpeg -ss ${ts} -i ${videoPath} -frames:v 1 -q:v 2 -y ${outputPath} 2>&1`,
             { timeout: 15_000 }
           );
@@ -426,7 +481,7 @@ Frames are saved as JPG images in /app/public/media/frames/.`,
           if (result.success) {
             // Verify file exists
             const check = await dockerProvider.runCommand(
-              inputData.sandboxId,
+              sandboxId,
               `test -f ${outputPath} && echo "OK" || echo "MISSING"`,
               { timeout: 5_000 }
             );
@@ -434,7 +489,7 @@ Frames are saved as JPG images in /app/public/media/frames/.`,
               frames.push({
                 timestamp: ts,
                 path: `public/media/frames/${filename}`,
-                url: `/api/plugins/animation/sandbox/${inputData.sandboxId}/file?path=public/media/frames/${filename}`,
+                url: `/api/plugins/animation/sandbox/${sandboxId}/file?path=public/media/frames/${filename}`,
               });
             }
           }
@@ -445,7 +500,7 @@ Frames are saved as JPG images in /app/public/media/frames/.`,
 
         // Get video duration first
         const durationResult = await dockerProvider.runCommand(
-          inputData.sandboxId,
+          sandboxId,
           `ffprobe -v error -show_entries format=duration -of csv=p=0 ${videoPath} 2>/dev/null`,
           { timeout: 10_000 }
         );
@@ -453,7 +508,7 @@ Frames are saved as JPG images in /app/public/media/frames/.`,
 
         // Extract frames at the specified fps
         const result = await dockerProvider.runCommand(
-          inputData.sandboxId,
+          sandboxId,
           `ffmpeg -i ${videoPath} -vf fps=${fpsRate} -q:v 2 -y ${framesDir}/frame_%03d.jpg 2>&1`,
           { timeout: 30_000 }
         );
@@ -461,7 +516,7 @@ Frames are saved as JPG images in /app/public/media/frames/.`,
         if (result.success) {
           // List extracted frames
           const listResult = await dockerProvider.runCommand(
-            inputData.sandboxId,
+            sandboxId,
             `ls -1 ${framesDir}/frame_*.jpg 2>/dev/null | sort`,
             { timeout: 5_000 }
           );
@@ -474,7 +529,7 @@ Frames are saved as JPG images in /app/public/media/frames/.`,
               frames.push({
                 timestamp: Math.round(timestamp * 10) / 10,
                 path: `public/media/frames/${filename}`,
-                url: `/api/plugins/animation/sandbox/${inputData.sandboxId}/file?path=public/media/frames/${filename}`,
+                url: `/api/plugins/animation/sandbox/${sandboxId}/file?path=public/media/frames/${filename}`,
               });
             }
           });
@@ -506,34 +561,33 @@ Frames are saved as JPG images in /app/public/media/frames/.`,
 export const sandboxStartPreviewTool = createTool({
   id: 'sandbox_start_preview',
   description: `Start the Vite dev server in the sandbox and return a live preview URL.
+sandboxId and engine are auto-resolved from context.
 
 Call this after writing your animation code. The preview URL can be embedded in an iframe.
-This tool kills any existing dev server, starts a new one, and waits until it's ready.
-
-For Remotion: uses vite.player.config.ts (Remotion Player).
-For Theatre.js: uses default vite.config.ts.`,
+This tool kills any existing dev server, starts a new one, and waits until it's ready.`,
   inputSchema: z.object({
-    sandboxId: z.string().optional().describe('Sandbox ID'),
-    engine: z.enum(['remotion', 'theatre']).optional().describe('Animation engine — determines which vite config to use (default: remotion)'),
+    sandboxId: z.string().optional().describe('Override sandbox ID (auto-resolved from context if omitted)'),
+    engine: z.enum(['remotion', 'theatre']).optional().describe('Override engine (auto-resolved from context if omitted)'),
   }),
   outputSchema: z.object({
     success: z.boolean(),
     previewUrl: z.string(),
     message: z.string(),
   }),
-  execute: async (inputData) => {
-    if (!inputData.sandboxId) {
+  execute: async (inputData, context) => {
+    const sandboxId = resolveSandboxId(inputData.sandboxId, context as ToolContext);
+    if (!sandboxId) {
       return { success: false, previewUrl: '', message: 'No active sandbox. Create one first with sandbox_create.' };
     }
     try {
       // Kill any existing dev server
-      await dockerProvider.runCommand(inputData.sandboxId, 'pkill -f "vite" || true', { timeout: 5_000 });
+      await dockerProvider.runCommand(sandboxId, 'pkill -f "vite" || true', { timeout: 5_000 });
       // Small delay to let the process die
       await new Promise((r) => setTimeout(r, 500));
 
       // Check that package.json exists
       const pkgCheck = await dockerProvider.runCommand(
-        inputData.sandboxId,
+        sandboxId,
         'test -f /app/package.json && echo "OK" || echo "MISSING"',
         { timeout: 5_000 }
       );
@@ -547,14 +601,14 @@ For Theatre.js: uses default vite.config.ts.`,
 
       // Ensure dependencies are installed
       const nodeModulesCheck = await dockerProvider.runCommand(
-        inputData.sandboxId,
+        sandboxId,
         'test -d /app/node_modules && echo "OK" || echo "MISSING"',
         { timeout: 5_000 }
       );
       if (nodeModulesCheck.stdout.trim() === 'MISSING') {
         // Install deps before starting
         const installResult = await dockerProvider.runCommand(
-          inputData.sandboxId,
+          sandboxId,
           'cd /app && bun install 2>&1',
           { timeout: 60_000 }
         );
@@ -569,12 +623,12 @@ For Theatre.js: uses default vite.config.ts.`,
 
       // Start the dev server. Remotion uses a custom vite config for the Player;
       // Theatre.js uses the default vite.config.ts.
-      const engine = inputData.engine || 'remotion';
+      const engine = resolveEngine(inputData.engine, context as ToolContext);
       const viteCmd = engine === 'remotion'
         ? 'cd /app && nohup bunx vite --config vite.player.config.ts > /tmp/vite.log 2>&1 &'
         : 'cd /app && nohup bunx vite > /tmp/vite.log 2>&1 &';
       await dockerProvider.runCommand(
-        inputData.sandboxId,
+        sandboxId,
         viteCmd,
         { background: true }
       );
@@ -587,7 +641,7 @@ For Theatre.js: uses default vite.config.ts.`,
         await new Promise((r) => setTimeout(r, 500));
         // Use wget as fallback if curl isn't available
         const check = await dockerProvider.runCommand(
-          inputData.sandboxId,
+          sandboxId,
           '(curl -s -o /dev/null -w "%{http_code}" http://localhost:5173/ 2>/dev/null || wget -q -O /dev/null --server-response http://localhost:5173/ 2>&1 | grep "HTTP/" | tail -1 | awk "{print \\$2}" || echo "000")',
           { timeout: 5_000 }
         );
@@ -601,13 +655,13 @@ For Theatre.js: uses default vite.config.ts.`,
       if (!ready) {
         // Grab the vite log for diagnostics
         const viteLog = await dockerProvider.runCommand(
-          inputData.sandboxId,
+          sandboxId,
           'tail -30 /tmp/vite.log 2>/dev/null || echo "No log available"',
           { timeout: 5_000 }
         );
         // Also check if any process is listening on 5173
         const portCheck = await dockerProvider.runCommand(
-          inputData.sandboxId,
+          sandboxId,
           'ss -tlnp 2>/dev/null | grep 5173 || netstat -tlnp 2>/dev/null | grep 5173 || echo "No listener on 5173"',
           { timeout: 5_000 }
         );
@@ -633,7 +687,7 @@ For Theatre.js: uses default vite.config.ts.`,
 
       return {
         success: true,
-        previewUrl: `/api/plugins/animation/sandbox/${inputData.sandboxId}/proxy`,
+        previewUrl: `/api/plugins/animation/sandbox/${sandboxId}/proxy`,
         message: 'Dev server running — preview ready. NEXT STEP: Call sandbox_screenshot with timestamps=[0, 0.5, 1, 1.5, 2, ...] (batch mode, ~10 frames spread across your animation duration) to verify the animation renders AND animates before proceeding.',
       };
     } catch (error) {
@@ -651,11 +705,7 @@ For Theatre.js: uses default vite.config.ts.`,
  */
 export const sandboxScreenshotTool = createTool({
   id: 'sandbox_screenshot',
-  description: `Capture screenshots of the animation at specific frames.
-
-Engine-aware:
-- **Remotion** (default): Uses 'bunx remotion still' — fast, native renderer.
-- **Theatre.js**: Uses Puppeteer to navigate to localhost:5173, seek to each frame, and screenshot. Requires dev server running.
+  description: `Capture screenshots of the animation at specific frames. sandboxId and engine are auto-resolved from context.
 
 **Single mode**: Pass \`frame\` for one screenshot.
 **Batch mode**: Pass \`frames\` array (e.g. [0, 30, 60, 90]) to capture multiple frames.
@@ -663,11 +713,11 @@ Engine-aware:
 To convert seconds to frames: frame = seconds * fps (default 30fps)
 Example: 2 seconds at 30fps = frame 60`,
   inputSchema: z.object({
-    sandboxId: z.string().optional().describe('Sandbox ID'),
+    sandboxId: z.string().optional().describe('Override sandbox ID (auto-resolved from context if omitted)'),
     frame: z.number().optional().describe('Single screenshot: capture this frame number'),
     frames: z.array(z.number()).optional().describe('Batch mode: array of frame numbers'),
     fps: z.number().optional().describe('Frames per second for time conversion (default: 30)'),
-    engine: z.enum(['remotion', 'theatre']).optional().describe('Animation engine (default: remotion)'),
+    engine: z.enum(['remotion', 'theatre']).optional().describe('Override engine (auto-resolved from context if omitted)'),
   }),
   outputSchema: z.object({
     success: z.boolean(),
@@ -677,12 +727,13 @@ Example: 2 seconds at 30fps = frame 60`,
     })),
     message: z.string(),
   }),
-  execute: async (inputData) => {
-    if (!inputData.sandboxId) {
+  execute: async (inputData, context) => {
+    const sandboxId = resolveSandboxId(inputData.sandboxId, context as ToolContext);
+    if (!sandboxId) {
       return { success: false, screenshots: [], message: 'No active sandbox. Create one first with sandbox_create.' };
     }
     const fps = inputData.fps || 30;
-    const engine = inputData.engine || 'remotion';
+    const engine = resolveEngine(inputData.engine, context as ToolContext);
 
     // Determine which frames to capture
     let frames: number[];
@@ -697,11 +748,11 @@ Example: 2 seconds at 30fps = frame 60`,
       frames = frames.slice(0, 10);
     }
 
-    console.log(`[sandbox_screenshot] engine=${engine} sandbox=${inputData.sandboxId} frames=[${frames.join(',')}] fps=${fps}`);
+    console.log(`[sandbox_screenshot] engine=${engine} sandbox=${sandboxId} frames=[${frames.join(',')}] fps=${fps}`);
 
     try {
       // Ensure output directory
-      await dockerProvider.runCommand(inputData.sandboxId, 'mkdir -p /app/output', { timeout: 5_000 });
+      await dockerProvider.runCommand(sandboxId, 'mkdir -p /app/output', { timeout: 5_000 });
 
       const screenshots: { imageUrl: string; frame: number }[] = [];
       const errors: string[] = [];
@@ -745,20 +796,20 @@ const outputDir = process.argv[3] || '/app/output';
 
         // Write the capture script to sandbox
         await dockerProvider.runCommand(
-          inputData.sandboxId,
+          sandboxId,
           `cat > /app/_capture_frames.cjs << 'CAPTURE_SCRIPT_EOF'\n${captureScript}\nCAPTURE_SCRIPT_EOF`,
           { timeout: 5_000 }
         );
 
         // Execute the capture script
         const result = await dockerProvider.runCommand(
-          inputData.sandboxId,
+          sandboxId,
           `cd /app && node _capture_frames.cjs '${framesJson}' /app/output 2>&1`,
           { timeout: 60_000 }
         );
 
         // Clean up
-        await dockerProvider.runCommand(inputData.sandboxId, 'rm -f /app/_capture_frames.cjs', { timeout: 5_000 });
+        await dockerProvider.runCommand(sandboxId, 'rm -f /app/_capture_frames.cjs', { timeout: 5_000 });
 
         console.log(`[sandbox_screenshot] Theatre.js capture result: success=${result.success} stdout=${result.stdout.slice(0, 300)}`);
         if (result.stderr) console.log(`[sandbox_screenshot] Theatre.js stderr: ${result.stderr.slice(0, 300)}`);
@@ -777,14 +828,14 @@ const outputDir = process.argv[3] || '/app/output';
           const outputPath = `/app/output/${filename}`;
 
           const checkFile = await dockerProvider.runCommand(
-            inputData.sandboxId,
+            sandboxId,
             `test -f ${outputPath} && echo "OK" || echo "MISSING"`,
             { timeout: 5_000 }
           );
 
           if (checkFile.stdout.trim() === 'OK') {
             screenshots.push({
-              imageUrl: `/api/plugins/animation/sandbox/${inputData.sandboxId}/file?path=output/${filename}`,
+              imageUrl: `/api/plugins/animation/sandbox/${sandboxId}/file?path=output/${filename}`,
               frame,
             });
           } else {
@@ -796,14 +847,14 @@ const outputDir = process.argv[3] || '/app/output';
 
         // Step 1: Auto-detect composition ID (same logic as render_preview)
         const listResult = await dockerProvider.runCommand(
-          inputData.sandboxId,
+          sandboxId,
           `cd /app && bunx remotion compositions src/index.ts --props='{}' 2>&1 | grep 'fps' | head -1 | awk '{print $1}'`,
           { timeout: 60_000 }
         );
         let compositionId = listResult.stdout.trim();
         if (!compositionId) {
           const rootCheck = await dockerProvider.runCommand(
-            inputData.sandboxId,
+            sandboxId,
             `grep -oP 'id="\\K[^"]+' /app/src/Root.tsx 2>/dev/null | head -1 || echo "MainVideo"`,
             { timeout: 5_000 }
           );
@@ -815,7 +866,7 @@ const outputDir = process.argv[3] || '/app/output';
         const bundleDir = '/tmp/remotion-bundle';
         console.log(`[sandbox_screenshot] Bundling to ${bundleDir}...`);
         const bundleResult = await dockerProvider.runCommand(
-          inputData.sandboxId,
+          sandboxId,
           `cd /app && bunx remotion bundle src/index.ts --out-dir ${bundleDir} 2>&1`,
           { timeout: 90_000 }
         );
@@ -838,7 +889,7 @@ const outputDir = process.argv[3] || '/app/output';
           const cmd = `cd /app && bunx remotion still ${bundleDir} ${compositionId} ${outputPath} --frame=${frame} 2>&1`;
           console.log(`[sandbox_screenshot] Remotion frame ${frame}: taking still from bundle`);
           const result = await dockerProvider.runCommand(
-            inputData.sandboxId,
+            sandboxId,
             cmd,
             { timeout: 30_000 }
           );
@@ -848,14 +899,14 @@ const outputDir = process.argv[3] || '/app/output';
           if (result.success) {
             // Verify file was created
             const checkFile = await dockerProvider.runCommand(
-              inputData.sandboxId,
+              sandboxId,
               `test -f ${outputPath} && echo "OK" || echo "MISSING"`,
               { timeout: 5_000 }
             );
 
             if (checkFile.stdout.trim() === 'OK') {
               screenshots.push({
-                imageUrl: `/api/plugins/animation/sandbox/${inputData.sandboxId}/file?path=output/${filename}`,
+                imageUrl: `/api/plugins/animation/sandbox/${sandboxId}/file?path=output/${filename}`,
                 frame,
               });
             } else {
@@ -867,7 +918,7 @@ const outputDir = process.argv[3] || '/app/output';
         }
 
         // Clean up bundle to save disk space
-        await dockerProvider.runCommand(inputData.sandboxId, `rm -rf ${bundleDir}`, { timeout: 5_000 });
+        await dockerProvider.runCommand(sandboxId, `rm -rf ${bundleDir}`, { timeout: 5_000 });
       }
 
       if (screenshots.length === 0) {
@@ -901,17 +952,13 @@ const outputDir = process.argv[3] || '/app/output';
  */
 export const renderPreviewTool = createTool({
   id: 'render_preview',
-  description: `Render a preview video of the animation.
-
-Engine-aware:
-- **Remotion** (default): Uses 'bunx remotion render' to create an MP4. Automatically detects composition ID.
-- **Theatre.js**: Uses the export-video.cjs Puppeteer/FFmpeg script at /app/export-video.cjs. Requires dev server running on port 5173.`,
+  description: `Render a preview video of the animation. sandboxId and engine are auto-resolved from context.`,
   inputSchema: z.object({
-    sandboxId: z.string().optional().describe('Sandbox ID'),
+    sandboxId: z.string().optional().describe('Override sandbox ID (auto-resolved from context if omitted)'),
     duration: z.number().describe('Video duration in seconds'),
     fps: z.number().optional().describe('Frames per second (default: 30)'),
     compositionId: z.string().optional().describe('Composition ID to render (auto-detected if not provided, Remotion only)'),
-    engine: z.enum(['remotion', 'theatre']).optional().describe('Animation engine (default: remotion)'),
+    engine: z.enum(['remotion', 'theatre']).optional().describe('Override engine (auto-resolved from context if omitted)'),
   }),
   outputSchema: z.object({
     success: z.boolean(),
@@ -920,23 +967,24 @@ Engine-aware:
     duration: z.number(),
     message: z.string().optional(),
   }),
-  execute: async (inputData) => {
-    if (!inputData.sandboxId) {
+  execute: async (inputData, context) => {
+    const sandboxId = resolveSandboxId(inputData.sandboxId, context as ToolContext);
+    if (!sandboxId) {
       return { success: false, videoUrl: '', thumbnailUrl: '', duration: inputData.duration, message: 'No active sandbox. Create one first with sandbox_create.' };
     }
     const fps = inputData.fps || 30;
-    const engine = inputData.engine || 'remotion';
+    const engine = resolveEngine(inputData.engine, context as ToolContext);
     const outputPath = '/app/output/preview.mp4';
 
     try {
       // Ensure output directory exists
-      await dockerProvider.runCommand(inputData.sandboxId, 'mkdir -p /app/output', { timeout: 5_000 });
+      await dockerProvider.runCommand(sandboxId, 'mkdir -p /app/output', { timeout: 5_000 });
 
       if (engine === 'theatre') {
         // ── Theatre.js: Puppeteer + FFmpeg via export-video.cjs ──
         // Verify Vite dev server is running on port 5173
         const portCheck = await dockerProvider.runCommand(
-          inputData.sandboxId,
+          sandboxId,
           '(curl -s -o /dev/null -w "%{http_code}" http://localhost:5173/ 2>/dev/null || echo "000")',
           { timeout: 10_000 }
         );
@@ -952,7 +1000,7 @@ Engine-aware:
 
         // Verify export script exists
         const scriptCheck = await dockerProvider.runCommand(
-          inputData.sandboxId,
+          sandboxId,
           'test -f /app/export-video.cjs && echo "OK" || echo "MISSING"',
           { timeout: 5_000 }
         );
@@ -969,7 +1017,7 @@ Engine-aware:
         console.log(`[render_preview] Theatre.js render: duration=${inputData.duration}s, quality=preview`);
 
         const result = await dockerProvider.runCommand(
-          inputData.sandboxId,
+          sandboxId,
           `cd /app && node export-video.cjs --duration ${inputData.duration} --quality preview --output ${outputPath} 2>&1`,
           { timeout: 180_000 } // 3 minutes for preview render
         );
@@ -986,7 +1034,7 @@ Engine-aware:
 
         // Check if the file was created
         const checkFile = await dockerProvider.runCommand(
-          inputData.sandboxId,
+          sandboxId,
           `test -f ${outputPath} && echo "OK" || echo "MISSING"`,
           { timeout: 5_000 }
         );
@@ -1003,7 +1051,7 @@ Engine-aware:
 
         return {
           success: true,
-          videoUrl: `/api/plugins/animation/sandbox/${inputData.sandboxId}/file?path=output/preview.mp4`,
+          videoUrl: `/api/plugins/animation/sandbox/${sandboxId}/file?path=output/preview.mp4`,
           thumbnailUrl: '',
           duration: inputData.duration,
           message: `Video rendered successfully [theatre, preview quality]`,
@@ -1019,7 +1067,7 @@ Engine-aware:
         // followed by actual composition lines like "MainVideo  30fps  1920x1080  7s".
         // Filter for lines containing "fps" to skip progress noise.
         const listResult = await dockerProvider.runCommand(
-          inputData.sandboxId,
+          sandboxId,
           `cd /app && bunx remotion compositions src/index.ts --props='{}' 2>&1 | grep 'fps' | head -1 | awk '{print $1}'`,
           { timeout: 30_000 }
         );
@@ -1028,7 +1076,7 @@ Engine-aware:
         if (!compositionId) {
           // Fallback: try to extract from Root.tsx
           const rootCheck = await dockerProvider.runCommand(
-            inputData.sandboxId,
+            sandboxId,
             `grep -oP 'id="\\K[^"]+' /app/src/Root.tsx 2>/dev/null | head -1 || echo "MainVideo"`,
             { timeout: 5_000 }
           );
@@ -1041,7 +1089,7 @@ Engine-aware:
       // Use Remotion's built-in renderer
       // --concurrency=1 for lower memory usage in container
       const result = await dockerProvider.runCommand(
-        inputData.sandboxId,
+        sandboxId,
         `cd /app && bunx remotion render src/index.ts ${compositionId} ${outputPath} --props='{}' --concurrency=1 2>&1`,
         { timeout: 180_000 } // 3 minutes for rendering
       );
@@ -1058,7 +1106,7 @@ Engine-aware:
 
       // Check if the file was created
       const checkFile = await dockerProvider.runCommand(
-        inputData.sandboxId,
+        sandboxId,
         `test -f ${outputPath} && echo "OK" || echo "MISSING"`,
         { timeout: 5_000 }
       );
@@ -1075,7 +1123,7 @@ Engine-aware:
 
       return {
         success: true,
-        videoUrl: `/api/plugins/animation/sandbox/${inputData.sandboxId}/file?path=output/preview.mp4`,
+        videoUrl: `/api/plugins/animation/sandbox/${sandboxId}/file?path=output/preview.mp4`,
         thumbnailUrl: '',
         duration: inputData.duration,
         message: `Video rendered successfully (composition: ${compositionId})`,
@@ -1097,17 +1145,13 @@ Engine-aware:
  */
 export const renderFinalTool = createTool({
   id: 'render_final',
-  description: `Render the final high-quality video.
-
-Engine-aware:
-- **Remotion** (default): Uses 'bunx remotion render' with higher quality settings and resolution scaling.
-- **Theatre.js**: Uses export-video.cjs with --quality final and --resolution flag. Requires dev server running on port 5173.`,
+  description: `Render the final high-quality video. sandboxId and engine are auto-resolved from context.`,
   inputSchema: z.object({
-    sandboxId: z.string().optional().describe('Sandbox ID'),
+    sandboxId: z.string().optional().describe('Override sandbox ID (auto-resolved from context if omitted)'),
     duration: z.number().describe('Video duration'),
     resolution: z.enum(['720p', '1080p', '4k']).optional().describe('Output resolution'),
     compositionId: z.string().optional().describe('Composition ID to render (auto-detected if not provided, Remotion only)'),
-    engine: z.enum(['remotion', 'theatre']).optional().describe('Animation engine (default: remotion)'),
+    engine: z.enum(['remotion', 'theatre']).optional().describe('Override engine (auto-resolved from context if omitted)'),
   }),
   outputSchema: z.object({
     success: z.boolean(),
@@ -1117,23 +1161,24 @@ Engine-aware:
     resolution: z.string(),
     message: z.string().optional(),
   }),
-  execute: async (inputData) => {
-    if (!inputData.sandboxId) {
+  execute: async (inputData, context) => {
+    const sandboxId = resolveSandboxId(inputData.sandboxId, context as ToolContext);
+    if (!sandboxId) {
       return { success: false, videoUrl: '', thumbnailUrl: '', duration: inputData.duration, resolution: inputData.resolution || '1080p', message: 'No active sandbox. Create one first with sandbox_create.' };
     }
     const resolution = inputData.resolution || '1080p';
-    const engine = inputData.engine || 'remotion';
+    const engine = resolveEngine(inputData.engine, context as ToolContext);
     const outputPath = '/app/output/final.mp4';
 
     try {
       // Ensure output directory exists
-      await dockerProvider.runCommand(inputData.sandboxId, 'mkdir -p /app/output', { timeout: 5_000 });
+      await dockerProvider.runCommand(sandboxId, 'mkdir -p /app/output', { timeout: 5_000 });
 
       if (engine === 'theatre') {
         // ── Theatre.js: Puppeteer + FFmpeg via export-video.cjs ──
         // Verify Vite dev server is running on port 5173
         const portCheck = await dockerProvider.runCommand(
-          inputData.sandboxId,
+          sandboxId,
           '(curl -s -o /dev/null -w "%{http_code}" http://localhost:5173/ 2>/dev/null || echo "000")',
           { timeout: 10_000 }
         );
@@ -1150,7 +1195,7 @@ Engine-aware:
 
         // Verify export script exists
         const scriptCheck = await dockerProvider.runCommand(
-          inputData.sandboxId,
+          sandboxId,
           'test -f /app/export-video.cjs && echo "OK" || echo "MISSING"',
           { timeout: 5_000 }
         );
@@ -1168,7 +1213,7 @@ Engine-aware:
         console.log(`[render_final] Theatre.js render: duration=${inputData.duration}s, quality=final, resolution=${resolution}`);
 
         const result = await dockerProvider.runCommand(
-          inputData.sandboxId,
+          sandboxId,
           `cd /app && node export-video.cjs --duration ${inputData.duration} --quality final --resolution ${resolution} --output ${outputPath} 2>&1`,
           { timeout: 300_000 } // 5 minutes for final render
         );
@@ -1186,7 +1231,7 @@ Engine-aware:
 
         // Check if the file was created
         const checkFile = await dockerProvider.runCommand(
-          inputData.sandboxId,
+          sandboxId,
           `test -f ${outputPath} && echo "OK" || echo "MISSING"`,
           { timeout: 5_000 }
         );
@@ -1204,7 +1249,7 @@ Engine-aware:
 
         return {
           success: true,
-          videoUrl: `/api/plugins/animation/sandbox/${inputData.sandboxId}/file?path=output/final.mp4`,
+          videoUrl: `/api/plugins/animation/sandbox/${sandboxId}/file?path=output/final.mp4`,
           thumbnailUrl: '',
           duration: inputData.duration,
           resolution,
@@ -1226,7 +1271,7 @@ Engine-aware:
       if (!compositionId) {
         // Filter for lines containing "fps" to skip bundling progress noise
         const listResult = await dockerProvider.runCommand(
-          inputData.sandboxId,
+          sandboxId,
           `cd /app && bunx remotion compositions src/index.ts --props='{}' 2>&1 | grep 'fps' | head -1 | awk '{print $1}'`,
           { timeout: 30_000 }
         );
@@ -1234,7 +1279,7 @@ Engine-aware:
 
         if (!compositionId) {
           const rootCheck = await dockerProvider.runCommand(
-            inputData.sandboxId,
+            sandboxId,
             `grep -oP 'id="\\K[^"]+' /app/src/Root.tsx 2>/dev/null | head -1 || echo "MainVideo"`,
             { timeout: 5_000 }
           );
@@ -1246,7 +1291,7 @@ Engine-aware:
 
       // Use Remotion's built-in renderer with high quality settings
       const result = await dockerProvider.runCommand(
-        inputData.sandboxId,
+        sandboxId,
         `cd /app && bunx remotion render src/index.ts ${compositionId} ${outputPath} --props='{}' ${scaleFlag} 2>&1`,
         { timeout: 300_000 } // 5 minutes for final render
       );
@@ -1264,7 +1309,7 @@ Engine-aware:
 
       // Check if the file was created
       const checkFile = await dockerProvider.runCommand(
-        inputData.sandboxId,
+        sandboxId,
         `test -f ${outputPath} && echo "OK" || echo "MISSING"`,
         { timeout: 5_000 }
       );
@@ -1282,7 +1327,7 @@ Engine-aware:
 
       return {
         success: true,
-        videoUrl: `/api/plugins/animation/sandbox/${inputData.sandboxId}/file?path=output/final.mp4`,
+        videoUrl: `/api/plugins/animation/sandbox/${sandboxId}/file?path=output/final.mp4`,
         thumbnailUrl: '',
         duration: inputData.duration,
         resolution,

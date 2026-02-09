@@ -9,6 +9,13 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { Agent } from '@mastra/core/agent';
+import { dockerProvider } from '@/lib/sandbox/docker-provider';
+
+type ToolContext = { requestContext?: { get: (key: string) => any; set: (key: string, value: any) => void } };
+
+function resolveSandboxId(input: string | undefined, context?: ToolContext): string | undefined {
+  return input || context?.requestContext?.get('sandboxId') || undefined;
+}
 
 // Schema for scene analysis
 const SceneAnalysisSchema = z.object({
@@ -97,11 +104,11 @@ Pay attention to:
 - Safe areas for text overlays (avoid faces, important action)`;
 
 /**
- * Claude Image Analyzer Agent (Mastra)
+ * Image Analyzer Agent — uses Gemini Flash for vision analysis
  */
-const claudeImageAnalyzer = new Agent({
-  id: 'claude-image-analyzer',
-  name: 'claude-image-analyzer',
+const imageAnalyzer = new Agent({
+  id: 'image-analyzer',
+  name: 'image-analyzer',
   instructions: `You are an image analysis expert. Analyze images and return structured JSON for animation planning.
 Always return valid JSON matching the requested schema. Be detailed about composition, objects, and animation opportunities.`,
   model: 'google/gemini-3-flash-preview',
@@ -121,7 +128,7 @@ Always return valid JSON matching the requested schema. Be detailed about timest
 /**
  * Analyze image using Claude Vision via Mastra
  */
-async function analyzeImageWithClaude(
+async function analyzeImage(
   imageUrl: string,
   imageBase64?: string,
   mimeType?: string
@@ -149,7 +156,7 @@ async function analyzeImageWithClaude(
       text: IMAGE_ANALYSIS_PROMPT,
     });
 
-    const result = await claudeImageAnalyzer.generate([
+    const result = await imageAnalyzer.generate([
       {
         role: 'user',
         content: imageContent as any,
@@ -205,7 +212,7 @@ async function analyzeImageWithClaude(
 /**
  * Analyze video using Gemini 3 Flash via Mastra
  */
-async function analyzeVideoWithGemini(
+async function analyzeVideo(
   videoUrl: string,
   videoBase64?: string,
   mimeType?: string
@@ -358,19 +365,85 @@ Example:
 
   outputSchema: MediaAnalysisResultSchema,
 
-  execute: async (input) => {
-    const { mediaUrl, mediaBase64, mimeType } = input;
+  execute: async (input, context) => {
+    let { mediaUrl, mediaBase64, mimeType } = input;
+
+    // ── Resolve media data from sandbox or requestContext ──
+    // The orchestrator may pass a sandbox-internal path like "public/media/photo.jpg"
+    // which isn't accessible to external APIs. We need to read the actual data.
+    const sandboxId = resolveSandboxId(undefined, context as ToolContext);
+
+    // If no base64 provided and mediaUrl looks like a sandbox path (not a real URL),
+    // resolve the actual image data from requestContext or sandbox.
+    if (!mediaBase64 && mediaUrl && !mediaUrl.startsWith('http') && !mediaUrl.startsWith('data:')) {
+      // Strategy 1: Check requestContext mediaBuffers (set by route.ts from decoded base64)
+      const mediaBuffers = (context as ToolContext)?.requestContext?.get('mediaBuffers') as Map<string, { buffer: Buffer; mimeType: string }> | undefined;
+      if (mediaBuffers) {
+        // Match by filename — mediaUrl might be "public/media/photo.jpg" or "/media/photo.jpg"
+        const fileName = mediaUrl.split('/').pop() || '';
+        const match = mediaBuffers.get(fileName);
+        if (match) {
+          mediaBase64 = match.buffer.toString('base64');
+          if (!mimeType) mimeType = match.mimeType;
+          console.log(`[analyze_media] Resolved from mediaBuffers: ${fileName} (${Math.round(match.buffer.length / 1024)}KB)`);
+        }
+      }
+
+      // Strategy 2: Check requestContext pendingMedia (pre-sandbox uploads)
+      if (!mediaBase64) {
+        const pendingMedia = (context as ToolContext)?.requestContext?.get('pendingMedia') as Array<{ name: string; data: Buffer; type: string }> | undefined;
+        if (pendingMedia) {
+          const match = pendingMedia.find(m => mediaUrl!.includes(m.name));
+          if (match) {
+            mediaBase64 = match.data.toString('base64');
+            if (!mimeType) mimeType = match.type === 'video' ? 'video/mp4' : 'image/png';
+            console.log(`[analyze_media] Resolved from pendingMedia: ${match.name}`);
+          }
+        }
+      }
+
+      // Strategy 3: Read from sandbox via base64-encoded cat
+      if (!mediaBase64 && sandboxId) {
+        try {
+          const sandboxPath = mediaUrl.startsWith('/') ? mediaUrl : `/app/${mediaUrl}`;
+          const result = await dockerProvider.runCommand(sandboxId, `base64 -w0 ${sandboxPath}`, { timeout: 10_000 });
+          if (result.stdout && result.stdout.length > 0) {
+            mediaBase64 = result.stdout.trim();
+            if (!mimeType) {
+              const ext = mediaUrl.split('.').pop()?.toLowerCase();
+              const mimeMap: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime' };
+              mimeType = mimeMap[ext || ''] || 'image/png';
+            }
+            console.log(`[analyze_media] Read from sandbox: ${sandboxPath} (${Math.round(mediaBase64.length * 0.75 / 1024)}KB)`);
+          }
+        } catch (err) {
+          console.warn(`[analyze_media] Could not read from sandbox: ${mediaUrl}`, err);
+        }
+      }
+    }
 
     // Detect media type
     const detectedType = input.mediaType || detectMediaType(mediaUrl, mimeType);
 
-    console.log(`[analyze_media] Analyzing ${detectedType}: ${mediaUrl?.slice(0, 50)}...`);
+    console.log(`[analyze_media] Analyzing ${detectedType}: ${mediaUrl?.slice(0, 50)}... (base64: ${mediaBase64 ? `${Math.round(mediaBase64.length / 1024)}KB` : 'NO'})`);
+
+    // If we still have no accessible media, return an error
+    if (!mediaBase64 && mediaUrl && !mediaUrl.startsWith('http') && !mediaUrl.startsWith('data:')) {
+      return {
+        success: false,
+        mediaType: detectedType,
+        scenes: [],
+        overallDescription: '',
+        suggestedAnimations: [],
+        error: `Cannot access media at "${mediaUrl}" — it's a sandbox-internal path and no sandbox is active. Create a sandbox first, or provide a direct URL.`,
+      };
+    }
 
     try {
       if (detectedType === 'video') {
-        return await analyzeVideoWithGemini(mediaUrl, mediaBase64, mimeType);
+        return await analyzeVideo(mediaUrl, mediaBase64, mimeType);
       } else {
-        return await analyzeImageWithClaude(mediaUrl, mediaBase64, mimeType);
+        return await analyzeImage(mediaUrl, mediaBase64, mimeType);
       }
     } catch (error) {
       return {
