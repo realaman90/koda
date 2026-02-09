@@ -14,7 +14,7 @@ import {
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useCanvasStore } from '@/stores/canvas-store';
 import type { VideoGeneratorNode as VideoGeneratorNodeType } from '@/lib/types';
-import { VIDEO_MODEL_CAPABILITIES, type VideoModelType, type VideoAspectRatio, type VideoDuration } from '@/lib/types';
+import { VIDEO_MODEL_CAPABILITIES, ENABLED_VIDEO_MODELS, type VideoModelType, type VideoAspectRatio, type VideoDuration } from '@/lib/types';
 import {
   Video,
   Play,
@@ -517,10 +517,10 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
           <SearchableSelect
             value={data.model}
             onValueChange={handleModelChange}
-            options={Object.entries(VIDEO_MODEL_CAPABILITIES).map(([key, cap]) => ({
+            options={ENABLED_VIDEO_MODELS.map(key => ({
               value: key,
-              label: cap.label,
-              description: cap.description,
+              label: VIDEO_MODEL_CAPABILITIES[key].label,
+              description: VIDEO_MODEL_CAPABILITIES[key].description,
             }))}
             placeholder="Select model"
             searchPlaceholder="Search models..."

@@ -10,8 +10,23 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getLocalAssetProvider } from '@/lib/assets/local-provider';
+import { getAssetStorageType, type AssetStorageProvider } from '@/lib/assets';
 import { getExtensionFromMime } from '@/lib/assets/types';
+
+/**
+ * Get the asset storage provider based on ASSET_STORAGE env var
+ */
+async function getProvider(): Promise<AssetStorageProvider> {
+  const storageType = getAssetStorageType();
+
+  if (storageType === 'r2' || storageType === 's3') {
+    const { getS3AssetProvider } = await import('@/lib/assets/s3-provider');
+    return getS3AssetProvider(storageType);
+  }
+
+  const { getLocalAssetProvider } = await import('@/lib/assets/local-provider');
+  return getLocalAssetProvider();
+}
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 
@@ -42,7 +57,7 @@ export async function POST(request: NextRequest) {
     const extension = getExtensionFromMime(file.type);
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    const provider = getLocalAssetProvider();
+    const provider = await getProvider();
     const asset = await provider.saveFromBuffer(buffer, {
       type: assetType,
       extension,
