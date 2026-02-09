@@ -41,7 +41,7 @@ export function PluginLauncher({
   anchorRef,
 }: PluginLauncherProps) {
   const dropdownRef = React.useRef<HTMLDivElement>(null);
-  const [position, setPosition] = React.useState({ top: 0, left: 0 });
+  const [position, setPosition] = React.useState({ top: -9999, left: -9999 });
 
   // Get all plugins from registry
   const plugins = React.useMemo(() => pluginRegistry.getAll(), []);
@@ -58,13 +58,22 @@ export function PluginLauncher({
     return grouped;
   }, [plugins]);
 
-  // Position dropdown near anchor
+  // Position dropdown near anchor, clamped to viewport
   React.useEffect(() => {
     if (isOpen && anchorRef.current) {
-      const rect = anchorRef.current.getBoundingClientRect();
-      setPosition({
-        top: rect.bottom + 8,
-        left: rect.left,
+      // Wait a frame so the dropdown renders and we can measure it
+      requestAnimationFrame(() => {
+        const anchorRect = anchorRef.current?.getBoundingClientRect();
+        const dropRect = dropdownRef.current?.getBoundingClientRect();
+        if (!anchorRect) return;
+        const pad = 8;
+        let top = anchorRect.bottom + 8;
+        const left = anchorRect.right + 8;
+        if (dropRect && top + dropRect.height > window.innerHeight - pad) {
+          top = window.innerHeight - dropRect.height - pad;
+        }
+        top = Math.max(pad, top);
+        setPosition({ top, left });
       });
     }
   }, [isOpen, anchorRef]);
@@ -99,6 +108,11 @@ export function PluginLauncher({
     };
   }, [isOpen, onClose, anchorRef]);
 
+  // Reset position when closed
+  React.useEffect(() => {
+    if (!isOpen) setPosition({ top: -9999, left: -9999 });
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const handlePluginClick = (pluginId: string) => {
@@ -111,7 +125,7 @@ export function PluginLauncher({
     return (
       <div
         ref={dropdownRef}
-        style={{ top: position.top, left: position.left }}
+        style={{ top: position.top, left: position.left, visibility: position.top === -9999 ? 'hidden' : 'visible' }}
         className="fixed z-[200] w-[280px] bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150"
       >
         <div className="p-4 text-center">
@@ -125,7 +139,7 @@ export function PluginLauncher({
   return (
     <div
       ref={dropdownRef}
-      style={{ top: position.top, left: position.left }}
+      style={{ top: position.top, left: position.left, visibility: position.top === -9999 ? 'hidden' : 'visible' }}
       className="fixed z-[200] w-[280px] bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150"
     >
       {/* Header */}

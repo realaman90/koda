@@ -1,0 +1,17 @@
+/* Base styles for animation sandbox */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: #000;
+  font-family: system-ui, -apple-system, sans-serif;
+}

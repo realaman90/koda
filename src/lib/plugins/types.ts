@@ -57,20 +57,26 @@ export interface PluginBase {
 
 /**
  * What an Agent Plugin can do on the canvas
- * Note: 'canvas:group' is deferred for future implementation
+ * Extended from base to support persistent sandbox plugins
  */
 export type AgentCapability =
-  | 'canvas:read'     // Read existing nodes
-  | 'canvas:create'   // Create new nodes
-  | 'canvas:connect'  // Create edges between nodes
-  | 'canvas:modify';  // Modify existing nodes
+  | 'canvas:read'        // Read existing nodes
+  | 'canvas:create'      // Create new nodes
+  | 'canvas:connect'     // Create edges between nodes
+  | 'canvas:modify'      // Modify existing nodes
+  | 'storage:upload'     // Upload files to storage
+  | 'storage:download'   // Download files from storage
+  | 'sandbox:persistent'; // Long-running sandbox with checkpointing
 
 /**
  * Services available to Agent Plugins
+ * Extended to support specialized sandbox types
  */
 export type AgentService =
-  | 'ai'        // LLM/AI generation
-  | 'storage';  // File storage (future)
+  | 'ai'              // LLM/AI generation
+  | 'storage'         // File storage
+  | 'theatre-sandbox' // Theatre.js sandbox environment
+  | 'render';         // Video render pipeline
 
 /**
  * Sandbox modal size variants
@@ -86,16 +92,101 @@ export interface AgentSandboxProps {
   notify: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
+// ============================================
+// PERSISTENT SANDBOX TYPES (for Animation Generator, etc.)
+// ============================================
+
+/**
+ * Configuration for persistent sandbox environments
+ * Used by plugins that require long-running execution (e.g., Animation Generator)
+ */
+export interface PersistentSandboxConfig {
+  type: 'theatre' | 'code' | 'e2b-browser';
+  template: string;                // Docker image or E2B template ID
+  timeout: number;                 // Max lifetime in seconds
+  checkpointInterval: number;      // Sync to storage every N seconds
+  idleTimeout: number;             // Destroy after N seconds idle
+  resources?: {
+    cpu?: number;
+    memory?: string;
+  };
+}
+
+/**
+ * Phase definition for multi-phase workflow plugins
+ */
+export interface PhaseDefinition {
+  id: string;
+  label: string;
+  initial?: boolean;              // Starting phase
+  terminal?: boolean;             // End phases (complete, error)
+  skippable?: boolean;            // Can be auto-skipped by agent
+  requiresApproval?: boolean;     // Needs user action to proceed
+  showProgress?: boolean;         // Show progress UI (todos, thinking)
+}
+
+/**
+ * Handle type for plugin canvas connections
+ */
+export type PluginHandleType = 'text' | 'image' | 'video' | 'audio' | 'media' | 'json' | 'any';
+
+/**
+ * Single handle definition for plugin inputs/outputs
+ */
+export interface PluginHandle {
+  id: string;
+  name: string;
+  type: PluginHandleType;
+  required?: boolean;
+  multiple?: boolean;
+  optional?: boolean;
+}
+
+/**
+ * Plugin handles configuration
+ */
+export interface PluginHandles {
+  inputs: PluginHandle[];
+  outputs: PluginHandle[];
+}
+
+/**
+ * Rendering configuration for node-based plugins
+ */
+export interface PluginRendering {
+  mode: 'node' | 'modal';
+  component: string;                              // Component name/identifier
+  defaultSize?: { width: number; height: number | 'auto' };
+  resizable?: boolean;
+  collapsible?: boolean;
+}
+
 /**
  * Agent Plugin - Interactive plugins that create nodes via a sandbox UI
+ * Extended to support both modal-based and node-based rendering
  */
 export interface AgentPlugin extends PluginBase {
   type: 'agent';
-  sandbox: {
+
+  // Rendering mode (NEW) - determines how the plugin appears
+  rendering?: PluginRendering;
+
+  // Modal-based sandbox (existing pattern)
+  sandbox?: {
     component: ComponentType<AgentSandboxProps>;
     size: SandboxSize;
     title: string;
   };
+
+  // Persistent sandbox config (NEW) - for long-running environments
+  sandboxConfig?: PersistentSandboxConfig;
+
+  // Phase definitions (NEW) - for multi-phase workflow plugins
+  phases?: PhaseDefinition[];
+
+  // Canvas connection handles (NEW) - for node-based plugins
+  handles?: PluginHandles;
+
   capabilities: AgentCapability[];
   services: AgentService[];
 }

@@ -20,6 +20,7 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions = {}) 
   const selectAll = useCanvasStore((state) => state.selectAll);
   const selectedNodeIds = useCanvasStore((state) => state.selectedNodeIds);
   const setActiveTool = useCanvasStore((state) => state.setActiveTool);
+  const groupSelected = useCanvasStore((state) => state.groupSelected);
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
@@ -89,6 +90,13 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions = {}) 
         return;
       }
 
+      // Group Selected: Cmd/Ctrl + G
+      if (cmdOrCtrl && event.key === 'g') {
+        event.preventDefault();
+        groupSelected();
+        return;
+      }
+
       // Delete: Backspace or Delete
       if (event.key === 'Backspace' || event.key === 'Delete') {
         // Only delete if we have selected nodes and not in an input field
@@ -129,7 +137,7 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions = {}) 
         }
       }
     },
-    [undo, redo, copySelected, cutSelected, paste, deleteSelected, duplicateSelected, selectAll, selectedNodeIds, setActiveTool]
+    [undo, redo, copySelected, cutSelected, paste, deleteSelected, duplicateSelected, selectAll, groupSelected, selectedNodeIds, setActiveTool]
   );
 
   useEffect(() => {

@@ -88,7 +88,10 @@ function getS3Config(type: AssetStorageType): S3Config | null {
 async function sha256(message: string | Uint8Array): Promise<ArrayBuffer> {
   const encoder = new TextEncoder();
   const data = typeof message === 'string' ? encoder.encode(message) : message;
-  return await crypto.subtle.digest('SHA-256', data);
+  // Create a new ArrayBuffer copy to avoid SharedArrayBuffer type issues
+  const buffer = new ArrayBuffer(data.byteLength);
+  new Uint8Array(buffer).set(data);
+  return await crypto.subtle.digest('SHA-256', buffer);
 }
 
 function toHex(buffer: ArrayBuffer): string {
@@ -99,9 +102,17 @@ function toHex(buffer: ArrayBuffer): string {
 
 async function hmac(key: ArrayBuffer | Uint8Array, message: string): Promise<ArrayBuffer> {
   const encoder = new TextEncoder();
+  // Convert Uint8Array to ArrayBuffer to avoid SharedArrayBuffer type issues
+  let keyBuffer: ArrayBuffer;
+  if (key instanceof Uint8Array) {
+    keyBuffer = new ArrayBuffer(key.byteLength);
+    new Uint8Array(keyBuffer).set(key);
+  } else {
+    keyBuffer = key;
+  }
   const cryptoKey = await crypto.subtle.importKey(
     'raw',
-    key,
+    keyBuffer,
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['sign']
@@ -308,7 +319,8 @@ export class S3AssetProvider implements AssetStorageProvider {
     const response = await fetch(url, {
       method: 'PUT',
       headers,
-      body: buffer,
+      // Convert Buffer to Uint8Array for fetch body compatibility
+      body: new Uint8Array(buffer),
     });
 
     if (!response.ok) {

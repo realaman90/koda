@@ -1,4 +1,5 @@
 import { Agent } from '@mastra/core/agent';
+import { PROMPT_ENHANCER_MODEL } from '../models';
 
 /**
  * Prompt Enhancer Agent
@@ -24,5 +25,5 @@ Guidelines:
 5. Use comma-separated descriptors for better model understanding
 
 Output ONLY the enhanced prompt, nothing else.`,
-  model: 'anthropic/claude-sonnet-4-20250514',
+  model: PROMPT_ENHANCER_MODEL,
 });

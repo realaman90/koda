@@ -1,7 +1,7 @@
 import type { Node, Edge } from '@xyflow/react';
 
 // Node Types
-export type NodeType = 'imageGenerator' | 'videoGenerator' | 'text' | 'media' | 'stickyNote' | 'sticker' | 'group' | 'storyboard' | 'musicGenerator' | 'speech' | 'videoAudio';
+export type NodeType = 'imageGenerator' | 'videoGenerator' | 'text' | 'media' | 'stickyNote' | 'sticker' | 'group' | 'storyboard' | 'productShot' |  'musicGenerator' | 'speech' | 'videoAudio' | 'pluginNode';
 
 // ============================================
 // PRESET TYPES (for Settings Panel)
@@ -174,12 +174,22 @@ export interface GroupNodeData extends Record<string, unknown> {
   color: string;
   width: number;
   height: number;
+  notes?: string;
 }
 
 export type GroupNode = Node<GroupNodeData, 'group'>;
 
+// Plugin Node - Dynamic node rendered by plugins
+export interface PluginNodeData extends Record<string, unknown> {
+  pluginId: string;
+  name?: string;
+  state: Record<string, unknown>;
+}
+
+export type PluginNode = Node<PluginNodeData, 'pluginNode'>;
+
 // Union of all node types
-export type AppNode = ImageGeneratorNode | VideoGeneratorNode | TextNode | MediaNode | StickyNoteNode | StickerNode | GroupNode | StoryboardNode | MusicGeneratorNode | SpeechNode | VideoAudioNode;
+export type AppNode = ImageGeneratorNode | VideoGeneratorNode | TextNode | MediaNode | StickyNoteNode | StickerNode | GroupNode | StoryboardNode | ProductShotNode |  MusicGeneratorNode | SpeechNode | VideoAudioNode | PluginNode;
 export type AppEdge = Edge;
 
 // Fal API types
@@ -355,6 +365,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
 export type VideoModelType =
   | 'veo-3'
   | 'veo-3.1-i2v'
+  | 'veo-3.1-fast-i2v'
   | 'veo-3.1-ref'
   | 'veo-3.1-flf'
   | 'veo-3.1-fast-flf'
@@ -433,6 +444,17 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     resolutions: ['720p', '1080p'],
     supportsAudio: true,
     description: 'Animate a single image',
+  },
+  'veo-3.1-fast-i2v': {
+    label: 'Veo 3.1 Fast Image',
+    inputType: 'text-and-image',
+    inputMode: 'single-image',
+    durations: [4, 6, 8],
+    defaultDuration: 8,
+    aspectRatios: ['16:9', '9:16'],
+    resolutions: ['720p', '1080p'],
+    supportsAudio: true,
+    description: 'Fast image-to-video',
   },
   'veo-3.1-ref': {
     label: 'Veo 3.1 Multi-Ref',
@@ -523,6 +545,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
 export const FAL_VIDEO_MODELS: Record<VideoModelType, string> = {
   'veo-3': 'fal-ai/veo3',
   'veo-3.1-i2v': 'fal-ai/veo3.1/image-to-video',
+  'veo-3.1-fast-i2v': 'fal-ai/veo3.1/fast/image-to-video',
   'veo-3.1-ref': 'fal-ai/veo3.1/reference-to-video',
   'veo-3.1-flf': 'fal-ai/veo3.1/first-last-frame-to-video',
   'veo-3.1-fast-flf': 'fal-ai/veo3.1/fast/first-last-frame-to-video',
@@ -537,11 +560,45 @@ export const FAL_VIDEO_MODELS: Record<VideoModelType, string> = {
 // STORYBOARD NODE TYPES
 // ============================================
 
+// Storyboard mode
+export type StoryboardMode = 'transition' | 'single-shot';
+
 // Storyboard visual style
 export type StoryboardStyle = 'cinematic' | 'anime' | 'photorealistic' | 'illustrated' | 'commercial';
 
 // Storyboard view state
-export type StoryboardViewState = 'form' | 'loading' | 'preview';
+export type StoryboardViewState = 'form' | 'loading' | 'preview' | 'chat';
+
+// Storyboard chat phase
+export type StoryboardChatPhase = 'idle' | 'streaming' | 'draft-ready' | 'error';
+
+// Storyboard chat message
+export interface StoryboardChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+  seq: number;
+}
+
+// Storyboard thinking block entry
+export interface StoryboardThinkingBlock {
+  id: string;
+  label: string;
+  reasoning?: string;
+  startedAt: string;
+  endedAt?: string;
+  seq: number;
+}
+
+// Storyboard draft entry
+export interface StoryboardDraft {
+  id: string;
+  scenes: StoryboardSceneData[];
+  summary: string;
+  createdAt: string;
+  seq: number;
+}
 
 // Scene data structure (matches schema.ts)
 export interface StoryboardSceneData {
@@ -551,7 +608,8 @@ export interface StoryboardSceneData {
   prompt: string;
   camera: string;
   mood: string;
-  transition?: string;
+  transition?: string;  // For transition mode (motion between scenes)
+  motion?: string;      // For single-shot mode (motion within scene)
 }
 
 // Storyboard Node Data
@@ -563,10 +621,21 @@ export interface StoryboardNodeData extends Record<string, unknown> {
   concept: string;
   sceneCount: number;
   style: StoryboardStyle;
+  mode: StoryboardMode;  // 'transition' for N-1 videos between frames, 'single-shot' for N independent videos
   // UI state
   viewState: StoryboardViewState;
   error?: string;
-  // Generated result (stored for persistence)
+  // Chat / iterative refinement state
+  chatMessages: StoryboardChatMessage[];
+  thinkingBlocks: StoryboardThinkingBlock[];
+  drafts: StoryboardDraft[];
+  activeDraftIndex?: number;
+  chatPhase: StoryboardChatPhase;
+  // Legacy fields (deprecated, kept for backward compat migration)
+  thinkingText?: string;
+  reasoningText?: string;
+  thinkingStartedAt?: string;
+  isStreaming?: boolean;
   result?: {
     scenes: StoryboardSceneData[];
     summary: string;
@@ -574,6 +643,51 @@ export interface StoryboardNodeData extends Record<string, unknown> {
 }
 
 export type StoryboardNode = Node<StoryboardNodeData, 'storyboard'>;
+
+// ============================================
+// PRODUCT SHOT NODE TYPES
+// ============================================
+
+// Product shot background preset
+export type ProductShotBackground = 'studio-white' | 'gradient' | 'lifestyle' | 'outdoor' | 'dark-moody';
+
+// Product shot lighting preset
+export type ProductShotLighting = 'soft' | 'dramatic' | 'natural' | 'rim-light';
+
+// Product shot view state
+export type ProductShotViewState = 'form' | 'loading' | 'preview';
+
+// Single shot data structure (matches schema.ts)
+export interface ProductShotShotData {
+  number: number;
+  angleName: string;
+  description: string;
+  prompt: string;
+  camera: string;
+  composition: string;
+  enabled: boolean;
+}
+
+// Product Shot Node Data
+export interface ProductShotNodeData extends Record<string, unknown> {
+  name?: string;
+  // Form fields
+  productName: string;
+  shotCount: number;
+  background: ProductShotBackground;
+  lighting: ProductShotLighting;
+  additionalNotes?: string;
+  // UI state
+  viewState: ProductShotViewState;
+  error?: string;
+  // Generated result (stored for persistence)
+  result?: {
+    shots: ProductShotShotData[];
+    summary: string;
+  };
+}
+
+export type ProductShotNode = Node<ProductShotNodeData, 'productShot'>;
 
 // ============================================
 // AUDIO GENERATION TYPES

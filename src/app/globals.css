@@ -6,6 +6,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-accent-primary: var(--accent-primary);
+  --color-accent-primary-hover: var(--accent-primary-hover);
+  --color-accent-primary-fg: var(--accent-primary-fg);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -47,7 +50,10 @@
 }
 
 :root {
-  --radius: 0.625rem;
+  --radius: 0.75rem;
+  --accent-primary: #7C3AED;
+  --accent-primary-hover: #6D28D9;
+  --accent-primary-fg: #FFFFFF;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -133,6 +139,17 @@
   }
 }
 
+/*
+ * Reset form element backgrounds — MUST be outside @layer base.
+ * In Tailwind v4, layered rules lose to unlayered browser defaults,
+ * so this has to be unlayered to override the UA white background.
+ */
+input,
+textarea,
+select {
+  background-color: transparent;
+}
+
 /* Toast theme variables */
 :root {
   --toast-bg: #ffffff;
@@ -152,7 +169,7 @@
 :root {
   /* Canvas */
   --canvas-bg: #fafafa;
-  --canvas-dots: #e5e7eb;
+  --canvas-dots: #d4d4d8;
 
   /* Node cards - Freepik style */
   --node-card-bg: #ffffff;
@@ -195,7 +212,7 @@
 
   /* Text colors */
   --text-primary: #18181b;
-  --text-secondary: #374151;
+  --text-secondary: #71717A;
   --text-muted: #6b7280;
   --text-placeholder: #9ca3af;
 
@@ -204,10 +221,11 @@
   --node-title-image: #0f766e;
   --node-title-video: #7c3aed;
   --node-title-text: #92400e;
-  --node-title-media: #4f46e5;
+  --node-title-media: #dc2626;
   --node-title-speech: #0891b2;
   --node-title-music: #ea580c;
   --node-title-storyboard: #7c3aed;
+  --node-title-animation: #2563eb;
 
   /* Inputs */
   --input-bg: #f9fafb;
@@ -238,7 +256,7 @@
 .dark {
   /* Canvas */
   --canvas-bg: #09090b;
-  --canvas-dots: #27272a;
+  --canvas-dots: #3f3f46;
 
   /* Node cards - dark mode */
   --node-card-bg: #18181b;
@@ -281,7 +299,7 @@
 
   /* Text colors */
   --text-primary: #fafafa;
-  --text-secondary: #d4d4d8;
+  --text-secondary: #A1A1AA;
   --text-muted: #71717a;
   --text-placeholder: #52525b;
 
@@ -290,10 +308,11 @@
   --node-title-image: #14b8a6;
   --node-title-video: #a855f7;
   --node-title-text: #fcd34d;
-  --node-title-media: #818cf8;
+  --node-title-media: #F87171;
   --node-title-speech: #22d3ee;
   --node-title-music: #fb923c;
   --node-title-storyboard: #a78bfa;
+  --node-title-animation: #3B82F6;
 
   /* Inputs */
   --input-bg: transparent;
@@ -448,11 +467,7 @@
 }
 
 .react-flow__handle {
-  transition: all 0.15s ease;
-}
-
-.react-flow__handle:hover {
-  transform: scale(1.2);
+  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .react-flow__node {
@@ -465,6 +480,13 @@
   border: none !important;
   box-shadow: none !important;
   padding: 0 !important;
+}
+
+/* Dot pattern spotlight — default centered, JS updates on mousemove */
+.react-flow__background {
+  mask-image: radial-gradient(circle at 50% 50%, black 15%, transparent 40%);
+  -webkit-mask-image: radial-gradient(circle at 50% 50%, black 15%, transparent 40%);
+  transition: mask-image 10ms linear, -webkit-mask-image 10ms linear;
 }
 
 /* Hide default React Flow attribution */
@@ -592,18 +614,152 @@
   background-color: #f4f4f5 !important;
 }
 
-/* Light mode node input fields */
-.light .nodrag input,
-.light .nodrag textarea,
-.light .nodrag select {
+/* Light mode node input fields (skip .animation-node which has its own theming) */
+.light .nodrag input:not(.animation-node *),
+.light .nodrag textarea:not(.animation-node *),
+.light .nodrag select:not(.animation-node *) {
   background-color: #f4f4f5 !important;
   border-color: #d4d4d8 !important;
   color: #18181b !important;
 }
 
-.light .nodrag input::placeholder,
-.light .nodrag textarea::placeholder {
+.light .nodrag input:not(.animation-node *)::placeholder,
+.light .nodrag textarea:not(.animation-node *)::placeholder {
   color: #71717a !important;
+}
+
+/* ── Animation Node Theme Variables ────────────────────────────── */
+/* Light mode (default) */
+.animation-node {
+  --an-bg: #ffffff;
+  --an-bg-card: #f4f4f5;
+  --an-bg-elevated: #e4e4e7;
+  --an-bg-input: #ffffff;
+  --an-bg-hover: #e4e4e7;
+  --an-bg-user-bubble: #DBEAFE;
+  --an-bg-error: #FEF2F2;
+  --an-border: #e4e4e7;
+  --an-border-input: #d4d4d8;
+  --an-border-hover: #a1a1aa;
+  --an-border-error: #FECACA;
+  --an-text: #18181b;
+  --an-text-heading: #09090b;
+  --an-text-secondary: #27272a;
+  --an-text-muted: #52525B;
+  --an-text-dim: #71717A;
+  --an-text-placeholder: #a1a1aa;
+  --an-text-user: #1E3A5F;
+  --an-accent: #3B82F6;
+  --an-accent-hover: #2563EB;
+  --an-accent-bg: #DBEAFE;
+  --an-accent-text: #1D4ED8;
+  background-color: var(--an-bg);
+  border: 1px solid var(--an-border);
+  color: var(--an-text);
+}
+
+/* Dark mode overrides */
+.dark .animation-node {
+  --an-bg: #18181b;
+  --an-bg-card: #27272a;
+  --an-bg-elevated: #1e1e20;
+  --an-bg-input: #27272a;
+  --an-bg-hover: #3f3f46;
+  --an-bg-user-bubble: #1E3A5F;
+  --an-bg-error: #1C1011;
+  --an-border: #27272a;
+  --an-border-input: #3f3f46;
+  --an-border-hover: #52525B;
+  --an-border-error: #7F1D1D;
+  --an-text: #FAFAFA;
+  --an-text-heading: #FAFAFA;
+  --an-text-secondary: #E2E8F0;
+  --an-text-muted: #A1A1AA;
+  --an-text-dim: #71717A;
+  --an-text-placeholder: #52525B;
+  --an-text-user: #DBEAFE;
+  --an-accent: #3B82F6;
+  --an-accent-hover: #2563EB;
+  --an-accent-bg: #1E3A5F;
+  --an-accent-text: #93C5FD;
+}
+
+/* Animation node form elements inherit theme */
+.animation-node input,
+.animation-node textarea,
+.animation-node select {
+  background-color: transparent;
+  color: var(--an-text);
+}
+
+.animation-node input::placeholder,
+.animation-node textarea::placeholder {
+  color: var(--an-text-placeholder);
+}
+
+/* Think shimmer animation for ThinkingBlock gradient text */
+@keyframes think-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Shimmer text animation for streaming placeholder */
+@keyframes shimmer-text {
+  0% {
+    background-position: 200% 0;
+  }
+  50% {
+    background-position: 0% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Bloom animation for streaming placeholder */
+@keyframes bloom-center {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 0.8;
+  }
+}
+
+@keyframes bloom-petal {
+  0%, 100% {
+    transform: translate(0, 0) scale(0.8);
+    opacity: 0.6;
+  }
+  25% {
+    transform: translate(4px, -2px) scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(0, -5px) scale(0.9);
+    opacity: 0.8;
+  }
+  75% {
+    transform: translate(-4px, -2px) scale(1);
+    opacity: 1;
+  }
+}
+
+/* Hidden scrollbar utility — !important to override global ::-webkit-scrollbar */
+.scrollbar-hidden {
+  scrollbar-width: none !important; /* Firefox */
+  -ms-overflow-style: none !important; /* IE/Edge */
+}
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none !important; /* Chrome/Safari/Opera */
+  width: 0 !important;
+  height: 0 !important;
 }
 
 /* Shimmer animation for loading states */
@@ -664,6 +820,11 @@
 
 .generating-border-teal {
   border: 2.5px solid #14b8a6;
+  background-color: var(--node-card-bg);
+}
+
+.generating-border-blue {
+  border: 2.5px solid #3B82F6;
   background-color: var(--node-card-bg);
 }
 

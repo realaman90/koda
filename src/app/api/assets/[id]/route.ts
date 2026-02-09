@@ -47,7 +47,8 @@ export async function GET(
     }
 
     // Return the file with appropriate headers
-    return new NextResponse(result.buffer, {
+    // Convert Buffer to Uint8Array for NextResponse compatibility
+    return new NextResponse(new Uint8Array(result.buffer), {
       status: 200,
       headers: {
         'Content-Type': result.mimeType,

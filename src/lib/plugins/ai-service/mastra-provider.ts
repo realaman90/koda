@@ -10,7 +10,7 @@ import type { z } from 'zod';
 import type { AIService, AIServiceOptions } from './types';
 
 /** Default model for plugin AI calls */
-const DEFAULT_MODEL = 'anthropic/claude-sonnet-4-20250514';
+const DEFAULT_MODEL = 'google/gemini-3-pro-preview';
 
 /**
  * Mastra-based AI Service implementation
@@ -26,6 +26,7 @@ export class MastraAIService implements AIService {
   ): Promise<z.infer<T>> {
     // Create a lightweight agent for this request
     const agent = new Agent({
+      id: `plugin-ai-service-${Date.now()}`,
       name: 'plugin-ai-service',
       instructions: options?.systemPrompt ?? 'You are a helpful assistant.',
       model: options?.model ?? DEFAULT_MODEL,
@@ -39,6 +40,14 @@ export class MastraAIService implements AIService {
       },
       modelSettings: {
         temperature: options?.temperature,
+      },
+      providerOptions: {
+        google: {
+          thinkingConfig: {
+            thinkingBudget: 10000,
+            includeThoughts: true,
+          },
+        },
       },
     });
 
