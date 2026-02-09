@@ -14,7 +14,7 @@ import {
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useCanvasStore, createMediaNode } from '@/stores/canvas-store';
 import type { ImageGeneratorNode as ImageGeneratorNodeType, RecraftStyle, IdeogramStyle } from '@/lib/types';
-import { MODEL_CAPABILITIES, getApproxDimensions, FLUX_IMAGE_SIZES, RECRAFT_STYLE_LABELS, IDEOGRAM_STYLE_LABELS, type FluxImageSize, type NanoBananaResolution } from '@/lib/types';
+import { MODEL_CAPABILITIES, ENABLED_IMAGE_MODELS, getApproxDimensions, FLUX_IMAGE_SIZES, RECRAFT_STYLE_LABELS, IDEOGRAM_STYLE_LABELS, type FluxImageSize, type NanoBananaResolution } from '@/lib/types';
 import {
   ImageIcon,
   Play,
@@ -521,10 +521,10 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
                 <SearchableSelect
                   value={data.model}
                   onValueChange={handleModelChange}
-                  options={Object.entries(MODEL_CAPABILITIES).map(([key, cap]) => ({
+                  options={ENABLED_IMAGE_MODELS.map(key => ({
                     value: key,
-                    label: cap.label,
-                    description: cap.description,
+                    label: MODEL_CAPABILITIES[key].label,
+                    description: MODEL_CAPABILITIES[key].description,
                   }))}
                   placeholder="Select model"
                   searchPlaceholder="Search models..."

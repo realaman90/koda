@@ -157,7 +157,7 @@ export const createImageGeneratorNode = (position: { x: number; y: number }, nam
   position,
   data: {
     prompt: '',
-    model: 'flux-schnell',
+    model: 'nanobanana-pro',
     aspectRatio: '1:1',
     isGenerating: false,
     name,
@@ -189,9 +189,9 @@ export const createVideoGeneratorNode = (position: { x: number; y: number }, nam
   position,
   data: {
     prompt: '',
-    model: 'veo-3',
+    model: 'veo-3.1-fast-i2v',
     aspectRatio: '16:9',
-    duration: 8, // Veo-3 supports 4, 6, 8 - use 8 as default
+    duration: 8, // Veo 3.1 Fast supports 4, 6, 8 - use 8 as default
     resolution: '720p',
     generateAudio: true,
     isGenerating: false,

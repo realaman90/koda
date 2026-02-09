@@ -81,6 +81,16 @@ export const IDEOGRAM_STYLE_LABELS: Record<IdeogramStyle, string> = {
 // All supported model types
 export type ImageModelType = 'flux-schnell' | 'flux-pro' | 'nanobanana-pro' | 'recraft-v3' | 'ideogram-v3' | 'sd-3.5';
 
+// Enabled models - comment/uncomment to toggle visibility in UI
+export const ENABLED_IMAGE_MODELS: ImageModelType[] = [
+  // 'flux-schnell',
+  // 'flux-pro',
+  'nanobanana-pro',
+  // 'recraft-v3',
+  // 'ideogram-v3',
+  // 'sd-3.5',
+];
+
 // Image Generator Node
 export interface ImageGeneratorNodeData extends Record<string, unknown> {
   name?: string;
@@ -421,6 +431,21 @@ export interface VideoModelCapabilities {
   lastFrameOptional?: boolean; // For first-last-frame mode: if true, last frame is optional
   description: string;
 }
+
+// Enabled video models - comment/uncomment to toggle visibility in UI
+export const ENABLED_VIDEO_MODELS: VideoModelType[] = [
+  'veo-3',
+  'veo-3.1-i2v',
+  'veo-3.1-fast-i2v',
+  'veo-3.1-ref',
+  'veo-3.1-flf',
+  'veo-3.1-fast-flf',
+  // 'kling-2.6-t2v',
+  // 'kling-2.6-i2v',
+  // 'luma-ray2',
+  // 'minimax-video',
+  // 'runway-gen3',
+];
 
 export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabilities> = {
   'veo-3': {

@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/select';
 import { useCanvasStore } from '@/stores/canvas-store';
 import type { ImageGeneratorNodeData, ImageReference, FluxImageSize, NanoBananaResolution, RecraftStyle, IdeogramStyle, CharacterPreset, StylePreset, CameraAnglePreset, CameraLensPreset, PresetOption, CharacterSelection } from '@/lib/types';
-import { MODEL_CAPABILITIES, FLUX_IMAGE_SIZES, NANO_BANANA_RESOLUTIONS, RECRAFT_STYLE_LABELS, IDEOGRAM_STYLE_LABELS, getApproxDimensions } from '@/lib/types';
+import { MODEL_CAPABILITIES, ENABLED_IMAGE_MODELS, FLUX_IMAGE_SIZES, NANO_BANANA_RESOLUTIONS, RECRAFT_STYLE_LABELS, IDEOGRAM_STYLE_LABELS, getApproxDimensions } from '@/lib/types';
 import { CHARACTER_PRESETS, STYLE_PRESETS, CAMERA_ANGLE_PRESETS, CAMERA_LENS_PRESETS } from '@/lib/presets';
 import { PresetPopover } from './PresetPopover';
 import { Slider } from '@/components/ui/slider';
@@ -472,9 +472,9 @@ export function SettingsPanel() {
                 <SelectValue>{modelCapabilities.label}</SelectValue>
               </SelectTrigger>
               <SelectContent className="bg-popover border-border">
-                {Object.entries(MODEL_CAPABILITIES).map(([key, cap]) => (
+                {ENABLED_IMAGE_MODELS.map(key => (
                   <SelectItem key={key} value={key} className="flex flex-col items-start">
-                    <span>{cap.label}</span>
+                    <span>{MODEL_CAPABILITIES[key].label}</span>
                   </SelectItem>
                 ))}
               </SelectContent>
