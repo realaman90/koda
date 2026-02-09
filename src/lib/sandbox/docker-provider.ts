@@ -304,6 +304,20 @@ export const dockerProvider: SandboxProvider = {
       // No need to copy template files - they're pre-installed in /app/ in the Docker image
       // with node_modules already present, so sandbox creation is instant.
 
+      // Health check: verify bun/bunx are accessible
+      const healthCheck = await execCommand(
+        'docker',
+        ['exec', sandboxId, 'sh', '-c', 'export PATH="/root/.bun/bin:/usr/local/bin:$PATH" && which bunx && bunx --version'],
+        10_000
+      );
+      if (!healthCheck.success) {
+        console.warn(`[DockerProvider] Health check: bunx not found in container ${sandboxId}. PATH check:`);
+        const pathCheck = await execCommand('docker', ['exec', sandboxId, 'sh', '-c', 'echo "PATH=$PATH" && ls -la /root/.bun/bin/ 2>/dev/null || echo "BUN_DIR_MISSING"'], 5_000);
+        console.warn(`[DockerProvider] ${pathCheck.stdout.trim()}`);
+      } else {
+        console.log(`[DockerProvider] Health check OK: ${healthCheck.stdout.trim()}`);
+      }
+
       return instance;
     } catch (error) {
       // Clean up on failure
@@ -448,19 +462,23 @@ export const dockerProvider: SandboxProvider = {
     }
 
     try {
+      // Ensure bun/bunx are on PATH for all commands.
+      // Belt-and-suspenders: some Docker/sh configurations don't inherit
+      // ENV variables from the image, causing "bunx: command not found" (exit 127).
+      const wrappedCommand = `export PATH="/root/.bun/bin:/usr/local/bin:$PATH" && ${command}`;
       let result: CommandResult;
 
       if (options?.background) {
         // Run in background: use nohup and redirect output
         result = await execCommand(
           'docker',
-          ['exec', '-d', sandboxId, 'sh', '-c', command],
+          ['exec', '-d', sandboxId, 'sh', '-c', wrappedCommand],
           timeout
         );
       } else {
         result = await execCommand(
           'docker',
-          ['exec', sandboxId, 'sh', '-c', command],
+          ['exec', sandboxId, 'sh', '-c', wrappedCommand],
           timeout
         );
       }

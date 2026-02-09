@@ -140,6 +140,38 @@ This injects recipe patterns (tested code snippets) directly into the code gener
   }),
 
   execute: async (inputData, context) => {
+    const ctx = context as ToolContext;
+
+    // Serialize code generation — wait if another code gen is already in progress.
+    // Models often call multiple generate_*_code tools in parallel, causing conflicting
+    // file writes to the sandbox. This ensures they run sequentially.
+    const currentActive = (ctx?.requestContext?.get('codeGenActive') as number) || 0;
+    if (currentActive > 0 && ctx?.requestContext) {
+      console.log(`[generate_remotion_code] Another code gen in progress (codeGenActive=${currentActive}) — waiting...`);
+      for (let i = 0; i < 120; i++) { // 120 × 500ms = 60s max wait
+        await new Promise(r => setTimeout(r, 500));
+        const c = (ctx.requestContext.get('codeGenActive') as number) || 0;
+        if (c === 0) {
+          console.log(`[generate_remotion_code] Previous code gen finished after ${(i + 1) * 0.5}s — proceeding`);
+          break;
+        }
+        const closed = ctx.requestContext.get('streamClosed') as boolean | undefined;
+        if (closed) {
+          console.log(`[generate_remotion_code] Stream closed while waiting — aborting`);
+          return { files: [], summary: 'Stream closed', writtenToSandbox: false };
+        }
+        if (i === 119) {
+          console.warn(`[generate_remotion_code] Timed out waiting for previous code gen after 60s — proceeding anyway`);
+        }
+      }
+    }
+
+    // Signal that code generation is in progress — render_final will wait for this
+    const activeCount = (ctx?.requestContext?.get('codeGenActive') as number) || 0;
+    ctx?.requestContext?.set('codeGenActive', activeCount + 1);
+    console.log(`[generate_remotion_code] codeGenActive incremented to ${activeCount + 1}`);
+
+    try {
     const sandboxId = await resolveSandboxId(inputData.sandboxId, context as ToolContext);
 
     // Validate sandboxId is available (critical for writing files)
@@ -270,6 +302,36 @@ This injects recipe patterns (tested code snippets) directly into the code gener
         if (file.content.length > 100_000) {
           throw new Error(`File too large (${file.content.length} chars): ${file.path}`);
         }
+
+        // Post-processing: auto-fix localhost URLs → staticFile() calls.
+        // Code gen models sometimes generate http://localhost:3000/public/media/... URLs
+        // which FAIL during bunx remotion render (no dev server running).
+        const localhostPattern = /(?:["'`])https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?\/public\/(media\/[^"'`\s]+)(?:["'`])/g;
+        let match;
+        let fixedContent = file.content;
+        let fixCount = 0;
+        while ((match = localhostPattern.exec(file.content)) !== null) {
+          const fullMatch = match[0];
+          const mediaPath = match[1]; // e.g. "media/logo.png"
+          const quote = fullMatch[0]; // the opening quote character
+          // Replace with {staticFile("media/...")} — the JSX expression form
+          const replacement = `{staticFile("${mediaPath}")}`;
+          fixedContent = fixedContent.replace(fullMatch, replacement);
+          fixCount++;
+        }
+        if (fixCount > 0) {
+          console.warn(`[generate_remotion_code] ⚠️ Auto-fixed ${fixCount} localhost URL(s) → staticFile() in ${file.path}`);
+          // Also ensure staticFile is imported if not already
+          if (!fixedContent.includes('staticFile') || !fixedContent.match(/import\s*{[^}]*staticFile[^}]*}\s*from\s*['"]remotion['"]/)) {
+            // Try to add staticFile to existing remotion import
+            const remotionImportRegex = /import\s*{([^}]*)}\s*from\s*['"]remotion['"]/;
+            const importMatch = fixedContent.match(remotionImportRegex);
+            if (importMatch && !importMatch[1].includes('staticFile')) {
+              fixedContent = fixedContent.replace(remotionImportRegex, `import {${importMatch[1]}, staticFile} from 'remotion'`);
+            }
+          }
+          file.content = fixedContent;
+        }
       }
 
       // Write files directly to the sandbox
@@ -302,6 +364,12 @@ This injects recipe patterns (tested code snippets) directly into the code gener
         summary: `ERROR: Code generation failed: ${errorMsg}. Check that sandboxId is valid and the sandbox is running.`,
         writtenToSandbox: false,
       };
+    }
+    } finally {
+      // Signal code generation complete — render_final can proceed
+      const current = (ctx?.requestContext?.get('codeGenActive') as number) || 1;
+      ctx?.requestContext?.set('codeGenActive', Math.max(0, current - 1));
+      console.log(`[generate_remotion_code] codeGenActive decremented to ${Math.max(0, current - 1)}`);
     }
   },
 });

@@ -24,10 +24,15 @@ const TECHNIQUE_ICONS: Record<string, LucideIcon> = {
 };
 
 // ─── Constants ─────────────────────────────────────────────────────────
-const ENGINES: { id: AnimationEngine; label: string }[] = [
+const ALL_ENGINES: { id: AnimationEngine; label: string }[] = [
   { id: 'remotion', label: 'Remotion' },
   { id: 'theatre', label: 'Theatre.js' },
 ];
+
+// Theatre.js requires a Docker sandbox (no E2B template yet).
+// Hide it when NEXT_PUBLIC_THEATRE_ENABLED is explicitly 'false' or when using E2B without a Theatre template.
+const theatreEnabled = process.env.NEXT_PUBLIC_THEATRE_ENABLED !== 'false';
+const ENGINES = theatreEnabled ? ALL_ENGINES : ALL_ENGINES.filter((e) => e.id !== 'theatre');
 
 const ASPECT_RATIOS: { id: AspectRatio; label: string }[] = [
   { id: '16:9', label: '16:9' },

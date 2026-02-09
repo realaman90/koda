@@ -1142,6 +1142,11 @@ export const useCanvasStore = create<CanvasState>()(
                   && (((d.logo as Record<string, unknown>).url as string).startsWith('data:'))
                   ? undefined  // data URLs are too large for localStorage
                   : d.logo,
+                // Strip video from motion-analyzer (base64 videos are too large for localStorage)
+                video: d.video && typeof (d.video as Record<string, unknown>).dataUrl === 'string'
+                  && ((d.video as Record<string, unknown>).dataUrl as string).startsWith('data:')
+                  ? undefined
+                  : d.video,
               },
             };
           }
