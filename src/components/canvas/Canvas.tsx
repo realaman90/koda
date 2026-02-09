@@ -212,7 +212,7 @@ export function Canvas() {
   return (
     <div ref={containerRef} className="w-full h-full relative" style={{ backgroundColor: 'var(--canvas-bg)' }} onMouseMove={handleMouseMove}>
       <NodeToolbar onPluginLaunch={handlePluginLaunch} />
-      <WelcomeOverlay />
+      <WelcomeOverlay onPluginLaunch={handlePluginLaunch} />
       <SettingsPanel />
       <VideoSettingsPanel />
       <ContextMenu onPluginLaunch={handlePluginLaunch} />

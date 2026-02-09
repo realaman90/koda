@@ -5,6 +5,7 @@
  * Creates multiple ImageGenerator nodes with AI-written prompts for each angle.
  */
 
+import { Camera } from 'lucide-react';
 import { pluginRegistry } from '@/lib/plugins/registry';
 import type { AgentPlugin } from '@/lib/plugins/types';
 import { ProductShotSandbox } from './ProductShotSandbox';
@@ -16,7 +17,7 @@ export const productShotPlugin: AgentPlugin = {
   id: 'product-shot',
   name: 'Product Shots',
   description: 'Generate professional product photography shots from multiple angles',
-  icon: '📸',
+  icon: Camera,
   category: 'planning',
   author: {
     type: 'official',

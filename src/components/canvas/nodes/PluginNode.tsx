@@ -9,6 +9,7 @@
 
 import { memo } from 'react';
 import type { NodeProps, Node } from '@xyflow/react';
+import { Plug } from 'lucide-react';
 import type { PluginNodeData } from '@/lib/types';
 import { pluginRegistry } from '@/lib/plugins/registry';
 
@@ -33,13 +34,13 @@ interface PluginNodeProps extends NodeProps<PluginNodeType> {}
 function GenericPluginNodeComponent({ id, data }: PluginNodeProps) {
   const plugin = pluginRegistry.get(data.pluginId);
   const pluginName = plugin?.name || data.pluginId;
-  const pluginIcon = plugin?.icon || '🔌';
+  const PluginIcon = plugin?.icon || Plug;
 
   return (
     <div className="w-[320px] rounded-2xl bg-zinc-900 border-2 border-zinc-700 overflow-hidden shadow-xl">
       <div className="px-4 py-3 flex items-center gap-3 border-b border-zinc-800">
-        <div className="h-8 w-8 rounded-lg bg-zinc-700/50 flex items-center justify-center text-lg">
-          {pluginIcon}
+        <div className="h-8 w-8 rounded-lg bg-zinc-700/50 flex items-center justify-center">
+          <PluginIcon className="w-4 h-4 text-zinc-400" />
         </div>
         <div>
           <h3 className="text-sm font-medium text-zinc-100">{pluginName}</h3>
