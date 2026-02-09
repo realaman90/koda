@@ -9,7 +9,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSandboxInstance, readSandboxFileRaw } from '@/lib/sandbox/docker-provider';
+import { getSandboxInstance, readSandboxFileRaw } from '@/lib/sandbox/sandbox-factory';
 import path from 'node:path';
 
 const MIME_TYPES: Record<string, string> = {

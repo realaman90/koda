@@ -9,7 +9,7 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { Agent } from '@mastra/core/agent';
-import { dockerProvider } from '@/lib/sandbox/docker-provider';
+import { getSandboxProvider } from '@/lib/sandbox/sandbox-factory';
 import { IMAGE_ANALYZER_MODEL, VIDEO_ANALYZER_MODEL } from '../../models';
 
 type ToolContext = { requestContext?: { get: (key: string) => any; set: (key: string, value: any) => void } };
@@ -407,7 +407,7 @@ Example:
       if (!mediaBase64 && sandboxId) {
         try {
           const sandboxPath = mediaUrl.startsWith('/') ? mediaUrl : `/app/${mediaUrl}`;
-          const result = await dockerProvider.runCommand(sandboxId, `base64 -w0 ${sandboxPath}`, { timeout: 10_000 });
+          const result = await getSandboxProvider().runCommand(sandboxId, `base64 -w0 ${sandboxPath}`, { timeout: 10_000 });
           if (result.stdout && result.stdout.length > 0) {
             mediaBase64 = result.stdout.trim();
             if (!mimeType) {

@@ -8,14 +8,21 @@
 // -- Animation Plugin Models --
 
 /** Orchestrator agent — coordinates planning, tool calls, and subagents */
-export const ORCHESTRATOR_MODEL = 'google/gemini-3-flash-preview';
+// export const ORCHESTRATOR_MODEL = 'google/gemini-3-flash-preview';
+// export const ORCHESTRATOR_MODEL = 'anthropic/claude-opus-4-6';
+// export const ORCHESTRATOR_MODEL = 'ollama-cloud/kimi-k2-thinking';
+export const ORCHESTRATOR_MODEL = 'ollama-cloud/kimi-k2.5';
+
 
 /** Remotion (2D) code generator subagent */
-export const REMOTION_CODE_GEN_MODEL = 'google/gemini-3-flash-preview';
+// export const REMOTION_CODE_GEN_MODEL = 'google/gemini-3-flash-preview';
+// export const REMOTION_CODE_GEN_MODEL = 'anthropic/claude-opus-4-6';
+export const REMOTION_CODE_GEN_MODEL = 'ollama-cloud/kimi-k2.5';
 
 /** Theatre.js (3D) code generator subagent */
-export const THEATRE_CODE_GEN_MODEL = 'google/gemini-3-flash-preview';
-
+// export const THEATRE_CODE_GEN_MODEL = 'google/gemini-3-flash-preview';
+// export const THEATRE_CODE_GEN_MODEL = 'anthropic/claude-opus-4-6';
+export const THEATRE_CODE_GEN_MODEL = 'ollama-cloud/kimi-k2.5';
 /** Image analysis (vision) */
 export const IMAGE_ANALYZER_MODEL = 'google/gemini-3-flash-preview';
 

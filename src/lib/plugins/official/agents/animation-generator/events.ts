@@ -80,6 +80,7 @@ export interface VideoReadySSEEvent {
   type: 'video-ready';
   videoUrl: string;
   duration: number;
+  versionId?: string;
 }
 
 /** Union of all SSE event types */

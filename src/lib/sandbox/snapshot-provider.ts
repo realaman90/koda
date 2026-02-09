@@ -2,16 +2,17 @@
  * Snapshot Provider Interface
  *
  * Abstracts the storage backend for sandbox code snapshots.
- * After each successful render, the sandbox code is snapshotted.
- * When a container dies (idle timeout, restart), the snapshot is
- * restored into a new container transparently.
+ * Providers are storage-only: they accept and return Buffers.
+ * The caller (sandbox tools) handles extracting from / importing to sandboxes.
  *
- * Current implementation: LocalSnapshotProvider (disk via docker cp + tar)
- * Future: R2SnapshotProvider for cloud persistence
+ * Current implementations:
+ * - LocalSnapshotProvider (disk-based, ./data/snapshots/)
+ * - R2SnapshotProvider (Cloudflare R2 cloud storage)
  */
 
 export interface SnapshotMetadata {
   nodeId: string;
+  versionId?: string;
   engine: 'remotion' | 'theatre';
   createdAt: string;
   fileCount: number;
@@ -19,18 +20,18 @@ export interface SnapshotMetadata {
 }
 
 export interface SnapshotProvider {
-  /** Save a snapshot of sandbox code to storage */
-  save(nodeId: string, sandboxId: string, metadata?: Partial<SnapshotMetadata>): Promise<void>;
+  /** Save a snapshot buffer to storage. versionId omitted = "latest" */
+  save(nodeId: string, versionId: string, data: Buffer, metadata?: Partial<SnapshotMetadata>): Promise<void>;
 
-  /** Restore a snapshot into a sandbox container. Returns true if restored. */
-  restore(nodeId: string, sandboxId: string): Promise<boolean>;
+  /** Load a snapshot buffer from storage. versionId omitted = latest. Returns null if not found. */
+  load(nodeId: string, versionId?: string): Promise<Buffer | null>;
 
-  /** Check if a snapshot exists for this node */
-  exists(nodeId: string): Promise<boolean>;
+  /** Check if a snapshot exists. versionId omitted = any version */
+  exists(nodeId: string, versionId?: string): Promise<boolean>;
 
-  /** Delete a snapshot */
-  delete(nodeId: string): Promise<void>;
+  /** Delete a snapshot. versionId omitted = delete all versions for this node */
+  delete(nodeId: string, versionId?: string): Promise<void>;
 
-  /** Get snapshot metadata (null if not found) */
-  getMetadata(nodeId: string): Promise<SnapshotMetadata | null>;
+  /** Get snapshot metadata. versionId omitted = latest */
+  getMetadata(nodeId: string, versionId?: string): Promise<SnapshotMetadata | null>;
 }

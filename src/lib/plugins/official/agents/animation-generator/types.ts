@@ -139,6 +139,8 @@ export interface AnimationVersion {
   duration: number;
   prompt: string;          // The prompt/feedback that generated this version
   createdAt: string;
+  snapshotKey?: string;    // R2/local snapshot key for restoring code from this version
+  sizeBytes?: number;      // Video file size
 }
 
 // Legacy preview type (kept for compatibility during migration)
@@ -284,12 +286,16 @@ export interface AnimationNodeData extends Record<string, unknown> {
   // Technique presets (selective recipe injection into code gen context)
   techniques?: string[];
 
-  // Design spec (style, colors, fonts) — from settings panel
+  // Design spec (style, theme, colors, fonts) — from settings panel
   designSpec?: {
-    style?: string;
+    style?: string;    // Aesthetic direction: 'minimal' | 'corporate' | 'fashion' | 'marketing'
+    theme?: string;    // Color/font preset: 'minimal' | 'corporate' | 'bold' | 'neon' | 'retro' | 'organic'
     colors?: { primary: string; secondary: string; accent?: string };
     fonts?: { title: string; body: string };
   };
+
+  // Logo image (URL or data URL) — featured in generated animations
+  logo?: { url: string; name?: string };
 
   // Output settings
   fps?: number;                              // 24 | 30 | 60

@@ -8,7 +8,7 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { remotionCodeGeneratorAgent } from '../../agents/remotion-code-generator-agent';
-import { dockerProvider } from '@/lib/sandbox/docker-provider';
+import { getSandboxProvider } from '@/lib/sandbox/sandbox-factory';
 import { loadRecipes } from '../../recipes';
 
 type ToolContext = { requestContext?: { get: (key: string) => any; set: (key: string, value: any) => void } };
@@ -155,7 +155,7 @@ This injects recipe patterns (tested code snippets) directly into the code gener
     if (inputData.task === 'modify_existing' && !inputData.currentContent && inputData.file) {
       try {
         const filePath = inputData.file.startsWith('/') ? inputData.file : `/app/${inputData.file}`;
-        const fileContent = await dockerProvider.readFile(sandboxId, filePath);
+        const fileContent = await getSandboxProvider().readFile(sandboxId, filePath);
         if (fileContent) {
           inputData = { ...inputData, currentContent: fileContent };
           console.log(`[generate_remotion_code] Auto-read ${inputData.file} (${fileContent.length} chars) for modify_existing`);
@@ -168,7 +168,7 @@ This injects recipe patterns (tested code snippets) directly into the code gener
     // For modify_existing without a specific file: read ALL src files so the subagent has full context
     if (inputData.task === 'modify_existing' && !inputData.file) {
       try {
-        const listResult = await dockerProvider.runCommand(
+        const listResult = await getSandboxProvider().runCommand(
           sandboxId,
           `find /app/src -name '*.tsx' -o -name '*.ts' | head -20`,
           { timeout: 5_000 }
@@ -177,7 +177,7 @@ This injects recipe patterns (tested code snippets) directly into the code gener
         const fileContents: string[] = [];
         for (const f of srcFiles) {
           try {
-            const content = await dockerProvider.readFile(sandboxId, f);
+            const content = await getSandboxProvider().readFile(sandboxId, f);
             if (content) {
               const relativePath = f.replace('/app/', '');
               fileContents.push(`--- ${relativePath} ---\n${content}`);
@@ -276,7 +276,7 @@ This injects recipe patterns (tested code snippets) directly into the code gener
       if (sandboxId) {
         const writeResults: Array<{ path: string; size: number }> = [];
         for (const file of files) {
-          await dockerProvider.writeFile(sandboxId, file.path, file.content);
+          await getSandboxProvider().writeFile(sandboxId, file.path, file.content);
           writeResults.push({ path: file.path, size: file.content.length });
         }
         return {

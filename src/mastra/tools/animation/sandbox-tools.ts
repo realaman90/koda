@@ -7,7 +7,7 @@
 
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
-import { dockerProvider, readSandboxFileRaw } from '@/lib/sandbox/docker-provider';
+import { getSandboxProvider, readSandboxFileRaw } from '@/lib/sandbox/sandbox-factory';
 
 // ── Permanent video save helper ─────────────────────────────────────
 // After render, copy the video out of the sandbox into permanent storage
@@ -124,7 +124,7 @@ The engine/template is auto-resolved from server context. Call this before writi
       const existingSandboxId = resolveSandboxId(undefined, ctx);
       if (existingSandboxId) {
         try {
-          const status = await dockerProvider.getStatus(existingSandboxId);
+          const status = await getSandboxProvider().getStatus(existingSandboxId);
           if (status) {
             console.log(`[sandbox_create] Reusing existing live sandbox ${existingSandboxId} (skipping duplicate creation)`);
             return {
@@ -142,7 +142,7 @@ The engine/template is auto-resolved from server context. Call this before writi
         }
       }
 
-      const instance = await dockerProvider.create(inputData.projectId, template);
+      const instance = await getSandboxProvider().create(inputData.projectId, template);
       console.log(`[sandbox_create] Created new sandbox ${instance.id} (template=${template})`);
 
       // Store sandboxId in requestContext so all subsequent tools auto-resolve it
@@ -164,7 +164,7 @@ The engine/template is auto-resolved from server context. Call this before writi
             continue;
           }
           try {
-            await dockerProvider.writeBinary(instance.id, media.destPath, media.data);
+            await getSandboxProvider().writeBinary(instance.id, media.destPath, media.data);
             uploadedFiles.push(media.destPath);
             console.log(`[sandbox_create] ✓ Auto-uploaded: ${media.name} → ${media.destPath} (${Math.round(bufferSize / 1024)}KB)`);
           } catch (err) {
@@ -174,7 +174,7 @@ The engine/template is auto-resolved from server context. Call this before writi
         // Verify files actually exist in the container
         if (uploadedFiles.length > 0) {
           try {
-            const verifyResult = await dockerProvider.runCommand(instance.id, 'ls -la /app/public/media/ 2>/dev/null || echo "DIR_NOT_FOUND"');
+            const verifyResult = await getSandboxProvider().runCommand(instance.id, 'ls -la /app/public/media/ 2>/dev/null || echo "DIR_NOT_FOUND"');
             console.log(`[sandbox_create] Media verification:\n${verifyResult.stdout}`);
           } catch (verifyErr) {
             console.warn(`[sandbox_create] Could not verify media files:`, verifyErr);
@@ -189,17 +189,22 @@ The engine/template is auto-resolved from server context. Call this before writi
       const nodeId = ctx?.requestContext?.get('nodeId');
       const phase = ctx?.requestContext?.get('phase');
       const hasPlan = !!ctx?.requestContext?.get('plan');
+      const restoreVersionId = ctx?.requestContext?.get('restoreVersionId') as string | undefined;
 
-      console.log(`[sandbox_create] Snapshot check: nodeId=${nodeId}, phase=${phase}, hasPlan=${hasPlan}`);
+      console.log(`[sandbox_create] Snapshot check: nodeId=${nodeId}, phase=${phase}, hasPlan=${hasPlan}, restoreVersionId=${restoreVersionId || 'latest'}`);
 
-      if (nodeId && (phase !== 'idle' || hasPlan)) {
-        console.log(`[sandbox_create] Attempting snapshot restore for node ${nodeId} into sandbox ${instance.id}...`);
+      if (nodeId && (phase !== 'idle' || hasPlan || restoreVersionId)) {
+        console.log(`[sandbox_create] Attempting snapshot restore for node ${nodeId}${restoreVersionId ? `/${restoreVersionId}` : ''} into sandbox ${instance.id}...`);
         try {
           const { getSnapshotProvider } = await import('@/lib/sandbox/snapshot');
-          const exists = await getSnapshotProvider().exists(nodeId);
-          console.log(`[sandbox_create] Snapshot exists on disk: ${exists}`);
+          // If restoreVersionId is set, load that specific version; otherwise load latest
+          const exists = await getSnapshotProvider().exists(nodeId, restoreVersionId);
+          console.log(`[sandbox_create] Snapshot exists: ${exists}`);
           if (exists) {
-            snapshotRestored = await getSnapshotProvider().restore(nodeId, instance.id);
+            const buffer = await getSnapshotProvider().load(nodeId, restoreVersionId);
+            if (buffer) {
+              snapshotRestored = await getSandboxProvider().importSnapshot(instance.id, buffer);
+            }
             console.log(`[sandbox_create] Snapshot restore result: ${snapshotRestored}`);
           }
         } catch (err) {
@@ -256,7 +261,7 @@ export const sandboxDestroyTool = createTool({
       return { success: false, message: 'No active sandbox. Create one first with sandbox_create.' };
     }
     try {
-      await dockerProvider.destroy(sandboxId);
+      await getSandboxProvider().destroy(sandboxId);
       return {
         success: true,
         message: `Sandbox destroyed: ${sandboxId}`,
@@ -298,7 +303,7 @@ Common files:
       return { success: false, path: inputData.path, message: 'No active sandbox. Create one first with sandbox_create.' };
     }
     try {
-      await dockerProvider.writeFile(sandboxId, inputData.path, inputData.content);
+      await getSandboxProvider().writeFile(sandboxId, inputData.path, inputData.content);
       return {
         success: true,
         path: inputData.path,
@@ -334,7 +339,7 @@ export const sandboxReadFileTool = createTool({
       return { success: false, content: 'No active sandbox. Create one first with sandbox_create.' };
     }
     try {
-      const content = await dockerProvider.readFile(sandboxId, inputData.path);
+      const content = await getSandboxProvider().readFile(sandboxId, inputData.path);
       // Cap file content to save tokens — agent can request specific sections if needed
       return { success: true, content: truncateOutput(content, 5000) };
     } catch (error) {
@@ -375,7 +380,7 @@ Common commands:
       return { success: false, stdout: '', stderr: 'No active sandbox. Create one first with sandbox_create.', exitCode: 1 };
     }
     try {
-      const result = await dockerProvider.runCommand(sandboxId, inputData.command, {
+      const result = await getSandboxProvider().runCommand(sandboxId, inputData.command, {
         background: inputData.background,
         timeout: inputData.timeout,
       });
@@ -419,7 +424,7 @@ export const sandboxListFilesTool = createTool({
       return { success: false, files: [] };
     }
     try {
-      const files = await dockerProvider.listFiles(sandboxId, inputData.path, inputData.recursive);
+      const files = await getSandboxProvider().listFiles(sandboxId, inputData.path, inputData.recursive);
       return { success: true, files };
     } catch (error) {
       return {
@@ -460,7 +465,7 @@ After uploading, reference in code as '/media/image.png' or '/media/video.mp4'.`
       return { success: false, path: inputData.destPath, message: 'No active sandbox. Create one first with sandbox_create.' };
     }
     try {
-      const result = await dockerProvider.uploadMedia(
+      const result = await getSandboxProvider().uploadMedia(
         sandboxId,
         inputData.mediaUrl,
         inputData.destPath
@@ -516,7 +521,7 @@ For URL-based media, prefer sandbox_upload_media instead.`,
     }
     try {
       const buffer = Buffer.from(inputData.base64Data, 'base64');
-      await dockerProvider.writeBinary(sandboxId, inputData.path, buffer);
+      await getSandboxProvider().writeBinary(sandboxId, inputData.path, buffer);
       return {
         success: true,
         path: inputData.path,
@@ -575,7 +580,7 @@ Frames are saved as JPG images in /app/public/media/frames/.`,
       const framesDir = '/app/public/media/frames';
 
       // Ensure frames directory exists
-      await dockerProvider.runCommand(sandboxId, `mkdir -p ${framesDir}`, { timeout: 5_000 });
+      await getSandboxProvider().runCommand(sandboxId, `mkdir -p ${framesDir}`, { timeout: 5_000 });
 
       const frames: Array<{ timestamp: number; path: string; url: string }> = [];
 
@@ -585,7 +590,7 @@ Frames are saved as JPG images in /app/public/media/frames/.`,
           const filename = `frame_${ts.toFixed(1)}s.jpg`;
           const outputPath = `${framesDir}/${filename}`;
 
-          const result = await dockerProvider.runCommand(
+          const result = await getSandboxProvider().runCommand(
             sandboxId,
             `ffmpeg -ss ${ts} -i ${videoPath} -frames:v 1 -q:v 2 -y ${outputPath} 2>&1`,
             { timeout: 15_000 }
@@ -593,7 +598,7 @@ Frames are saved as JPG images in /app/public/media/frames/.`,
 
           if (result.success) {
             // Verify file exists
-            const check = await dockerProvider.runCommand(
+            const check = await getSandboxProvider().runCommand(
               sandboxId,
               `test -f ${outputPath} && echo "OK" || echo "MISSING"`,
               { timeout: 5_000 }
@@ -612,7 +617,7 @@ Frames are saved as JPG images in /app/public/media/frames/.`,
         const fpsRate = inputData.fps || 1;
 
         // Get video duration first
-        const durationResult = await dockerProvider.runCommand(
+        const durationResult = await getSandboxProvider().runCommand(
           sandboxId,
           `ffprobe -v error -show_entries format=duration -of csv=p=0 ${videoPath} 2>/dev/null`,
           { timeout: 10_000 }
@@ -620,7 +625,7 @@ Frames are saved as JPG images in /app/public/media/frames/.`,
         const duration = parseFloat(durationResult.stdout.trim()) || 10;
 
         // Extract frames at the specified fps
-        const result = await dockerProvider.runCommand(
+        const result = await getSandboxProvider().runCommand(
           sandboxId,
           `ffmpeg -i ${videoPath} -vf fps=${fpsRate} -q:v 2 -y ${framesDir}/frame_%03d.jpg 2>&1`,
           { timeout: 30_000 }
@@ -628,7 +633,7 @@ Frames are saved as JPG images in /app/public/media/frames/.`,
 
         if (result.success) {
           // List extracted frames
-          const listResult = await dockerProvider.runCommand(
+          const listResult = await getSandboxProvider().runCommand(
             sandboxId,
             `ls -1 ${framesDir}/frame_*.jpg 2>/dev/null | sort`,
             { timeout: 5_000 }
@@ -694,12 +699,12 @@ This tool kills any existing dev server, starts a new one, and waits until it's 
     }
     try {
       // Kill any existing dev server
-      await dockerProvider.runCommand(sandboxId, 'pkill -f "vite" || true', { timeout: 5_000 });
+      await getSandboxProvider().runCommand(sandboxId, 'pkill -f "vite" || true', { timeout: 5_000 });
       // Small delay to let the process die
       await new Promise((r) => setTimeout(r, 500));
 
       // Check that package.json exists
-      const pkgCheck = await dockerProvider.runCommand(
+      const pkgCheck = await getSandboxProvider().runCommand(
         sandboxId,
         'test -f /app/package.json && echo "OK" || echo "MISSING"',
         { timeout: 5_000 }
@@ -713,14 +718,14 @@ This tool kills any existing dev server, starts a new one, and waits until it's 
       }
 
       // Ensure dependencies are installed
-      const nodeModulesCheck = await dockerProvider.runCommand(
+      const nodeModulesCheck = await getSandboxProvider().runCommand(
         sandboxId,
         'test -d /app/node_modules && echo "OK" || echo "MISSING"',
         { timeout: 5_000 }
       );
       if (nodeModulesCheck.stdout.trim() === 'MISSING') {
         // Install deps before starting
-        const installResult = await dockerProvider.runCommand(
+        const installResult = await getSandboxProvider().runCommand(
           sandboxId,
           'cd /app && bun install 2>&1',
           { timeout: 60_000 }
@@ -740,7 +745,7 @@ This tool kills any existing dev server, starts a new one, and waits until it's 
       const viteCmd = engine === 'remotion'
         ? 'cd /app && nohup bunx vite --config vite.player.config.ts > /tmp/vite.log 2>&1 &'
         : 'cd /app && nohup bunx vite > /tmp/vite.log 2>&1 &';
-      await dockerProvider.runCommand(
+      await getSandboxProvider().runCommand(
         sandboxId,
         viteCmd,
         { background: true }
@@ -753,7 +758,7 @@ This tool kills any existing dev server, starts a new one, and waits until it's 
       for (let i = 0; i < maxAttempts; i++) {
         await new Promise((r) => setTimeout(r, 500));
         // Use wget as fallback if curl isn't available
-        const check = await dockerProvider.runCommand(
+        const check = await getSandboxProvider().runCommand(
           sandboxId,
           '(curl -s -o /dev/null -w "%{http_code}" http://localhost:5173/ 2>/dev/null || wget -q -O /dev/null --server-response http://localhost:5173/ 2>&1 | grep "HTTP/" | tail -1 | awk "{print \\$2}" || echo "000")',
           { timeout: 5_000 }
@@ -767,13 +772,13 @@ This tool kills any existing dev server, starts a new one, and waits until it's 
 
       if (!ready) {
         // Grab the vite log for diagnostics
-        const viteLog = await dockerProvider.runCommand(
+        const viteLog = await getSandboxProvider().runCommand(
           sandboxId,
           'tail -30 /tmp/vite.log 2>/dev/null || echo "No log available"',
           { timeout: 5_000 }
         );
         // Also check if any process is listening on 5173
-        const portCheck = await dockerProvider.runCommand(
+        const portCheck = await getSandboxProvider().runCommand(
           sandboxId,
           'ss -tlnp 2>/dev/null | grep 5173 || netstat -tlnp 2>/dev/null | grep 5173 || echo "No listener on 5173"',
           { timeout: 5_000 }
@@ -865,7 +870,7 @@ Example: 2 seconds at 30fps = frame 60`,
 
     try {
       // Ensure output directory
-      await dockerProvider.runCommand(sandboxId, 'mkdir -p /app/output', { timeout: 5_000 });
+      await getSandboxProvider().runCommand(sandboxId, 'mkdir -p /app/output', { timeout: 5_000 });
 
       const screenshots: { imageUrl: string; frame: number }[] = [];
       const errors: string[] = [];
@@ -908,21 +913,21 @@ const outputDir = process.argv[3] || '/app/output';
 `.trim();
 
         // Write the capture script to sandbox
-        await dockerProvider.runCommand(
+        await getSandboxProvider().runCommand(
           sandboxId,
           `cat > /app/_capture_frames.cjs << 'CAPTURE_SCRIPT_EOF'\n${captureScript}\nCAPTURE_SCRIPT_EOF`,
           { timeout: 5_000 }
         );
 
         // Execute the capture script
-        const result = await dockerProvider.runCommand(
+        const result = await getSandboxProvider().runCommand(
           sandboxId,
           `cd /app && node _capture_frames.cjs '${framesJson}' /app/output 2>&1`,
           { timeout: 60_000 }
         );
 
         // Clean up
-        await dockerProvider.runCommand(sandboxId, 'rm -f /app/_capture_frames.cjs', { timeout: 5_000 });
+        await getSandboxProvider().runCommand(sandboxId, 'rm -f /app/_capture_frames.cjs', { timeout: 5_000 });
 
         console.log(`[sandbox_screenshot] Theatre.js capture result: success=${result.success} stdout=${result.stdout.slice(0, 300)}`);
         if (result.stderr) console.log(`[sandbox_screenshot] Theatre.js stderr: ${result.stderr.slice(0, 300)}`);
@@ -940,7 +945,7 @@ const outputDir = process.argv[3] || '/app/output';
           const filename = `frame-${frame}.png`;
           const outputPath = `/app/output/${filename}`;
 
-          const checkFile = await dockerProvider.runCommand(
+          const checkFile = await getSandboxProvider().runCommand(
             sandboxId,
             `test -f ${outputPath} && echo "OK" || echo "MISSING"`,
             { timeout: 5_000 }
@@ -959,14 +964,14 @@ const outputDir = process.argv[3] || '/app/output';
         // ── Remotion: bundle once, then take stills from the bundle ──
 
         // Step 1: Auto-detect composition ID (same logic as render_preview)
-        const listResult = await dockerProvider.runCommand(
+        const listResult = await getSandboxProvider().runCommand(
           sandboxId,
           `cd /app && bunx remotion compositions src/index.ts --props='{}' 2>&1 | grep 'fps' | head -1 | awk '{print $1}'`,
           { timeout: 60_000 }
         );
         let compositionId = listResult.stdout.trim();
         if (!compositionId) {
-          const rootCheck = await dockerProvider.runCommand(
+          const rootCheck = await getSandboxProvider().runCommand(
             sandboxId,
             `grep -oP 'id="\\K[^"]+' /app/src/Root.tsx 2>/dev/null | head -1 || echo "MainVideo"`,
             { timeout: 5_000 }
@@ -978,7 +983,7 @@ const outputDir = process.argv[3] || '/app/output';
         // Step 2: Bundle once (the expensive part — ~30-60s)
         const bundleDir = '/tmp/remotion-bundle';
         console.log(`[sandbox_screenshot] Bundling to ${bundleDir}...`);
-        const bundleResult = await dockerProvider.runCommand(
+        const bundleResult = await getSandboxProvider().runCommand(
           sandboxId,
           `cd /app && bunx remotion bundle src/index.ts --out-dir ${bundleDir} 2>&1`,
           { timeout: 90_000 }
@@ -1001,7 +1006,7 @@ const outputDir = process.argv[3] || '/app/output';
 
           const cmd = `cd /app && bunx remotion still ${bundleDir} ${compositionId} ${outputPath} --frame=${frame} 2>&1`;
           console.log(`[sandbox_screenshot] Remotion frame ${frame}: taking still from bundle`);
-          const result = await dockerProvider.runCommand(
+          const result = await getSandboxProvider().runCommand(
             sandboxId,
             cmd,
             { timeout: 30_000 }
@@ -1011,7 +1016,7 @@ const outputDir = process.argv[3] || '/app/output';
 
           if (result.success) {
             // Verify file was created
-            const checkFile = await dockerProvider.runCommand(
+            const checkFile = await getSandboxProvider().runCommand(
               sandboxId,
               `test -f ${outputPath} && echo "OK" || echo "MISSING"`,
               { timeout: 5_000 }
@@ -1031,7 +1036,7 @@ const outputDir = process.argv[3] || '/app/output';
         }
 
         // Clean up bundle to save disk space
-        await dockerProvider.runCommand(sandboxId, `rm -rf ${bundleDir}`, { timeout: 5_000 });
+        await getSandboxProvider().runCommand(sandboxId, `rm -rf ${bundleDir}`, { timeout: 5_000 });
       }
 
       if (screenshots.length === 0) {
@@ -1091,12 +1096,12 @@ export const renderPreviewTool = createTool({
 
     try {
       // Ensure output directory exists
-      await dockerProvider.runCommand(sandboxId, 'mkdir -p /app/output', { timeout: 5_000 });
+      await getSandboxProvider().runCommand(sandboxId, 'mkdir -p /app/output', { timeout: 5_000 });
 
       if (engine === 'theatre') {
         // ── Theatre.js: Puppeteer + FFmpeg via export-video.cjs ──
         // Verify Vite dev server is running on port 5173
-        const portCheck = await dockerProvider.runCommand(
+        const portCheck = await getSandboxProvider().runCommand(
           sandboxId,
           '(curl -s -o /dev/null -w "%{http_code}" http://localhost:5173/ 2>/dev/null || echo "000")',
           { timeout: 10_000 }
@@ -1112,7 +1117,7 @@ export const renderPreviewTool = createTool({
         }
 
         // Verify export script exists
-        const scriptCheck = await dockerProvider.runCommand(
+        const scriptCheck = await getSandboxProvider().runCommand(
           sandboxId,
           'test -f /app/export-video.cjs && echo "OK" || echo "MISSING"',
           { timeout: 5_000 }
@@ -1129,7 +1134,7 @@ export const renderPreviewTool = createTool({
 
         console.log(`[render_preview] Theatre.js render: duration=${inputData.duration}s, quality=preview`);
 
-        const result = await dockerProvider.runCommand(
+        const result = await getSandboxProvider().runCommand(
           sandboxId,
           `cd /app && node export-video.cjs --duration ${inputData.duration} --quality preview --output ${outputPath} 2>&1`,
           { timeout: 180_000 } // 3 minutes for preview render
@@ -1146,7 +1151,7 @@ export const renderPreviewTool = createTool({
         }
 
         // Check if the file was created
-        const checkFile = await dockerProvider.runCommand(
+        const checkFile = await getSandboxProvider().runCommand(
           sandboxId,
           `test -f ${outputPath} && echo "OK" || echo "MISSING"`,
           { timeout: 5_000 }
@@ -1168,8 +1173,10 @@ export const renderPreviewTool = createTool({
         if (nodeId_tp && sandboxId) {
           try {
             console.log(`[render_preview] Saving snapshot for node ${nodeId_tp}...`);
+            const snapshotBuffer = await getSandboxProvider().exportSnapshot(sandboxId);
             const { getSnapshotProvider } = await import('@/lib/sandbox/snapshot');
-            await getSnapshotProvider().save(nodeId_tp, sandboxId, { engine });
+            const versionId = `v${Date.now()}`;
+            await getSnapshotProvider().save(nodeId_tp, versionId, snapshotBuffer, { engine });
             console.log(`[render_preview] Snapshot saved for node ${nodeId_tp}`);
           } catch (err) {
             console.warn(`[render_preview] Snapshot save failed (non-critical):`, err);
@@ -1197,7 +1204,7 @@ export const renderPreviewTool = createTool({
         // `remotion compositions` outputs bundling progress ("Bundling 6%", "Bundling 100%", "Getting composition")
         // followed by actual composition lines like "MainVideo  30fps  1920x1080  7s".
         // Filter for lines containing "fps" to skip progress noise.
-        const listResult = await dockerProvider.runCommand(
+        const listResult = await getSandboxProvider().runCommand(
           sandboxId,
           `cd /app && bunx remotion compositions src/index.ts --props='{}' 2>&1 | grep 'fps' | head -1 | awk '{print $1}'`,
           { timeout: 30_000 }
@@ -1206,7 +1213,7 @@ export const renderPreviewTool = createTool({
 
         if (!compositionId) {
           // Fallback: try to extract from Root.tsx
-          const rootCheck = await dockerProvider.runCommand(
+          const rootCheck = await getSandboxProvider().runCommand(
             sandboxId,
             `grep -oP 'id="\\K[^"]+' /app/src/Root.tsx 2>/dev/null | head -1 || echo "MainVideo"`,
             { timeout: 5_000 }
@@ -1219,7 +1226,7 @@ export const renderPreviewTool = createTool({
 
       // Use Remotion's built-in renderer
       // --concurrency=1 for lower memory usage in container
-      const result = await dockerProvider.runCommand(
+      const result = await getSandboxProvider().runCommand(
         sandboxId,
         `cd /app && bunx remotion render src/index.ts ${compositionId} ${outputPath} --props='{}' --concurrency=1 2>&1`,
         { timeout: 180_000 } // 3 minutes for rendering
@@ -1236,7 +1243,7 @@ export const renderPreviewTool = createTool({
       }
 
       // Check if the file was created
-      const checkFile = await dockerProvider.runCommand(
+      const checkFile = await getSandboxProvider().runCommand(
         sandboxId,
         `test -f ${outputPath} && echo "OK" || echo "MISSING"`,
         { timeout: 5_000 }
@@ -1258,8 +1265,10 @@ export const renderPreviewTool = createTool({
       if (nodeId_rp && sandboxId) {
         try {
           console.log(`[render_preview] Saving snapshot for node ${nodeId_rp}...`);
+          const snapshotBuffer = await getSandboxProvider().exportSnapshot(sandboxId);
           const { getSnapshotProvider } = await import('@/lib/sandbox/snapshot');
-          await getSnapshotProvider().save(nodeId_rp, sandboxId, { engine });
+          const versionId = `v${Date.now()}`;
+          await getSnapshotProvider().save(nodeId_rp, versionId, snapshotBuffer, { engine });
           console.log(`[render_preview] Snapshot saved for node ${nodeId_rp}`);
         } catch (err) {
           console.warn(`[render_preview] Snapshot save failed (non-critical):`, err);
@@ -1308,6 +1317,7 @@ export const renderFinalTool = createTool({
     thumbnailUrl: z.string(),
     duration: z.number(),
     resolution: z.string(),
+    versionId: z.string().optional(),
     message: z.string().optional(),
   }),
   execute: async (inputData, context) => {
@@ -1321,12 +1331,12 @@ export const renderFinalTool = createTool({
 
     try {
       // Ensure output directory exists
-      await dockerProvider.runCommand(sandboxId, 'mkdir -p /app/output', { timeout: 5_000 });
+      await getSandboxProvider().runCommand(sandboxId, 'mkdir -p /app/output', { timeout: 5_000 });
 
       if (engine === 'theatre') {
         // ── Theatre.js: Puppeteer + FFmpeg via export-video.cjs ──
         // Verify Vite dev server is running on port 5173
-        const portCheck = await dockerProvider.runCommand(
+        const portCheck = await getSandboxProvider().runCommand(
           sandboxId,
           '(curl -s -o /dev/null -w "%{http_code}" http://localhost:5173/ 2>/dev/null || echo "000")',
           { timeout: 10_000 }
@@ -1343,7 +1353,7 @@ export const renderFinalTool = createTool({
         }
 
         // Verify export script exists
-        const scriptCheck = await dockerProvider.runCommand(
+        const scriptCheck = await getSandboxProvider().runCommand(
           sandboxId,
           'test -f /app/export-video.cjs && echo "OK" || echo "MISSING"',
           { timeout: 5_000 }
@@ -1361,7 +1371,7 @@ export const renderFinalTool = createTool({
 
         console.log(`[render_final] Theatre.js render: duration=${inputData.duration}s, quality=final, resolution=${resolution}`);
 
-        const result = await dockerProvider.runCommand(
+        const result = await getSandboxProvider().runCommand(
           sandboxId,
           `cd /app && node export-video.cjs --duration ${inputData.duration} --quality final --resolution ${resolution} --output ${outputPath} 2>&1`,
           { timeout: 300_000 } // 5 minutes for final render
@@ -1379,7 +1389,7 @@ export const renderFinalTool = createTool({
         }
 
         // Check if the file was created
-        const checkFile = await dockerProvider.runCommand(
+        const checkFile = await getSandboxProvider().runCommand(
           sandboxId,
           `test -f ${outputPath} && echo "OK" || echo "MISSING"`,
           { timeout: 5_000 }
@@ -1399,13 +1409,18 @@ export const renderFinalTool = createTool({
         const nodeId_tf = (context as ToolContext)?.requestContext?.get('nodeId');
         console.log(`[render_final] Theatre render success. nodeId=${nodeId_tf}, sandboxId=${sandboxId}`);
 
+        // Generate a versionId for this render and propagate to RequestContext
+        const versionId_tf = `v${Date.now()}`;
+        (context as ToolContext)?.requestContext?.set('lastVersionId', versionId_tf);
+
         // Fire-and-forget: snapshot save (non-critical, only for restoring dead containers)
         if (nodeId_tf && sandboxId) {
           void (async () => {
             try {
+              const snapshotBuffer = await getSandboxProvider().exportSnapshot(sandboxId);
               const { getSnapshotProvider } = await import('@/lib/sandbox/snapshot');
-              await getSnapshotProvider().save(nodeId_tf, sandboxId, { engine });
-              console.log(`[render_final] Background: snapshot saved for node ${nodeId_tf}`);
+              await getSnapshotProvider().save(nodeId_tf, versionId_tf, snapshotBuffer, { engine });
+              console.log(`[render_final] Background: snapshot saved for node ${nodeId_tf}/${versionId_tf}`);
             } catch (err) {
               console.warn(`[render_final] Background: snapshot save failed:`, err);
             }
@@ -1426,6 +1441,7 @@ export const renderFinalTool = createTool({
           thumbnailUrl: '',
           duration: inputData.duration,
           resolution,
+          versionId: versionId_tf,
           message: `Video rendered successfully [theatre, final quality, ${resolution}]`,
         };
       }
@@ -1443,7 +1459,7 @@ export const renderFinalTool = createTool({
       let compositionId = inputData.compositionId;
       if (!compositionId) {
         // Filter for lines containing "fps" to skip bundling progress noise
-        const listResult = await dockerProvider.runCommand(
+        const listResult = await getSandboxProvider().runCommand(
           sandboxId,
           `cd /app && bunx remotion compositions src/index.ts --props='{}' 2>&1 | grep 'fps' | head -1 | awk '{print $1}'`,
           { timeout: 30_000 }
@@ -1451,7 +1467,7 @@ export const renderFinalTool = createTool({
         compositionId = listResult.stdout.trim();
 
         if (!compositionId) {
-          const rootCheck = await dockerProvider.runCommand(
+          const rootCheck = await getSandboxProvider().runCommand(
             sandboxId,
             `grep -oP 'id="\\K[^"]+' /app/src/Root.tsx 2>/dev/null | head -1 || echo "MainVideo"`,
             { timeout: 5_000 }
@@ -1463,7 +1479,7 @@ export const renderFinalTool = createTool({
       console.log(`[render_final] Using composition ID: ${compositionId}`);
 
       // Use Remotion's built-in renderer with high quality settings
-      const result = await dockerProvider.runCommand(
+      const result = await getSandboxProvider().runCommand(
         sandboxId,
         `cd /app && bunx remotion render src/index.ts ${compositionId} ${outputPath} --props='{}' ${scaleFlag} 2>&1`,
         { timeout: 300_000 } // 5 minutes for final render
@@ -1481,7 +1497,7 @@ export const renderFinalTool = createTool({
       }
 
       // Check if the file was created
-      const checkFile = await dockerProvider.runCommand(
+      const checkFile = await getSandboxProvider().runCommand(
         sandboxId,
         `test -f ${outputPath} && echo "OK" || echo "MISSING"`,
         { timeout: 5_000 }
@@ -1501,13 +1517,18 @@ export const renderFinalTool = createTool({
       const nodeId_rf = (context as ToolContext)?.requestContext?.get('nodeId');
       console.log(`[render_final] Remotion render success. nodeId=${nodeId_rf}, sandboxId=${sandboxId}`);
 
+      // Generate a versionId for this render and propagate to RequestContext
+      const versionId_rf = `v${Date.now()}`;
+      (context as ToolContext)?.requestContext?.set('lastVersionId', versionId_rf);
+
       // Fire-and-forget: snapshot save (non-critical, only for restoring dead containers)
       if (nodeId_rf && sandboxId) {
         void (async () => {
           try {
+            const snapshotBuffer = await getSandboxProvider().exportSnapshot(sandboxId);
             const { getSnapshotProvider } = await import('@/lib/sandbox/snapshot');
-            await getSnapshotProvider().save(nodeId_rf, sandboxId, { engine });
-            console.log(`[render_final] Background: snapshot saved for node ${nodeId_rf}`);
+            await getSnapshotProvider().save(nodeId_rf, versionId_rf, snapshotBuffer, { engine });
+            console.log(`[render_final] Background: snapshot saved for node ${nodeId_rf}/${versionId_rf}`);
           } catch (err) {
             console.warn(`[render_final] Background: snapshot save failed:`, err);
           }
@@ -1528,6 +1549,7 @@ export const renderFinalTool = createTool({
         thumbnailUrl: '',
         duration: inputData.duration,
         resolution,
+        versionId: versionId_rf,
         message: 'Video rendered successfully',
       };
     } catch (error) {

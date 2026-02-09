@@ -13,7 +13,7 @@ import type {
   AnimationAPIRequest,
   AnimationAPIResponse,
 } from '@/lib/plugins/official/agents/animation-generator/types';
-import { dockerProvider, getSandboxInstance } from '@/lib/sandbox/docker-provider';
+import { getSandboxProvider, getSandboxInstance } from '@/lib/sandbox/sandbox-factory';
 
 export const maxDuration = 300;
 
@@ -46,7 +46,7 @@ export async function POST(request: Request) {
           const videoDuration = duration || 5;
           const videoResolution = resolution || '1080p';
 
-          const renderResult = await dockerProvider.runCommand(
+          const renderResult = await getSandboxProvider().runCommand(
             sandboxId,
             `node export-video.cjs --duration ${videoDuration} --quality final --resolution ${videoResolution} --output /app/output/final.mp4`,
             { timeout: 300_000 }
@@ -89,7 +89,7 @@ export async function POST(request: Request) {
         // Destroy sandbox container — used on node unmount or manual cleanup
         if (sandboxId) {
           try {
-            await dockerProvider.destroy(sandboxId);
+            await getSandboxProvider().destroy(sandboxId);
           } catch {
             // Ignore cleanup errors
           }

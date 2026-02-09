@@ -1137,6 +1137,11 @@ export const useCanvasStore = create<CanvasState>()(
                         : m.dataUrl,
                     }))
                   : d.media,
+                // Strip logo data URLs (persist URL logos only)
+                logo: d.logo && typeof (d.logo as Record<string, unknown>).url === 'string'
+                  && (((d.logo as Record<string, unknown>).url as string).startsWith('data:'))
+                  ? undefined  // data URLs are too large for localStorage
+                  : d.logo,
               },
             };
           }

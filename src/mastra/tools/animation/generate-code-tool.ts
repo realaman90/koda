@@ -11,7 +11,7 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { codeGeneratorAgent } from '../../agents/code-generator-agent';
-import { dockerProvider } from '@/lib/sandbox/docker-provider';
+import { getSandboxProvider } from '@/lib/sandbox/sandbox-factory';
 import { loadRecipes } from '../../recipes';
 
 type ToolContext = { requestContext?: { get: (key: string) => any; set: (key: string, value: any) => void } };
@@ -207,7 +207,7 @@ You do NOT need to call sandbox_write_file after this tool.`,
       if (sandboxId) {
         const writeResults: Array<{ path: string; size: number }> = [];
         for (const file of files) {
-          await dockerProvider.writeFile(sandboxId, file.path, file.content);
+          await getSandboxProvider().writeFile(sandboxId, file.path, file.content);
           writeResults.push({ path: file.path, size: file.content.length });
         }
         return {

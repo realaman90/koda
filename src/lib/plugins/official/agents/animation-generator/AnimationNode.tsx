@@ -189,6 +189,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
 
   // Design spec fields for stream context (passed to agent on every call)
   const designSpec = data.designSpec;
+  const logo = data.logo;
   const fps = data.fps;
   const resolution = data.resolution;
 
@@ -949,7 +950,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
 
         if (event.toolName === 'render_final') {
           console.log(`[AnimationNode] Render tool result:`, JSON.stringify(event.result, null, 2));
-          const result = event.result as { success?: boolean; videoUrl?: string; duration?: number; message?: string };
+          const result = event.result as { success?: boolean; videoUrl?: string; duration?: number; versionId?: string; message?: string };
           if (result.success === false || event.isError) {
             // Log technical details, show friendly message
             console.error(`[AnimationNode] Render failed:`, result.message);
@@ -970,8 +971,9 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
             const duration = result.duration || ls.plan?.totalDuration || 7;
 
             // Immediately show the video URL
+            // Use server-provided versionId if available (from render_final or video-ready recovery)
             const tempVersion: AnimationVersion = {
-              id: `v${Date.now()}`,
+              id: result.versionId || `v${Date.now()}`,
               videoUrl: videoUrlWithCacheBust,
               duration,
               prompt: data.prompt || '',
@@ -1022,6 +1024,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
                   nodeId: id,
                   prompt: data.prompt,
                   duration,
+                  versionId,
                 }),
               })
                 .then((res) => {
@@ -1161,6 +1164,11 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     [id, updateNodeData]
   );
 
+  const handleLogoChange = useCallback(
+    (logo: AnimationNodeData['logo']) => updateNodeData(id, { logo }),
+    [id, updateNodeData]
+  );
+
   const handleFpsChange = useCallback(
     (newFps: number) => updateNodeData(id, { fps: newFps }),
     [id, updateNodeData]
@@ -1265,7 +1273,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       try {
         await streamToAgent(
           `Analyze this animation request and either ask a clarifying question (if style is unclear) or generate a plan directly:\n\n${prompt}`,
-          { nodeId: id, phase: 'idle', media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution },
+          { nodeId: id, phase: 'idle', media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution },
           callbacks
         );
         // Fallback if agent didn't use tools
@@ -1294,7 +1302,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         // Error handled by onError callback
       }
     },
-    [id, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
+    [id, media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
   );
 
   const handleSelectStyle = useCallback(
@@ -1334,7 +1342,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       try {
         await streamToAgent(
           `Generate an animation plan for this request with style "${selectedStyle}":\n\n${data.prompt || 'Animation request'}`,
-          { nodeId: id, phase: 'question', media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution },
+          { nodeId: id, phase: 'question', media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution },
           callbacks
         );
         const latest = getLatestState();
@@ -1362,7 +1370,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         // Error handled by callback
       }
     },
-    [id, data.prompt, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
+    [id, data.prompt, media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
   );
 
   const handleFormSubmit = useCallback(
@@ -1417,7 +1425,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         const answersJson = JSON.stringify(answers, null, 2);
         await streamToAgent(
           `User answered the form:\n${answersJson}\n\nProceed with generating a plan based on these answers.\n\nOriginal prompt: ${data.prompt || 'Animation request'}`,
-          { nodeId: id, phase: 'question', media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution },
+          { nodeId: id, phase: 'question', media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution },
           callbacks
         );
         const latest = getLatestState();
@@ -1445,7 +1453,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         // Error handled by callback
       }
     },
-    [id, data.prompt, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
+    [id, data.prompt, media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
   );
 
   const handleAcceptPlan = useCallback(async () => {
@@ -1517,13 +1525,13 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
 
       await streamToAgent(
         conversationMessages,
-        { nodeId: id, phase: 'executing', plan: ls.plan, todos: [], sandboxId: ls.sandboxId, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution },
+        { nodeId: id, phase: 'executing', plan: ls.plan, todos: [], sandboxId: ls.sandboxId, media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution },
         callbacks
       );
     } catch {
       // Error handled by callback
     }
-  }, [id, data.prompt, engine, media, duration, techniques, designSpec, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs, buildConversationHistory]);
+  }, [id, data.prompt, engine, media, duration, techniques, designSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs, buildConversationHistory]);
 
   const handleRejectPlan = useCallback(() => {
     updateState({ phase: 'idle', plan: undefined, question: undefined, planAccepted: undefined });
@@ -1562,7 +1570,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       try {
         await streamToAgent(
           conversationMessages,
-          { nodeId: id, phase: 'plan', plan: ls.plan, sandboxId: ls.sandboxId, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution },
+          { nodeId: id, phase: 'plan', plan: ls.plan, sandboxId: ls.sandboxId, media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution },
           callbacks
         );
         const latest = getLatestState();
@@ -1575,7 +1583,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         // Error handled by callback
       }
     },
-    [id, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs, buildConversationHistory]
+    [id, media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs, buildConversationHistory]
   );
 
   const handleSendMessage = useCallback(
@@ -1663,6 +1671,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           duration,
           techniques,
           designSpec,
+          logo,
           fps,
           resolution,
         }, callbacks);
@@ -1670,7 +1679,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         // Error handled by callback
       }
     },
-    [id, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs, buildConversationHistory]
+    [id, media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs, buildConversationHistory]
   );
 
   const handleAcceptPreview = useCallback(async () => {
@@ -1749,13 +1758,13 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     try {
       await streamToAgent(
         `Regenerate the animation from the plan. Execute all steps again.\n\nPrompt: ${data.prompt || 'Animation request'}`,
-        { nodeId: id, phase: 'executing', plan: ls.plan, todos, sandboxId: ls.sandboxId, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution },
+        { nodeId: id, phase: 'executing', plan: ls.plan, todos, sandboxId: ls.sandboxId, media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution },
         callbacks
       );
     } catch {
       // Error handled by callback
     }
-  }, [id, data.prompt, engine, media, duration, techniques, designSpec, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
+  }, [id, data.prompt, engine, media, duration, techniques, designSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
 
   const handleExportVideo = useCallback(async () => {
     const ls = getLatestState();
@@ -1800,13 +1809,13 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           'Use render_final to create the video.',
           `Active sandbox: ${ls.sandboxId}`,
         ].join('\n'),
-        { nodeId: id, phase: 'executing', plan: ls.plan, sandboxId: ls.sandboxId, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution },
+        { nodeId: id, phase: 'executing', plan: ls.plan, sandboxId: ls.sandboxId, media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution },
         callbacks
       );
     } catch {
       // Error handled by callback
     }
-  }, [id, media, engine, aspectRatio, duration, techniques, designSpec, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
+  }, [id, media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
 
   const handleRetry = useCallback(() => {
     if (state.plan) {
@@ -2382,6 +2391,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           duration={duration}
           techniques={techniques}
           designSpec={data.designSpec}
+          logo={data.logo}
           fps={data.fps}
           resolution={data.resolution}
           engineLocked={state.messages.length > 0}
@@ -2390,6 +2400,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           onDurationChange={handleDurationChange}
           onTechniquesChange={handleTechniquesChange}
           onDesignSpecChange={handleDesignSpecChange}
+          onLogoChange={handleLogoChange}
           onFpsChange={handleFpsChange}
           onResolutionChange={handleResolutionChange}
         />

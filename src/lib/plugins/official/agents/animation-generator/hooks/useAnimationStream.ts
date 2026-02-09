@@ -33,9 +33,11 @@ interface StreamContext {
   techniques?: string[];
   designSpec?: {
     style?: string;
+    theme?: string;
     colors?: { primary: string; secondary: string; accent?: string };
     fonts?: { title: string; body: string };
   };
+  logo?: { url: string; name?: string };
   fps?: number;
   resolution?: string;
 }
@@ -299,9 +301,9 @@ export function useAnimationStream(): UseAnimationStreamReturn {
                 // but the tool-result may have been lost (e.g., stream hit maxSteps during render).
                 // Synthesize a render_final tool-result so the UI creates a version.
                 case 'video-ready': {
-                  const videoData = data as { type: 'video-ready'; videoUrl: string; duration: number };
+                  const videoData = data as { type: 'video-ready'; videoUrl: string; duration: number; versionId?: string };
                   if (videoData.videoUrl) {
-                    console.log(`[useAnimationStream] video-ready recovery SSE: ${videoData.videoUrl}`);
+                    console.log(`[useAnimationStream] video-ready recovery SSE: ${videoData.videoUrl} (versionId=${videoData.versionId})`);
                     callbacks?.onToolResult?.({
                       toolCallId: `sse_video_recovery_${Date.now()}`,
                       toolName: 'render_final',
@@ -309,6 +311,7 @@ export function useAnimationStream(): UseAnimationStreamReturn {
                         success: true,
                         videoUrl: videoData.videoUrl,
                         duration: videoData.duration || 7,
+                        versionId: videoData.versionId,
                         message: 'Video recovered from server storage',
                       },
                     });

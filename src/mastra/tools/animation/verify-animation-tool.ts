@@ -14,7 +14,7 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { Agent } from '@mastra/core/agent';
-import { readSandboxFileRaw } from '@/lib/sandbox/docker-provider';
+import { readSandboxFileRaw } from '@/lib/sandbox/sandbox-factory';
 import { VIDEO_ANALYZER_MODEL } from '../../models';
 
 // ── RequestContext helpers ────────────────────────────────────────

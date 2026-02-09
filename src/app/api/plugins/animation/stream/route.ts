@@ -9,8 +9,9 @@ import { NextResponse } from 'next/server';
 import { animationAgent } from '@/mastra';
 import { getEngineInstructions } from '@/mastra/agents/instructions/animation';
 import { loadRecipes } from '@/mastra/recipes';
+import { STYLE_PRESETS } from '@/lib/plugins/official/agents/animation-generator/presets';
 import { RequestContext } from '@mastra/core/di';
-import { dockerProvider } from '@/lib/sandbox/docker-provider';
+import { getSandboxProvider } from '@/lib/sandbox/sandbox-factory';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -43,11 +44,15 @@ interface StreamRequestBody {
     aspectRatio?: '16:9' | '9:16' | '1:1' | '4:3' | '21:9';
     duration?: number;
     techniques?: string[];
+    /** When editing from a past version, restore this version's snapshot */
+    restoreVersionId?: string;
     designSpec?: {
       style?: string;
+      theme?: string;
       colors?: { primary: string; secondary: string; accent?: string };
       fonts?: { title: string; body: string };
     };
+    logo?: { url: string; name?: string };
     fps?: number;
     resolution?: string;
   };
@@ -116,6 +121,9 @@ export async function POST(request: Request) {
     if (context?.fps) {
       requestContext.set('fps' as never, context.fps as never);
     }
+    if (context?.restoreVersionId) {
+      requestContext.set('restoreVersionId' as never, context.restoreVersionId as never);
+    }
 
     // Prepend context as a system-style user message if provided
     if (context) {
@@ -135,7 +143,7 @@ export async function POST(request: Request) {
       // the dead container, gets an error, then has to create a new one.
       if (context.sandboxId) {
         try {
-          const status = await dockerProvider.getStatus(context.sandboxId);
+          const status = await getSandboxProvider().getStatus(context.sandboxId);
           if (!status) {
             console.log(`[Animation API] Sandbox ${context.sandboxId} is dead — will auto-restore from snapshot`);
             requestContext.set('sandboxId' as never, undefined as never);
@@ -263,7 +271,7 @@ export async function POST(request: Request) {
         for (const { m, buffer, destPath } of mediaBuffersLocal) {
           if (context.sandboxId) {
             try {
-              await dockerProvider.writeBinary(context.sandboxId, destPath, buffer);
+              await getSandboxProvider().writeBinary(context.sandboxId, destPath, buffer);
               uploadedPaths.set(m.id, destPath);
               console.log(`[Animation API] Phase 3: Pre-uploaded ${m.name} (${Math.round(buffer.length / 1024)}KB) → ${destPath}`);
             } catch (err) {
@@ -281,6 +289,41 @@ export async function POST(request: Request) {
           requestContext.set('pendingMedia' as never, pendingMediaForSandbox as never);
         } else if (mediaBuffersLocal.length === 0 && context.media.length > 0) {
           console.error(`[Animation API] Phase 3: WARNING — ${context.media.length} media entries received but 0 buffers decoded! Media URLs: ${context.media.map(m => m.dataUrl.slice(0, 40)).join(', ')}`);
+        }
+
+        // ── Phase 3b: Handle logo upload ──
+        if (context.logo?.url) {
+          const logoUrl = context.logo.url;
+          const logoName = context.logo.name || 'logo.png';
+          const logoDestPath = `public/media/${logoName}`;
+          let logoBuffer: Buffer | null = null;
+
+          if (logoUrl.startsWith('data:')) {
+            const base64Data = logoUrl.split(',')[1];
+            if (base64Data) logoBuffer = Buffer.from(base64Data, 'base64');
+          } else if (logoUrl.startsWith('http')) {
+            try {
+              const resp = await fetch(logoUrl, { signal: AbortSignal.timeout(15_000) });
+              if (resp.ok) logoBuffer = Buffer.from(await resp.arrayBuffer());
+            } catch (err) {
+              console.warn(`[Animation API] Logo download failed:`, err);
+            }
+          }
+
+          if (logoBuffer) {
+            if (context.sandboxId) {
+              try {
+                await getSandboxProvider().writeBinary(context.sandboxId, logoDestPath, logoBuffer);
+                console.log(`[Animation API] Logo pre-uploaded → ${logoDestPath} (${Math.round(logoBuffer.length / 1024)}KB)`);
+              } catch (err) {
+                console.error(`[Animation API] Logo pre-upload failed:`, err);
+              }
+            } else {
+              pendingMediaForSandbox.push({ id: 'logo', name: logoName, data: logoBuffer, destPath: logoDestPath, type: 'image', source: 'upload' });
+            }
+            // Store logo path for code gen
+            requestContext.set('logoPath' as never, logoDestPath as never);
+          }
         }
 
         // Store mediaFiles in requestContext for generate_remotion_code to auto-resolve.
@@ -359,12 +402,25 @@ export async function POST(request: Request) {
       }
       if (context.designSpec) {
         const ds = context.designSpec;
-        if (ds.style) contextParts.push(`Design style preset: ${ds.style}`);
+        if (ds.style) {
+          contextParts.push(`Design style: ${ds.style}`);
+          // Look up and inject style-specific instructions
+          const stylePreset = STYLE_PRESETS.find(p => p.id === ds.style);
+          if (stylePreset?.instructions) {
+            contextParts.push(`<style-instructions>\n${stylePreset.instructions}\n</style-instructions>`);
+          }
+        }
+        if (ds.theme) contextParts.push(`Color theme preset: ${ds.theme}`);
         if (ds.colors) contextParts.push(`Color palette — Primary: ${ds.colors.primary}, Secondary: ${ds.colors.secondary}${ds.colors.accent ? `, Accent: ${ds.colors.accent}` : ''}`);
         if (ds.fonts) contextParts.push(`Typography — Title font: ${ds.fonts.title}, Body font: ${ds.fonts.body}`);
       } else if (!(context?.plan as Record<string, unknown>)?.designSpec) {
         // When NO designSpec is set at all, add guidance to prevent dark-mode default
         contextParts.push(`No design spec selected. You MUST choose colors appropriate to the content — NOT default dark/indigo. Light backgrounds for product/lifestyle/corporate, dark for tech/developer, colorful for creative/brand. Include your chosen palette in generate_plan's designSpec field.`);
+      }
+      if (context.logo?.url) {
+        const logoName = context.logo.name || 'logo.png';
+        const logoPath = `public/media/${logoName}`;
+        contextParts.push(`<logo>\nThe user has provided a logo image that MUST be prominently featured in the animation.\nLogo file: ${logoPath} (already uploaded to sandbox)\nUse <Img src={staticFile("media/${logoName}")} /> in Remotion to display it.\nFeature it in intros, outros, or as a persistent element. Ensure it's well-positioned and properly sized.\n</logo>`);
       }
       if (context.phase) {
         contextParts.push(`Current phase: ${context.phase}`);
@@ -692,10 +748,12 @@ export async function POST(request: Request) {
             const lastVideoUrl = requestContext.get('lastVideoUrl' as never) as string | undefined;
             if (lastVideoUrl) {
               const duration = requestContext.get('duration' as never) as number | undefined;
-              console.log(`⏱ [Animation API] Emitting video-ready recovery event: ${lastVideoUrl}`);
+              const lastVersionId = requestContext.get('lastVersionId' as never) as string | undefined;
+              console.log(`⏱ [Animation API] Emitting video-ready recovery event: ${lastVideoUrl} (versionId=${lastVersionId})`);
               safeEnqueue(encoder.encode(`data: ${JSON.stringify({
                 type: 'video-ready',
                 videoUrl: lastVideoUrl,
+                versionId: lastVersionId,
                 duration: duration || 7,
               })}\n\n`));
             }
