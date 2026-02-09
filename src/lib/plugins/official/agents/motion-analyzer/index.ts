@@ -5,6 +5,7 @@
  * Chat-based workflow: upload video → analyze → refine → get prompt.
  */
 
+import { Eye } from 'lucide-react';
 import { pluginRegistry } from '@/lib/plugins/registry';
 import type { AgentPlugin } from '@/lib/plugins/types';
 
@@ -12,7 +13,7 @@ export const motionAnalyzerPlugin: AgentPlugin = {
   id: 'motion-analyzer',
   name: 'Motion Analyzer',
   description: 'Analyze video motion design and generate animation prompts',
-  icon: '👁️',
+  icon: Eye,
   category: 'planning',
   type: 'agent',
   version: '1.0.0',
