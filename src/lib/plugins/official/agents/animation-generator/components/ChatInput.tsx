@@ -58,7 +58,7 @@ export function ChatInput({
   placeholder = 'Describe the animation you want...',
   engine = 'remotion',
   aspectRatio = '16:9',
-  duration = 10,
+  duration = 5,
   techniques = [],
   onOpenSettings,
   onMediaUpload,

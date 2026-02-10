@@ -132,7 +132,7 @@ export const generatePlanTool = createTool({
 Provide the full plan with scenes. Each scene needs: number, title, duration (min 1.5s), description.
 Rules:
 - 3-7 scenes total
-- Total duration: 5-10s for simple animations, 10-30s for complex
+- CRITICAL: Use the target duration from the user's context. The user explicitly set this value.
 - Scene structure: Intro (enter) → Main (action) → Outro (exit)
 
 The designSpec should include:
@@ -155,11 +155,26 @@ This tool validates your plan and generates the todo list for execution.`,
     todos: z.array(TodoSchema),
   }),
   execute: async (inputData, context) => {
-    // Auto-resolve fps from RequestContext (user's settings) when LLM doesn't pass it
-    const ctxFps = (context as { requestContext?: { get: (key: string) => unknown } })?.requestContext?.get('fps') as number | undefined;
+    const rc = (context as { requestContext?: { get: (key: string) => unknown } })?.requestContext;
+    const ctxFps = rc?.get('fps') as number | undefined;
+    const ctxDuration = rc?.get('duration') as number | undefined;
+
+    // Enforce user's duration from RequestContext — LLM often ignores the instruction
+    let totalDuration = inputData.totalDuration;
+    if (ctxDuration && ctxDuration !== totalDuration) {
+      console.log(`[generate_plan] Overriding LLM duration ${totalDuration}s → user's ${ctxDuration}s`);
+      // Scale scene durations proportionally to match user's target
+      const scale = ctxDuration / totalDuration;
+      inputData.scenes = inputData.scenes.map((s) => ({
+        ...s,
+        duration: Math.max(1.5, Math.round(s.duration * scale * 10) / 10),
+      }));
+      totalDuration = ctxDuration;
+    }
+
     const plan = {
       scenes: inputData.scenes,
-      totalDuration: inputData.totalDuration,
+      totalDuration,
       style: inputData.style,
       fps: inputData.fps || ctxFps || 30,
       designSpec: inputData.designSpec,

@@ -52,3 +52,28 @@ next-env.d.ts
 
 #local data
 /data/
+
+# project instructions (not for public repo)
+CLAUDE.md
+
+# internal design files and scripts
+pencil/
+scripts/
+
+# Next.js boilerplate SVGs
+public/file.svg
+public/globe.svg
+public/next.svg
+public/vercel.svg
+public/window.svg
+
+# internal docs (not for public repo)
+docs/OPENSOURCE_SPEC.md
+docs/SPEC.md
+docs/ANIMATION_ISSUES.md
+docs/AGENT_CONTEXT.md
+docs/STORAGE_ARCHITECTURE.md
+docs/PLUGIN_FOUNDATION.md
+docs/ANIMATION_PLUGIN.md
+docs/PLUGIN_ARCHITECTURE.md
+docs/AGENT_PLUGIN_IMPLEMENTATION.md

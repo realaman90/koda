@@ -42,13 +42,8 @@ const ASPECT_RATIOS: { id: AspectRatio; label: string }[] = [
   { id: '21:9', label: '21:9' },
 ];
 
-const DURATIONS = [
-  { value: 5, label: '5s' },
-  { value: 10, label: '10s' },
-  { value: 15, label: '15s' },
-  { value: 30, label: '30s' },
-  { value: 60, label: '60s' },
-];
+const DURATION_MIN = 3;
+const DURATION_MAX = 30;
 
 // ─── Props ─────────────────────────────────────────────────────────────
 interface AnimationSettingsPanelProps {
@@ -526,11 +521,20 @@ export function AnimationSettingsPanel({
             </div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] text-[var(--an-text-muted)] w-16 shrink-0">Duration</span>
-              <SelectDropdown
-                value={duration}
-                options={DURATIONS.map((d) => ({ value: d.value, label: d.label }))}
-                onChange={(v) => onDurationChange(Number(v))}
-              />
+              <div className="flex-1 flex items-center gap-2">
+                <input
+                  type="range"
+                  min={DURATION_MIN}
+                  max={DURATION_MAX}
+                  step={1}
+                  value={Math.min(duration, DURATION_MAX)}
+                  onChange={(e) => onDurationChange(Number(e.target.value))}
+                  className="flex-1 h-1.5 cursor-pointer rounded-full appearance-none bg-[var(--an-border-input)] [&::-webkit-slider-runnable-track]:h-1.5 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-[var(--an-border-input)] [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[var(--an-accent)] [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:-mt-[3px] [&::-webkit-slider-thumb]:shadow-[0_0_0_2px_var(--an-bg)]"
+                />
+                <span className="text-[11px] font-mono text-[var(--an-text-muted)] w-7 text-right tabular-nums">
+                  {Math.min(duration, DURATION_MAX)}s
+                </span>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] text-[var(--an-text-muted)] w-16 shrink-0">FPS</span>
