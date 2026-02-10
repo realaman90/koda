@@ -1,6 +1,6 @@
 <div align="center">
 
-# Koda
+<img src="public/logos/koda_main.png" alt="Koda" width="280">
 
 **A node-based visual workflow editor for AI-powered image, video, and animation generation.**
 
@@ -34,8 +34,8 @@ Koda is a canvas-based creative studio where AI nodes connect into workflows. In
 
 **Core capabilities:**
 
-- **Image Generation** — 6 models (Flux, Recraft, Ideogram, SD 3.5) with presets for character, style, camera angle, and lens
-- **Video Generation** — 10 models (Veo 3, Kling 2.6, Luma Ray2, Minimax, Runway Gen3) with duration/resolution controls
+- **Image Generation** — 6 models including **Nano Banana Pro**, Flux, Recraft, Ideogram, and SD 3.5 with presets for character, style, camera angle, and lens
+- **Video Generation** — 10 models led by **Google Veo 3**, plus Kling 2.6, Luma Ray2, Minimax, and Runway Gen3 with duration/resolution controls
 - **AI Animation** — Generate programmatic 2D/3D animations from text prompts using Remotion and Theatre.js, rendered in isolated sandboxes
 - **Plugin System** — Extensible architecture for custom AI tools (storyboard generator, product shots, prompt enhancer, and more)
 - **Visual Workflows** — Connect nodes with edges, batch-run pipelines, undo/redo, copy/paste, export
@@ -442,17 +442,9 @@ Detailed documentation lives in the [`docs/`](docs/) directory:
 
 | Document | Description |
 |----------|-------------|
-| [`ANIMATION_PLUGIN.md`](docs/ANIMATION_PLUGIN.md) | Complete animation system specification |
-| [`PLUGIN_ARCHITECTURE.md`](docs/PLUGIN_ARCHITECTURE.md) | Plugin types, APIs, and development guide |
-| [`SPEC.md`](docs/SPEC.md) | Full feature specification |
-| [`DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Cloud and self-hosted deployment |
-| [`SELF_HOSTING.md`](docs/SELF_HOSTING.md) | DIY hosting guide |
-| [`STORAGE_ARCHITECTURE.md`](docs/STORAGE_ARCHITECTURE.md) | Database and asset storage backends |
-| [`SANDBOX_CONFIGURATION.md`](docs/SANDBOX_CONFIGURATION.md) | Sandbox resource tuning |
-| [`AGENT_CONTEXT.md`](docs/AGENT_CONTEXT.md) | Agent framework and patterns |
-| [`AGENT_PLUGIN_IMPLEMENTATION.md`](docs/AGENT_PLUGIN_IMPLEMENTATION.md) | Building agent plugins |
-| [`ANIMATION_ISSUES.md`](docs/ANIMATION_ISSUES.md) | Known issues and fixes |
-| [`OPENSOURCE_SPEC.md`](docs/OPENSOURCE_SPEC.md) | Open-source roadmap |
+| [`DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Cloud and self-hosted deployment guide |
+| [`SELF_HOSTING.md`](docs/SELF_HOSTING.md) | Local hosting setup and configuration |
+| [`SANDBOX_CONFIGURATION.md`](docs/SANDBOX_CONFIGURATION.md) | Docker sandbox resource tuning |
 
 ---
 
