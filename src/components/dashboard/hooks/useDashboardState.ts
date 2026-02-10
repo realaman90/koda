@@ -4,11 +4,11 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { useAppStore } from '@/stores/app-store';
-import { getTemplateList, getTemplate, getShowcaseTemplateMetadata, getShowcaseTemplate } from '@/lib/templates';
+import { getTemplate, getShowcaseTemplateMetadata, getShowcaseTemplate } from '@/lib/templates';
 import type { TemplateMetadata } from '@/lib/templates/types';
 
 export type TabType = 'my-spaces' | 'shared' | 'templates';
-export type TemplateFilter = 'all' | 'featured' | 'workflow' | 'creative' | 'starter';
+export type TemplateFilter = 'all';
 
 const validTabs: TabType[] = ['my-spaces', 'shared', 'templates'];
 
@@ -16,7 +16,6 @@ export interface DashboardState {
   // State
   isCreating: boolean;
   activeTab: TabType;
-  templateFilter: TemplateFilter;
   searchQuery: string;
   isLoadingList: boolean;
   filteredCanvases: ReturnType<typeof useAppStore.getState>['canvasList'];
@@ -25,7 +24,6 @@ export interface DashboardState {
 
   // Actions
   setActiveTab: (tab: TabType) => void;
-  setTemplateFilter: (filter: TemplateFilter) => void;
   setSearchQuery: (query: string) => void;
   handleCreateCanvas: () => Promise<void>;
   handleSelectTemplate: (templateId: string) => Promise<void>;
@@ -38,7 +36,6 @@ export function useDashboardState(): DashboardState {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isCreating, setIsCreating] = useState(false);
-  const [templateFilter, setTemplateFilter] = useState<TemplateFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Read tab from URL params
@@ -67,7 +64,6 @@ export function useDashboardState(): DashboardState {
   const migrateLegacyData = useAppStore((state) => state.migrateLegacyData);
   const initializeSync = useAppStore((state) => state.initializeSync);
 
-  const builtInTemplates = getTemplateList();
   const [showcaseTemplates, setShowcaseTemplates] = useState<TemplateMetadata[]>([]);
 
   // Load showcase templates asynchronously (JSON files from /public/templates/)
@@ -75,15 +71,8 @@ export function useDashboardState(): DashboardState {
     getShowcaseTemplateMetadata().then(setShowcaseTemplates).catch(() => {});
   }, []);
 
-  // Place showcase templates after the first card (blank)
-  const templates = [builtInTemplates[0], ...showcaseTemplates, ...builtInTemplates.slice(1)];
-
-  // Filter templates based on selected filter
-  const filteredTemplates = templates.filter((t) => {
-    if (templateFilter === 'all') return true;
-    if (templateFilter === 'featured') return true; // Show all as featured for now
-    return t.category === templateFilter;
-  });
+  const templates = showcaseTemplates;
+  const filteredTemplates = templates;
 
   // Filter canvases based on search
   const filteredCanvases = canvasList.filter((c) =>
@@ -176,14 +165,12 @@ export function useDashboardState(): DashboardState {
   return {
     isCreating,
     activeTab,
-    templateFilter,
     searchQuery,
     isLoadingList,
     filteredCanvases,
     filteredTemplates,
     templates,
     setActiveTab,
-    setTemplateFilter,
     setSearchQuery,
     handleCreateCanvas,
     handleSelectTemplate,

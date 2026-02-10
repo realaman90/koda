@@ -13,8 +13,6 @@ export function DashboardPage() {
     isCreating,
     activeTab,
     setActiveTab,
-    templateFilter,
-    setTemplateFilter,
     searchQuery,
     isLoadingList,
     filteredCanvases,
@@ -59,11 +57,9 @@ export function DashboardPage() {
             />
           </section>
 
-          {/* Templates preview on My Spaces tab */}
+          {/* Showcase preview on My Spaces tab */}
           <TemplatesSection
             templates={filteredTemplates}
-            activeFilter={templateFilter}
-            onFilterChange={setTemplateFilter}
             onSelectTemplate={handleSelectTemplate}
             showViewAll
             onViewAll={() => setActiveTab('templates')}
@@ -76,8 +72,6 @@ export function DashboardPage() {
       {activeTab === 'templates' && (
         <TemplatesSection
           templates={filteredTemplates}
-          activeFilter={templateFilter}
-          onFilterChange={setTemplateFilter}
           onSelectTemplate={handleSelectTemplate}
         />
       )}

@@ -18,21 +18,7 @@ let showcaseMetadataCache: TemplateMetadata[] | null = null;
  */
 const SHOWCASE_TEMPLATE_IDS = [
   'gemini-hackathon',
-  'product-variations',
-  'product-scenes',
-  'brand-identity',
-  'storyboard-motion',
-  'model-swap',
-  'replace-product',
-  'adapt-animate',
-  'restore-memories',
-  'social-media',
-  'ugc-video',
-  'edit-makeup',
-  'character-generator',
-  'infographic',
-  'adjust-lighting',
-  'sketch-to-product',
+  'promo-advertising',
 ];
 
 /**
