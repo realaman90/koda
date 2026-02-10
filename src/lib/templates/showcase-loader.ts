@@ -17,6 +17,7 @@ let showcaseMetadataCache: TemplateMetadata[] | null = null;
  * Add new template IDs here after creating them with the script
  */
 const SHOWCASE_TEMPLATE_IDS = [
+  'gemini-hackathon',
   'product-variations',
   'product-scenes',
   'brand-identity',

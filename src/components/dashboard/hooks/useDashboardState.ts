@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { useAppStore } from '@/stores/app-store';
-import { getTemplateList, getTemplate } from '@/lib/templates';
+import { getTemplateList, getTemplate, getShowcaseTemplateMetadata, getShowcaseTemplate } from '@/lib/templates';
 import type { TemplateMetadata } from '@/lib/templates/types';
 
 export type TabType = 'my-spaces' | 'shared' | 'templates';
@@ -67,7 +67,16 @@ export function useDashboardState(): DashboardState {
   const migrateLegacyData = useAppStore((state) => state.migrateLegacyData);
   const initializeSync = useAppStore((state) => state.initializeSync);
 
-  const templates = getTemplateList();
+  const builtInTemplates = getTemplateList();
+  const [showcaseTemplates, setShowcaseTemplates] = useState<TemplateMetadata[]>([]);
+
+  // Load showcase templates asynchronously (JSON files from /public/templates/)
+  useEffect(() => {
+    getShowcaseTemplateMetadata().then(setShowcaseTemplates).catch(() => {});
+  }, []);
+
+  // Place showcase templates after the first card (blank)
+  const templates = [builtInTemplates[0], ...showcaseTemplates, ...builtInTemplates.slice(1)];
 
   // Filter templates based on selected filter
   const filteredTemplates = templates.filter((t) => {
@@ -111,7 +120,11 @@ export function useDashboardState(): DashboardState {
   const handleSelectTemplate = useCallback(async (templateId: string) => {
     setIsCreating(true);
     try {
-      const template = getTemplate(templateId);
+      // Check built-in templates first, then showcase templates
+      let template = getTemplate(templateId);
+      if (!template) {
+        template = await getShowcaseTemplate(templateId);
+      }
       if (!template) {
         toast.error('Template not found');
         setIsCreating(false);
