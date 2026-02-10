@@ -38,7 +38,7 @@ export function DashboardTabs({ activeTab, onChange }: DashboardTabsProps) {
             : 'border-transparent text-muted-foreground hover:text-foreground'
         }`}
       >
-        Templates
+        Showcase
       </button>
     </div>
   );

@@ -1,0 +1,1348 @@
+{
+  "id": "gemini-hackathon",
+  "name": "Gemini Hackathon",
+  "description": "Premium noise-canceling headphones storyboard - a day in the life cinematic concept",
+  "thumbnail": "/templates/gemini-hackathon.jpg",
+  "category": "showcase",
+  "readOnly": true,
+  "tags": [
+    "featured",
+    "storyboard",
+    "cinematic"
+  ],
+  "nodes": [
+    {
+      "id": "node_1770664061948_u0l9nk3",
+      "type": "storyboard",
+      "position": {
+        "x": -60,
+        "y": 600
+      },
+      "data": {
+        "name": "Storyboard",
+        "product": "premium noise-canceling headphones",
+        "character": "",
+        "concept": "a day in the life showing\n  how these headphones transform a chaotic commute into a personal sanctuary.",
+        "sceneCount": 6,
+        "style": "cinematic",
+        "mode": "single-shot",
+        "viewState": "chat",
+        "chatMessages": [
+          {
+            "id": "msg_1770664150743",
+            "role": "user",
+            "content": "Generate a 6-scene cinematic storyboard for: premium noise-canceling headphones. Concept: a day in the life showing\n  how these headphones transform a chaotic commute into a personal sanctuary.",
+            "timestamp": "2026-02-09T19:09:10.743Z",
+            "seq": 1
+          }
+        ],
+        "thinkingBlocks": [
+          {
+            "id": "thinking_1770664150744",
+            "label": "Generating storyboard",
+            "startedAt": "2026-02-09T19:09:10.744Z",
+            "seq": 2,
+            "reasoning": "**Defining the Concept**\n\nI've got the product nailed down: premium noise-canceling headphones. Now, I'm diving into the concept. It's all about transforming that crazy commute into a personal oasis, a \"day in the life\" story with a cinematic feel. I'm aiming for a six-scene JSON format to tell the story.\n\n\n**Refining the Narrative**\n\nI've decided on a single-shot mode, with each scene requiring a `motion` field instead of transitions. I've broken down the narrative into a six-scene arc, starting with the chaos of a busy subway and ending with a hero shot of the headphones. I'm focusing on visual cues to imply the change in sound. I'm refining my mental outline of each scene now. For example, Scene 3 will feature a shift to warm lighting to portray audio isolation.\n\n\n**Visualizing the Scenes**\n\nI'm now fully immersed in envisioning the scenes. Scene 1 will set the stage with a crowded subway. Scene 2 zooms in on the headphones, while Scene 3 introduces warmer lighting. Scenes 4 and 5 follow with a coffee shop and golden hour city walk. Finally, I'll end with a product shot. The prompts are cinematic, and I've planned the specific motions for each.\n\n\n**Developing the Aesthetics**\n\nI'm deep in the visual details. Scene 2 needs dramatic side lighting and cinematic color grading. Scene 3 is taking shape with golden lighting and a dreamlike feel. I'm imagining a slow dolly zoom with a vertigo effect on the protagonist. Scene 4 is becoming an over-the-shoulder shot in a cozy coffee shop. I have also decided on rain streaming down the window pane, and steam rising from a coffee cup.\n\n\n**Finalizing the Scenes**\n\nI'm solidifying the final scenes now. Scene 5 will be a low-angle tracking shot, perfectly capturing a golden-hour city walk. I've designed Scene 6 as a studio product shot, highlighting the headphones' features with a slow, elegant rotation. I'm focusing on ensuring these final scenes maintain the consistent cinematic style. Now, I'm constructing the fields, ensuring each part is perfect for the JSON format.\n\n\n",
+            "endedAt": "2026-02-09T19:09:34.276Z"
+          }
+        ],
+        "drafts": [
+          {
+            "id": "draft_1770664174276",
+            "scenes": [
+              {
+                "number": 1,
+                "title": "The Overwhelming Rush",
+                "description": "A young professional stands in a crowded, chaotic subway car, looking stressed by the noise and commotion.",
+                "prompt": "Cinematic medium shot, crowded subway train during morning rush hour, harsh fluorescent lighting, cool blue and green tones, young professional man in a trench coat looking overwhelmed and tired, blurred commuters rushing past in foreground, high contrast, urban grit, 8k resolution, ARRI Alexa style.",
+                "camera": "Handheld medium shot",
+                "mood": "Chaotic and stressful",
+                "motion": "Camera shakes slightly to mimic subway vibration, people bustle rapidly in the background and foreground while the protagonist stands still looking anxious."
+              },
+              {
+                "number": 2,
+                "title": "The Connection",
+                "description": "The protagonist lifts the sleek headphones and places them over his ears, initiating the transition.",
+                "prompt": "Extreme close-up profile view, sleek matte black premium noise-canceling headphones being placed over ears, focus on the leather texture of the ear cups and the user's hand, shallow depth of field, dramatic side lighting, cinematic color grading, sharp details.",
+                "camera": "Extreme close-up",
+                "mood": "Anticipatory",
+                "motion": "Slow motion close-up of hands lifting the headphones and firmly sealing them over the ears, a subtle shift in lighting intensity as they make contact."
+              },
+              {
+                "number": 3,
+                "title": "Instant Sanctuary",
+                "description": "The subway car transforms visually; the harsh lights turn warm, and the crowd becomes a peaceful blur.",
+                "prompt": "Medium shot, same subway car but transformed, warm golden lighting replacing the harsh blue, the crowd is now a beautiful artistic motion blur, protagonist has eyes closed with a peaceful smile wearing the headphones, floating dust particles, dreamlike atmosphere, cinematic lighting.",
+                "camera": "Slow dolly zoom",
+                "mood": "Serene and magical",
+                "motion": "Slow, smooth dolly zoom on the protagonist's face while the background blurs into soft streaks of light, protagonist exhales slowly in relief."
+              },
+              {
+                "number": 4,
+                "title": "Focus in the Storm",
+                "description": "Working in a busy coffee shop, the protagonist is perfectly isolated and focused despite the bustle around him.",
+                "prompt": "Over-the-shoulder shot, busy urban coffee shop interior, rain streaming down the large window glass, protagonist focused on a laptop wearing the headphones, warm bokeh lights from the street outside, cozy atmosphere, sharp focus on the headphones and profile, cinematic composition.",
+                "camera": "Over-the-shoulder",
+                "mood": "Focused and cozy",
+                "motion": "Raindrops running down the window pane, steam rising from a coffee cup on the table, blurred patrons walking past in the background while the subject remains steady."
+              },
+              {
+                "number": 5,
+                "title": "Rhythm of the City",
+                "description": "Walking home at sunset, the protagonist moves confidently, fully immersed in his audio experience.",
+                "prompt": "Low angle tracking shot, city street at sunset, golden hour, protagonist walking confidently towards camera wearing headphones, city skyline in background, lens flare, vibrant orange and teal colors, fashion editorial style, cinematic depth.",
+                "camera": "Low angle tracking shot",
+                "mood": "Empowered and joyful",
+                "motion": "Camera tracks backward matching the subject's speed, subject walks with a bounce in their step, head bobbing slightly to the beat, wind blowing their coat."
+              },
+              {
+                "number": 6,
+                "title": "The Hero Object",
+                "description": "A final beauty shot of the headphones resting on a premium surface.",
+                "prompt": "Studio product shot, premium noise-canceling headphones resting on a dark reflective obsidian surface, rim lighting highlighting the curves and metallic logo, minimalist background, elegant and luxurious, macro details, 8k resolution.",
+                "camera": "Macro studio shot",
+                "mood": "Luxurious and sophisticated",
+                "motion": "Slow, elegant rotation of the headphones on the surface, light glinting off the metallic accents as they turn, soft shadow play."
+              }
+            ],
+            "summary": "A cinematic visual journey showing a commuter transforming a stressful subway ride and a busy workday into moments of peace and focus using premium noise-canceling headphones, culminating in a sleek product reveal.",
+            "createdAt": "2026-02-09T19:09:34.276Z",
+            "seq": 3
+          }
+        ],
+        "chatPhase": "draft-ready",
+        "isGenerating": false
+      }
+    },
+    {
+      "id": "node_1770664184065_pctzs1z",
+      "type": "imageGenerator",
+      "position": {
+        "x": 1260,
+        "y": -220
+      },
+      "data": {
+        "prompt": "Product photo of premium noise-canceling headphones, cinematic style, clean background, centered composition, studio lighting, high detail  ",
+        "model": "nanobanana-pro",
+        "aspectRatio": "1:1",
+        "isGenerating": false,
+        "name": "Product Reference",
+        "outputUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfjr7j5_d1okd1.png",
+        "outputUrls": [
+          "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfjr7j5_d1okd1.png"
+        ]
+      }
+    },
+    {
+      "id": "node_1770664184071_xalhymr",
+      "type": "imageGenerator",
+      "position": {
+        "x": 420,
+        "y": 500
+      },
+      "data": {
+        "prompt": "Cinematic medium shot, crowded subway train during morning rush hour, harsh fluorescent lighting, cool blue and green tones, young professional man in a trench coat looking overwhelmed and tired, blurred commuters rushing past in foreground, high contrast, urban grit, 8k resolution, ARRI Alexa style.",
+        "model": "nanobanana-pro",
+        "aspectRatio": "1:1",
+        "isGenerating": false,
+        "name": "Scene 1: The Overwhelming Rush",
+        "refHandleCount": 1,
+        "outputUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfk7cxv_j2c7jz.png",
+        "outputUrls": [
+          "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfk7cxv_j2c7jz.png"
+        ]
+      }
+    },
+    {
+      "id": "node_1770664184071_6hd0b8s",
+      "type": "imageGenerator",
+      "position": {
+        "x": 900,
+        "y": 500
+      },
+      "data": {
+        "prompt": "Extreme close-up profile view, sleek matte black premium noise-canceling headphones placed over ears, focus on the leather texture of the ear cups, shallow depth of field, dramatic side lighting, cinematic color grading, sharp details.",
+        "model": "nanobanana-pro",
+        "aspectRatio": "1:1",
+        "isGenerating": false,
+        "name": "Scene 2: The Connection",
+        "refHandleCount": 2,
+        "outputUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfka2wj_ys8i3i.png",
+        "outputUrls": [
+          "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfka2wj_ys8i3i.png"
+        ]
+      }
+    },
+    {
+      "id": "node_1770664184072_sdsbcd7",
+      "type": "imageGenerator",
+      "position": {
+        "x": 1380,
+        "y": 500
+      },
+      "data": {
+        "prompt": "Medium shot, same subway car but transformed, warm golden lighting replacing the harsh blue, the crowd is now a beautiful artistic motion blur, protagonist has eyes closed with a peaceful smile wearing the headphones, floating dust particles, dreamlike atmosphere, cinematic lighting.",
+        "model": "nanobanana-pro",
+        "aspectRatio": "1:1",
+        "isGenerating": false,
+        "name": "Scene 3: Instant Sanctuary",
+        "refHandleCount": 2,
+        "outputUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfkco8y_tadci5.png",
+        "outputUrls": [
+          "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfkco8y_tadci5.png"
+        ]
+      }
+    },
+    {
+      "id": "node_1770664184072_f1cfk9n",
+      "type": "imageGenerator",
+      "position": {
+        "x": 1880,
+        "y": 500
+      },
+      "data": {
+        "prompt": "Over-the-shoulder shot, busy urban coffee shop interior, rain streaming down the large window glass, protagonist focused on a laptop wearing the headphones, warm bokeh lights from the street outside, cozy atmosphere, sharp focus on the headphones and profile, cinematic composition.",
+        "model": "nanobanana-pro",
+        "aspectRatio": "1:1",
+        "isGenerating": false,
+        "name": "Scene 4: Focus in the Storm",
+        "refHandleCount": 2,
+        "outputUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfk7vcd_1775aw.png",
+        "outputUrls": [
+          "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfk7vcd_1775aw.png"
+        ]
+      }
+    },
+    {
+      "id": "node_1770664184072_f01uevk",
+      "type": "imageGenerator",
+      "position": {
+        "x": 2380,
+        "y": 500
+      },
+      "data": {
+        "prompt": "Low angle tracking shot, city street at sunset, golden hour, protagonist walking confidently towards camera wearing headphones, city skyline in background, lens flare, vibrant orange and teal colors, fashion editorial style, cinematic depth.",
+        "model": "nanobanana-pro",
+        "aspectRatio": "1:1",
+        "isGenerating": false,
+        "name": "Scene 5: Rhythm of the City",
+        "refHandleCount": 2,
+        "outputUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfkewp1_svgcs6.png",
+        "outputUrls": [
+          "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfkewp1_svgcs6.png"
+        ]
+      }
+    },
+    {
+      "id": "node_1770664184073_d0zl1x1",
+      "type": "imageGenerator",
+      "position": {
+        "x": 2960,
+        "y": 580
+      },
+      "data": {
+        "prompt": "Studio product shot, premium noise-canceling headphones resting on a dark reflective obsidian surface, rim lighting highlighting the curves and metallic logo, minimalist background, elegant and luxurious, macro details, 8k resolution.",
+        "model": "nanobanana-pro",
+        "aspectRatio": "1:1",
+        "isGenerating": false,
+        "name": "Scene 6: The Hero Object",
+        "refHandleCount": 1,
+        "outputUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfk19gp_j67u1s.png",
+        "outputUrls": [
+          "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfk19gp_j67u1s.png"
+        ]
+      }
+    },
+    {
+      "id": "node_1770664184073_fq8zefx",
+      "type": "videoGenerator",
+      "position": {
+        "x": 460,
+        "y": 1060
+      },
+      "data": {
+        "prompt": "Camera shakes slightly to mimic subway vibration, people bustle rapidly in the background and foreground while the protagonist stands still looking anxious.",
+        "model": "veo-3.1-fast-i2v",
+        "aspectRatio": "16:9",
+        "duration": 4,
+        "resolution": "720p",
+        "generateAudio": false,
+        "isGenerating": false,
+        "name": "Video 1: The Overwhelming Rush",
+        "progress": 0,
+        "outputUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/vid_mlfkgvw7_z6jebe.mp4"
+      }
+    },
+    {
+      "id": "node_1770664184073_dytrghh",
+      "type": "videoGenerator",
+      "position": {
+        "x": 1000,
+        "y": 1040
+      },
+      "data": {
+        "prompt": "Slow motion close-up of hands lifting the headphones and firmly sealing them over the ears, a subtle shift in lighting intensity as they make contact.   ",
+        "model": "veo-3.1-fast-i2v",
+        "aspectRatio": "16:9",
+        "duration": 4,
+        "resolution": "720p",
+        "generateAudio": false,
+        "isGenerating": false,
+        "name": "Video 2: The Connection",
+        "progress": 0,
+        "outputUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/vid_mlfkhd6k_rzcfnj.mp4"
+      }
+    },
+    {
+      "id": "node_1770664184073_0k31jnm",
+      "type": "videoGenerator",
+      "position": {
+        "x": 1500,
+        "y": 1040
+      },
+      "data": {
+        "prompt": "Slow, smooth dolly zoom on the protagonist's face while the background blurs into soft streaks of light, protagonist exhales slowly in relief.",
+        "model": "veo-3.1-fast-i2v",
+        "aspectRatio": "16:9",
+        "duration": 4,
+        "resolution": "720p",
+        "generateAudio": false,
+        "isGenerating": false,
+        "name": "Video 3: Instant Sanctuary",
+        "progress": 0,
+        "outputUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/vid_mlfkl5zm_ctwyh5.mp4"
+      }
+    },
+    {
+      "id": "node_1770664184073_lv7qoxj",
+      "type": "videoGenerator",
+      "position": {
+        "x": 1980,
+        "y": 1040
+      },
+      "data": {
+        "prompt": "Raindrops running down the window pane, steam rising from a coffee cup on the table, blurred patrons walking past in the background while the subject remains steady.",
+        "model": "veo-3.1-fast-i2v",
+        "aspectRatio": "16:9",
+        "duration": 4,
+        "resolution": "720p",
+        "generateAudio": false,
+        "isGenerating": false,
+        "name": "Video 4: Focus in the Storm",
+        "progress": 0,
+        "outputUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/vid_mlfklkil_k8pfzh.mp4"
+      }
+    },
+    {
+      "id": "node_1770664184073_9m3oysv",
+      "type": "videoGenerator",
+      "position": {
+        "x": 2420,
+        "y": 1040
+      },
+      "data": {
+        "prompt": "Camera tracks backward matching the subject's speed, subject walks with a bounce in their step, head bobbing slightly to the beat, wind blowing their coat.",
+        "model": "veo-3.1-fast-i2v",
+        "aspectRatio": "16:9",
+        "duration": 4,
+        "resolution": "720p",
+        "generateAudio": false,
+        "isGenerating": false,
+        "name": "Video 5: Rhythm of the City",
+        "progress": 0,
+        "outputUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/vid_mlfkmbc6_9e3vdw.mp4"
+      }
+    },
+    {
+      "id": "node_1770664184073_8lym716",
+      "type": "videoGenerator",
+      "position": {
+        "x": 2880,
+        "y": 1080
+      },
+      "data": {
+        "prompt": "Slow, elegant rotation of the headphones on the surface, light glinting off the metallic accents as they turn, soft shadow play.",
+        "model": "veo-3.1-fast-i2v",
+        "aspectRatio": "16:9",
+        "duration": 4,
+        "resolution": "720p",
+        "generateAudio": false,
+        "isGenerating": false,
+        "name": "Video 6: The Hero Object",
+        "progress": 0,
+        "outputUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/vid_mlfkm6hq_49vnhk.mp4"
+      }
+    },
+    {
+      "id": "node_1770666413105_giqdfol",
+      "type": "productShot",
+      "position": {
+        "x": 800,
+        "y": -240
+      },
+      "data": {
+        "name": "Product Shots",
+        "productName": "Premium headphones",
+        "shotCount": 4,
+        "background": "studio-white",
+        "lighting": "soft",
+        "viewState": "preview",
+        "result": {
+          "shots": [
+            {
+              "number": 1,
+              "angleName": "Hero Shot (3/4 View)",
+              "description": "The definitive main listing image showcasing the overall design, ear cup shape, and headband structure in a single glance.",
+              "prompt": "Professional product photography of premium over-ear headphones, Hero Shot, 3/4 angle view showing the left ear cup and headband arch, isolated on a clean studio-white seamless background. Lighting is soft and diffused using a large softbox, creating smooth highlights on the matte finish and minimal shadows. Shot with an 85mm telephoto lens, f/8 aperture for edge-to-edge sharpness, 8k resolution, commercial high-end aesthetic.",
+              "camera": "Eye-level, rotated 45 degrees relative to the subject",
+              "composition": "Centered subject with equal negative space on all sides, filling 75% of the frame",
+              "enabled": true
+            },
+            {
+              "number": 2,
+              "angleName": "Side Profile",
+              "description": "A direct side view to display the silhouette, ear pad thickness, and side branding or control layout.",
+              "prompt": "Strict side profile view of premium headphones, showcasing the sleek silhouette and plush ear cushion depth. Background is pure studio-white. Soft, even lighting illuminates the side branding and texture without harsh reflections or glare. 50mm lens, straight-on angle, high-end e-commerce photography, sharp focus, minimalist style.",
+              "camera": "Straight-on eye level, 90 degrees to the side of the product",
+              "composition": "Centered horizontally, showcasing the full height of the product",
+              "enabled": true
+            },
+            {
+              "number": 3,
+              "angleName": "Detail Close-up (Macro)",
+              "description": "A tight shot focusing on material quality, such as the leather texture of the pads or the brushed metal of the hinges.",
+              "prompt": "Extreme macro detail shot of the headphone hinge and ear cup texture, highlighting premium leather stitching and brushed metal finish. Studio-white background blurred slightly due to shallow depth of field (f/2.8). Soft lighting accentuates the material quality and tactile feel. 100mm macro lens, cinematic product detail, luxury tech vibe.",
+              "camera": "Close-range macro, slightly elevated angle",
+              "composition": "Tight crop focusing on the intersection of the headband and ear cup, rule of thirds",
+              "enabled": true
+            },
+            {
+              "number": 4,
+              "angleName": "Top Down Flat Lay",
+              "description": "An overhead view with ear cups rotated flat (if applicable) or symmetrical placement to show geometry and portability.",
+              "prompt": "Top-down flat lay of premium headphones resting on a white surface, ear cups rotated flat to show portability. Clean studio-white background. Soft overhead lighting box setup, very subtle contact shadows under the product. Symmetrical composition, 35mm lens, geometric and organized look for catalog use, high contrast and clarity.",
+              "camera": "Directly overhead bird's eye view (90 degrees down)",
+              "composition": "Perfectly symmetrical placement in the center of the frame",
+              "enabled": true
+            }
+          ],
+          "summary": "A comprehensive 4-shot commercial photography plan for premium headphones, utilizing a clean studio-white background and soft lighting to emphasize build quality and design. The sequence moves from a standard 3/4 hero shot to a descriptive profile, a texture-focused macro, and a geometric flat lay."
+        },
+        "isGenerating": false
+      }
+    },
+    {
+      "id": "node_1770666463488_rg4f2ly",
+      "type": "imageGenerator",
+      "position": {
+        "x": 1840,
+        "y": -400
+      },
+      "data": {
+        "prompt": "Professional product photography of premium over-ear headphones, Hero Shot, 3/4 angle view showing the left ear cup and headband arch, isolated on a clean studio-white seamless background. Lighting is soft and diffused using a large softbox, creating smooth highlights on the matte finish and minimal shadows. Shot with an 85mm telephoto lens, f/8 aperture for edge-to-edge sharpness, 8k resolution, commercial high-end aesthetic.",
+        "model": "nanobanana-pro",
+        "aspectRatio": "1:1",
+        "isGenerating": false,
+        "name": "Hero Shot (3/4 View)",
+        "referenceUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfjr7j5_d1okd1.png",
+        "outputUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfl3xnh_0z0m20.png",
+        "outputUrls": [
+          "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfl3xnh_0z0m20.png"
+        ]
+      }
+    },
+    {
+      "id": "node_1770666463488_wdaz8nq",
+      "type": "imageGenerator",
+      "position": {
+        "x": 2400,
+        "y": -540
+      },
+      "data": {
+        "prompt": "Strict side profile view of premium headphones, showcasing the sleek silhouette and plush ear cushion depth. Background is pure studio-white. Soft, even lighting illuminates the side branding and texture without harsh reflections or glare. 50mm lens, straight-on angle, high-end e-commerce photography, sharp focus, minimalist style.",
+        "model": "nanobanana-pro",
+        "aspectRatio": "1:1",
+        "isGenerating": false,
+        "name": "Side Profile",
+        "referenceUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfjr7j5_d1okd1.png",
+        "outputUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfl45ud_mqbcxs.png",
+        "outputUrls": [
+          "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfl45ud_mqbcxs.png"
+        ]
+      }
+    },
+    {
+      "id": "node_1770666463489_v6sfir1",
+      "type": "imageGenerator",
+      "position": {
+        "x": 2360,
+        "y": -40
+      },
+      "data": {
+        "prompt": "Extreme macro detail shot of the headphone hinge and ear cup texture, highlighting premium leather stitching and brushed metal finish. Studio-white background blurred slightly due to shallow depth of field (f/2.8). Soft lighting accentuates the material quality and tactile feel. 100mm macro lens, cinematic product detail, luxury tech vibe.",
+        "model": "nanobanana-pro",
+        "aspectRatio": "1:1",
+        "isGenerating": false,
+        "name": "Detail Close-up (Macro)",
+        "referenceUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfjr7j5_d1okd1.png",
+        "outputUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfl45kq_axrj6n.png",
+        "outputUrls": [
+          "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfl45kq_axrj6n.png"
+        ]
+      }
+    },
+    {
+      "id": "node_1770666463490_bt9xgjo",
+      "type": "imageGenerator",
+      "position": {
+        "x": 2940,
+        "y": -160
+      },
+      "data": {
+        "prompt": "Top-down flat lay of premium headphones resting on a white surface, ear cups rotated flat to show portability. Clean studio-white background. Soft overhead lighting box setup, very subtle contact shadows under the product. Symmetrical composition, 35mm lens, geometric and organized look for catalog use, high contrast and clarity.",
+        "model": "nanobanana-pro",
+        "aspectRatio": "1:1",
+        "isGenerating": false,
+        "name": "Top Down Flat Lay",
+        "referenceUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfjr7j5_d1okd1.png",
+        "outputUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfl4dts_wg1crf.png",
+        "outputUrls": [
+          "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfl4dts_wg1crf.png"
+        ]
+      }
+    },
+    {
+      "id": "node_1770671717673_enig2nz",
+      "type": "pluginNode",
+      "position": {
+        "x": -960,
+        "y": -520
+      },
+      "data": {
+        "pluginId": "animation-generator",
+        "name": "Animation Generator",
+        "state": {
+          "messages": [
+            {
+              "id": "msg_1770671729561",
+              "role": "user",
+              "content": "\"Koda\" logo reveal with particles dispersing outward",
+              "timestamp": "2026-02-09T21:15:29.561Z",
+              "seq": 17
+            },
+            {
+              "id": "msg-1770671789081",
+              "role": "assistant",
+              "content": "Video rendering encountered an issue. Retrying...",
+              "timestamp": "2026-02-09T21:16:29.081Z",
+              "seq": 25
+            },
+            {
+              "id": "msg-1770671807120",
+              "role": "assistant",
+              "content": "Video rendering encountered an issue. Retrying...",
+              "timestamp": "2026-02-09T21:16:47.120Z",
+              "seq": 29
+            },
+            {
+              "id": "msg_1770671844003",
+              "role": "assistant",
+              "content": "Here's your preview!",
+              "timestamp": "2026-02-09T21:17:24.003Z",
+              "seq": 32
+            }
+          ],
+          "toolCalls": [
+            {
+              "id": "tc_1770671739124_df94",
+              "toolCallId": "IyMkYsirqlGEyx7s",
+              "toolName": "generate_plan",
+              "displayName": "Planning animation",
+              "status": "done",
+              "args": {
+                "style": "Sleek Tech Reveal",
+                "totalDuration": 10,
+                "designSpec": "- Palette: Background #050505 (Deep Black), Primary #00F0FF (Electric Cyan), Accent #7000FF (Vivid Purple), Text #FFFFFF.\n- Typography: Space Grotesk (Bold), 120px for the logo.\n- Motion: Logo enters with a high-stiffness spring { damping: 12, stiffness: 200 }. Particles use a radial dispersion pattern with randomized velocity and gravity-free floating.\n- Effects: Heavy bloom/glow on the logo (filter: drop-shadow), animated grid background with 0.1 opacity, and motion-blurred particles.\n- Particles: 200+ small circular particles dispersing from the center of the logo.",
+                "fps": 30,
+                "scenes": [
+                  {
+                    "duration": 2,
+                    "number": 1,
+                    "animationNotes": "Subtle grid fade-in and ambient cyan glow in the center.",
+                    "title": "The Void",
+                    "description": "The dark void begins to reveal a faint grid and a central light source."
+                  },
+                  {
+                    "description": "The \"Koda\" logo snaps into view, triggering an explosion of cyan and purple particles.",
+                    "number": 2,
+                    "animationNotes": "Logo scales from 0 to 1 with overshoot. Particles burst radially from the center.",
+                    "duration": 3,
+                    "title": "The Reveal"
+                  },
+                  {
+                    "title": "Particle Drift",
+                    "description": "The logo remains centered while particles drift outward, creating a sense of depth.",
+                    "animationNotes": "Particles float slowly with Brownian motion. Logo has a subtle 'breathing' glow effect.",
+                    "number": 3,
+                    "duration": 3
+                  },
+                  {
+                    "duration": 2,
+                    "title": "Fade Out",
+                    "animationNotes": "Logo and particles scale down and fade to black.",
+                    "description": "The scene gracefully exits as the elements dissolve into the darkness.",
+                    "number": 4
+                  }
+                ]
+              },
+              "timestamp": "2026-02-09T21:15:39.124Z",
+              "seq": 19,
+              "output": "{\"plan\":{\"scenes\":[{\"number\":1,\"title\":\"The Void\",\"duration\":2,\"description\":\"The dark void begins to reveal a faint grid and a central light source.\",\"animationNotes\":\"Subtle grid fade-in and ambient cyan glow in the center.\"},{\"number\":2,\"title\":\"The Reveal\",\"duration\":3,\"description\":\"The \\\"Koda\\\" logo snaps into view, triggering an explosion of cyan and purple particles.\",\"animationNotes\":\"Logo scales from 0 to 1 with overshoot. Particles burst radially from the center.\"},{\"number\":3,\"title\":\"Particle Drift\",\"duration\":3,\"description\":\"The logo remains centered while particles drift outward, creating a sense of depth.\",\"animationNotes\":\"Particles float slowly with Brownian motion. Logo has a subtle 'breathing' glow effect.\"},{\"number\":4,\"title\":\"Fade Out\",\"duration\":2,\"description\":\"The scene gracefully exits as the elements dissolve into the darkness.\",\"animationNotes\":\"Logo and particles scale down and fade to black.\"}],\"totalDuration\":10,\"style\":\"Sleek Tech Reveal\",\"fps\":30,\"designSpec\":\"- Palette: Background #050505 (Deep Black), Primary #00F0FF (Electric Cyan), Accent #7000FF (Vivid Purple), Text #FFFFFF.\\n- Typography: Space Grotesk (Bold), 120px for the logo.\\n- Motion: Logo enters with a high-stiffness spring { damping: 12, stiffness: 200 }. Particles use a radial dispersion pattern with randomized velocity and gravity-free floating.\\n- Effects: Heavy bloom/glow on the logo (filter: drop-shadow), animated grid background with 0.1 opacity, and motion-blurred particles.\\n- Particles: 200+ small circular particles dispersing from the center of the logo.\"},\"todos\":[{\"id\":\"setup\",\"label\":\"Set up Theatre.js project\",\"status\":\"pending\"},{\"id\":\"scene-1\",\"label\":\"Create Scene 1 (The Void)\",\"status\":\"pending\"},{\"id\":\"scene-2\",\"label\":\"Create Scene 2 (The Reveal)\",\"status\":\"pending\"},{\"id\":\"scene-3\",\"label\":\"Create Scene 3 (Particle Drift)\",\"status\":\"pending\"},{\"id\":\"scene-4\",\"label\":\"Create Scene 4 (Fade Out)\",\"status\":\"pending\"},{\"id\":\"postprocess\",\"label\":\"Add post-processing effects\",\"status\":\"pending\"},{\"id\":\"render\",\"label\":\"Render preview\",\"status\":\"pending\"}]}"
+            },
+            {
+              "id": "tc_1770671743839_56na",
+              "toolCallId": "kb3vPsnJtmJm1ym7",
+              "toolName": "sandbox_create",
+              "displayName": "Setting up workspace",
+              "status": "done",
+              "args": {
+                "template": "remotion",
+                "projectId": "koda-logo-reveal"
+              },
+              "timestamp": "2026-02-09T21:15:43.839Z",
+              "seq": 22,
+              "output": "{\"success\":true,\"sandboxId\":\"koda-sandbox-koda-logo-reveal-ddl2g6av\",\"status\":\"ready\",\"previewUrl\":\"/api/plugins/animation/sandbox/koda-sandbox-koda-logo-reveal-ddl2g6av/proxy\",\"template\":\"remotion\",\"message\":\"Sandbox created with remotion template: koda-sandbox-koda-logo-reveal-ddl2g6av.\"}"
+            },
+            {
+              "id": "tc_1770671746578_66iw",
+              "toolCallId": "WbZ2ay71mIBYyKfr",
+              "toolName": "generate_remotion_code",
+              "displayName": "generate_remotion_code",
+              "status": "done",
+              "args": {
+                "task": "initial_setup",
+                "style": "Sleek Tech Reveal",
+                "plan": {
+                  "fps": 30,
+                  "scenes": [
+                    {
+                      "start": 0,
+                      "description": "The dark void begins to reveal a faint grid and a central light source.",
+                      "title": "The Void",
+                      "end": 2
+                    },
+                    {
+                      "title": "The Reveal",
+                      "description": "The \"Koda\" logo snaps into view, triggering an explosion of cyan and purple particles.",
+                      "start": 2,
+                      "end": 5
+                    },
+                    {
+                      "description": "The logo remains centered while particles drift outward, creating a sense of depth.",
+                      "end": 8,
+                      "start": 5,
+                      "title": "Particle Drift"
+                    },
+                    {
+                      "end": 10,
+                      "description": "The scene gracefully exits as the elements dissolve into the darkness.",
+                      "start": 8,
+                      "title": "Fade Out"
+                    }
+                  ],
+                  "duration": 10
+                },
+                "description": "Set up the Koda logo reveal with a particle system and scene sequences."
+              },
+              "timestamp": "2026-02-09T21:15:46.578Z",
+              "seq": 23,
+              "output": "{\"files\":[{\"path\":\"src/Root.tsx\",\"size\":322},{\"path\":\"src/Video.tsx\",\"size\":847},{\"path\":\"src/components/Grid.tsx\",\"size\":663},{\"path\":\"src/components/Logo.tsx\",\"size\":1103},{\"path\":\"src/components/Particles.tsx\",\"size\":1859},{\"path\":\"src/sequences/MainSequence.tsx\",\"size\":767}],\"summary\":\"Created a premium tech reveal animation for 'Koda'. Features a deep black background with an animated electric cyan grid, a high-stiffness spring-loaded logo entrance with heavy bloom effects, and a radial particle explosion system (220+ particles) with motion blur and gravity-free drift. Uses Space Grotesk typography and follows the exact 10s/30fps timing and color palette specified.\",\"writtenToSandbox\":true,\"reasoning\":\"**Remotion Project: Initial Setup Deep Dive**\\n\\nOkay, so I'm diving into this Remotion project, `initial_setup`, and it's all starting to gel. The goal is to create a dynamic intro sequence for \\\"Koda\\\".  First things first: the aesthetic. I've got a tight design spec to work with: a stark palette – `#050505` for the background, electric cyan (`#00F0FF`), vivid purple (`#7000FF`) as primary and accent colors, and stark white (`#FFFFFF`) for text.  Typography is `Space Grotesk` (Bold), sized at a hefty 120px for the logo. Motion is key, especially the logo's snap-in, which will use a spring effect (`{ damping: 12, stiffness: 200 }`).  Then there are the particles: over 200 small circular particles radiating outwards.  They'll have randomized velocities, float without gravity, and be motion-blurred for a soft effect.  A heavy bloom/glow effect (using `drop-shadow`) will be applied to the logo, and an animated grid background with low opacity will add a subtle layer of visual interest.\\n\\nMy strategy involves four distinct scenes: \\\"The Void\\\", \\\"The Reveal\\\", \\\"Particle Drift\\\", and \\\"Fade Out\\\", each contributing to the 10-second (300 frames at 30fps) animation. Scene 1, \\\"The Void\\\" (0-60 frames), starts with the grid gradually appearing and a central light source emerging. \\\"The Reveal\\\" (60-150) is where the \\\"Koda\\\" logo springs into view, accompanied by a particle explosion. \\\"Particle Drift\\\" (150-240) centers the logo as the particles drift outwards. And finally, \\\"Fade Out\\\" (240-300), where everything dissolves.\\n\\nProject structure is critical. I'm breaking things down into clear components: `src/Root.tsx` to handle the overall composition, `src/Video.tsx` for the main container including background and grid. The sequence logic is in `src/sequences/MainSequence.tsx`, and the visual elements are modularized: `src/components/Logo.tsx` for the \\\"Koda\\\" logo (spring, glow), `src/components/Particles.tsx` for the particle system, and `src/components/Grid.tsx` for the animated grid.\\n\\nNow, let's get into the specifics. For the *Grid*, I'm leaning towards a repeating linear gradient or an SVG pattern, animating its opacity and possibly a slight movement. For the *Logo*, it's \\\"KODA\\\" in `Space Grotesk`, sized at 120px, with white text, and a heavy glow achieved through stacked `drop-shadow` filters. The spring animation is ready to go with the configuration from the design spec. The *Particles* are where the magic happens. I'll pre-calculate random angles and speeds for each particle using `useMemo` to keep things performant. I'll use `interpolate` and `spring` to move them outwards from the center and add a slight drift from frames 150-240. Also, these particles need to be motion-blurred via a blur filter.\\n\\nAs I build, I'm making sure my timing is correct, setting grid animation from 0-300 with its fade-in from 0-60. Logo enters at frame 60 and particles are triggered at frame 60.\\n\\nI'll configure my `Root.tsx` with a 1920x1080 resolution, 30fps, and 300 frames. The `Video.tsx` will have a `#050505` background. The `Grid.tsx` will use linear gradients as the `backgroundImage` with an opacity of 0.1. The `Logo.tsx` uses `SpaceGrotesk`, is 120px, and has a white color. The glow effect will be `drop-shadow(0 0 15px #00F0FF) drop-shadow(0 0 30px #7000FF)`. Lastly, the `Particles.tsx` will manage 250 particles, each with a random angle and max distance.\\n\\nMy scene logic is clear now. In *Scene 1 (0-60)*, the grid ramps up from 0 to 0.1 opacity. A central glow (radial gradient) animates from 0 to 1. *Scene 2 (60-150)* involves the logo scaling from 0 to 1 with a spring effect, and the particle explosion from the center. *Scene\\n\\n\"}"
+            },
+            {
+              "id": "tc_1770671776750_nigp",
+              "toolCallId": "MPOb9ynLGGnjIDlW",
+              "toolName": "render_final",
+              "displayName": "Rendering final video",
+              "status": "failed",
+              "args": {
+                "duration": 10
+              },
+              "timestamp": "2026-02-09T21:16:16.750Z",
+              "seq": 24,
+              "error": "Render failed: le ${style2}`);\n40 │ }\n41 │ const weights = options?.weights ?? Object.keys(meta.fonts[style2]);\n\nat loadFont (node_modules/@remotion/google-fonts/dist/esm/SpaceGrotesk.mjs:152)\n\nat src/components/Logo.tsx:3\n2 │ import { spring, useCurrentFrame, useVideoConfig, interpolate } from 'remotion';\n3 │ import { loadFont } from \"@remotion/google-fonts/SpaceGrotesk\";\n4 │ \n5 │ const { fontFamily } = loadFont({ fontWeight: '700' });\n6 │ \nat __webpack_require__ (webpack/bootstrap:18)\nat (webpack/startup:4)\n"
+            },
+            {
+              "id": "tc_1770671790479_0oz6",
+              "toolCallId": "qsQ5dAPM5P7M2VKO",
+              "toolName": "sandbox_read_file",
+              "displayName": "Checking file",
+              "status": "done",
+              "args": {
+                "path": "src/components/Logo.tsx"
+              },
+              "timestamp": "2026-02-09T21:16:30.479Z",
+              "seq": 26,
+              "output": "{\"success\":true,\"content\":\"import React from 'react';\\nimport { spring, useCurrentFrame, useVideoConfig, interpolate } from 'remotion';\\nimport { loadFont } from \\\"@remotion/google-fonts/SpaceGrotesk\\\";\\n\\nconst { fontFamily } = loadFont({ fontWeight: '700' });\\n\\nexport const Logo: React.FC = () => {\\n  const frame = useCurrentFrame();\\n  const { fps } = useVideoConfig();\\n\\n  const entrance = spring({\\n    frame: frame - 60,\\n    fps,\\n    config: {\\n      damping: 12,\\n      stiffness: 200,\\n    },\\n  });\\n\\n  const float = Math.sin(frame / 15) * 10;\\n\\n  const glow = interpolate(\\n    frame,\\n    [60, 70],\\n    [0, 1],\\n    { extrapolateRight: 'clamp' }\\n  );\\n\\n  return (\\n    <div\\n      style={{\\n        fontFamily,\\n        fontSize: 120,\\n        fontWeight: 'bold',\\n        color: '#FFFFFF',\\n        textTransform: 'uppercase',\\n        letterSpacing: '0.1em',\\n        transform: `scale(${entrance}) translateY(${float}px)`,\\n        opacity: entrance,\\n        filter: `\\n          drop-shadow(0 0 ${20 * glow}px #00F0FF) \\n          drop-shadow(0 0 ${40 * glow}px #7000FF)\\n        `,\\n        zIndex: 10,\\n      }}\\n    >\\n      Koda\\n    </div>\\n  );\\n};\"}"
+            },
+            {
+              "id": "tc_1770671794524_7cjv",
+              "toolCallId": "yg9QLNiWxMD4Rrbd",
+              "toolName": "generate_remotion_code",
+              "displayName": "generate_remotion_code",
+              "status": "done",
+              "args": {
+                "change": "Fix the loadFont call for SpaceGrotesk (it doesn't take a fontWeight object directly in the main call for some versions, or needs the correct weight string). Also ensuring the font is loaded correctly for the environment.",
+                "task": "modify_existing",
+                "currentContent": "import React from 'react';\nimport { spring, useCurrentFrame, useVideoConfig, interpolate } from 'remotion';\nimport { loadFont } from \"@remotion/google-fonts/SpaceGrotesk\";\n\nconst { fontFamily } = loadFont({ fontWeight: '700' });\n\nexport const Logo: React.FC = () => {\n  const frame = useCurrentFrame();\n  const { fps } = useVideoConfig();\n\n  const entrance = spring({\n    frame: frame - 60,\n    fps,\n    config: {\n      damping: 12,\n      stiffness: 200,\n    },\n  });\n\n  const float = Math.sin(frame / 15) * 10;\n\n  const glow = interpolate(\n    frame,\n    [60, 70],\n    [0, 1],\n    { extrapolateRight: 'clamp' }\n  );\n\n  return (\n    <div\n      style={{\n        fontFamily,\n        fontSize: 120,\n        fontWeight: 'bold',\n        color: '#FFFFFF',\n        textTransform: 'uppercase',\n        letterSpacing: '0.1em',\n        transform: `scale(${entrance}) translateY(${float}px)`,\n        opacity: entrance,\n        filter: `\n          drop-shadow(0 0 ${20 * glow}px #00F0FF) \n          drop-shadow(0 0 ${40 * glow}px #7000FF)\n        `,\n        zIndex: 10,\n      }}\n    >\n      Koda\n    </div>\n  );\n};",
+                "file": "src/components/Logo.tsx"
+              },
+              "timestamp": "2026-02-09T21:16:34.524Z",
+              "seq": 27,
+              "output": "{\"files\":[{\"path\":\"src/components/Logo.tsx\",\"size\":1102}],\"summary\":\"Fixed the loadFont call for SpaceGrotesk by using the correct 'weights' array property to ensure the bold weight (700) loads correctly in the Remotion environment.\",\"writtenToSandbox\":true,\"reasoning\":\"**Fixing the Space Grotesk Font Loading**\\n\\nOkay, so I've got a `modify_existing` task targeting `src/components/Logo.tsx`. The goal is to correct how the `SpaceGrotesk` font is loaded using `@remotion/google-fonts`. Specifically, the current code's `loadFont` call seems off. It's trying to pass `fontWeight` directly, and that's usually not the correct syntax according to my experience with these libraries. I'm pretty sure it needs the `weights` property as an array, as per `@remotion/google-fonts` best practices.\\n\\nThe design specs are clear: background #050505, electric cyan (#00F0FF) primary, vivid purple (#7000FF) accent, and #FFFFFF for text. The font is `Space Grotesk` at 120px, bold, with a spring animation (`{ damping: 12, stiffness: 200 }`) and a glow effect using `drop-shadow`.\\n\\nThe current problematic code looks like this:\\n\\n```tsx\\nimport { loadFont } from \\\"@remotion/google-fonts/SpaceGrotesk\\\";\\nconst { fontFamily } = loadFont({ fontWeight: '700' }); // This is the line to fix\\n```\\n\\nI need to change that line. I've reviewed the Remotion Google Fonts API documentation and the correct way to specify font weights (for a single weight) is:\\n\\n```tsx\\nloadFont({ weights: [\\\"700\\\"] });\\n```\\n\\nTherefore, the change I need to make is to modify the import statement and that specific line to:\\n\\n```tsx\\nimport { loadFont } from \\\"@remotion/google-fonts/SpaceGrotesk\\\";\\nconst { fontFamily } = loadFont({ weights: [\\\"700\\\"] });\\n```\\n\\nAll other aspects of the component, including the styling, spring animation, and glow effect, should remain completely untouched. Essentially, the corrected component will be:\\n\\n```tsx\\nimport { loadFont } from \\\"@remotion/google-fonts/SpaceGrotesk\\\";\\nconst { fontFamily } = loadFont({ weights: [\\\"700\\\"] });\\n```\\n\\nThe component's core design elements remain the same: color palette (#00F0FF, #7000FF, #FFFFFF), typography (Space Grotesk, 120px), and the spring animation (`{ damping: 12, stiffness: 200 }`) with the glow effect, which will be maintained. The file I'm working on is `src/components/Logo.tsx`.\\n\\n\\n\"}"
+            },
+            {
+              "id": "tc_1770671794616_6yk0",
+              "toolCallId": "j14egarPvJ0R0tTI",
+              "toolName": "render_final",
+              "displayName": "Rendering final video",
+              "status": "failed",
+              "args": {
+                "duration": 10
+              },
+              "timestamp": "2026-02-09T21:16:34.616Z",
+              "seq": 28,
+              "error": "Render failed: yle ${style2}`);\n40 │ }\n41 │ const weights = options?.weights ?? Object.keys(meta.fonts[style2]);\n\nat loadFont (node_modules/@remotion/google-fonts/dist/esm/SpaceGrotesk.mjs:152)\n\nat src/components/Logo.tsx:3\n2 │ import { spring, useCurrentFrame, useVideoConfig, interpolate } from 'remotion';\n3 │ import { loadFont } from \"@remotion/google-fonts/SpaceGrotesk\";\n4 │ \n5 │ const { fontFamily } = loadFont({ weights: [\"700\"] });\n6 │ \nat __webpack_require__ (webpack/bootstrap:18)\nat (webpack/startup:4)\n"
+            },
+            {
+              "id": "tc_1770671810792_ypov",
+              "toolCallId": "OPZgTSyfjvHzBfsW",
+              "toolName": "generate_remotion_code",
+              "displayName": "generate_remotion_code",
+              "status": "done",
+              "args": {
+                "currentContent": "import React from 'react';\nimport { spring, useCurrentFrame, useVideoConfig, interpolate } from 'remotion';\nimport { loadFont } from \"@remotion/google-fonts/SpaceGrotesk\";\n\nconst { fontFamily } = loadFont({ weights: [\"700\"] });\n\nexport const Logo: React.FC = () => {\n  const frame = useCurrentFrame();\n  const { fps } = useVideoConfig();\n\n  const entrance = spring({\n    frame: frame - 60,\n    fps,\n    config: {\n      damping: 12,\n      stiffness: 200,\n    },\n  });\n\n  const float = Math.sin(frame / 15) * 10;\n\n  const glow = interpolate(\n    frame,\n    [60, 70],\n    [0, 1],\n    { extrapolateRight: 'clamp' }\n  );\n\n  return (\n    <div\n      style={{\n        fontFamily,\n        fontSize: 120,\n        fontWeight: 'bold',\n        color: '#FFFFFF',\n        textTransform: 'uppercase',\n        letterSpacing: '0.1em',\n        transform: `scale(${entrance}) translateY(${float}px)`,\n        opacity: entrance,\n        filter: `\n          drop-shadow(0 0 ${20 * glow}px #00F0FF) \n          drop-shadow(0 0 ${40 * glow}px #7000FF)\n        `,\n        zIndex: 10,\n      }}\n    >\n      Koda\n    </div>\n  );\n};",
+                "change": "Remove the @remotion/google-fonts dependency and use a standard system font stack (Inter, system-ui) to bypass the loading error. This ensures the render completes successfully while maintaining the sleek tech aesthetic.",
+                "task": "modify_existing",
+                "file": "src/components/Logo.tsx"
+              },
+              "timestamp": "2026-02-09T21:16:50.792Z",
+              "seq": 30,
+              "output": "{\"files\":[{\"path\":\"src/components/Logo.tsx\",\"size\":1033}],\"summary\":\"Modified Logo.tsx to remove the @remotion/google-fonts dependency and switch to a standard system font stack (Inter, system-ui) for better reliability while maintaining the design specifications.\",\"writtenToSandbox\":true,\"reasoning\":\"**Logo Component Modification - Sans-Serif Transition**\\n\\nOkay, so the task at hand is to modify the `Logo.tsx` component. The objective is clear: phase out the `@remotion/google-fonts` dependency and replace it with a system font stack, specifically `Inter`, and fallback to `system-ui`. We're sticking with the existing design specifications for the most part, background is `#050505`, primary `#00F0FF`, accent `#7000FF`, text color `#FFFFFF`, 120px logo size, the high-stiffness spring config is `{ damping: 12, stiffness: 200 }`, heavy bloom/glow, and we are not touching any other styling or animation aspects.\\n\\nThe critical part of this is to remove the `@remotion/google-fonts` imports. I need to get rid of the `loadFont` import for \\\"Space Grotesk\\\" and the `fontFamily` definition that goes with it. Then, I need to update the inline style object to use the system font stack. Specifically, I'll update `fontFamily` to be `'Inter', 'system-ui', sans-serif`.\\n\\nI'll keep the `entrance` spring animation which depends on the current `frame` and `fps`. Also the floating effect defined by `float` and the glow effect that is defined by `glow` must remain untouched.\\nThe styling for the text, `fontSize: 120`, `fontWeight: 'bold'`, `color: '#FFFFFF'`, `textTransform: 'uppercase'`, `letterSpacing: '0.1em'`, `transform: scale(${entrance}) translateY(${float}px)`, and `filter: drop-shadow(...)`, all remain as they are. The changes should be clean and precise, respecting the constraints.\\n\\nFinally, I've confirmed that the resultant code is valid JSON and complete. There are no placeholders, and the design specification is followed.  The google-fonts dependency has been successfully removed, with the system font stack integrated. The updated component is ready.\\n\\n\\n\"}"
+            },
+            {
+              "id": "tc_1770671810889_9c3c",
+              "toolCallId": "oDD8e5CisrMPBkSY",
+              "toolName": "render_final",
+              "displayName": "Rendering final video",
+              "status": "done",
+              "args": {
+                "duration": 10
+              },
+              "timestamp": "2026-02-09T21:16:50.889Z",
+              "seq": 31,
+              "output": "{\"success\":true,\"videoUrl\":\"https://pub-a836d08629454caf9059acebd385a714.r2.dev/vid_mlfoanyq_drdm44.mp4\",\"thumbnailUrl\":\"\",\"duration\":10,\"resolution\":\"1080p\",\"versionId\":\"v1770671839664\",\"message\":\"Video rendered successfully\"}"
+            }
+          ],
+          "thinkingBlocks": [
+            {
+              "id": "tb_1770671729561",
+              "label": "Analyzing your prompt...",
+              "startedAt": "2026-02-09T21:15:29.561Z",
+              "seq": 18,
+              "reasoning": "**Defining the Brand Aesthetic**\n\nI'm leaning towards a tech or modern aesthetic for the \"Koda\" logo reveal, given the lack of specific design direction. My initial thought is to make it ten seconds long with an aspect ratio of 16:9. I plan to use the Remotion engine for the animation and envision the particles dispersing outwards.\n\n\n**Refining the Color Palette**\n\nI've decided on a dark, sleek aesthetic for \"Koda,\" and the color scheme is coming together. I'm thinking a deep charcoal background with electric cyan as the primary accent, and a vivid purple for particle depth. I'm using Space Grotesk or Inter for the logo. The Remotion spec is planned with a dark void intro, logo reveal, main particle action, and an outro fade.\n\n\n",
+              "endedAt": "2026-02-09T21:15:36.214Z"
+            },
+            {
+              "id": "tb_1770671740710",
+              "label": "Setting up Remotion animation...",
+              "startedAt": "2026-02-09T21:15:40.710Z",
+              "seq": 21,
+              "endedAt": "2026-02-09T21:15:43.681Z"
+            }
+          ],
+          "phase": "complete",
+          "execution": {
+            "todos": [
+              {
+                "id": "setup",
+                "label": "Setup project environment",
+                "status": "done"
+              },
+              {
+                "id": "scene-1",
+                "label": "Create Scene 1: The Void",
+                "status": "done"
+              },
+              {
+                "id": "scene-2",
+                "label": "Create Scene 2: The Reveal & Particles",
+                "status": "done"
+              },
+              {
+                "id": "scene-3",
+                "label": "Create Scene 3: Particle Drift",
+                "status": "done"
+              },
+              {
+                "id": "scene-4",
+                "label": "Create Scene 4: Fade Out",
+                "status": "done"
+              },
+              {
+                "id": "render",
+                "label": "Render final video",
+                "status": "done"
+              }
+            ],
+            "thinking": "Rendering final video...",
+            "files": []
+          },
+          "updatedAt": "2026-02-09T21:18:29.390Z",
+          "plan": {
+            "scenes": [
+              {
+                "number": 1,
+                "title": "Intro",
+                "duration": 2,
+                "description": "Opening animation"
+              },
+              {
+                "number": 2,
+                "title": "Main",
+                "duration": 3,
+                "description": "\"Koda\" logo reveal with particles dispersing outward"
+              },
+              {
+                "number": 3,
+                "title": "Outro",
+                "duration": 2,
+                "description": "Closing animation"
+              }
+            ],
+            "totalDuration": 7,
+            "style": "smooth",
+            "fps": 30
+          },
+          "planAccepted": true,
+          "planTimestamp": "2026-02-09T21:15:40.716Z",
+          "planSeq": 20,
+          "startedAt": "2026-02-09T21:15:40.710Z",
+          "versions": [
+            {
+              "id": "v1770671839664",
+              "videoUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/vid_mlfoanyq_drdm44.mp4?t=1770671841933",
+              "duration": 10,
+              "prompt": "\"Koda\" logo reveal with particles dispersing outward",
+              "createdAt": "2026-02-09T21:17:21.933Z"
+            }
+          ],
+          "activeVersionId": "v1770671839664",
+          "preview": {
+            "videoUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/vid_mlfoanyq_drdm44.mp4?t=1770671841933",
+            "duration": 10
+          },
+          "previewTimestamp": "2026-02-09T21:17:21.933Z",
+          "output": {
+            "videoUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/vid_mlfoanyq_drdm44.mp4?t=1770671841933",
+            "thumbnailUrl": "",
+            "duration": 10
+          },
+          "completedAt": "2026-02-09T21:18:29.390Z"
+        },
+        "prompt": "\"Koda\" logo reveal with particles dispersing outward"
+      }
+    },
+    {
+      "id": "node_1770672048712_tzy5avl",
+      "type": "pluginNode",
+      "position": {
+        "x": 3600,
+        "y": 480
+      },
+      "data": {
+        "pluginId": "animation-generator",
+        "name": "Animation Generator",
+        "state": {
+          "messages": [
+            {
+              "id": "msg_1770672125312",
+              "role": "user",
+              "content": "Text fading in smoothely and text is (\"Sonos\")",
+              "timestamp": "2026-02-09T21:22:05.312Z",
+              "seq": 33,
+              "media": [
+                {
+                  "id": "edge_xy-edge__node_1770664184073_d0zl1x1output-node_1770672048712_tzy5avlimage-ref-0",
+                  "source": "edge",
+                  "edgeId": "xy-edge__node_1770664184073_d0zl1x1output-node_1770672048712_tzy5avlimage-ref-0",
+                  "sourceNodeId": "node_1770664184073_d0zl1x1",
+                  "name": "scene_6__the_hero_object__d0zl1x1.png",
+                  "type": "image",
+                  "dataUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfk19gp_j67u1s.png",
+                  "description": "Studio product shot, premium noise-canceling headphones resting on a dark reflective obsidian surface, rim lighting highlighting the curves and metallic logo, minimalist background, elegant and luxurious, macro details, 8k resolution."
+                }
+              ]
+            },
+            {
+              "id": "msg_1770672209031",
+              "role": "assistant",
+              "content": "On it!\n\nBuilding...\n\nHere's your preview!",
+              "timestamp": "2026-02-09T21:23:29.031Z",
+              "seq": 41
+            }
+          ],
+          "toolCalls": [
+            {
+              "id": "tc_1770672136604_xld3",
+              "toolCallId": "kSGWW2pWh9991tF0",
+              "toolName": "generate_plan",
+              "displayName": "Planning animation",
+              "status": "done",
+              "args": {
+                "designSpec": "- Background: #000000 (Pure Black) to match the obsidian surface in the product shot.\n- Typography: 'Montserrat' for the \"Sonos\" title. Weight: 700 (Bold). Color: #FFFFFF. Size: 120px.\n- Accent: #EF4444 (Red) used for a subtle underline or a small geometric detail to guide the eye.\n- Motion: \n  - Text Reveal: Smooth opacity fade with a slight tracking (letter-spacing) expansion.\n  - Image Motion: Subtle Ken Burns effect (scale 1.0 to 1.08) on the headphone image.\n  - Spring Config: { damping: 25, stiffness: 90 } for buttery smooth, professional transitions.\n- Layout: Centered text initially, then shifting to a balanced composition with the product image on the right and text on the left.\n- Effects: Soft vignette to focus on the product; no glows or particles as per minimal style.\n- Media: 'scene_6__the_hero_object__d0zl1x1.png' assigned as the 'Hero Product' shot.",
+                "scenes": [
+                  {
+                    "title": "Brand Intro",
+                    "description": "Minimalist intro with the brand name appearing in the center.",
+                    "number": 1,
+                    "duration": 3,
+                    "animationNotes": "Text 'Sonos' fades in from 0% to 100% opacity over 1.5s. Letter spacing expands from 0px to 10px. Background is solid black."
+                  },
+                  {
+                    "number": 2,
+                    "duration": 4,
+                    "title": "Product Reveal",
+                    "description": "The premium headphones are revealed alongside the brand name.",
+                    "animationNotes": "The headphone image fades in (1s) and begins a slow zoom. Text 'Sonos' slides smoothly to the left third of the screen."
+                  },
+                  {
+                    "number": 3,
+                    "title": "Final Lockup",
+                    "animationNotes": "A subtle red accent line appears under the text. The entire composition holds for 2s before a final 1s fade to black.",
+                    "duration": 3,
+                    "description": "Final elegant brand lockup featuring the product and text."
+                  }
+                ],
+                "totalDuration": 10,
+                "fps": 30,
+                "style": "minimal"
+              },
+              "timestamp": "2026-02-09T21:22:16.604Z",
+              "seq": 35,
+              "output": "{\"plan\":{\"scenes\":[{\"number\":1,\"title\":\"Brand Intro\",\"duration\":3,\"description\":\"Minimalist intro with the brand name appearing in the center.\",\"animationNotes\":\"Text 'Sonos' fades in from 0% to 100% opacity over 1.5s. Letter spacing expands from 0px to 10px. Background is solid black.\"},{\"number\":2,\"title\":\"Product Reveal\",\"duration\":4,\"description\":\"The premium headphones are revealed alongside the brand name.\",\"animationNotes\":\"The headphone image fades in (1s) and begins a slow zoom. Text 'Sonos' slides smoothly to the left third of the screen.\"},{\"number\":3,\"title\":\"Final Lockup\",\"duration\":3,\"description\":\"Final elegant brand lockup featuring the product and text.\",\"animationNotes\":\"A subtle red accent line appears under the text. The entire composition holds for 2s before a final 1s fade to black.\"}],\"totalDuration\":10,\"style\":\"minimal\",\"fps\":30,\"designSpec\":\"- Background: #000000 (Pure Black) to match the obsidian surface in the product shot.\\n- Typography: 'Montserrat' for the \\\"Sonos\\\" title. Weight: 700 (Bold). Color: #FFFFFF. Size: 120px.\\n- Accent: #EF4444 (Red) used for a subtle underline or a small geometric detail to guide the eye.\\n- Motion: \\n  - Text Reveal: Smooth opacity fade with a slight tracking (letter-spacing) expansion.\\n  - Image Motion: Subtle Ken Burns effect (scale 1.0 to 1.08) on the headphone image.\\n  - Spring Config: { damping: 25, stiffness: 90 } for buttery smooth, professional transitions.\\n- Layout: Centered text initially, then shifting to a balanced composition with the product image on the right and text on the left.\\n- Effects: Soft vignette to focus on the product; no glows or particles as per minimal style.\\n- Media: 'scene_6__the_hero_object__d0zl1x1.png' assigned as the 'Hero Product' shot.\"},\"todos\":[{\"id\":\"setup\",\"label\":\"Set up Theatre.js project\",\"status\":\"pending\"},{\"id\":\"scene-1\",\"label\":\"Create Scene 1 (Brand Intro)\",\"status\":\"pending\"},{\"id\":\"scene-2\",\"label\":\"Create Scene 2 (Product Reveal)\",\"status\":\"pending\"},{\"id\":\"scene-3\",\"label\":\"Create Scene 3 (Final Lockup)\",\"status\":\"pending\"},{\"id\":\"postprocess\",\"label\":\"Add post-processing effects\",\"status\":\"pending\"},{\"id\":\"render\",\"label\":\"Render preview\",\"status\":\"pending\"}]}"
+            },
+            {
+              "id": "tc_1770672141391_0xbd",
+              "toolCallId": "qtCo9y3U75R63G0K",
+              "toolName": "sandbox_create",
+              "displayName": "Setting up workspace",
+              "status": "done",
+              "args": {
+                "projectId": "sonos-minimal-reveal",
+                "template": "remotion"
+              },
+              "timestamp": "2026-02-09T21:22:21.391Z",
+              "seq": 38,
+              "output": "{\"success\":true,\"sandboxId\":\"koda-sandbox-sonos-minimal-reveal-ste4y04k\",\"status\":\"ready\",\"previewUrl\":\"/api/plugins/animation/sandbox/koda-sandbox-sonos-minimal-reveal-ste4y04k/proxy\",\"template\":\"remotion\",\"message\":\"Sandbox created with remotion template: koda-sandbox-sonos-minimal-reveal-ste4y04k. Media auto-uploaded: public/media/scene_6__the_hero_object__d0zl1x1.png\"}"
+            },
+            {
+              "id": "tc_1770672147717_wvpv",
+              "toolCallId": "rvYtY7p33vHwwWgP",
+              "toolName": "generate_remotion_code",
+              "displayName": "generate_remotion_code",
+              "status": "done",
+              "args": {
+                "plan": {
+                  "duration": 10,
+                  "scenes": [
+                    {
+                      "end": 3,
+                      "title": "Brand Intro",
+                      "description": "Minimalist intro with the brand name appearing in the center. Text 'Sonos' fades in from 0% to 100% opacity over 1.5s. Letter spacing expands from 0px to 10px. Background is solid black.",
+                      "start": 0
+                    },
+                    {
+                      "description": "The premium headphones are revealed alongside the brand name. The headphone image fades in (1s) and begins a slow zoom. Text 'Sonos' slides smoothly to the left third of the screen.",
+                      "start": 3,
+                      "end": 7,
+                      "title": "Product Reveal"
+                    },
+                    {
+                      "start": 7,
+                      "description": "Final elegant brand lockup featuring the product and text. A subtle red accent line appears under the text. The entire composition holds for 2s before a final 1s fade to black.",
+                      "end": 10,
+                      "title": "Final Lockup"
+                    }
+                  ],
+                  "fps": 30
+                },
+                "techniques": [
+                  "kinetic-typography"
+                ],
+                "designSpec": "- Background: #000000 (Pure Black)\n- Typography: 'Montserrat' (Bold, 700), Color: #FFFFFF, Size: 120px\n- Accent: #EF4444 (Red) underline\n- Motion: Smooth opacity fades, tracking expansion, Ken Burns scale (1.0 to 1.08)\n- Spring: { damping: 25, stiffness: 90 }\n- Media: scene_6__the_hero_object__d0zl1x1.png as Hero Product shot",
+                "style": "minimal",
+                "mediaFiles": [
+                  {
+                    "description": "Studio product shot of premium headphones on dark reflective surface",
+                    "path": "public/media/scene_6__the_hero_object__d0zl1x1.png",
+                    "type": "image"
+                  }
+                ],
+                "description": "Create a minimal Sonos brand reveal with a product shot. Scene 1: Text 'Sonos' fades in and expands tracking. Scene 2: Product image fades in with Ken Burns effect while text slides left. Scene 3: Red accent line appears for final lockup.",
+                "task": "initial_setup"
+              },
+              "timestamp": "2026-02-09T21:22:27.717Z",
+              "seq": 39,
+              "output": "{\"files\":[{\"path\":\"src/Root.tsx\",\"size\":324},{\"path\":\"src/Video.tsx\",\"size\":711},{\"path\":\"src/sequences/MainSequence.tsx\",\"size\":1244},{\"path\":\"src/components/BrandText.tsx\",\"size\":702},{\"path\":\"src/components/HeroProduct.tsx\",\"size\":1068},{\"path\":\"src/components/AccentLine.tsx\",\"size\":793}],\"summary\":\"Premium Sonos-style minimalist reveal. Features a pure black background, Montserrat typography with tracking expansion, and a Ken Burns effect on the hero product image. Includes a smooth transition of the brand name to the left third and a final red accent line reveal.\",\"writtenToSandbox\":true,\"reasoning\":\"**Remotion Project: Sonos Reveal Animation - Initial Setup and Implementation**\\n\\nAlright, let's break down this Remotion project for a Sonos reveal. The goal is a 10-second animation (300 frames at 30fps), a sleek, kinetic typography piece with a product reveal. My immediate thoughts center on structuring the core components and defining the animations.\\n\\nFirst, I need to configure the foundational elements. `Root.tsx` will house the main `Composition` with the ID \\\"SonosReveal,\\\" defining the project's properties and duration. `Video.tsx` is the primary container, setting the `#000000` (pure black) background with `AbsoluteFill` and loading the Montserrat font. I'll need `@remotion/google-fonts` to get that working smoothly.\\n\\nThe core of the animation logic resides in `MainSequence.tsx`. This orchestrates three distinct scenes:\\n\\n*   **Scene 1 (0-90 frames):** \\\"Sonos\\\" text fades in, centered, with expanding tracking (letter spacing).\\n*   **Scene 2 (90-210 frames):** The text slides to the left (about a third of the width), and the product image fades in on the right with a Ken Burns zoom (1.0 to 1.08 scale).\\n*   **Scene 3 (210-300 frames):** A red accent line (#EF4444) appears under the text and smoothly expands, and then a final fade to black occurs from frame 270.\\n\\nI'll be using separate components for the animated elements:\\n\\n*   `BrandText.tsx`:  Handles the \\\"Sonos\\\" text animation: the opacity fade-in, the letter spacing growth, and the smooth slide to the left using `spring` for the movement.\\n*   `HeroProduct.tsx`: Manages the product image fade-in and the Ken Burns effect using `interpolate` for the scale.\\n*   `AccentLine.tsx`: Controls the red underline's width expansion.\\n\\nKey animations will be driven by `interpolate` for fades (opacity, scale) and spring for the position transition in BrandText. The design spec dictates Montserrat (Bold, 700), 120px text, the specified red (#EF4444) accent line, a smooth Ken Burns effect, and a defined spring config `{ damping: 25, stiffness: 90 }`. I have the necessary media file already: `staticFile(\\\"media/scene_6__the_hero_object__d0zl1x1.png\\\")`.\\n\\nTo ensure correct positioning, I'll calculate the exact horizontal position for the \\\"Sonos\\\" text based on the requirement to slide to the \\\"left third.\\\" Also, the red line will be positioned relative to the text. The final fade out from 270-300 should be implemented on the root level of the video or the container component that holds all of the elements in the animation.\\n\\nHere's the plan for the animations, refined during thinking:\\n\\n*   **`BrandText.tsx`:**  Frame 0-90: Centered, opacity 0->1, spacing 0->10px; Frame 90-120: Transition to the left, using a spring effect; Frame 120-300: Stays left.\\n*   **`HeroProduct.tsx`:**  Frame 0-90: Hidden (opacity 0); Frame 90-120: Fade in (opacity 0->1), Scale 1.0 -> 1.08; Frame 90-300: Scale 1.0 -> 1.08.\\n*   **`AccentLine.tsx`:** Frame 0-210: Hidden; Frame 210-240: Width expands.\\n\\nI've got the essentials in place – the design, the layout, and the core components. Now I can begin code implementation.\\n\\n\\n\"}"
+            },
+            {
+              "id": "tc_1770672173228_wzgj",
+              "toolCallId": "QzwAWiPqvD02bxL3",
+              "toolName": "render_final",
+              "displayName": "Rendering final video",
+              "status": "done",
+              "args": {
+                "duration": 10
+              },
+              "timestamp": "2026-02-09T21:22:53.228Z",
+              "seq": 40,
+              "output": "{\"success\":true,\"videoUrl\":\"https://pub-a836d08629454caf9059acebd385a714.r2.dev/vid_mlfoihoh_2z9u5n.mp4\",\"thumbnailUrl\":\"\",\"duration\":10,\"resolution\":\"1080p\",\"versionId\":\"v1770672204699\",\"message\":\"Video rendered successfully\"}"
+            }
+          ],
+          "thinkingBlocks": [
+            {
+              "id": "tb_1770672125312",
+              "label": "Analyzing your prompt...",
+              "startedAt": "2026-02-09T21:22:05.312Z",
+              "seq": 34,
+              "reasoning": "**Crafting the Sonos Animation**\n\nI'm currently focused on animating the \"Sonos\" text to fade in smoothly using Remotion. I'm targeting a 10-second duration within a 16:9 aspect ratio. The scene will also include the image `scene_6__the_hero_object__d0zl1x1` as edge media. I'm exploring different easing functions to achieve the optimal visual effect for the fade-in.\n\n\n**Defining the Scene's Details**\n\nI've specified the image - a striking product shot of noise-canceling headphones, and the desired visual style; kinetic typography with a minimal aesthetic, focusing on generous whitespace, a monochrome palette with a red accent, and clean sans-serif fonts. I'm thinking of subtle animations with low-stiffness, high-damping springs for a smooth motion. I'm using black, white, and red for the color palette, and Montserrat for the \"Sonos\" text.\n\n\n**Refining the Scene Plan**\n\nI'm now iterating on the scene breakdown. The initial plan has been simplified to focus on three distinct scenes: an intro with fading \"Sonos\" text, a scene featuring the headphones, and a final brand lockup. I'll need to call `analyze_prompt` to provide feedback on the inferred style. Next step, `generate_plan`.\n\n\n",
+              "endedAt": "2026-02-09T21:22:13.303Z"
+            },
+            {
+              "id": "tb_1770672138045",
+              "label": "Setting up Remotion animation...",
+              "startedAt": "2026-02-09T21:22:18.045Z",
+              "seq": 37,
+              "endedAt": "2026-02-09T21:22:21.117Z"
+            }
+          ],
+          "phase": "complete",
+          "execution": {
+            "todos": [
+              {
+                "id": "setup",
+                "label": "Setup project and media",
+                "status": "done"
+              },
+              {
+                "id": "scene-1",
+                "label": "Create Brand Intro scene",
+                "status": "done"
+              },
+              {
+                "id": "scene-2",
+                "label": "Create Product Reveal scene",
+                "status": "done"
+              },
+              {
+                "id": "scene-3",
+                "label": "Create Final Lockup scene",
+                "status": "done"
+              },
+              {
+                "id": "render",
+                "label": "Render final video",
+                "status": "done"
+              }
+            ],
+            "thinking": "Rendering final video...",
+            "files": []
+          },
+          "updatedAt": "2026-02-09T21:23:44.255Z",
+          "plan": {
+            "scenes": [
+              {
+                "number": 1,
+                "title": "Intro",
+                "duration": 2,
+                "description": "Opening animation"
+              },
+              {
+                "number": 2,
+                "title": "Main",
+                "duration": 3,
+                "description": "Text fading in smoothely and text is (\"Sonos\")"
+              },
+              {
+                "number": 3,
+                "title": "Outro",
+                "duration": 2,
+                "description": "Closing animation"
+              }
+            ],
+            "totalDuration": 7,
+            "style": "smooth",
+            "fps": 30
+          },
+          "planAccepted": true,
+          "planTimestamp": "2026-02-09T21:22:18.051Z",
+          "planSeq": 36,
+          "startedAt": "2026-02-09T21:22:18.045Z",
+          "versions": [
+            {
+              "id": "v1770672204699",
+              "videoUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/vid_mlfoihoh_2z9u5n.mp4?t=1770672206497",
+              "duration": 10,
+              "prompt": "Text fading in smoothely and text is (\"Sonos\")",
+              "createdAt": "2026-02-09T21:23:26.497Z"
+            }
+          ],
+          "activeVersionId": "v1770672204699",
+          "preview": {
+            "videoUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/vid_mlfoihoh_2z9u5n.mp4?t=1770672206497",
+            "duration": 10
+          },
+          "previewTimestamp": "2026-02-09T21:23:26.497Z",
+          "output": {
+            "videoUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/vid_mlfoihoh_2z9u5n.mp4?t=1770672206497",
+            "thumbnailUrl": "",
+            "duration": 10
+          },
+          "completedAt": "2026-02-09T21:23:44.254Z"
+        },
+        "media": [
+          {
+            "id": "edge_xy-edge__node_1770664184073_d0zl1x1output-node_1770672048712_tzy5avlimage-ref-0",
+            "source": "edge",
+            "edgeId": "xy-edge__node_1770664184073_d0zl1x1output-node_1770672048712_tzy5avlimage-ref-0",
+            "sourceNodeId": "node_1770664184073_d0zl1x1",
+            "name": "scene_6__the_hero_object__d0zl1x1.png",
+            "type": "image",
+            "dataUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfk19gp_j67u1s.png",
+            "description": "Studio product shot, premium noise-canceling headphones resting on a dark reflective obsidian surface, rim lighting highlighting the curves and metallic logo, minimalist background, elegant and luxurious, macro details, 8k resolution."
+          }
+        ],
+        "designSpec": {
+          "style": "minimal",
+          "colors": {
+            "primary": "#000000",
+            "secondary": "#FFFFFF",
+            "accent": "#EF4444"
+          },
+          "fonts": {
+            "title": "Montserrat",
+            "body": "Roboto"
+          },
+          "theme": "bold"
+        },
+        "techniques": [
+          "kinetic-typography"
+        ],
+        "prompt": "Text fading in smoothely and text is (\"Sonos\")"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "node_1770664184071_xalhymr",
+      "sourceHandle": "output",
+      "target": "node_1770664184073_fq8zefx",
+      "targetHandle": "reference",
+      "id": "xy-edge__node_1770664184071_xalhymroutput-node_1770664184073_fq8zefxreference"
+    },
+    {
+      "source": "node_1770664184071_6hd0b8s",
+      "sourceHandle": "output",
+      "target": "node_1770664184073_dytrghh",
+      "targetHandle": "reference",
+      "id": "xy-edge__node_1770664184071_6hd0b8soutput-node_1770664184073_dytrghhreference"
+    },
+    {
+      "source": "node_1770664184072_sdsbcd7",
+      "sourceHandle": "output",
+      "target": "node_1770664184073_0k31jnm",
+      "targetHandle": "reference",
+      "id": "xy-edge__node_1770664184072_sdsbcd7output-node_1770664184073_0k31jnmreference"
+    },
+    {
+      "source": "node_1770664184072_f1cfk9n",
+      "sourceHandle": "output",
+      "target": "node_1770664184073_lv7qoxj",
+      "targetHandle": "reference",
+      "id": "xy-edge__node_1770664184072_f1cfk9noutput-node_1770664184073_lv7qoxjreference"
+    },
+    {
+      "source": "node_1770664184072_f01uevk",
+      "sourceHandle": "output",
+      "target": "node_1770664184073_9m3oysv",
+      "targetHandle": "reference",
+      "id": "xy-edge__node_1770664184072_f01uevkoutput-node_1770664184073_9m3oysvreference"
+    },
+    {
+      "source": "node_1770664184073_d0zl1x1",
+      "sourceHandle": "output",
+      "target": "node_1770664184073_8lym716",
+      "targetHandle": "reference",
+      "id": "xy-edge__node_1770664184073_d0zl1x1output-node_1770664184073_8lym716reference"
+    },
+    {
+      "source": "node_1770664184065_pctzs1z",
+      "sourceHandle": "output",
+      "target": "node_1770664184071_6hd0b8s",
+      "targetHandle": "reference",
+      "id": "xy-edge__node_1770664184065_pctzs1zoutput-node_1770664184071_6hd0b8sreference"
+    },
+    {
+      "source": "node_1770664184065_pctzs1z",
+      "sourceHandle": "output",
+      "target": "node_1770664184072_sdsbcd7",
+      "targetHandle": "reference",
+      "id": "xy-edge__node_1770664184065_pctzs1zoutput-node_1770664184072_sdsbcd7reference"
+    },
+    {
+      "source": "node_1770664184065_pctzs1z",
+      "sourceHandle": "output",
+      "target": "node_1770664184072_f1cfk9n",
+      "targetHandle": "reference",
+      "id": "xy-edge__node_1770664184065_pctzs1zoutput-node_1770664184072_f1cfk9nreference"
+    },
+    {
+      "source": "node_1770664184065_pctzs1z",
+      "sourceHandle": "output",
+      "target": "node_1770664184072_f01uevk",
+      "targetHandle": "reference",
+      "id": "xy-edge__node_1770664184065_pctzs1zoutput-node_1770664184072_f01uevkreference"
+    },
+    {
+      "source": "node_1770664184065_pctzs1z",
+      "sourceHandle": "output",
+      "target": "node_1770664184073_d0zl1x1",
+      "targetHandle": "reference",
+      "id": "xy-edge__node_1770664184065_pctzs1zoutput-node_1770664184073_d0zl1x1reference"
+    },
+    {
+      "style": {
+        "stroke": "#6366f1",
+        "strokeWidth": 2
+      },
+      "type": "deletable",
+      "source": "node_1770664184071_xalhymr",
+      "sourceHandle": "output",
+      "target": "node_1770664184071_6hd0b8s",
+      "targetHandle": "reference",
+      "id": "xy-edge__node_1770664184071_xalhymroutput-node_1770664184071_6hd0b8sreference"
+    },
+    {
+      "style": {
+        "stroke": "#6366f1",
+        "strokeWidth": 2
+      },
+      "type": "deletable",
+      "source": "node_1770664184071_6hd0b8s",
+      "sourceHandle": "output",
+      "target": "node_1770664184072_sdsbcd7",
+      "targetHandle": "reference",
+      "id": "xy-edge__node_1770664184071_6hd0b8soutput-node_1770664184072_sdsbcd7reference"
+    },
+    {
+      "style": {
+        "stroke": "#6366f1",
+        "strokeWidth": 2
+      },
+      "type": "deletable",
+      "source": "node_1770664184071_xalhymr",
+      "sourceHandle": "output",
+      "target": "node_1770664184071_6hd0b8s",
+      "targetHandle": "ref2",
+      "id": "xy-edge__node_1770664184071_xalhymroutput-node_1770664184071_6hd0b8sref2"
+    },
+    {
+      "style": {
+        "stroke": "#6366f1",
+        "strokeWidth": 2
+      },
+      "type": "deletable",
+      "source": "node_1770664184071_6hd0b8s",
+      "sourceHandle": "output",
+      "target": "node_1770664184072_sdsbcd7",
+      "targetHandle": "ref2",
+      "id": "xy-edge__node_1770664184071_6hd0b8soutput-node_1770664184072_sdsbcd7ref2"
+    },
+    {
+      "style": {
+        "stroke": "#6366f1",
+        "strokeWidth": 2
+      },
+      "type": "deletable",
+      "source": "node_1770664184072_sdsbcd7",
+      "sourceHandle": "output",
+      "target": "node_1770664184072_f1cfk9n",
+      "targetHandle": "ref2",
+      "id": "xy-edge__node_1770664184072_sdsbcd7output-node_1770664184072_f1cfk9nref2"
+    },
+    {
+      "style": {
+        "stroke": "#6366f1",
+        "strokeWidth": 2
+      },
+      "type": "deletable",
+      "source": "node_1770664184071_xalhymr",
+      "sourceHandle": "output",
+      "target": "node_1770664184072_f01uevk",
+      "targetHandle": "ref2",
+      "id": "xy-edge__node_1770664184071_xalhymroutput-node_1770664184072_f01uevkref2"
+    },
+    {
+      "style": {
+        "stroke": "#6366f1",
+        "strokeWidth": 2
+      },
+      "type": "deletable",
+      "source": "node_1770664184065_pctzs1z",
+      "sourceHandle": "output",
+      "target": "node_1770666413105_giqdfol",
+      "targetHandle": "productImage",
+      "id": "xy-edge__node_1770664184065_pctzs1zoutput-node_1770666413105_giqdfolproductImage"
+    },
+    {
+      "source": "node_1770664184065_pctzs1z",
+      "sourceHandle": "output",
+      "target": "node_1770666463488_rg4f2ly",
+      "targetHandle": "reference",
+      "id": "xy-edge__node_1770664184065_pctzs1zoutput-node_1770666463488_rg4f2lyreference"
+    },
+    {
+      "source": "node_1770664184065_pctzs1z",
+      "sourceHandle": "output",
+      "target": "node_1770666463488_wdaz8nq",
+      "targetHandle": "reference",
+      "id": "xy-edge__node_1770664184065_pctzs1zoutput-node_1770666463488_wdaz8nqreference"
+    },
+    {
+      "source": "node_1770664184065_pctzs1z",
+      "sourceHandle": "output",
+      "target": "node_1770666463489_v6sfir1",
+      "targetHandle": "reference",
+      "id": "xy-edge__node_1770664184065_pctzs1zoutput-node_1770666463489_v6sfir1reference"
+    },
+    {
+      "source": "node_1770664184065_pctzs1z",
+      "sourceHandle": "output",
+      "target": "node_1770666463490_bt9xgjo",
+      "targetHandle": "reference",
+      "id": "xy-edge__node_1770664184065_pctzs1zoutput-node_1770666463490_bt9xgjoreference"
+    },
+    {
+      "style": {
+        "stroke": "#6366f1",
+        "strokeWidth": 2
+      },
+      "type": "deletable",
+      "source": "node_1770664184073_d0zl1x1",
+      "sourceHandle": "output",
+      "target": "node_1770672048712_tzy5avl",
+      "targetHandle": "image-ref-0",
+      "id": "xy-edge__node_1770664184073_d0zl1x1output-node_1770672048712_tzy5avlimage-ref-0"
+    }
+  ]
+}

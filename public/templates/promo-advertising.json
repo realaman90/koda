@@ -1,0 +1,862 @@
+{
+  "id": "promo-advertising",
+  "name": "Promo Advertising",
+  "description": "Din Fika Premium Bakery - cinematic promo storyboard set in Stockholm",
+  "thumbnail": "/templates/promo-advertising.jpg",
+  "category": "showcase",
+  "readOnly": true,
+  "tags": [
+    "featured",
+    "storyboard",
+    "cinematic"
+  ],
+  "nodes": [
+    {
+      "id": "node_1770675072398_x1w8tr9",
+      "type": "storyboard",
+      "position": {
+        "x": 920,
+        "y": -200
+      },
+      "data": {
+        "name": "Storyboard",
+        "product": "Din Fika Premium Fika in sverige",
+        "character": "Young Baker from Sweden in early 30s",
+        "concept": "Inside Din FIka Bageri i Stockholm",
+        "sceneCount": 6,
+        "style": "cinematic",
+        "mode": "single-shot",
+        "viewState": "chat",
+        "chatMessages": [
+          {
+            "id": "msg_1770675371446",
+            "role": "user",
+            "content": "Generate a 6-scene cinematic storyboard for: Din Fika Premium Fika in sverige with character: Young Baker from Sweden in early 30s. Concept: Inside Din FIka Bageri i Stockholm",
+            "timestamp": "2026-02-09T22:16:11.446Z",
+            "seq": 1
+          }
+        ],
+        "thinkingBlocks": [
+          {
+            "id": "thinking_1770675371447",
+            "label": "Generating storyboard",
+            "startedAt": "2026-02-09T22:16:11.447Z",
+            "seq": 2,
+            "reasoning": "**Initiating the Analysis**\n\nI've initiated the analysis phase and identified the key elements. The core focus is \"Din Fika,\" a premium bakery concept in Sweden, specifically through the eyes of a young baker in their early 30s. I'm aiming to capture the essence of \"Inside Din Fika Bageri i Stockholm\" as part of the initial framework.\n\n\n**Defining the Visuals**\n\nI'm now zeroing in on the visual style and structure. The approach will be cinematic with a single-shot mode, necessitating the use of a `motion` field for each of the six scenes. The output will be formatted as a JSON file.\n\n\\n\\n\n\nI'm starting to deconstruct the narrative centered around the \"Fika\" concept, aiming to highlight the Swedish custom of enjoying coffee and pastries, characterized by coziness, warmth, quality, and craftsmanship. I am outlining the scenes, beginning with an establishing shot of the bakery in Stockholm during a cold morning, followed by the baker's process: dough preparation, shaping cinnamon buns, the oven experience, and the pour.\n\n\n**Refining the Narrative**\n\nI'm now iterating on the final scene, \"The Serving/Enjoyment,\" which captures the essence of Fika. It will showcase the baker presenting the cinnamon bun alongside the coffee, aiming for a warm and inviting atmosphere. I'm focusing on \"the pour\" as an essential element of Fika, ensuring the visual details align with the overall concept.\n\n\n**Detailing the Actions**\n\nI'm now detailing scenes three to five. Scene three highlights the hands-on process with the \"Twisting the Kanelbullar\" prompt, employing a macro and cinematic approach. For \"Golden Perfection,\" scene four, the focus is pulling the tray of buns from the oven, emphasizing steam and branding. Finally, in \"The Perfect Pour,\" I am creating the essence of the pour, capturing the rich dark roast, and the ceramic of the cup.\n\n\n",
+            "endedAt": "2026-02-09T22:16:34.270Z"
+          }
+        ],
+        "drafts": [
+          {
+            "id": "draft_1770675394270",
+            "scenes": [
+              {
+                "number": 1,
+                "title": "Stockholm Morning Glow",
+                "description": "An establishing shot of the bakery exterior in Gamla Stan during a crisp Swedish morning.",
+                "prompt": "Exterior wide shot of 'Din Fika' bakery located on a cobblestone street in Stockholm's Gamla Stan, early morning blue hour, warm golden light spilling invitingly from the large glass windows onto the street, rustic wooden signage reading 'Din Fika', cinematic lighting, 8k resolution, photorealistic, architectural photography.",
+                "camera": "Wide shot, low angle",
+                "mood": "Inviting and nostalgic",
+                "motion": "Soft snowflakes fall gently through the frame while the warm light from the bakery windows flickers slightly."
+              },
+              {
+                "number": 2,
+                "title": "The Baker's Craft",
+                "description": "The baker prepares the workspace by dusting flour onto the rustic wooden table.",
+                "prompt": "Young Swedish baker in early 30s with messy blonde hair wearing a textured linen apron, standing inside a cozy bakery, tossing white flour onto a dark rustic wooden table, flour particles suspended in the air catching a shaft of sunlight, cinematic depth of field, sharp focus on hands and flour.",
+                "camera": "Medium shot, eye level",
+                "mood": "Focused and artisanal",
+                "motion": "The baker's hand sweeps across the table in slow motion, sending a cloud of flour dust dancing into the sunlight."
+              },
+              {
+                "number": 3,
+                "title": "Twisting the Kanelbullar",
+                "description": "A detailed focus on the craftsmanship of shaping the traditional cinnamon buns.",
+                "prompt": "Extreme close-up of the baker's hands skillfully twisting buttery dough strips into traditional Swedish cinnamon bun knots, rich textures of dough and cinnamon filling, warm ambient lighting, macro photography, culinary cinematic style, high contrast.",
+                "camera": "Extreme close-up (Macro)",
+                "mood": "Intimate and tactile",
+                "motion": "The hands deftly twist and tie the dough strip into a perfect knot shape, placing it onto a parchment-lined tray."
+              },
+              {
+                "number": 4,
+                "title": "Golden Perfection",
+                "description": "The baker removes a tray of freshly baked buns from the vintage oven.",
+                "prompt": "The young baker holding a baking sheet filled with golden-brown cinnamon buns topped with pearl sugar, steam rising from the pastries, warm orange glow from the open oven in the background, 'Din Fika' logo visible on the apron, cinematic backlighting, appetizing food photography.",
+                "camera": "Medium shot, slightly low angle",
+                "mood": "Warm and triumphant",
+                "motion": "The baker pulls the tray out of the oven and brings it towards the camera, steam billowing upwards from the hot pastries."
+              },
+              {
+                "number": 5,
+                "title": "The Perfect Pour",
+                "description": "Pouring fresh coffee to accompany the pastry, completing the Fika tradition.",
+                "prompt": "Dark roast coffee being poured from a glass carafe into a handmade ceramic cup, steam swirling, a fresh cinnamon bun sitting on a plate in the soft-focus background, rustic wooden surface, cozy atmosphere, morning light, cinematic food videography.",
+                "camera": "Close-up, high angle",
+                "mood": "Cozy and sensory",
+                "motion": "Coffee pours smoothly into the cup, creating a rich crema swirl on top, while steam rises and curls in the light."
+              },
+              {
+                "number": 6,
+                "title": "Ready for Fika",
+                "description": "The baker presents the final serving, inviting the viewer to enjoy.",
+                "prompt": "The young Swedish baker smiling warmly and leaning against the wooden counter, presenting a tray with a steaming cup of coffee and a cinnamon bun, soft window light illuminating his face, blurred bakery interior in background, 'Din Fika' branding, portrait style, cinematic, high quality.",
+                "camera": "Medium close-up, portrait",
+                "mood": "Welcoming and authentic",
+                "motion": "The baker looks up, makes eye contact, and smiles warmly while gesturing slightly with one hand towards the fika spread."
+              }
+            ],
+            "summary": "A cinematic visual journey into the heart of Swedish tradition, capturing the artisanal process of baking cinnamon buns at Din Fika bakery in Stockholm, culminating in a warm, inviting presentation of coffee and pastry.",
+            "createdAt": "2026-02-09T22:16:34.270Z",
+            "seq": 3
+          }
+        ],
+        "chatPhase": "draft-ready",
+        "isGenerating": false
+      }
+    },
+    {
+      "id": "node_1770675091898_vqc00z8",
+      "type": "imageGenerator",
+      "position": {
+        "x": 400,
+        "y": -480
+      },
+      "data": {
+        "prompt": "Swedish cinnamon bun in a Bakey named DIN FIKA",
+        "model": "nanobanana-pro",
+        "aspectRatio": "1:1",
+        "isGenerating": false,
+        "name": "Image Generator 1",
+        "outputUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfq9zcg_xiyckw.png",
+        "outputUrls": [
+          "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfq9zcg_xiyckw.png"
+        ]
+      }
+    },
+    {
+      "id": "node_1770675159910_81o344u",
+      "type": "imageGenerator",
+      "position": {
+        "x": 400,
+        "y": -40
+      },
+      "data": {
+        "prompt": "Swedish Bakery owner Andrea  Bakery Name Din Fika bageri woman in early 30s",
+        "model": "nanobanana-pro",
+        "aspectRatio": "1:1",
+        "isGenerating": false,
+        "name": "Image Generator 2",
+        "outputUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfqd7p9_xzbc0t.png",
+        "outputUrls": [
+          "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfqd7p9_xzbc0t.png"
+        ],
+        "selectedCameraLens": {
+          "id": "portrait",
+          "label": "Portrait 85mm",
+          "preview": "/assets/presets/camera-lens/portrait.svg",
+          "promptModifier": "shot with 85mm portrait lens, flattering facial proportions, creamy bokeh background blur, beautiful subject separation, shallow depth of field"
+        }
+      }
+    },
+    {
+      "id": "node_1770675413210_0smwef4",
+      "type": "imageGenerator",
+      "position": {
+        "x": 1440,
+        "y": -180
+      },
+      "data": {
+        "prompt": "Exterior wide shot of 'Din Fika' bakery located on a cobblestone street in Stockholm's Gamla Stan, early morning blue hour, warm golden light spilling invitingly from the large glass windows onto the street, rustic wooden signage reading 'Din Fika', cinematic lighting, 8k resolution, photorealistic, architectural photography.",
+        "model": "nanobanana-pro",
+        "aspectRatio": "1:1",
+        "isGenerating": false,
+        "name": "Scene 1: Stockholm Morning Glow",
+        "refHandleCount": 2,
+        "outputUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfqh3o8_izwuki.png",
+        "outputUrls": [
+          "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfqh3o8_izwuki.png"
+        ]
+      }
+    },
+    {
+      "id": "node_1770675413210_uuqse58",
+      "type": "imageGenerator",
+      "position": {
+        "x": 2000,
+        "y": -280
+      },
+      "data": {
+        "prompt": "Young Swedish baker in early 30s with wearing a textured linen apron, standing inside a cozy bakery, tossing white flour onto a dark rustic wooden table, flour particles suspended in the air catching a shaft of sunlight, cinematic depth of field, sharp focus on hands and flour.",
+        "model": "nanobanana-pro",
+        "aspectRatio": "1:1",
+        "isGenerating": false,
+        "name": "Scene 2: The Baker's Craft",
+        "refHandleCount": 2,
+        "outputUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfqi68r_j7bwe6.png",
+        "outputUrls": [
+          "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfqi68r_j7bwe6.png"
+        ]
+      }
+    },
+    {
+      "id": "node_1770675413210_k91czwf",
+      "type": "imageGenerator",
+      "position": {
+        "x": 2440,
+        "y": -300
+      },
+      "data": {
+        "prompt": "Extreme close-up of the baker's hands skillfully twisting buttery dough strips into traditional Swedish cinnamon bun knots, rich textures of dough and cinnamon filling, warm ambient lighting, macro photography, culinary cinematic style, high contrast.",
+        "model": "nanobanana-pro",
+        "aspectRatio": "1:1",
+        "isGenerating": false,
+        "name": "Scene 3: Twisting the Kanelbullar",
+        "refHandleCount": 2,
+        "outputUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfqgl77_xigils.png",
+        "outputUrls": [
+          "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfqgl77_xigils.png"
+        ]
+      }
+    },
+    {
+      "id": "node_1770675413211_5ka08jc",
+      "type": "imageGenerator",
+      "position": {
+        "x": 2890,
+        "y": -280
+      },
+      "data": {
+        "prompt": "The young baker holding a baking sheet filled with golden-brown cinnamon buns topped with pearl sugar, steam rising from the pastries, warm orange glow from the open oven in the background, 'Din Fika' logo visible on the apron, cinematic backlighting, appetizing food photography.",
+        "model": "nanobanana-pro",
+        "aspectRatio": "1:1",
+        "isGenerating": false,
+        "name": "Scene 4: Golden Perfection",
+        "refHandleCount": 2,
+        "outputUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfqgw6q_ufpxef.png",
+        "outputUrls": [
+          "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfqgw6q_ufpxef.png"
+        ]
+      }
+    },
+    {
+      "id": "node_1770675413211_a5fghu7",
+      "type": "imageGenerator",
+      "position": {
+        "x": 3340,
+        "y": -280
+      },
+      "data": {
+        "prompt": "Dark roast coffee being poured from a glass carafe into a handmade ceramic cup, steam swirling, a fresh cinnamon bun sitting on a plate in the soft-focus background, rustic wooden surface, cozy atmosphere, morning light, cinematic food videography.",
+        "model": "nanobanana-pro",
+        "aspectRatio": "1:1",
+        "isGenerating": false,
+        "name": "Scene 5: The Perfect Pour",
+        "refHandleCount": 2,
+        "outputUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfqgytm_jhickb.png",
+        "outputUrls": [
+          "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfqgytm_jhickb.png"
+        ]
+      }
+    },
+    {
+      "id": "node_1770675413211_pnze4nr",
+      "type": "imageGenerator",
+      "position": {
+        "x": 3860,
+        "y": -260
+      },
+      "data": {
+        "prompt": "The young Swedish baker smiling warmly and leaning against the wooden counter, presenting a tray with a steaming cup of coffee and a cinnamon bun, soft window light illuminating her face, blurred bakery interior in background, 'Din Fika' branding, portrait style, cinematic, high quality.",
+        "model": "nanobanana-pro",
+        "aspectRatio": "1:1",
+        "isGenerating": false,
+        "name": "Scene 6: Ready for Fika",
+        "refHandleCount": 2,
+        "outputUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfqjqjp_8dftde.png",
+        "outputUrls": [
+          "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfqjqjp_8dftde.png"
+        ]
+      }
+    },
+    {
+      "id": "node_1770675413211_un41r5h",
+      "type": "videoGenerator",
+      "position": {
+        "x": 1480,
+        "y": 180
+      },
+      "data": {
+        "prompt": "Soft snowflakes fall gently through the frame while the warm light from the bakery windows flickers slightly.",
+        "model": "veo-3.1-fast-i2v",
+        "aspectRatio": "16:9",
+        "duration": 8,
+        "resolution": "720p",
+        "generateAudio": true,
+        "isGenerating": false,
+        "name": "Video 1: Stockholm Morning Glow",
+        "progress": 0,
+        "outputUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/vid_mlfqkqgb_woc97r.mp4"
+      }
+    },
+    {
+      "id": "node_1770675413212_l5bs5wd",
+      "type": "videoGenerator",
+      "position": {
+        "x": 1980,
+        "y": 180
+      },
+      "data": {
+        "prompt": "The baker's hand sweeps across the table in slow motion, sending a cloud of flour dust dancing into the sunlight.",
+        "model": "veo-3.1-fast-i2v",
+        "aspectRatio": "16:9",
+        "duration": 8,
+        "resolution": "720p",
+        "generateAudio": true,
+        "isGenerating": false,
+        "name": "Video 2: The Baker's Craft",
+        "progress": 0,
+        "outputUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/vid_mlfqkuxk_hgbp6e.mp4"
+      }
+    },
+    {
+      "id": "node_1770675413212_l1voaq2",
+      "type": "videoGenerator",
+      "position": {
+        "x": 2420,
+        "y": 180
+      },
+      "data": {
+        "prompt": "The hands deftly twist and tie the dough strip into a perfect knot shape, placing it onto a parchment-lined tray.",
+        "model": "veo-3.1-fast-i2v",
+        "aspectRatio": "16:9",
+        "duration": 8,
+        "resolution": "720p",
+        "generateAudio": true,
+        "isGenerating": false,
+        "name": "Video 3: Twisting the Kanelbullar",
+        "progress": 0,
+        "outputUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/vid_mlfqmpux_nc27do.mp4"
+      }
+    },
+    {
+      "id": "node_1770675413212_0zojrxh",
+      "type": "videoGenerator",
+      "position": {
+        "x": 2860,
+        "y": 200
+      },
+      "data": {
+        "prompt": "The baker pulls the tray out of the oven and brings it towards the camera, steam billowing upwards from the hot pastries.",
+        "model": "veo-3.1-fast-i2v",
+        "aspectRatio": "16:9",
+        "duration": 8,
+        "resolution": "720p",
+        "generateAudio": true,
+        "isGenerating": false,
+        "name": "Video 4: Golden Perfection",
+        "progress": 0,
+        "outputUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/vid_mlfqmv5n_f7i91q.mp4"
+      }
+    },
+    {
+      "id": "node_1770675413212_ezqqcj4",
+      "type": "videoGenerator",
+      "position": {
+        "x": 3340,
+        "y": 160
+      },
+      "data": {
+        "prompt": "Coffee pours smoothly into the cup, creating a rich crema swirl on top, while steam rises and curls in the light.",
+        "model": "veo-3.1-fast-i2v",
+        "aspectRatio": "16:9",
+        "duration": 8,
+        "resolution": "720p",
+        "generateAudio": true,
+        "isGenerating": false,
+        "name": "Video 5: The Perfect Pour",
+        "progress": 0,
+        "outputUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/vid_mlfqn1e3_84gc9x.mp4"
+      }
+    },
+    {
+      "id": "node_1770675413212_qe6ju78",
+      "type": "videoGenerator",
+      "position": {
+        "x": 3860,
+        "y": 420
+      },
+      "data": {
+        "prompt": "The baker looks up, makes eye contact, and smiles warmly while gesturing slightly with one hand towards the fika spread.",
+        "model": "veo-3.1-fast-i2v",
+        "aspectRatio": "16:9",
+        "duration": 8,
+        "resolution": "720p",
+        "generateAudio": true,
+        "isGenerating": false,
+        "name": "Video 6: Ready for Fika",
+        "progress": 0,
+        "outputUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/vid_mlfqndng_slrn5x.mp4"
+      }
+    },
+    {
+      "id": "node_1770675740696_yf3rp0t",
+      "type": "pluginNode",
+      "position": {
+        "x": 4420,
+        "y": -100
+      },
+      "data": {
+        "pluginId": "animation-generator",
+        "name": "Animation Generator 1",
+        "state": {
+          "messages": [
+            {
+              "id": "msg_1770675803920",
+              "role": "user",
+              "content": "Calm text raising DIN FIKA Best Bakery in Stockholm",
+              "timestamp": "2026-02-09T22:23:23.920Z",
+              "seq": 1,
+              "media": [
+                {
+                  "id": "edge_xy-edge__node_1770675413211_pnze4nroutput-node_1770675740696_yf3rp0timage-ref-0",
+                  "source": "edge",
+                  "edgeId": "xy-edge__node_1770675413211_pnze4nroutput-node_1770675740696_yf3rp0timage-ref-0",
+                  "sourceNodeId": "node_1770675413211_pnze4nr",
+                  "name": "scene_6__ready_for_fika__pnze4nr.png",
+                  "type": "image",
+                  "dataUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfqjqjp_8dftde.png",
+                  "description": "The young Swedish baker smiling warmly and leaning against the wooden counter, presenting a tray with a steaming cup of coffee and a cinnamon bun, soft window light illuminating her face, blurred bakery interior in background, 'Din Fika' branding, portrait style, cinematic, high quality."
+                }
+              ]
+            },
+            {
+              "id": "msg_1770675813570",
+              "role": "assistant",
+              "content": "On it!",
+              "timestamp": "2026-02-09T22:23:33.570Z",
+              "seq": 5
+            },
+            {
+              "id": "msg_1770675869453",
+              "role": "assistant",
+              "content": "Here's your preview!",
+              "timestamp": "2026-02-09T22:24:29.453Z",
+              "seq": 10
+            }
+          ],
+          "toolCalls": [
+            {
+              "id": "tc_1770675811255_92o1",
+              "toolCallId": "lSWicvJSjtMBSNjD",
+              "toolName": "generate_plan",
+              "displayName": "Planning animation",
+              "status": "done",
+              "args": {
+                "fps": 30,
+                "scenes": [
+                  {
+                    "description": "The bakery scene fades in smoothly while the camera begins a slow zoom.",
+                    "number": 1,
+                    "duration": 1,
+                    "animationNotes": "Background image fades in from black. Subtle scale-up starts.",
+                    "title": "Atmospheric Entry"
+                  },
+                  {
+                    "duration": 1.5,
+                    "animationNotes": "'DIN FIKA' raises from below with a soft spring. The red accent line expands.",
+                    "description": "The main brand name 'DIN FIKA' emerges calmly over the bakery backdrop.",
+                    "title": "Brand Reveal",
+                    "number": 2
+                  },
+                  {
+                    "title": "Context & Hold",
+                    "animationNotes": "Subtitle fades in and raises slightly. Background parallax continues.",
+                    "duration": 1.5,
+                    "description": "The descriptive text 'Best Bakery in Stockholm' appears below the brand name.",
+                    "number": 3
+                  }
+                ],
+                "style": "minimal",
+                "totalDuration": 4,
+                "designSpec": "- Background: Image 'scene_6__ready_for_fika__pnze4nr.png' with a subtle Ken Burns scale (1.0 to 1.05) and a slight vertical parallax shift.\n- Typography: 'DIN FIKA' in Montserrat Bold (96px, #000000), 'Best Bakery in Stockholm' in Roboto Regular (32px, #000000).\n- Layout: Text centered in the lower third, using a white glassmorphism card (backdrop-blur-md, bg-white/80) for legibility against the image.\n- Motion: Text 'raises' calmly using a spring-based translateY (from 100px to 0) with damping: 25, stiffness: 100.\n- Accents: A thin #EF4444 (Accent) horizontal line (2px height) that expands from the center between the title and subtitle.\n- Transitions: 1s fade-in for the background, staggered 0.5s entry for text elements."
+              },
+              "timestamp": "2026-02-09T22:23:31.256Z",
+              "seq": 3,
+              "output": "{\"plan\":{\"scenes\":[{\"number\":1,\"title\":\"Atmospheric Entry\",\"duration\":1,\"description\":\"The bakery scene fades in smoothly while the camera begins a slow zoom.\",\"animationNotes\":\"Background image fades in from black. Subtle scale-up starts.\"},{\"number\":2,\"title\":\"Brand Reveal\",\"duration\":1.5,\"description\":\"The main brand name 'DIN FIKA' emerges calmly over the bakery backdrop.\",\"animationNotes\":\"'DIN FIKA' raises from below with a soft spring. The red accent line expands.\"},{\"number\":3,\"title\":\"Context & Hold\",\"duration\":1.5,\"description\":\"The descriptive text 'Best Bakery in Stockholm' appears below the brand name.\",\"animationNotes\":\"Subtitle fades in and raises slightly. Background parallax continues.\"}],\"totalDuration\":4,\"style\":\"minimal\",\"fps\":30,\"designSpec\":\"- Background: Image 'scene_6__ready_for_fika__pnze4nr.png' with a subtle Ken Burns scale (1.0 to 1.05) and a slight vertical parallax shift.\\n- Typography: 'DIN FIKA' in Montserrat Bold (96px, #000000), 'Best Bakery in Stockholm' in Roboto Regular (32px, #000000).\\n- Layout: Text centered in the lower third, using a white glassmorphism card (backdrop-blur-md, bg-white/80) for legibility against the image.\\n- Motion: Text 'raises' calmly using a spring-based translateY (from 100px to 0) with damping: 25, stiffness: 100.\\n- Accents: A thin #EF4444 (Accent) horizontal line (2px height) that expands from the center between the title and subtitle.\\n- Transitions: 1s fade-in for the background, staggered 0.5s entry for text elements.\"},\"todos\":[{\"id\":\"setup\",\"label\":\"Set up Theatre.js project\",\"status\":\"pending\"},{\"id\":\"scene-1\",\"label\":\"Create Scene 1 (Atmospheric Entry)\",\"status\":\"pending\"},{\"id\":\"scene-2\",\"label\":\"Create Scene 2 (Brand Reveal)\",\"status\":\"pending\"},{\"id\":\"scene-3\",\"label\":\"Create Scene 3 (Context & Hold)\",\"status\":\"pending\"},{\"id\":\"postprocess\",\"label\":\"Add post-processing effects\",\"status\":\"pending\"},{\"id\":\"render\",\"label\":\"Render preview\",\"status\":\"pending\"}]}"
+            },
+            {
+              "id": "tc_1770675822041_tzet",
+              "toolCallId": "X2ZWLzl6Sc8ZWpQe",
+              "toolName": "sandbox_create",
+              "displayName": "Setting up workspace",
+              "status": "done",
+              "args": {
+                "projectId": "din-fika-bakery-minimal",
+                "template": "remotion"
+              },
+              "timestamp": "2026-02-09T22:23:42.041Z",
+              "seq": 7,
+              "output": "{\"success\":true,\"sandboxId\":\"koda-sandbox-din-fika-bakery-minimal-n2ew5c4y\",\"status\":\"ready\",\"previewUrl\":\"/api/plugins/animation/sandbox/koda-sandbox-din-fika-bakery-minimal-n2ew5c4y/proxy\",\"template\":\"remotion\",\"message\":\"Sandbox created with remotion template: koda-sandbox-din-fika-bakery-minimal-n2ew5c4y. Media auto-uploaded: public/media/scene_6__ready_for_fika__pnze4nr.png\"}"
+            },
+            {
+              "id": "tc_1770675826648_tevg",
+              "toolCallId": "Yn1K4ANJyQbtaq6D",
+              "toolName": "generate_remotion_code",
+              "displayName": "generate_remotion_code",
+              "status": "done",
+              "args": {
+                "style": "minimal",
+                "description": "Create a minimal bakery animation with a Ken Burns background and calm raising text.",
+                "task": "initial_setup",
+                "mediaFiles": [
+                  {
+                    "description": "Swedish baker with coffee and cinnamon bun",
+                    "path": "public/media/scene_6__ready_for_fika__pnze4nr.png",
+                    "type": "image"
+                  }
+                ],
+                "plan": {
+                  "scenes": [
+                    {
+                      "end": 1,
+                      "title": "Atmospheric Entry",
+                      "start": 0,
+                      "description": "The bakery scene fades in smoothly while the camera begins a slow zoom."
+                    },
+                    {
+                      "end": 2.5,
+                      "title": "Brand Reveal",
+                      "start": 1,
+                      "description": "The main brand name 'DIN FIKA' emerges calmly over the bakery backdrop."
+                    },
+                    {
+                      "description": "The descriptive text 'Best Bakery in Stockholm' appears below the brand name.",
+                      "start": 2.5,
+                      "title": "Context & Hold",
+                      "end": 4
+                    }
+                  ],
+                  "duration": 4,
+                  "fps": 30
+                },
+                "designSpec": "- Background: Image 'scene_6__ready_for_fika__pnze4nr.png' with a subtle Ken Burns scale (1.0 to 1.05) and a slight vertical parallax shift.\n- Typography: 'DIN FIKA' in Montserrat Bold (96px, #000000), 'Best Bakery in Stockholm' in Roboto Regular (32px, #000000).\n- Layout: Text centered in the lower third, using a white glassmorphism card (backdrop-blur-md, bg-white/80) for legibility against the image.\n- Motion: Text 'raises' calmly using a spring-based translateY (from 100px to 0) with damping: 25, stiffness: 100.\n- Accents: A thin #EF4444 (Accent) horizontal line (2px height) that expands from the center between the title and subtitle.\n- Transitions: 1s fade-in for the background, staggered 0.5s entry for text elements.",
+                "techniques": [
+                  "parallax-scrolling"
+                ]
+              },
+              "timestamp": "2026-02-09T22:23:46.648Z",
+              "seq": 8,
+              "output": "{\"files\":[{\"path\":\"src/Root.tsx\",\"size\":322},{\"path\":\"src/Video.tsx\",\"size\":255},{\"path\":\"src/sequences/MainSequence.tsx\",\"size\":586},{\"path\":\"src/components/BakeryBackground.tsx\",\"size\":958},{\"path\":\"src/components/BrandCard.tsx\",\"size\":2867}],\"summary\":\"Premium bakery intro featuring a Ken Burns background effect, glassmorphism lower-third card, and staggered spring-animated typography using Montserrat and Roboto fonts.\",\"writtenToSandbox\":true,\"reasoning\":\"**Remotion Project: Initial Setup Deep Dive**\\n\\nOkay, so I'm diving into this `initial_setup` task for the Remotion project. The design spec is pretty clear, but let's break it down in terms of implementation. I've got this `scene_6__ready_for_fika__pnze4nr.png` image for the background – a Ken Burns effect with parallax is the plan, with that zoom starting at 1.0 and going to 1.05. Vertically, I will shift the image, maybe -20px to 20px, to achieve this.\\n\\nFor typography, we're using 'DIN FIKA' in Montserrat Bold, 96px, and #000000, and then 'Best Bakery in Stockholm' in Roboto Regular, 32px, and #000000. These will sit in a lower third, a glassmorphism card that's using `backdrop-blur-md` and `bg-white/80` properties (I will refine these values if needed). The whole card content will use a spring-based translateY animation from 100px to 0, with damping 25 and stiffness 100 as the spec indicates. Then, we need a #EF4444 horizontal line, 2px high, and expanding from the center.\\n\\nI will implement the scenes as:\\n1.  Atmospheric Entry (0-30 frames): Background fade + zoom\\n2.  Brand Reveal (30-75 frames): 'DIN FIKA' emerges\\n3.  Context & Hold (75-120 frames): 'Best Bakery in Stockholm' appears\\n\\nThe media asset is already defined: `staticFile(\\\"media/scene_6__ready_for_fika__pnze4nr.png\\\")`. Also, I need to load the fonts – Montserrat (Bold) and Roboto (Regular). The duration is 120 frames at 30fps.\\n\\nNow for the file structure. I'll need `src/Root.tsx`, `src/Video.tsx`, `src/sequences/MainSequence.tsx`, `src/components/BakeryBackground.tsx`, and `src/components/BrandCard.tsx`.\\n\\n*   `Root.tsx`: 1920x1080 at 30fps and render the Video component\\n*   `Video.tsx`: I need to set the background color to white/neutral and render the main sequence.\\n*   `BakeryBackground.tsx`: I'm looking at using `Img` with `staticFile`, and the `interpolate` function for both scale (1.0 to 1.05) and translateY (the parallax effect). I will fade in for the first 30 frames.\\n*   `BrandCard.tsx`: An `AbsoluteFill` container to position the card to the bottom. The card itself gets `backdropFilter: 'blur(12px)'` and `backgroundColor: 'rgba(255, 255, 255, 0.8)'`. Inside, I have the 'DIN FIKA', Montserrat Bold, 96px, then the horizontal line (#EF4444, 2px, animated width), and then 'Best Bakery in Stockholm', Roboto Regular, 32px. I'm going to apply the translateY spring effect to the content of the card.\\n\\nI will load the fonts from `@remotion/google-fonts/Montserrat` and `@remotion/google-fonts/Roboto`.\\n\\nNow, the animation logic:\\n\\n*   Ken Burns: `scale: interpolate(frame, [0, 120], [1, 1.05])`.\\n*   Parallax: `translateY: interpolate(frame, [0, 120], [0, -30])`.\\n*   Spring: `spring({ frame: frame - delay, fps, config: { damping: 25, stiffness: 100 } })`.\\n*   Line expansion: `interpolate(frame - delay, [0, 20], [0, 400], { extrapolateRight: 'clamp' })`.\\n\\nI'll be using `useCurrentFrame`, `useVideoConfig`, `interpolate`, `spring`, and `Sequence` as necessary.\\n\\nI see that the \\\"Scenes to Implement\\\" section defines the following frame ranges for each scene:\\n*   Scene: \\\"Brand Reveal\\\" (frames 30–75)\\n*   Scene: \\\"Context & Hold\\\" (frames 75–120)\\n\\nI will use these specific frame ranges to determine the triggers.\\n\\nI plan to refine the sequence timing based on the spec:\\n*   0-30\\n\\n\"}"
+            },
+            {
+              "id": "tc_1770675853810_geog",
+              "toolCallId": "rLTH1dThxtsKmHeV",
+              "toolName": "render_final",
+              "displayName": "Rendering final video",
+              "status": "done",
+              "args": {
+                "duration": 4
+              },
+              "timestamp": "2026-02-09T22:24:13.810Z",
+              "seq": 9,
+              "output": "{\"success\":true,\"videoUrl\":\"https://pub-a836d08629454caf9059acebd385a714.r2.dev/vid_mlfqoyma_ej2j88.mp4\",\"thumbnailUrl\":\"\",\"duration\":4,\"resolution\":\"1080p\",\"versionId\":\"v1770675866040\",\"message\":\"Video rendered successfully\"}"
+            }
+          ],
+          "thinkingBlocks": [
+            {
+              "id": "tb_1770675803921",
+              "label": "Analyzing your prompt...",
+              "startedAt": "2026-02-09T22:23:23.921Z",
+              "seq": 2,
+              "reasoning": "**Crafting the Animation Brief**\n\nI'm now focusing on the initial animation request. Specifically, I'm working on the essential information to be included: A 4-second Remotion animation, 9:16 aspect ratio, and the text \"DIN FIKA Best Bakery in Stockholm\". I'm also ensuring the design aligns with the specified \"Minimal\" style and a \"Bold\" color scheme (#000000, #FFFFFF, #EF4444). I've noted the preferred font for the title: Montserrat.\n\n\n",
+              "endedAt": "2026-02-09T22:23:31.254Z"
+            },
+            {
+              "id": "tb_1770675819537",
+              "label": "Setting up Remotion animation...",
+              "startedAt": "2026-02-09T22:23:39.537Z",
+              "seq": 6,
+              "endedAt": "2026-02-09T22:23:41.836Z"
+            }
+          ],
+          "phase": "preview",
+          "execution": {
+            "todos": [
+              {
+                "id": "setup",
+                "label": "Setup project environment",
+                "status": "done"
+              },
+              {
+                "id": "scene-1",
+                "label": "Create Atmospheric Entry scene",
+                "status": "done"
+              },
+              {
+                "id": "scene-2",
+                "label": "Animate Brand Reveal scene",
+                "status": "done"
+              },
+              {
+                "id": "scene-3",
+                "label": "Add Context & Hold scene",
+                "status": "done"
+              },
+              {
+                "id": "render",
+                "label": "Render final video",
+                "status": "done"
+              }
+            ],
+            "thinking": "Rendering final video...",
+            "files": []
+          },
+          "updatedAt": "2026-02-09T22:24:29.453Z",
+          "plan": {
+            "scenes": [
+              {
+                "number": 1,
+                "title": "Atmospheric Entry",
+                "duration": 1,
+                "description": "The bakery scene fades in smoothly while the camera begins a slow zoom.",
+                "animationNotes": "Background image fades in from black. Subtle scale-up starts."
+              },
+              {
+                "number": 2,
+                "title": "Brand Reveal",
+                "duration": 1.5,
+                "description": "The main brand name 'DIN FIKA' emerges calmly over the bakery backdrop.",
+                "animationNotes": "'DIN FIKA' raises from below with a soft spring. The red accent line expands."
+              },
+              {
+                "number": 3,
+                "title": "Context & Hold",
+                "duration": 1.5,
+                "description": "The descriptive text 'Best Bakery in Stockholm' appears below the brand name.",
+                "animationNotes": "Subtitle fades in and raises slightly. Background parallax continues."
+              }
+            ],
+            "totalDuration": 4,
+            "style": "minimal",
+            "fps": 30,
+            "designSpec": "- Background: Image 'scene_6__ready_for_fika__pnze4nr.png' with a subtle Ken Burns scale (1.0 to 1.05) and a slight vertical parallax shift.\n- Typography: 'DIN FIKA' in Montserrat Bold (96px, #000000), 'Best Bakery in Stockholm' in Roboto Regular (32px, #000000).\n- Layout: Text centered in the lower third, using a white glassmorphism card (backdrop-blur-md, bg-white/80) for legibility against the image.\n- Motion: Text 'raises' calmly using a spring-based translateY (from 100px to 0) with damping: 25, stiffness: 100.\n- Accents: A thin #EF4444 (Accent) horizontal line (2px height) that expands from the center between the title and subtitle.\n- Transitions: 1s fade-in for the background, staggered 0.5s entry for text elements."
+          },
+          "planAccepted": true,
+          "planTimestamp": "2026-02-09T22:23:31.904Z",
+          "planSeq": 4,
+          "startedAt": "2026-02-09T22:23:39.537Z",
+          "versions": [
+            {
+              "id": "v1770675866040",
+              "videoUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/vid_mlfqoyma_ej2j88.mp4?t=1770675867426",
+              "duration": 4,
+              "prompt": "Calm text raising DIN FIKA Best Bakery in Stockholm",
+              "createdAt": "2026-02-09T22:24:27.426Z"
+            }
+          ],
+          "activeVersionId": "v1770675866040",
+          "preview": {
+            "videoUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/vid_mlfqoyma_ej2j88.mp4?t=1770675867426",
+            "duration": 4
+          },
+          "previewTimestamp": "2026-02-09T22:24:27.426Z"
+        },
+        "media": [
+          {
+            "id": "edge_xy-edge__node_1770675413211_pnze4nroutput-node_1770675740696_yf3rp0timage-ref-0",
+            "source": "edge",
+            "edgeId": "xy-edge__node_1770675413211_pnze4nroutput-node_1770675740696_yf3rp0timage-ref-0",
+            "sourceNodeId": "node_1770675413211_pnze4nr",
+            "name": "scene_6__ready_for_fika__pnze4nr.png",
+            "type": "image",
+            "dataUrl": "https://pub-a836d08629454caf9059acebd385a714.r2.dev/img_mlfqjqjp_8dftde.png",
+            "description": "The young Swedish baker smiling warmly and leaning against the wooden counter, presenting a tray with a steaming cup of coffee and a cinnamon bun, soft window light illuminating her face, blurred bakery interior in background, 'Din Fika' branding, portrait style, cinematic, high quality."
+          }
+        ],
+        "techniques": [
+          "parallax-scrolling"
+        ],
+        "designSpec": {
+          "style": "minimal",
+          "colors": {
+            "primary": "#000000",
+            "secondary": "#FFFFFF",
+            "accent": "#EF4444"
+          },
+          "fonts": {
+            "title": "Montserrat",
+            "body": "Roboto"
+          },
+          "theme": "bold"
+        },
+        "aspectRatio": "9:16",
+        "duration": 4,
+        "prompt": "Calm text raising DIN FIKA Best Bakery in Stockholm"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "style": {
+        "stroke": "#6366f1",
+        "strokeWidth": 2
+      },
+      "type": "deletable",
+      "source": "node_1770675091898_vqc00z8",
+      "sourceHandle": "output",
+      "target": "node_1770675072398_x1w8tr9",
+      "targetHandle": "productImage",
+      "id": "xy-edge__node_1770675091898_vqc00z8output-node_1770675072398_x1w8tr9productImage"
+    },
+    {
+      "style": {
+        "stroke": "#6366f1",
+        "strokeWidth": 2
+      },
+      "type": "deletable",
+      "source": "node_1770675159910_81o344u",
+      "sourceHandle": "output",
+      "target": "node_1770675072398_x1w8tr9",
+      "targetHandle": "characterImage",
+      "id": "xy-edge__node_1770675159910_81o344uoutput-node_1770675072398_x1w8tr9characterImage"
+    },
+    {
+      "source": "node_1770675413210_0smwef4",
+      "sourceHandle": "output",
+      "target": "node_1770675413211_un41r5h",
+      "targetHandle": "reference",
+      "id": "xy-edge__node_1770675413210_0smwef4output-node_1770675413211_un41r5hreference"
+    },
+    {
+      "source": "node_1770675413210_uuqse58",
+      "sourceHandle": "output",
+      "target": "node_1770675413212_l5bs5wd",
+      "targetHandle": "reference",
+      "id": "xy-edge__node_1770675413210_uuqse58output-node_1770675413212_l5bs5wdreference"
+    },
+    {
+      "source": "node_1770675413210_k91czwf",
+      "sourceHandle": "output",
+      "target": "node_1770675413212_l1voaq2",
+      "targetHandle": "reference",
+      "id": "xy-edge__node_1770675413210_k91czwfoutput-node_1770675413212_l1voaq2reference"
+    },
+    {
+      "source": "node_1770675413211_5ka08jc",
+      "sourceHandle": "output",
+      "target": "node_1770675413212_0zojrxh",
+      "targetHandle": "reference",
+      "id": "xy-edge__node_1770675413211_5ka08jcoutput-node_1770675413212_0zojrxhreference"
+    },
+    {
+      "source": "node_1770675413211_a5fghu7",
+      "sourceHandle": "output",
+      "target": "node_1770675413212_ezqqcj4",
+      "targetHandle": "reference",
+      "id": "xy-edge__node_1770675413211_a5fghu7output-node_1770675413212_ezqqcj4reference"
+    },
+    {
+      "source": "node_1770675413211_pnze4nr",
+      "sourceHandle": "output",
+      "target": "node_1770675413212_qe6ju78",
+      "targetHandle": "reference",
+      "id": "xy-edge__node_1770675413211_pnze4nroutput-node_1770675413212_qe6ju78reference"
+    },
+    {
+      "source": "node_1770675091898_vqc00z8",
+      "sourceHandle": "output",
+      "target": "node_1770675413210_0smwef4",
+      "targetHandle": "reference",
+      "id": "xy-edge__node_1770675091898_vqc00z8output-node_1770675413210_0smwef4reference"
+    },
+    {
+      "source": "node_1770675159910_81o344u",
+      "sourceHandle": "output",
+      "target": "node_1770675413210_0smwef4",
+      "targetHandle": "ref2",
+      "id": "xy-edge__node_1770675159910_81o344uoutput-node_1770675413210_0smwef4ref2"
+    },
+    {
+      "source": "node_1770675091898_vqc00z8",
+      "sourceHandle": "output",
+      "target": "node_1770675413210_uuqse58",
+      "targetHandle": "reference",
+      "id": "xy-edge__node_1770675091898_vqc00z8output-node_1770675413210_uuqse58reference"
+    },
+    {
+      "source": "node_1770675159910_81o344u",
+      "sourceHandle": "output",
+      "target": "node_1770675413210_uuqse58",
+      "targetHandle": "ref2",
+      "id": "xy-edge__node_1770675159910_81o344uoutput-node_1770675413210_uuqse58ref2"
+    },
+    {
+      "source": "node_1770675091898_vqc00z8",
+      "sourceHandle": "output",
+      "target": "node_1770675413210_k91czwf",
+      "targetHandle": "reference",
+      "id": "xy-edge__node_1770675091898_vqc00z8output-node_1770675413210_k91czwfreference"
+    },
+    {
+      "source": "node_1770675159910_81o344u",
+      "sourceHandle": "output",
+      "target": "node_1770675413210_k91czwf",
+      "targetHandle": "ref2",
+      "id": "xy-edge__node_1770675159910_81o344uoutput-node_1770675413210_k91czwfref2"
+    },
+    {
+      "source": "node_1770675091898_vqc00z8",
+      "sourceHandle": "output",
+      "target": "node_1770675413211_5ka08jc",
+      "targetHandle": "reference",
+      "id": "xy-edge__node_1770675091898_vqc00z8output-node_1770675413211_5ka08jcreference"
+    },
+    {
+      "source": "node_1770675159910_81o344u",
+      "sourceHandle": "output",
+      "target": "node_1770675413211_5ka08jc",
+      "targetHandle": "ref2",
+      "id": "xy-edge__node_1770675159910_81o344uoutput-node_1770675413211_5ka08jcref2"
+    },
+    {
+      "source": "node_1770675091898_vqc00z8",
+      "sourceHandle": "output",
+      "target": "node_1770675413211_a5fghu7",
+      "targetHandle": "reference",
+      "id": "xy-edge__node_1770675091898_vqc00z8output-node_1770675413211_a5fghu7reference"
+    },
+    {
+      "source": "node_1770675159910_81o344u",
+      "sourceHandle": "output",
+      "target": "node_1770675413211_a5fghu7",
+      "targetHandle": "ref2",
+      "id": "xy-edge__node_1770675159910_81o344uoutput-node_1770675413211_a5fghu7ref2"
+    },
+    {
+      "source": "node_1770675091898_vqc00z8",
+      "sourceHandle": "output",
+      "target": "node_1770675413211_pnze4nr",
+      "targetHandle": "reference",
+      "id": "xy-edge__node_1770675091898_vqc00z8output-node_1770675413211_pnze4nrreference"
+    },
+    {
+      "source": "node_1770675159910_81o344u",
+      "sourceHandle": "output",
+      "target": "node_1770675413211_pnze4nr",
+      "targetHandle": "ref2",
+      "id": "xy-edge__node_1770675159910_81o344uoutput-node_1770675413211_pnze4nrref2"
+    },
+    {
+      "style": {
+        "stroke": "#6366f1",
+        "strokeWidth": 2
+      },
+      "type": "deletable",
+      "source": "node_1770675413211_pnze4nr",
+      "sourceHandle": "output",
+      "target": "node_1770675740696_yf3rp0t",
+      "targetHandle": "image-ref-0",
+      "id": "xy-edge__node_1770675413211_pnze4nroutput-node_1770675740696_yf3rp0timage-ref-0"
+    }
+  ]
+}
