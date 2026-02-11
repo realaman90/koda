@@ -24,7 +24,8 @@ interface StreamRequestBody {
       id: string;
       source: 'upload' | 'youtube';
       name: string;
-      dataUrl: string;
+      dataUrl: string; // data: URL, http(s) URL (from presigned upload), or blob URL
+      remoteUrl?: string; // R2/S3 URL from presigned upload
       youtubeUrl?: string;
       mimeType?: string;
       duration?: number;
@@ -96,12 +97,27 @@ The video data is available. Use the analyze_video_motion tool with the video da
         });
       } else if (dataUrl.startsWith('http')) {
         requestContext.set('videoUrl' as never, dataUrl as never);
+        requestContext.set('videoMimeType' as never, (context.video.mimeType || 'video/mp4') as never);
         requestContext.set('videoName' as never, context.video.name as never);
+
+        if (context.video.trimStart !== undefined) {
+          requestContext.set('trimStart' as never, context.video.trimStart as never);
+        }
+        if (context.video.trimEnd !== undefined) {
+          requestContext.set('trimEnd' as never, context.video.trimEnd as never);
+        }
+
+        const hasTrim = context.video.trimStart !== undefined && context.video.trimEnd !== undefined;
+        const trimInfo = hasTrim
+          ? `\nIMPORTANT: The user selected a trim range of ${context.video.trimStart}s to ${context.video.trimEnd}s (${(context.video.trimEnd! - context.video.trimStart!).toFixed(1)}s segment). Focus your analysis ONLY on this time window.`
+          : '';
+
+        console.log(`[Motion Analyzer API] Video URL: ${context.video.name} → ${dataUrl.slice(0, 80)}${hasTrim ? ` [trim: ${context.video.trimStart}s-${context.video.trimEnd}s]` : ''}`);
 
         agentMessages.unshift({
           role: 'system',
-          content: `[VIDEO URL: "${context.video.name}" at ${dataUrl}]
-Use the analyze_video_motion tool with this URL to perform motion analysis.`,
+          content: `[VIDEO URL: "${context.video.name}" (${context.video.mimeType || 'video/mp4'}${context.video.duration ? `, ${context.video.duration}s total` : ''})]
+The video is available at a URL. Use the analyze_video_motion tool with videoUrl to perform motion analysis.${trimInfo}`,
         });
       }
     }

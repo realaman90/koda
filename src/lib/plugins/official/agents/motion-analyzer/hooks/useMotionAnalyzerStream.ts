@@ -84,24 +84,35 @@ export function useMotionAnalyzerStream(): UseMotionAnalyzerStreamReturn {
       let fullText = '';
 
       try {
-        // Convert blob: URLs to data: URLs for the video
+        // If video has a remoteUrl (presigned upload to R2), send that instead of the data URL.
+        // This keeps the request body tiny and avoids the Vercel 4.5MB limit.
+        // Fall back to data URL conversion for local dev (no R2).
         let processedContext = context;
-        if (context?.video?.dataUrl?.startsWith('blob:')) {
-          try {
-            const response = await fetch(context.video.dataUrl);
-            const blob = await response.blob();
-            const dataUrl = await new Promise<string>((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onloadend = () => resolve(reader.result as string);
-              reader.onerror = () => reject(reader.error);
-              reader.readAsDataURL(blob);
-            });
+        if (context?.video) {
+          if (context.video.remoteUrl) {
+            // Remote URL available — strip the heavy dataUrl from the request
             processedContext = {
               ...context,
-              video: { ...context.video, dataUrl },
+              video: { ...context.video, dataUrl: context.video.remoteUrl },
             };
-          } catch (err) {
-            console.warn('[useMotionAnalyzerStream] Failed to convert blob: URL:', err);
+          } else if (context.video.dataUrl?.startsWith('blob:')) {
+            // No remote URL — convert blob to data URL (local dev fallback)
+            try {
+              const response = await fetch(context.video.dataUrl);
+              const blob = await response.blob();
+              const dataUrl = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.onerror = () => reject(reader.error);
+                reader.readAsDataURL(blob);
+              });
+              processedContext = {
+                ...context,
+                video: { ...context.video, dataUrl },
+              };
+            } catch (err) {
+              console.warn('[useMotionAnalyzerStream] Failed to convert blob: URL:', err);
+            }
           }
         }
 

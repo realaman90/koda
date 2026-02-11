@@ -40,6 +40,7 @@ import type {
 } from './types';
 import { TOOL_DISPLAY_NAMES } from './events';
 import { useMotionAnalyzerStream } from './hooks';
+import { uploadVideoViaPresigned } from '@/lib/assets/upload';
 
 // ─── Constants ──────────────────────────────────────────────────────────
 const MAX_VIDEO_SIZE_MB = 50;
@@ -507,6 +508,9 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
 
   // ── Video upload ──────────────────────────
 
+  // Track presigned upload state
+  const [isUploading, setIsUploading] = useState(false);
+
   const handleVideoUpload = useCallback(async (file: File) => {
     if (file.size > MAX_VIDEO_SIZE_MB * 1024 * 1024) {
       updateState({
@@ -516,41 +520,56 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
+    // Create a blob URL for instant local preview (doesn't bloat memory like data URL)
+    const blobUrl = URL.createObjectURL(file);
 
+    // Get video metadata
+    const duration = await new Promise<number | undefined>((resolve) => {
       const videoEl = document.createElement('video');
       videoEl.preload = 'metadata';
       videoEl.onloadedmetadata = () => {
-        const duration = videoEl.duration;
-        const needsTrim = duration > MAX_ANALYSIS_DURATION;
-
-        const video: VideoInput = {
-          id: `vid_${Date.now()}`,
-          source: 'upload',
-          name: file.name,
-          dataUrl,
-          mimeType: file.type || 'video/mp4',
-          duration,
-          ...(needsTrim ? { trimStart: 0, trimEnd: MAX_ANALYSIS_DURATION } : {}),
-        };
-        updateNodeData(id, { video });
+        resolve(videoEl.duration);
         URL.revokeObjectURL(videoEl.src);
       };
-      videoEl.onerror = () => {
-        const video: VideoInput = {
-          id: `vid_${Date.now()}`,
-          source: 'upload',
-          name: file.name,
-          dataUrl,
-          mimeType: file.type || 'video/mp4',
-        };
-        updateNodeData(id, { video });
-      };
-      videoEl.src = URL.createObjectURL(file);
+      videoEl.onerror = () => resolve(undefined);
+      videoEl.src = blobUrl;
+    });
+
+    const needsTrim = duration !== undefined && duration > MAX_ANALYSIS_DURATION;
+
+    // Set video immediately with blob URL for preview
+    const video: VideoInput = {
+      id: `vid_${Date.now()}`,
+      source: 'upload',
+      name: file.name,
+      dataUrl: blobUrl,
+      mimeType: file.type || 'video/mp4',
+      duration,
+      ...(needsTrim ? { trimStart: 0, trimEnd: MAX_ANALYSIS_DURATION } : {}),
     };
-    reader.readAsDataURL(file);
+    updateNodeData(id, { video });
+
+    // Attempt presigned upload to R2 in background (non-blocking)
+    setIsUploading(true);
+    try {
+      const result = await uploadVideoViaPresigned(file);
+      if (result) {
+        // Update the video with the remote URL
+        const freshNode = useCanvasStore.getState().nodes.find(n => n.id === id);
+        const freshVideo = (freshNode?.data as unknown as MotionAnalyzerNodeData)?.video;
+        if (freshVideo) {
+          updateNodeData(id, { video: { ...freshVideo, remoteUrl: result.url } });
+        }
+        console.log('[MotionAnalyzerNode] Video uploaded to R2:', result.url);
+      } else {
+        // No R2 configured — will fall back to data URL at send time
+        console.log('[MotionAnalyzerNode] Presigned upload unavailable, will use data URL fallback');
+      }
+    } catch (err) {
+      console.warn('[MotionAnalyzerNode] Presigned upload failed, will use data URL fallback:', err);
+    } finally {
+      setIsUploading(false);
+    }
   }, [id, updateNodeData, updateState]);
 
   const handleRemoveVideo = useCallback(() => {
@@ -899,8 +918,12 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
             >
               <X className="w-3 h-3" />
             </button>
-            <div className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/60 text-[9px] text-zinc-300">
+            <div className="absolute bottom-1.5 left-1.5 flex items-center gap-1.5 px-1.5 py-0.5 rounded bg-black/60 text-[9px] text-zinc-300">
+              {isUploading && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
               {nodeData.video!.name}
+              {nodeData.video!.remoteUrl && !isUploading && (
+                <span className="text-[#4ADE80]" title="Uploaded to cloud">&#x2713;</span>
+              )}
             </div>
           </div>
         </div>

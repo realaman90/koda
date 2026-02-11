@@ -79,6 +79,83 @@ export function uriEncode(str: string, encodeSlash = true): string {
   }).join('');
 }
 
+/**
+ * Generate a presigned PUT URL for direct browser uploads.
+ * Uses query-string based AWS Sig V4 (no auth headers needed by the client).
+ * The browser can PUT the file body directly to this URL.
+ */
+export async function generatePresignedPutUrl(
+  config: S3Config,
+  key: string,
+  contentType: string,
+  expiresIn = 3600
+): Promise<string> {
+  const service = 's3';
+  const region = config.region;
+
+  let host: string;
+  if (config.endpoint) {
+    const url = new URL(config.endpoint);
+    host = url.host;
+  } else {
+    host = `${config.bucket}.s3.${region}.amazonaws.com`;
+  }
+
+  const encodedKey = uriEncode(key, false);
+
+  const endpoint = config.endpoint
+    ? `${config.endpoint}/${config.bucket}/${encodedKey}`
+    : `https://${host}/${encodedKey}`;
+
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
+  const dateStamp = amzDate.slice(0, 8);
+  const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
+  const credential = `${config.accessKeyId}/${credentialScope}`;
+
+  // Query parameters for presigned URL (alphabetical order for canonical)
+  const queryParams: Record<string, string> = {
+    'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
+    'X-Amz-Credential': credential,
+    'X-Amz-Date': amzDate,
+    'X-Amz-Expires': String(expiresIn),
+    'X-Amz-SignedHeaders': 'content-type;host',
+  };
+
+  const canonicalQueryString = Object.keys(queryParams)
+    .sort()
+    .map(k => `${uriEncode(k)}=${uriEncode(queryParams[k])}`)
+    .join('&');
+
+  const canonicalHeaders = `content-type:${contentType}\nhost:${config.endpoint ? new URL(config.endpoint).host : host}\n`;
+  const signedHeaders = 'content-type;host';
+
+  const canonicalUri = config.endpoint
+    ? `/${config.bucket}/${encodedKey}`
+    : `/${encodedKey}`;
+
+  const canonicalRequest = [
+    'PUT',
+    canonicalUri,
+    canonicalQueryString,
+    canonicalHeaders,
+    signedHeaders,
+    'UNSIGNED-PAYLOAD',
+  ].join('\n');
+
+  const stringToSign = [
+    'AWS4-HMAC-SHA256',
+    amzDate,
+    credentialScope,
+    toHex(await sha256(canonicalRequest)),
+  ].join('\n');
+
+  const signingKey = await getSignatureKey(config.secretAccessKey, dateStamp, region, service);
+  const signature = toHex(await hmac(signingKey, stringToSign));
+
+  return `${endpoint}?${canonicalQueryString}&X-Amz-Signature=${signature}`;
+}
+
 export async function signRequest(
   config: S3Config,
   method: string,

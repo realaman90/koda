@@ -138,12 +138,13 @@ Returns a comprehensive analysis with:
     const ctx = context as { requestContext?: { get: (key: string) => unknown } };
     const rcBase64 = ctx?.requestContext?.get('videoBase64') as string | undefined;
     const rcMimeType = ctx?.requestContext?.get('videoMimeType') as string | undefined;
+    const rcVideoUrl = ctx?.requestContext?.get('videoUrl') as string | undefined;
     const rcTrimStart = ctx?.requestContext?.get('trimStart') as number | undefined;
     const rcTrimEnd = ctx?.requestContext?.get('trimEnd') as number | undefined;
 
     const videoBase64 = rcBase64 || input.videoBase64;
     const mimeType = rcMimeType || input.mimeType;
-    const videoUrl = input.videoUrl;
+    const videoUrl = rcVideoUrl || input.videoUrl;
     const trimStart = rcTrimStart ?? input.trimStart;
     const trimEnd = rcTrimEnd ?? input.trimEnd;
 
