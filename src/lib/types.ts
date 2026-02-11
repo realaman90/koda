@@ -83,12 +83,12 @@ export type ImageModelType = 'flux-schnell' | 'flux-pro' | 'nanobanana-pro' | 'r
 
 // Enabled models - comment/uncomment to toggle visibility in UI
 export const ENABLED_IMAGE_MODELS: ImageModelType[] = [
-  // 'flux-schnell',
-  // 'flux-pro',
+  'flux-schnell',
+  'flux-pro',
   'nanobanana-pro',
-  // 'recraft-v3',
-  // 'ideogram-v3',
-  // 'sd-3.5',
+  'recraft-v3',
+  'ideogram-v3',
+  'sd-3.5',
 ];
 
 // Image Generator Node
@@ -381,12 +381,19 @@ export type VideoModelType =
   | 'veo-3.1-fast-flf'
   | 'kling-2.6-t2v'
   | 'kling-2.6-i2v'
+  | 'kling-o3-t2v'
+  | 'kling-o3-i2v'
+  | 'kling-o3-pro-i2v'
+  | 'kling-3.0-t2v'
+  | 'kling-3.0-i2v'
+  | 'kling-3.0-pro-t2v'
+  | 'kling-3.0-pro-i2v'
   | 'luma-ray2'
   | 'minimax-video'
   | 'runway-gen3';
 
 // Video duration options (in seconds)
-export type VideoDuration = 4 | 5 | 6 | 8 | 9 | 10;
+export type VideoDuration = 4 | 5 | 6 | 8 | 9 | 10 | 15;
 
 // Video aspect ratios
 export type VideoAspectRatio = '16:9' | '9:16' | '1:1' | '4:3' | '3:4';
@@ -440,11 +447,18 @@ export const ENABLED_VIDEO_MODELS: VideoModelType[] = [
   'veo-3.1-ref',
   'veo-3.1-flf',
   'veo-3.1-fast-flf',
-  // 'kling-2.6-t2v',
-  // 'kling-2.6-i2v',
-  // 'luma-ray2',
-  // 'minimax-video',
-  // 'runway-gen3',
+  'kling-2.6-t2v',
+  'kling-2.6-i2v',
+  'kling-o3-t2v',
+  'kling-o3-i2v',
+  'kling-o3-pro-i2v',
+  'kling-3.0-t2v',
+  'kling-3.0-i2v',
+  'kling-3.0-pro-t2v',
+  'kling-3.0-pro-i2v',
+  'luma-ray2',
+  'minimax-video',
+  'runway-gen3',
 ];
 
 export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabilities> = {
@@ -536,6 +550,80 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     lastFrameOptional: true,
     description: 'Start + optional end frame with audio',
   },
+  'kling-o3-t2v': {
+    label: 'Kling O3 Text',
+    inputType: 'text-only',
+    inputMode: 'text',
+    durations: [5, 10, 15],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    supportsAudio: true,
+    description: 'Kling O3 Pro text-to-video',
+  },
+  'kling-o3-i2v': {
+    label: 'Kling O3 Image',
+    inputType: 'text-and-image',
+    inputMode: 'first-last-frame',
+    durations: [5, 10, 15],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    supportsAudio: true,
+    lastFrameOptional: true,
+    description: 'Kling O3 Standard image-to-video',
+  },
+  'kling-o3-pro-i2v': {
+    label: 'Kling O3 Pro Image',
+    inputType: 'text-and-image',
+    inputMode: 'first-last-frame',
+    durations: [5, 10, 15],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    supportsAudio: true,
+    lastFrameOptional: true,
+    description: 'Kling O3 Pro image-to-video',
+  },
+  'kling-3.0-t2v': {
+    label: 'Kling 3.0 Text',
+    inputType: 'text-only',
+    inputMode: 'text',
+    durations: [5, 10, 15],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    supportsAudio: true,
+    description: 'Kling 3.0 Standard text-to-video',
+  },
+  'kling-3.0-i2v': {
+    label: 'Kling 3.0 Image',
+    inputType: 'text-and-image',
+    inputMode: 'first-last-frame',
+    durations: [5, 10, 15],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    supportsAudio: true,
+    lastFrameOptional: true,
+    description: 'Kling 3.0 Standard image-to-video',
+  },
+  'kling-3.0-pro-t2v': {
+    label: 'Kling 3.0 Pro Text',
+    inputType: 'text-only',
+    inputMode: 'text',
+    durations: [5, 10, 15],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    supportsAudio: true,
+    description: 'Kling 3.0 Pro text-to-video',
+  },
+  'kling-3.0-pro-i2v': {
+    label: 'Kling 3.0 Pro Image',
+    inputType: 'text-and-image',
+    inputMode: 'first-last-frame',
+    durations: [5, 10, 15],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    supportsAudio: true,
+    lastFrameOptional: true,
+    description: 'Kling 3.0 Pro image-to-video',
+  },
   'luma-ray2': {
     label: 'Luma Ray 2',
     inputType: 'text-and-image',
@@ -576,6 +664,13 @@ export const FAL_VIDEO_MODELS: Record<VideoModelType, string> = {
   'veo-3.1-fast-flf': 'fal-ai/veo3.1/fast/first-last-frame-to-video',
   'kling-2.6-t2v': 'fal-ai/kling-video/v2.6/pro/text-to-video',
   'kling-2.6-i2v': 'fal-ai/kling-video/v2.6/pro/image-to-video',
+  'kling-o3-t2v': 'fal-ai/kling-video/o3/pro/text-to-video',
+  'kling-o3-i2v': 'fal-ai/kling-video/o3/standard/image-to-video',
+  'kling-o3-pro-i2v': 'fal-ai/kling-video/o3/pro/image-to-video',
+  'kling-3.0-t2v': 'fal-ai/kling-video/v3/standard/text-to-video',
+  'kling-3.0-i2v': 'fal-ai/kling-video/v3/standard/image-to-video',
+  'kling-3.0-pro-t2v': 'fal-ai/kling-video/v3/pro/text-to-video',
+  'kling-3.0-pro-i2v': 'fal-ai/kling-video/v3/pro/image-to-video',
   'luma-ray2': 'fal-ai/luma-dream-machine',
   'minimax-video': 'fal-ai/minimax-video/image-to-video',
   'runway-gen3': 'fal-ai/runway-gen3/turbo/image-to-video',

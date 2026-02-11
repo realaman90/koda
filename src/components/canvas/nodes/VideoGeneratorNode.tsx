@@ -196,6 +196,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
           model: data.model,
           aspectRatio: data.aspectRatio,
           duration: data.duration,
+          resolution: data.resolution,
           referenceUrl: connectedInputs.referenceUrl,
           firstFrameUrl: connectedInputs.firstFrameUrl,
           lastFrameUrl: connectedInputs.lastFrameUrl,
@@ -228,7 +229,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
       });
       toast.error(`Generation failed: ${errorMessage}`);
     }
-  }, [id, data.prompt, data.model, data.aspectRatio, data.duration, data.generateAudio, updateNodeData, getConnectedInputs]);
+  }, [id, data.prompt, data.model, data.aspectRatio, data.duration, data.resolution, data.generateAudio, updateNodeData, getConnectedInputs]);
 
   const handleDelete = useCallback(() => {
     deleteNode(id);

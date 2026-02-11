@@ -162,8 +162,25 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error('Video generation error:', error);
+
+    // Extract detailed error from Fal SDK (may include body/detail with validation info)
+    let errorMessage = 'Video generation failed';
+    if (error instanceof Error) {
+      errorMessage = error.message;
+      // Fal SDK errors may have a body with validation details
+      const falError = error as Error & { body?: unknown; status?: number; detail?: string };
+      if (falError.body) {
+        console.error('Fal error body:', JSON.stringify(falError.body, null, 2));
+        const body = falError.body as { detail?: string | Array<{ msg: string }> };
+        if (typeof body.detail === 'string') {
+          errorMessage = body.detail;
+        } else if (Array.isArray(body.detail)) {
+          errorMessage = body.detail.map(d => d.msg).join('; ');
+        }
+      }
+    }
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Video generation failed' },
+      { error: errorMessage },
       { status: 500 }
     );
   }

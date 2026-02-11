@@ -285,6 +285,7 @@ class Veo31RefAdapter implements VideoModelAdapter {
     return {
       prompt: request.prompt,
       image_urls: imageUrls,
+      aspect_ratio: request.aspectRatio,
       duration: `${request.duration}s`,
       resolution: request.resolution || '720p',
       generate_audio: request.generateAudio ?? true,
@@ -330,7 +331,7 @@ class KlingT2VAdapter implements VideoModelAdapter {
       prompt: request.prompt,
       duration: String(request.duration),
       aspect_ratio: request.aspectRatio,
-      enable_audio: request.generateAudio !== false,
+      generate_audio: request.generateAudio !== false,
     };
   }
 
@@ -350,10 +351,70 @@ class KlingI2VAdapter implements VideoModelAdapter {
     return {
       prompt: request.prompt,
       duration: String(request.duration),
+      ...(startImage && { start_image_url: startImage }),
+      ...(endImage && { end_image_url: endImage }),
+      generate_audio: request.generateAudio !== false,
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+}
+
+// Kling O3 Text-to-Video (Pro)
+class KlingO3T2VAdapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    return {
+      prompt: request.prompt,
+      duration: String(request.duration),
+      aspect_ratio: request.aspectRatio,
+      generate_audio: request.generateAudio !== false,
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+}
+
+// Kling O3 Image-to-Video (Standard & Pro - same API shape)
+class KlingO3I2VAdapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    const startImage = request.firstFrameUrl || request.referenceUrl;
+    const endImage = request.lastFrameUrl;
+
+    return {
+      prompt: request.prompt,
+      duration: String(request.duration),
       aspect_ratio: request.aspectRatio,
       ...(startImage && { image_url: startImage }),
-      ...(endImage && { tail_image_url: endImage }),
-      enable_audio: request.generateAudio !== false,
+      ...(endImage && { end_image_url: endImage }),
+      generate_audio: request.generateAudio !== false,
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+}
+
+// Kling 3.0 Image-to-Video (uses start_image_url like 2.6, but also supports aspect_ratio)
+class Kling3I2VAdapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    const startImage = request.firstFrameUrl || request.referenceUrl;
+    const endImage = request.lastFrameUrl;
+
+    return {
+      prompt: request.prompt,
+      duration: String(request.duration),
+      aspect_ratio: request.aspectRatio,
+      ...(startImage && { start_image_url: startImage }),
+      ...(endImage && { end_image_url: endImage }),
+      generate_audio: request.generateAudio !== false,
     };
   }
 
@@ -427,6 +488,13 @@ const videoAdapters: Record<VideoModelType, VideoModelAdapter> = {
   'veo-3.1-fast-flf': new Veo31FLFAdapter(), // Uses same adapter as regular FLF
   'kling-2.6-t2v': new KlingT2VAdapter(),
   'kling-2.6-i2v': new KlingI2VAdapter(),
+  'kling-o3-t2v': new KlingO3T2VAdapter(),
+  'kling-o3-i2v': new KlingO3I2VAdapter(),
+  'kling-o3-pro-i2v': new KlingO3I2VAdapter(),
+  'kling-3.0-t2v': new KlingO3T2VAdapter(),       // Same API shape as O3
+  'kling-3.0-i2v': new Kling3I2VAdapter(),           // Uses start_image_url (not image_url like O3)
+  'kling-3.0-pro-t2v': new KlingO3T2VAdapter(),    // Same API shape as O3
+  'kling-3.0-pro-i2v': new Kling3I2VAdapter(),     // Uses start_image_url (not image_url like O3)
   'luma-ray2': new LumaRay2Adapter(),
   'minimax-video': new MinimaxVideoAdapter(),
   'runway-gen3': new RunwayGen3Adapter(),
