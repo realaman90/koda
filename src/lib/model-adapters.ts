@@ -424,6 +424,84 @@ class Kling3I2VAdapter implements VideoModelAdapter {
   }
 }
 
+// Seedance 1.5 Text-to-Video (supports audio)
+class Seedance15T2VAdapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    return {
+      prompt: request.prompt,
+      aspect_ratio: request.aspectRatio,
+      ...(request.resolution && { resolution: request.resolution }),
+      duration: String(request.duration),
+      generate_audio: request.generateAudio ?? true,
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+}
+
+// Seedance 1.5 Image-to-Video (supports audio + optional end frame)
+class Seedance15I2VAdapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    const startImage = request.firstFrameUrl || request.referenceUrl;
+    const endImage = request.lastFrameUrl;
+
+    return {
+      prompt: request.prompt,
+      ...(startImage && { image_url: startImage }),
+      ...(endImage && { end_image_url: endImage }),
+      aspect_ratio: request.aspectRatio,
+      ...(request.resolution && { resolution: request.resolution }),
+      duration: String(request.duration),
+      generate_audio: request.generateAudio ?? true,
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+}
+
+// Seedance 1.0 Pro Text-to-Video (no audio)
+class Seedance10T2VAdapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    return {
+      prompt: request.prompt,
+      aspect_ratio: request.aspectRatio,
+      ...(request.resolution && { resolution: request.resolution }),
+      duration: String(request.duration),
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+}
+
+// Seedance 1.0 Pro Image-to-Video (no audio, single image)
+class Seedance10I2VAdapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    const imageUrl = request.firstFrameUrl || request.referenceUrl;
+
+    return {
+      prompt: request.prompt,
+      ...(imageUrl && { image_url: imageUrl }),
+      aspect_ratio: request.aspectRatio,
+      ...(request.resolution && { resolution: request.resolution }),
+      duration: String(request.duration),
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+}
+
 // Luma Ray 2
 class LumaRay2Adapter implements VideoModelAdapter {
   buildInput(request: VideoGenerateRequest): Record<string, unknown> {
@@ -495,6 +573,10 @@ const videoAdapters: Record<VideoModelType, VideoModelAdapter> = {
   'kling-3.0-i2v': new Kling3I2VAdapter(),           // Uses start_image_url (not image_url like O3)
   'kling-3.0-pro-t2v': new KlingO3T2VAdapter(),    // Same API shape as O3
   'kling-3.0-pro-i2v': new Kling3I2VAdapter(),     // Uses start_image_url (not image_url like O3)
+  'seedance-1.5-t2v': new Seedance15T2VAdapter(),
+  'seedance-1.5-i2v': new Seedance15I2VAdapter(),
+  'seedance-1.0-pro-t2v': new Seedance10T2VAdapter(),
+  'seedance-1.0-pro-i2v': new Seedance10I2VAdapter(),
   'luma-ray2': new LumaRay2Adapter(),
   'minimax-video': new MinimaxVideoAdapter(),
   'runway-gen3': new RunwayGen3Adapter(),

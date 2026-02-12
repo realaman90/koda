@@ -388,18 +388,22 @@ export type VideoModelType =
   | 'kling-3.0-i2v'
   | 'kling-3.0-pro-t2v'
   | 'kling-3.0-pro-i2v'
+  | 'seedance-1.5-t2v'
+  | 'seedance-1.5-i2v'
+  | 'seedance-1.0-pro-t2v'
+  | 'seedance-1.0-pro-i2v'
   | 'luma-ray2'
   | 'minimax-video'
   | 'runway-gen3';
 
 // Video duration options (in seconds)
-export type VideoDuration = 4 | 5 | 6 | 8 | 9 | 10 | 15;
+export type VideoDuration = 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 15;
 
 // Video aspect ratios
 export type VideoAspectRatio = '16:9' | '9:16' | '1:1' | '4:3' | '3:4';
 
 // Video resolution
-export type VideoResolution = '540p' | '720p' | '1080p';
+export type VideoResolution = '480p' | '540p' | '720p' | '1080p';
 
 // Video Generator Node Data
 export interface VideoGeneratorNodeData extends Record<string, unknown> {
@@ -427,6 +431,7 @@ export type VideoInputMode = 'text' | 'single-image' | 'first-last-frame' | 'mul
 // Video model capabilities
 export interface VideoModelCapabilities {
   label: string;
+  group: string; // Category for grouped dropdown display
   inputType: ModelInputType;
   inputMode: VideoInputMode; // Determines which handles to show
   durations: readonly VideoDuration[];
@@ -456,6 +461,10 @@ export const ENABLED_VIDEO_MODELS: VideoModelType[] = [
   'kling-3.0-i2v',
   'kling-3.0-pro-t2v',
   'kling-3.0-pro-i2v',
+  'seedance-1.5-t2v',
+  'seedance-1.5-i2v',
+  'seedance-1.0-pro-t2v',
+  'seedance-1.0-pro-i2v',
   'luma-ray2',
   'minimax-video',
   'runway-gen3',
@@ -464,6 +473,7 @@ export const ENABLED_VIDEO_MODELS: VideoModelType[] = [
 export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabilities> = {
   'veo-3': {
     label: 'Veo 3',
+    group: 'Google Veo',
     inputType: 'text-only',
     inputMode: 'text',
     durations: [4, 6, 8],
@@ -475,6 +485,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
   },
   'veo-3.1-i2v': {
     label: 'Veo 3.1 Image',
+    group: 'Google Veo',
     inputType: 'text-and-image',
     inputMode: 'single-image',
     durations: [4, 6, 8],
@@ -486,6 +497,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
   },
   'veo-3.1-fast-i2v': {
     label: 'Veo 3.1 Fast Image',
+    group: 'Google Veo',
     inputType: 'text-and-image',
     inputMode: 'single-image',
     durations: [4, 6, 8],
@@ -497,6 +509,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
   },
   'veo-3.1-ref': {
     label: 'Veo 3.1 Multi-Ref',
+    group: 'Google Veo',
     inputType: 'text-and-image',
     inputMode: 'multi-reference',
     durations: [8],
@@ -509,6 +522,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
   },
   'veo-3.1-flf': {
     label: 'Veo 3.1 First-Last',
+    group: 'Google Veo',
     inputType: 'image-only',
     inputMode: 'first-last-frame',
     durations: [4, 6, 8],
@@ -519,7 +533,8 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     description: 'First & last frame to video',
   },
   'veo-3.1-fast-flf': {
-    label: 'Veo 3.1 Fast First-Last',
+    label: 'Veo 3.1 Fast F-L',
+    group: 'Google Veo',
     inputType: 'image-only',
     inputMode: 'first-last-frame',
     durations: [4, 6, 8],
@@ -531,6 +546,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
   },
   'kling-2.6-t2v': {
     label: 'Kling 2.6 Text',
+    group: 'Kling',
     inputType: 'text-only',
     inputMode: 'text',
     durations: [5, 10],
@@ -541,6 +557,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
   },
   'kling-2.6-i2v': {
     label: 'Kling 2.6 Image',
+    group: 'Kling',
     inputType: 'text-and-image',
     inputMode: 'first-last-frame',
     durations: [5, 10],
@@ -552,16 +569,18 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
   },
   'kling-o3-t2v': {
     label: 'Kling O3 Text',
+    group: 'Kling',
     inputType: 'text-only',
     inputMode: 'text',
     durations: [5, 10, 15],
     defaultDuration: 5,
     aspectRatios: ['16:9', '9:16', '1:1'],
     supportsAudio: true,
-    description: 'Kling O3 Pro text-to-video',
+    description: 'O3 Pro text-to-video',
   },
   'kling-o3-i2v': {
     label: 'Kling O3 Image',
+    group: 'Kling',
     inputType: 'text-and-image',
     inputMode: 'first-last-frame',
     durations: [5, 10, 15],
@@ -569,10 +588,11 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     aspectRatios: ['16:9', '9:16', '1:1'],
     supportsAudio: true,
     lastFrameOptional: true,
-    description: 'Kling O3 Standard image-to-video',
+    description: 'O3 Standard image-to-video',
   },
   'kling-o3-pro-i2v': {
     label: 'Kling O3 Pro Image',
+    group: 'Kling',
     inputType: 'text-and-image',
     inputMode: 'first-last-frame',
     durations: [5, 10, 15],
@@ -580,20 +600,22 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     aspectRatios: ['16:9', '9:16', '1:1'],
     supportsAudio: true,
     lastFrameOptional: true,
-    description: 'Kling O3 Pro image-to-video',
+    description: 'O3 Pro image-to-video',
   },
   'kling-3.0-t2v': {
     label: 'Kling 3.0 Text',
+    group: 'Kling',
     inputType: 'text-only',
     inputMode: 'text',
     durations: [5, 10, 15],
     defaultDuration: 5,
     aspectRatios: ['16:9', '9:16', '1:1'],
     supportsAudio: true,
-    description: 'Kling 3.0 Standard text-to-video',
+    description: '3.0 Standard text-to-video',
   },
   'kling-3.0-i2v': {
     label: 'Kling 3.0 Image',
+    group: 'Kling',
     inputType: 'text-and-image',
     inputMode: 'first-last-frame',
     durations: [5, 10, 15],
@@ -601,20 +623,22 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     aspectRatios: ['16:9', '9:16', '1:1'],
     supportsAudio: true,
     lastFrameOptional: true,
-    description: 'Kling 3.0 Standard image-to-video',
+    description: '3.0 Standard image-to-video',
   },
   'kling-3.0-pro-t2v': {
     label: 'Kling 3.0 Pro Text',
+    group: 'Kling',
     inputType: 'text-only',
     inputMode: 'text',
     durations: [5, 10, 15],
     defaultDuration: 5,
     aspectRatios: ['16:9', '9:16', '1:1'],
     supportsAudio: true,
-    description: 'Kling 3.0 Pro text-to-video',
+    description: '3.0 Pro text-to-video',
   },
   'kling-3.0-pro-i2v': {
     label: 'Kling 3.0 Pro Image',
+    group: 'Kling',
     inputType: 'text-and-image',
     inputMode: 'first-last-frame',
     durations: [5, 10, 15],
@@ -622,10 +646,58 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     aspectRatios: ['16:9', '9:16', '1:1'],
     supportsAudio: true,
     lastFrameOptional: true,
-    description: 'Kling 3.0 Pro image-to-video',
+    description: '3.0 Pro image-to-video',
+  },
+  'seedance-1.5-t2v': {
+    label: 'Seedance 1.5 Text',
+    group: 'Seedance',
+    inputType: 'text-only',
+    inputMode: 'text',
+    durations: [4, 5, 6, 7, 8, 9, 10, 11, 12],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    resolutions: ['480p', '720p', '1080p'],
+    supportsAudio: true,
+    description: 'Latest with audio generation',
+  },
+  'seedance-1.5-i2v': {
+    label: 'Seedance 1.5 Image',
+    group: 'Seedance',
+    inputType: 'text-and-image',
+    inputMode: 'first-last-frame',
+    durations: [4, 5, 6, 7, 8, 9, 10, 11, 12],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    resolutions: ['480p', '720p', '1080p'],
+    supportsAudio: true,
+    lastFrameOptional: true,
+    description: 'Image-to-video with audio',
+  },
+  'seedance-1.0-pro-t2v': {
+    label: 'Seedance 1.0 Pro Text',
+    group: 'Seedance',
+    inputType: 'text-only',
+    inputMode: 'text',
+    durations: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    resolutions: ['480p', '720p', '1080p'],
+    description: '1080p text-to-video',
+  },
+  'seedance-1.0-pro-i2v': {
+    label: 'Seedance 1.0 Pro Image',
+    group: 'Seedance',
+    inputType: 'text-and-image',
+    inputMode: 'single-image',
+    durations: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    resolutions: ['480p', '720p', '1080p'],
+    description: '1080p image-to-video',
   },
   'luma-ray2': {
     label: 'Luma Ray 2',
+    group: 'Other',
     inputType: 'text-and-image',
     inputMode: 'single-image',
     durations: [5, 9],
@@ -636,6 +708,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
   },
   'minimax-video': {
     label: 'Minimax',
+    group: 'Other',
     inputType: 'text-and-image',
     inputMode: 'single-image',
     durations: [5],
@@ -645,6 +718,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
   },
   'runway-gen3': {
     label: 'Runway Gen-3',
+    group: 'Other',
     inputType: 'image-only',
     inputMode: 'single-image',
     durations: [5, 10],
@@ -671,6 +745,10 @@ export const FAL_VIDEO_MODELS: Record<VideoModelType, string> = {
   'kling-3.0-i2v': 'fal-ai/kling-video/v3/standard/image-to-video',
   'kling-3.0-pro-t2v': 'fal-ai/kling-video/v3/pro/text-to-video',
   'kling-3.0-pro-i2v': 'fal-ai/kling-video/v3/pro/image-to-video',
+  'seedance-1.5-t2v': 'fal-ai/bytedance/seedance/v1.5/pro/text-to-video',
+  'seedance-1.5-i2v': 'fal-ai/bytedance/seedance/v1.5/pro/image-to-video',
+  'seedance-1.0-pro-t2v': 'fal-ai/bytedance/seedance/v1/pro/text-to-video',
+  'seedance-1.0-pro-i2v': 'fal-ai/bytedance/seedance/v1/pro/image-to-video',
   'luma-ray2': 'fal-ai/luma-dream-machine',
   'minimax-video': 'fal-ai/minimax-video/image-to-video',
   'runway-gen3': 'fal-ai/runway-gen3/turbo/image-to-video',

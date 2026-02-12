@@ -422,6 +422,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
                       value: key,
                       label: cap.label,
                       description: cap.description,
+                      group: cap.group,
                     }))}
                     placeholder="Select model"
                     searchPlaceholder="Search models..."
@@ -522,6 +523,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
               value: key,
               label: VIDEO_MODEL_CAPABILITIES[key].label,
               description: VIDEO_MODEL_CAPABILITIES[key].description,
+              group: VIDEO_MODEL_CAPABILITIES[key].group,
             }))}
             placeholder="Select model"
             searchPlaceholder="Search models..."
