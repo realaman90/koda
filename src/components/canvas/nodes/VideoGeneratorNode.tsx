@@ -33,6 +33,27 @@ import {
   RefreshCw,
 } from 'lucide-react';
 
+/** Small elapsed-time display that ticks every second */
+function ElapsedTimer({ startedAt }: { startedAt: number }) {
+  const [elapsed, setElapsed] = useState(() => Math.floor((Date.now() - startedAt) / 1000));
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [startedAt]);
+
+  const mins = Math.floor(elapsed / 60);
+  const secs = elapsed % 60;
+
+  return (
+    <p className="text-muted-foreground text-xs tabular-nums">
+      {mins}:{secs.toString().padStart(2, '0')} elapsed
+    </p>
+  );
+}
+
 function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGeneratorNodeType>) {
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
   const deleteNode = useCanvasStore((state) => state.deleteNode);
@@ -123,6 +144,8 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
             progress: 100,
             xskillTaskId: undefined,
             xskillTaskModel: undefined,
+            xskillStatus: undefined,
+            xskillStartedAt: undefined,
           });
           toast.success('Video generated successfully');
         } else if (result.status === 'failed') {
@@ -134,10 +157,15 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
             progress: 0,
             xskillTaskId: undefined,
             xskillTaskModel: undefined,
+            xskillStatus: undefined,
+            xskillStartedAt: undefined,
           });
           toast.error(`Generation failed: ${result.error || 'Unknown error'}`);
         }
-        // pending/processing — keep polling
+        // pending/processing — update status for UI
+        if (result.status === 'pending' || result.status === 'processing') {
+          updateNodeData(id, { xskillStatus: result.status });
+        }
       } catch (error) {
         console.error('[VideoGenerator] Poll error:', error);
         // Don't stop polling on transient network errors
@@ -310,6 +338,8 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
         updateNodeData(id, {
           xskillTaskId: result.taskId,
           xskillTaskModel: result.model,
+          xskillStatus: 'pending',
+          xskillStartedAt: Date.now(),
         });
         pollXskillTask(result.taskId, result.model);
         return;
@@ -470,11 +500,19 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
                 <Loader2 className="absolute inset-0 m-auto h-6 w-6 text-purple-500 animate-pulse" />
               </div>
               <div className="text-center">
-                <p className="text-foreground text-sm font-medium">Generating video...</p>
-                <p className="text-muted-foreground text-xs mt-1">This may take a few minutes</p>
+                <p className="text-foreground text-sm font-medium">
+                  {data.xskillTaskId
+                    ? data.xskillStatus === 'processing' ? 'Rendering video...' : 'Queued...'
+                    : 'Generating video...'}
+                </p>
+                <p className="text-muted-foreground text-xs mt-1">
+                  {data.xskillTaskId ? 'Typically 2-5 minutes' : 'This may take a few minutes'}
+                </p>
               </div>
+              {/* Elapsed timer for xskill */}
+              {data.xskillStartedAt && <ElapsedTimer startedAt={data.xskillStartedAt} />}
               {/* Progress bar */}
-              {data.progress !== undefined && data.progress > 0 && (
+              {!data.xskillTaskId && data.progress !== undefined && data.progress > 0 && (
                 <div className="w-full max-w-[200px] h-1.5 bg-muted rounded-full overflow-hidden">
                   <div
                     className="h-full bg-purple-500 transition-all duration-300"

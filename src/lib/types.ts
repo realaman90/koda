@@ -428,6 +428,8 @@ export interface VideoGeneratorNodeData extends Record<string, unknown> {
   // xskill async polling (Seedance 2.0 models)
   xskillTaskId?: string; // Active task being polled
   xskillTaskModel?: string; // Model label for saving
+  xskillStatus?: 'pending' | 'processing'; // Current poll status for UI display
+  xskillStartedAt?: number; // Timestamp when generation started (for elapsed timer)
 }
 
 export type VideoGeneratorNode = Node<VideoGeneratorNodeData, 'videoGenerator'>;
