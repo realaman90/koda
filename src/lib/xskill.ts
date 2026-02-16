@@ -104,6 +104,8 @@ export async function xskillQueryTask(
   const queryBody: XSkillTaskQueryResponse = await queryRes.json();
   const status = queryBody.data?.status || 'pending';
 
+  console.log('xskill query response:', { taskId, status, code: queryBody.code, message: queryBody.message, data: JSON.stringify(queryBody.data) });
+
   if (status === 'completed') {
     const videoUrl = queryBody.data?.result?.output?.images?.[0];
     if (!videoUrl) {
@@ -113,7 +115,8 @@ export async function xskillQueryTask(
   }
 
   if (status === 'failed') {
-    return { status, error: queryBody.data?.error || queryBody.message || 'unknown error' };
+    // queryBody.message is the API call's status (e.g. "查询成功" = "query successful"), NOT the task error
+    return { status, error: queryBody.data?.error || 'Video generation failed' };
   }
 
   return { status };
