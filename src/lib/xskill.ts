@@ -22,9 +22,11 @@ interface XSkillTaskQueryResponse {
   data?: {
     status: 'pending' | 'processing' | 'completed' | 'failed';
     output?: {
-      images?: string[]; // video URLs despite the field name
+      video_url?: string; // completed video URL
+      images?: string[]; // legacy field
       error?: string; // error message when failed
       error_type?: string; // e.g. "submit_timeout"
+      content_type?: string;
     };
     progress?: {
       stage?: string;
@@ -111,7 +113,7 @@ export async function xskillQueryTask(
   console.log('xskill query response:', { taskId, status, code: queryBody.code, message: queryBody.message, data: JSON.stringify(queryBody.data) });
 
   if (status === 'completed') {
-    const videoUrl = queryBody.data?.output?.images?.[0];
+    const videoUrl = queryBody.data?.output?.video_url || queryBody.data?.output?.images?.[0];
     if (!videoUrl) {
       throw new Error('xskill task completed but no video URL in response');
     }
@@ -201,7 +203,7 @@ export async function xskillGenerate(
     console.log('xskill task status:', { taskId, status });
 
     if (status === 'completed') {
-      const videoUrl = queryBody.data?.output?.images?.[0];
+      const videoUrl = queryBody.data?.output?.video_url || queryBody.data?.output?.images?.[0];
       if (!videoUrl) {
         throw new Error('xskill task completed but no video URL in response');
       }
