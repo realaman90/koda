@@ -257,6 +257,7 @@ export function MentionEditor({
   }, [items]);
 
   const editor = useEditor({
+    immediatelyRender: false,
     extensions: [
       StarterKit.configure({
         heading: false,
