@@ -4,6 +4,11 @@
  * Async task-based API:
  *   POST /api/v3/tasks/create  → { task_id }
  *   POST /api/v3/tasks/query   → { status, result }
+ *
+ * Response format varies: video URL may be at:
+ *   - data.result.output.images[0]  (documented format)
+ *   - data.output.video_url         (observed format)
+ * Status may be "completed"/"success" or "failed"/"error".
  */
 
 const XSKILL_BASE_URL = 'https://api.xskill.ai';
@@ -17,24 +22,48 @@ interface XSkillTaskCreateResponse {
   message?: string;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type XSkillData = Record<string, any>;
+
 interface XSkillTaskQueryResponse {
   code: number;
-  data?: {
-    status: 'pending' | 'processing' | 'completed' | 'failed';
-    output?: {
-      video_url?: string; // completed video URL
-      images?: string[]; // legacy field
-      error?: string; // error message when failed
-      error_type?: string; // e.g. "submit_timeout"
-      content_type?: string;
-    };
-    progress?: {
-      stage?: string;
-      message?: string;
-    };
-    error?: string; // legacy field
-  };
-  message?: string; // API call status (e.g. "查询成功"), NOT task error
+  data?: XSkillData;
+  message?: string;
+}
+
+/**
+ * Extract video URL from xskill query response data.
+ * Handles both documented and observed response formats.
+ */
+function extractVideoUrl(data: XSkillData | undefined): string | undefined {
+  if (!data) return undefined;
+  // Observed format: data.output.video_url
+  if (data.output?.video_url) return data.output.video_url;
+  // Documented format: data.result.output.images[0]
+  if (data.result?.output?.images?.[0]) return data.result.output.images[0];
+  // Fallback: data.output.images[0]
+  if (data.output?.images?.[0]) return data.output.images[0];
+  return undefined;
+}
+
+/**
+ * Extract error message from xskill query response data.
+ */
+function extractError(data: XSkillData | undefined): string {
+  if (!data) return 'Video generation failed';
+  return data.output?.error || data.error || 'Video generation failed';
+}
+
+/**
+ * Normalize xskill status to our expected values.
+ * API may return "success" or "error" as alternatives.
+ */
+function normalizeStatus(status: string | undefined): 'pending' | 'processing' | 'completed' | 'failed' {
+  if (!status) return 'pending';
+  if (status === 'completed' || status === 'success') return 'completed';
+  if (status === 'failed' || status === 'error') return 'failed';
+  if (status === 'processing' || status === 'generating') return 'processing';
+  return 'pending';
 }
 
 export interface XSkillGenerateParams {
@@ -108,12 +137,12 @@ export async function xskillQueryTask(
   }
 
   const queryBody: XSkillTaskQueryResponse = await queryRes.json();
-  const status = queryBody.data?.status || 'pending';
+  const status = normalizeStatus(queryBody.data?.status);
 
-  console.log('xskill query response:', { taskId, status, code: queryBody.code, message: queryBody.message, data: JSON.stringify(queryBody.data) });
+  console.log('xskill query response:', { taskId, status, code: queryBody.code, data: JSON.stringify(queryBody.data) });
 
   if (status === 'completed') {
-    const videoUrl = queryBody.data?.output?.video_url || queryBody.data?.output?.images?.[0];
+    const videoUrl = extractVideoUrl(queryBody.data);
     if (!videoUrl) {
       throw new Error('xskill task completed but no video URL in response');
     }
@@ -121,8 +150,7 @@ export async function xskillQueryTask(
   }
 
   if (status === 'failed') {
-    const taskError = queryBody.data?.output?.error || queryBody.data?.error || 'Video generation failed';
-    return { status, error: taskError };
+    return { status, error: extractError(queryBody.data) };
   }
 
   return { status };
@@ -197,13 +225,13 @@ export async function xskillGenerate(
     }
 
     const queryBody: XSkillTaskQueryResponse = await queryRes.json();
-    const status = queryBody.data?.status;
+    const status = normalizeStatus(queryBody.data?.status);
 
-    options?.onStatusUpdate?.(status || 'unknown');
+    options?.onStatusUpdate?.(status);
     console.log('xskill task status:', { taskId, status });
 
     if (status === 'completed') {
-      const videoUrl = queryBody.data?.output?.video_url || queryBody.data?.output?.images?.[0];
+      const videoUrl = extractVideoUrl(queryBody.data);
       if (!videoUrl) {
         throw new Error('xskill task completed but no video URL in response');
       }
@@ -211,8 +239,7 @@ export async function xskillGenerate(
     }
 
     if (status === 'failed') {
-      const taskError = queryBody.data?.output?.error || queryBody.data?.error || 'unknown error';
-      throw new Error(`xskill task failed: ${taskError}`);
+      throw new Error(`xskill task failed: ${extractError(queryBody.data)}`);
     }
 
     // pending or processing — keep polling
