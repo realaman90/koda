@@ -322,7 +322,11 @@ export function MentionEditor({
   }, [disabled, editor]);
 
   return (
-    <div className={className}>
+    <div
+      className={`nodrag nowheel ${className || ''}`}
+      onKeyDown={(e) => e.stopPropagation()}
+      onKeyUp={(e) => e.stopPropagation()}
+    >
       <EditorContent editor={editor} />
     </div>
   );
