@@ -1,6 +1,7 @@
 'use client';
 
 import { memo, useCallback, useMemo, useState, useRef, useEffect } from 'react';
+import { MentionEditor, type MentionItem } from '@/components/ui/mention-editor';
 import { Handle, Position, useUpdateNodeInternals, type NodeProps } from '@xyflow/react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -45,9 +46,6 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
   const [isHovered, setIsHovered] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
-  const [showMentionMenu, setShowMentionMenu] = useState(false);
-  const [mentionFilter, setMentionFilter] = useState('');
 
   // Check if this node has any connections
   const isConnected = edges.some(edge => edge.source === id || edge.target === id);
@@ -57,30 +55,24 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
   const modelCapabilities = VIDEO_MODEL_CAPABILITIES[data.model];
   const { inputMode, supportsVideoRef } = modelCapabilities;
 
-  // Build mention options from connected handles (for @ autocomplete)
-  const mentionOptions = useMemo(() => {
+  // Build mention items from connected handles (for Tiptap @ autocomplete)
+  const mentionItems = useMemo((): MentionItem[] => {
     if (!supportsVideoRef) return [];
     const connectedHandles = edges
       .filter(e => e.target === id)
       .map(e => e.targetHandle)
       .filter(Boolean);
-    const options: Array<{ label: string; value: string; type: 'image' | 'video' }> = [];
+    const items: MentionItem[] = [];
     for (let i = 1; i <= 3; i++) {
       if (connectedHandles.includes(`ref${i}`)) {
-        options.push({ label: `@image${i}`, value: `@image${i}`, type: 'image' });
+        items.push({ id: `image${i}`, label: `image${i}`, type: 'image' });
       }
     }
     if (connectedHandles.includes('video')) {
-      options.push({ label: '@video1', value: '@video1', type: 'video' });
+      items.push({ id: 'video1', label: 'video1', type: 'video' });
     }
-    return options;
+    return items;
   }, [supportsVideoRef, edges, id]);
-
-  // Parse @references from prompt for chip display
-  const promptRefs = useMemo(() => {
-    if (!supportsVideoRef) return [];
-    return (data.prompt || '').match(/@(?:image|video)\d+/gi) || [];
-  }, [supportsVideoRef, data.prompt]);
 
   // Update node internals when input mode changes (handles change)
   useEffect(() => {
@@ -100,54 +92,11 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
   }, [id, nodeName, updateNodeData]);
 
   const handlePromptChange = useCallback(
-    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      const value = e.target.value;
-      const cursorPos = e.target.selectionStart;
-
-      // Detect @ mention trigger
-      if (supportsVideoRef) {
-        const textBeforeCursor = value.slice(0, cursorPos);
-        const atMatch = textBeforeCursor.match(/@(\w*)$/);
-        if (atMatch) {
-          setShowMentionMenu(true);
-          setMentionFilter(atMatch[1].toLowerCase());
-        } else {
-          setShowMentionMenu(false);
-        }
-      }
-
+    (value: string) => {
       updateNodeData(id, { prompt: value });
     },
-    [id, updateNodeData, supportsVideoRef]
+    [id, updateNodeData]
   );
-
-  // Insert a mention reference at the current cursor position
-  const insertMention = useCallback((ref: string) => {
-    const textarea = promptTextareaRef.current;
-    if (!textarea) return;
-
-    const cursorPos = textarea.selectionStart;
-    const text = data.prompt || '';
-    const textBeforeCursor = text.slice(0, cursorPos);
-    const atIndex = textBeforeCursor.lastIndexOf('@');
-
-    const newText = text.slice(0, atIndex) + ref + ' ' + text.slice(cursorPos);
-    updateNodeData(id, { prompt: newText });
-    setShowMentionMenu(false);
-
-    setTimeout(() => {
-      textarea.focus();
-      const newPos = atIndex + ref.length + 1;
-      textarea.setSelectionRange(newPos, newPos);
-    }, 0);
-  }, [id, data.prompt, updateNodeData]);
-
-  // Remove a @reference from the prompt
-  const removeReference = useCallback((ref: string) => {
-    const text = data.prompt || '';
-    const newText = text.replace(new RegExp(ref.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*', 'gi'), '').trim();
-    updateNodeData(id, { prompt: newText });
-  }, [id, data.prompt, updateNodeData]);
 
   const handleModelChange = useCallback(
     (value: string) => {
@@ -566,86 +515,24 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
             /* Prompt Input - Freepik style with inner content area */
             <div className="p-3">
               <div className="node-content-area p-3 min-h-[160px]">
-                {/* Reference chips */}
-                {supportsVideoRef && promptRefs.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mb-2">
-                    {promptRefs.map((ref, i) => (
-                      <span
-                        key={i}
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
-                          ref.toLowerCase().startsWith('@image')
-                            ? 'bg-red-500/20 text-red-300 border border-red-500/30'
-                            : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                        }`}
-                      >
-                        {ref.toLowerCase().startsWith('@image') ? (
-                          <ImageIcon className="h-3 w-3" />
-                        ) : (
-                          <Video className="h-3 w-3" />
-                        )}
-                        {ref}
-                        {!isReadOnly && (
-                          <button
-                            onClick={() => removeReference(ref)}
-                            className="ml-0.5 hover:text-white transition-colors"
-                          >
-                            &times;
-                          </button>
-                        )}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                {/* Textarea with mention autocomplete */}
-                <div className="relative">
-                  <textarea
-                    ref={promptTextareaRef}
-                    value={data.prompt}
+                {supportsVideoRef ? (
+                  <MentionEditor
+                    content={data.prompt}
                     onChange={handlePromptChange}
-                    onBlur={() => setTimeout(() => setShowMentionMenu(false), 150)}
-                    onKeyDown={(e) => {
-                      if (showMentionMenu && e.key === 'Escape') {
-                        e.preventDefault();
-                        setShowMentionMenu(false);
-                      }
-                    }}
-                    placeholder={isReadOnly ? '' : supportsVideoRef ? 'Type @ to reference connected images/videos...' : 'Describe the video you want to generate...'}
+                    items={mentionItems}
+                    placeholder="Type @ to reference connected images/videos..."
                     disabled={isReadOnly}
-                    className={`w-full bg-transparent border-none text-sm resize-none focus:outline-none ${isReadOnly ? 'cursor-default' : ''}`}
-                    style={{ color: 'var(--text-secondary)', height: supportsVideoRef && promptRefs.length > 0 ? '100px' : '130px' }}
                   />
-
-                  {/* @ mention autocomplete popup */}
-                  {showMentionMenu && (
-                    <div className="absolute left-0 bottom-full mb-1 w-52 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-50 py-1 overflow-hidden">
-                      {mentionOptions
-                        .filter(opt => opt.value.toLowerCase().includes(mentionFilter))
-                        .map((opt) => (
-                          <button
-                            key={opt.value}
-                            className="w-full px-3 py-2 text-left text-xs flex items-center gap-2 hover:bg-zinc-700 transition-colors"
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              insertMention(opt.value);
-                            }}
-                          >
-                            {opt.type === 'image' ? (
-                              <ImageIcon className="h-3.5 w-3.5 text-red-400" />
-                            ) : (
-                              <Video className="h-3.5 w-3.5 text-blue-400" />
-                            )}
-                            <span className="text-zinc-200">{opt.label}</span>
-                            <span className="ml-auto text-emerald-400 text-[10px]">Connected</span>
-                          </button>
-                        ))
-                      }
-                      {mentionOptions.filter(opt => opt.value.toLowerCase().includes(mentionFilter)).length === 0 && (
-                        <div className="px-3 py-2 text-xs text-zinc-500">No connected references</div>
-                      )}
-                    </div>
-                  )}
-                </div>
+                ) : (
+                  <textarea
+                    value={data.prompt}
+                    onChange={(e) => handlePromptChange(e.target.value)}
+                    placeholder={isReadOnly ? '' : 'Describe the video you want to generate...'}
+                    disabled={isReadOnly}
+                    className={`w-full h-[130px] bg-transparent border-none text-sm resize-none focus:outline-none ${isReadOnly ? 'cursor-default' : ''}`}
+                    style={{ color: 'var(--text-secondary)' }}
+                  />
+                )}
               </div>
             </div>
           )}

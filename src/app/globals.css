@@ -967,3 +967,86 @@ select {
   border: none !important;
 }
 
+/* ==========================================
+   Tiptap Mention Editor
+   ========================================== */
+
+.mention-editor-content {
+  outline: none;
+  min-height: 100px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.mention-editor-content p {
+  margin: 0;
+}
+
+.mention-editor-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.3));
+  pointer-events: none;
+  height: 0;
+  font-size: 14px;
+}
+
+/* Inline mention chips */
+.mention-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+  vertical-align: baseline;
+  cursor: default;
+  user-select: all;
+  line-height: 1.5;
+  margin: 0 1px;
+}
+
+.mention-chip[data-mention-type="image"] {
+  background: rgba(239, 68, 68, 0.2);
+  color: rgb(252, 165, 165);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.mention-chip[data-mention-type="video"] {
+  background: rgba(59, 130, 246, 0.2);
+  color: rgb(147, 197, 253);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+/* Suggestion popup */
+.mention-popup {
+  background: rgb(39, 39, 42);
+  border: 1px solid rgb(63, 63, 70);
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  padding: 4px 0;
+  overflow: hidden;
+  min-width: 200px;
+}
+
+.mention-popup-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 12px;
+  transition: background 0.1s;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: inherit;
+}
+
+.mention-popup-item:hover,
+.mention-popup-item.is-selected {
+  background: rgb(63, 63, 70);
+}
+
