@@ -28,7 +28,7 @@ import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/comp
 import { toast } from 'sonner';
 import { ThinkingBlock, UserBubble } from '@/lib/plugins/official/agents/animation-generator/components/ChatMessages';
 import { StoryboardDraftCard } from './storyboard/StoryboardDraftCard';
-import { StoryboardChatInput } from './storyboard/StoryboardChatInput';
+import { ChatInput } from '@/lib/plugins/official/agents/animation-generator/components/ChatInput';
 
 // Style options
 const STYLE_OPTIONS: { value: StoryboardStyle; label: string }[] = [
@@ -1098,7 +1098,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
 
       {/* Chat input — pinned at bottom */}
       {!isReadOnly && (
-        <StoryboardChatInput
+        <ChatInput
           onSubmit={handleRefinement}
           onStop={handleStop}
           isGenerating={data.chatPhase === 'streaming'}
