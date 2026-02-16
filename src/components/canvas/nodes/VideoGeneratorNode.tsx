@@ -647,11 +647,11 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
         </div>
       )}
 
-      {/* Single Image Reference - for single-image mode */}
-      {inputMode === 'single-image' && (
+      {/* Single Image Reference - for single-image mode without multi-ref */}
+      {inputMode === 'single-image' && !supportsVideoRef && (
         <div
           className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
-          style={{ top: supportsVideoRef ? '50%' : '60%', transform: 'translateY(-50%)' }}
+          style={{ top: '60%', transform: 'translateY(-50%)' }}
         >
           <div className="relative">
             <Handle
@@ -668,25 +668,49 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
         </div>
       )}
 
-      {/* Video Reference - for models with supportsVideoRef (e.g. Seedance 2.0 omni) */}
+      {/* Numbered image + video handles for omni-reference models (e.g. Seedance 2.0) */}
       {supportsVideoRef && (
-        <div
-          className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
-          style={{ top: '70%', transform: 'translateY(-50%)' }}
-        >
-          <div className="relative">
-            <Handle
-              type="target"
-              position={Position.Left}
-              id="video"
-              className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-blue-400 !border-zinc-900 hover:!border-zinc-700"
-            />
-            <Video className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+        <>
+          {[1, 2, 3].map((num) => (
+            <div
+              key={`img${num}`}
+              className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
+              style={{ top: `${35 + (num - 1) * 12}%`, transform: 'translateY(-50%)' }}
+            >
+              <div className="relative">
+                <Handle
+                  type="target"
+                  position={Position.Left}
+                  id={`ref${num}`}
+                  className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-red-400 !border-zinc-900 hover:!border-zinc-700"
+                />
+                <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-zinc-900 text-[9px] text-red-300 font-bold rounded-full flex items-center justify-center border border-red-400/60">{num}</span>
+              </div>
+              <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
+                @image{num}
+              </span>
+            </div>
+          ))}
+          <div
+            className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
+            style={{ top: '75%', transform: 'translateY(-50%)' }}
+          >
+            <div className="relative">
+              <Handle
+                type="target"
+                position={Position.Left}
+                id="video"
+                className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-blue-400 !border-zinc-900 hover:!border-zinc-700"
+              />
+              <Video className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+              <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-zinc-900 text-[9px] text-blue-300 font-bold rounded-full flex items-center justify-center border border-blue-400/60">1</span>
+            </div>
+            <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
+              @video1
+            </span>
           </div>
-          <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
-            Reference Video
-          </span>
-        </div>
+        </>
       )}
 
       {/* First/Last Frame - for first-last-frame mode */}

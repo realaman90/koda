@@ -542,18 +542,25 @@ class Seedance2I2VAdapter implements VideoModelAdapter {
   constructor(private innerModel: 'seedance_2.0' | 'seedance_2.0_fast') {}
 
   buildInput(request: VideoGenerateRequest): Record<string, unknown> {
-    const imageUrl = request.firstFrameUrl || request.referenceUrl;
-    const videoUrl = request.videoUrl;
+    // Collect all image URLs from multi-ref handles, falling back to single ref
+    const imageUrls: string[] = [];
+    if (request.referenceUrls?.length) {
+      imageUrls.push(...request.referenceUrls);
+    } else {
+      const singleUrl = request.firstFrameUrl || request.referenceUrl;
+      if (singleUrl) imageUrls.push(singleUrl);
+    }
 
+    const videoUrl = request.videoUrl;
     const prompt = transformSeedancePromptRefs(request.prompt);
 
-    // If both image and video are provided, use omni_reference mode
-    if (imageUrl && videoUrl) {
+    // If both images and video are provided, use omni_reference mode
+    if (imageUrls.length > 0 && videoUrl) {
       return {
         model: this.innerModel,
         prompt,
         functionMode: 'omni_reference',
-        image_files: [imageUrl],
+        image_files: imageUrls,
         video_files: [videoUrl],
         ratio: request.aspectRatio,
         duration: request.duration,
@@ -561,12 +568,11 @@ class Seedance2I2VAdapter implements VideoModelAdapter {
     }
 
     // Image-only: use first_last_frames with filePaths
-    const filePaths = imageUrl ? [imageUrl] : [];
     return {
       model: this.innerModel,
       prompt,
       functionMode: 'first_last_frames',
-      ...(filePaths.length > 0 && { filePaths }),
+      ...(imageUrls.length > 0 && { filePaths: imageUrls }),
       ratio: request.aspectRatio,
       duration: request.duration,
     };
