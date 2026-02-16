@@ -52,12 +52,12 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
 
   // Get model capabilities
   const modelCapabilities = VIDEO_MODEL_CAPABILITIES[data.model];
-  const { inputMode } = modelCapabilities;
+  const { inputMode, supportsVideoRef } = modelCapabilities;
 
   // Update node internals when input mode changes (handles change)
   useEffect(() => {
     updateNodeInternals(id);
-  }, [id, inputMode, updateNodeInternals]);
+  }, [id, inputMode, supportsVideoRef, updateNodeInternals]);
 
   useEffect(() => {
     if (isEditingName && nameInputRef.current) {
@@ -201,6 +201,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
           firstFrameUrl: connectedInputs.firstFrameUrl,
           lastFrameUrl: connectedInputs.lastFrameUrl,
           referenceUrls: connectedInputs.referenceUrls,
+          videoUrl: connectedInputs.videoUrl,
           generateAudio: data.generateAudio,
         }),
       });
@@ -650,7 +651,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
       {inputMode === 'single-image' && (
         <div
           className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
-          style={{ top: '60%', transform: 'translateY(-50%)' }}
+          style={{ top: supportsVideoRef ? '50%' : '60%', transform: 'translateY(-50%)' }}
         >
           <div className="relative">
             <Handle
@@ -663,6 +664,27 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
           </div>
           <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
             Reference Image
+          </span>
+        </div>
+      )}
+
+      {/* Video Reference - for models with supportsVideoRef (e.g. Seedance 2.0 omni) */}
+      {supportsVideoRef && (
+        <div
+          className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
+          style={{ top: '70%', transform: 'translateY(-50%)' }}
+        >
+          <div className="relative">
+            <Handle
+              type="target"
+              position={Position.Left}
+              id="video"
+              className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-blue-400 !border-zinc-900 hover:!border-zinc-700"
+            />
+            <Video className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+          </div>
+          <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
+            Reference Video
           </span>
         </div>
       )}

@@ -123,6 +123,7 @@ export async function POST(request: Request) {
       firstFrameUrl,
       lastFrameUrl,
       referenceUrls,
+      videoUrl: inputVideoUrl,
       generateAudio,
     } = body;
 
@@ -150,6 +151,7 @@ export async function POST(request: Request) {
       firstFrameUrl,
       lastFrameUrl,
       referenceUrls,
+      videoUrl: inputVideoUrl,
       generateAudio,
     };
 

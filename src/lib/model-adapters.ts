@@ -220,6 +220,8 @@ export interface VideoGenerateRequest {
   lastFrameUrl?: string;
   // Multi-reference mode
   referenceUrls?: string[];
+  // Video reference (for omni-reference models like Seedance 2.0)
+  videoUrl?: string;
   generateAudio?: boolean;
 }
 
@@ -525,13 +527,29 @@ class Seedance2T2VAdapter implements VideoModelAdapter {
 }
 
 // Seedance 2.0 Image-to-Video (xskill.ai)
+// Supports omni_reference mode when both image and video are provided
 class Seedance2I2VAdapter implements VideoModelAdapter {
   constructor(private innerModel: 'seedance_2.0' | 'seedance_2.0_fast') {}
 
   buildInput(request: VideoGenerateRequest): Record<string, unknown> {
     const imageUrl = request.firstFrameUrl || request.referenceUrl;
-    const filePaths = imageUrl ? [imageUrl] : [];
+    const videoUrl = request.videoUrl;
 
+    // If both image and video are provided, use omni_reference mode
+    if (imageUrl && videoUrl) {
+      return {
+        model: this.innerModel,
+        prompt: request.prompt,
+        functionMode: 'omni_reference',
+        image_files: [imageUrl],
+        video_files: [videoUrl],
+        ratio: request.aspectRatio,
+        duration: request.duration,
+      };
+    }
+
+    // Image-only: use first_last_frames with filePaths
+    const filePaths = imageUrl ? [imageUrl] : [];
     return {
       model: this.innerModel,
       prompt: request.prompt,
