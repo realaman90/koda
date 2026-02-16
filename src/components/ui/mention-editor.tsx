@@ -329,15 +329,25 @@ export function MentionEditor({
   }, [editor]);
 
   return (
+    // nodrag/nopan/nowheel prevent React Flow from capturing events.
+    // stopPropagation on pointer/mouse/key events is needed because
+    // React Flow v12 uses pointer events for drag detection and
+    // contentEditable divs aren't auto-excluded like native inputs.
     <div
       className={`nodrag nopan nowheel ${className || ''}`}
-      onClick={handleContainerClick}
+      onPointerDown={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => { e.stopPropagation(); handleContainerClick(); }}
       onKeyDown={(e) => e.stopPropagation()}
       onKeyUp={(e) => e.stopPropagation()}
       onFocus={(e) => e.stopPropagation()}
+      style={{ cursor: 'text' }}
     >
-      <EditorContent editor={editor} />
+      <EditorContent
+        editor={editor}
+        className="nodrag nopan nowheel"
+        onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
+      />
     </div>
   );
 }
