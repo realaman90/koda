@@ -21,14 +21,18 @@ interface XSkillTaskQueryResponse {
   code: number;
   data?: {
     status: 'pending' | 'processing' | 'completed' | 'failed';
-    result?: {
-      output?: {
-        images?: string[]; // video URLs despite the field name
-      };
+    output?: {
+      images?: string[]; // video URLs despite the field name
+      error?: string; // error message when failed
+      error_type?: string; // e.g. "submit_timeout"
     };
-    error?: string;
+    progress?: {
+      stage?: string;
+      message?: string;
+    };
+    error?: string; // legacy field
   };
-  message?: string;
+  message?: string; // API call status (e.g. "查询成功"), NOT task error
 }
 
 export interface XSkillGenerateParams {
@@ -107,7 +111,7 @@ export async function xskillQueryTask(
   console.log('xskill query response:', { taskId, status, code: queryBody.code, message: queryBody.message, data: JSON.stringify(queryBody.data) });
 
   if (status === 'completed') {
-    const videoUrl = queryBody.data?.result?.output?.images?.[0];
+    const videoUrl = queryBody.data?.output?.images?.[0];
     if (!videoUrl) {
       throw new Error('xskill task completed but no video URL in response');
     }
@@ -115,8 +119,8 @@ export async function xskillQueryTask(
   }
 
   if (status === 'failed') {
-    // queryBody.message is the API call's status (e.g. "查询成功" = "query successful"), NOT the task error
-    return { status, error: queryBody.data?.error || 'Video generation failed' };
+    const taskError = queryBody.data?.output?.error || queryBody.data?.error || 'Video generation failed';
+    return { status, error: taskError };
   }
 
   return { status };
@@ -197,7 +201,7 @@ export async function xskillGenerate(
     console.log('xskill task status:', { taskId, status });
 
     if (status === 'completed') {
-      const videoUrl = queryBody.data?.result?.output?.images?.[0];
+      const videoUrl = queryBody.data?.output?.images?.[0];
       if (!videoUrl) {
         throw new Error('xskill task completed but no video URL in response');
       }
@@ -205,9 +209,8 @@ export async function xskillGenerate(
     }
 
     if (status === 'failed') {
-      throw new Error(
-        `xskill task failed: ${queryBody.data?.error || queryBody.message || 'unknown error'}`
-      );
+      const taskError = queryBody.data?.output?.error || queryBody.data?.error || 'unknown error';
+      throw new Error(`xskill task failed: ${taskError}`);
     }
 
     // pending or processing — keep polling
