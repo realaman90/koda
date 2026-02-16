@@ -4,7 +4,7 @@ import { FAL_VIDEO_MODELS, XSKILL_VIDEO_MODELS, VIDEO_MODEL_PROVIDERS, type Vide
 import { getVideoModelAdapter, type VideoGenerateRequest } from '@/lib/model-adapters';
 import { getAssetStorageType, getExtensionFromUrl, type AssetStorageProvider } from '@/lib/assets';
 
-export const maxDuration = 300;
+export const maxDuration = 600;
 
 // Configure Fal client
 fal.config({

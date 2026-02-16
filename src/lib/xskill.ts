@@ -56,7 +56,7 @@ export async function xskillGenerate(
   }
 
   const pollInterval = options?.pollIntervalMs ?? 5000;
-  const timeout = options?.timeoutMs ?? 300_000; // 5 minutes
+  const timeout = options?.timeoutMs ?? 600_000; // 10 minutes
 
   // 1. Create task
   const createRes = await fetch(`${XSKILL_BASE_URL}/api/v3/tasks/create`, {
