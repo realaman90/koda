@@ -502,6 +502,52 @@ class Seedance10I2VAdapter implements VideoModelAdapter {
   }
 }
 
+// Seedance 2.0 Text-to-Video (xskill.ai)
+// buildInput returns the xskill `params` block (not Fal input)
+class Seedance2T2VAdapter implements VideoModelAdapter {
+  constructor(private innerModel: 'seedance_2.0' | 'seedance_2.0_fast') {}
+
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    return {
+      model: this.innerModel,
+      prompt: request.prompt,
+      functionMode: 'first_last_frames',
+      ratio: request.aspectRatio,
+      duration: request.duration,
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    // xskill response: { data: { result: { output: { images: [url] } } } }
+    const data = result.data as { result?: { output?: { images?: string[] } } } | undefined;
+    return data?.result?.output?.images?.[0];
+  }
+}
+
+// Seedance 2.0 Image-to-Video (xskill.ai)
+class Seedance2I2VAdapter implements VideoModelAdapter {
+  constructor(private innerModel: 'seedance_2.0' | 'seedance_2.0_fast') {}
+
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    const imageUrl = request.firstFrameUrl || request.referenceUrl;
+    const filePaths = imageUrl ? [imageUrl] : [];
+
+    return {
+      model: this.innerModel,
+      prompt: request.prompt,
+      functionMode: 'first_last_frames',
+      ...(filePaths.length > 0 && { filePaths }),
+      ratio: request.aspectRatio,
+      duration: request.duration,
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { result?: { output?: { images?: string[] } } } | undefined;
+    return data?.result?.output?.images?.[0];
+  }
+}
+
 // Luma Ray 2
 class LumaRay2Adapter implements VideoModelAdapter {
   buildInput(request: VideoGenerateRequest): Record<string, unknown> {
@@ -577,6 +623,10 @@ const videoAdapters: Record<VideoModelType, VideoModelAdapter> = {
   'seedance-1.5-i2v': new Seedance15I2VAdapter(),
   'seedance-1.0-pro-t2v': new Seedance10T2VAdapter(),
   'seedance-1.0-pro-i2v': new Seedance10I2VAdapter(),
+  'seedance-2.0-t2v': new Seedance2T2VAdapter('seedance_2.0'),
+  'seedance-2.0-i2v': new Seedance2I2VAdapter('seedance_2.0'),
+  'seedance-2.0-fast-t2v': new Seedance2T2VAdapter('seedance_2.0_fast'),
+  'seedance-2.0-fast-i2v': new Seedance2I2VAdapter('seedance_2.0_fast'),
   'luma-ray2': new LumaRay2Adapter(),
   'minimax-video': new MinimaxVideoAdapter(),
   'runway-gen3': new RunwayGen3Adapter(),

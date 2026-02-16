@@ -392,6 +392,10 @@ export type VideoModelType =
   | 'seedance-1.5-i2v'
   | 'seedance-1.0-pro-t2v'
   | 'seedance-1.0-pro-i2v'
+  | 'seedance-2.0-t2v'
+  | 'seedance-2.0-i2v'
+  | 'seedance-2.0-fast-t2v'
+  | 'seedance-2.0-fast-i2v'
   | 'luma-ray2'
   | 'minimax-video'
   | 'runway-gen3';
@@ -465,6 +469,10 @@ export const ENABLED_VIDEO_MODELS: VideoModelType[] = [
   'seedance-1.5-i2v',
   'seedance-1.0-pro-t2v',
   'seedance-1.0-pro-i2v',
+  'seedance-2.0-t2v',
+  'seedance-2.0-i2v',
+  'seedance-2.0-fast-t2v',
+  'seedance-2.0-fast-i2v',
   'luma-ray2',
   'minimax-video',
   'runway-gen3',
@@ -695,6 +703,50 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     resolutions: ['480p', '720p', '1080p'],
     description: '1080p image-to-video',
   },
+  'seedance-2.0-t2v': {
+    label: 'Seedance 2.0 Text',
+    group: 'Seedance 2.0',
+    inputType: 'text-only',
+    inputMode: 'text',
+    durations: [4, 5, 6, 7, 8, 9, 10, 11, 12, 15],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    supportsAudio: true,
+    description: 'Best quality, multi-modal',
+  },
+  'seedance-2.0-i2v': {
+    label: 'Seedance 2.0 Image',
+    group: 'Seedance 2.0',
+    inputType: 'text-and-image',
+    inputMode: 'single-image',
+    durations: [4, 5, 6, 7, 8, 9, 10, 11, 12, 15],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    supportsAudio: true,
+    description: 'Image-to-video, multi-modal',
+  },
+  'seedance-2.0-fast-t2v': {
+    label: 'Seedance 2.0 Fast Text',
+    group: 'Seedance 2.0',
+    inputType: 'text-only',
+    inputMode: 'text',
+    durations: [4, 5, 6, 7, 8, 9, 10, 11, 12, 15],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    supportsAudio: true,
+    description: 'Faster + cheaper',
+  },
+  'seedance-2.0-fast-i2v': {
+    label: 'Seedance 2.0 Fast Image',
+    group: 'Seedance 2.0',
+    inputType: 'text-and-image',
+    inputMode: 'single-image',
+    durations: [4, 5, 6, 7, 8, 9, 10, 11, 12, 15],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    supportsAudio: true,
+    description: 'Fast image-to-video',
+  },
   'luma-ray2': {
     label: 'Luma Ray 2',
     group: 'Other',
@@ -728,8 +780,41 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
   },
 } as const;
 
-// Fal model IDs for video
-export const FAL_VIDEO_MODELS: Record<VideoModelType, string> = {
+// Video model API provider
+export type VideoModelProvider = 'fal' | 'xskill';
+
+/** Which API provider each model uses */
+export const VIDEO_MODEL_PROVIDERS: Record<VideoModelType, VideoModelProvider> = {
+  'veo-3': 'fal',
+  'veo-3.1-i2v': 'fal',
+  'veo-3.1-fast-i2v': 'fal',
+  'veo-3.1-ref': 'fal',
+  'veo-3.1-flf': 'fal',
+  'veo-3.1-fast-flf': 'fal',
+  'kling-2.6-t2v': 'fal',
+  'kling-2.6-i2v': 'fal',
+  'kling-o3-t2v': 'fal',
+  'kling-o3-i2v': 'fal',
+  'kling-o3-pro-i2v': 'fal',
+  'kling-3.0-t2v': 'fal',
+  'kling-3.0-i2v': 'fal',
+  'kling-3.0-pro-t2v': 'fal',
+  'kling-3.0-pro-i2v': 'fal',
+  'seedance-1.5-t2v': 'fal',
+  'seedance-1.5-i2v': 'fal',
+  'seedance-1.0-pro-t2v': 'fal',
+  'seedance-1.0-pro-i2v': 'fal',
+  'seedance-2.0-t2v': 'xskill',
+  'seedance-2.0-i2v': 'xskill',
+  'seedance-2.0-fast-t2v': 'xskill',
+  'seedance-2.0-fast-i2v': 'xskill',
+  'luma-ray2': 'fal',
+  'minimax-video': 'fal',
+  'runway-gen3': 'fal',
+} as const;
+
+// Fal model IDs for video (only for provider === 'fal')
+export const FAL_VIDEO_MODELS: Partial<Record<VideoModelType, string>> = {
   'veo-3': 'fal-ai/veo3',
   'veo-3.1-i2v': 'fal-ai/veo3.1/image-to-video',
   'veo-3.1-fast-i2v': 'fal-ai/veo3.1/fast/image-to-video',
@@ -752,6 +837,14 @@ export const FAL_VIDEO_MODELS: Record<VideoModelType, string> = {
   'luma-ray2': 'fal-ai/luma-dream-machine',
   'minimax-video': 'fal-ai/minimax-video/image-to-video',
   'runway-gen3': 'fal-ai/runway-gen3/turbo/image-to-video',
+} as const;
+
+// xskill.ai outer model IDs (only for provider === 'xskill')
+export const XSKILL_VIDEO_MODELS: Partial<Record<VideoModelType, string>> = {
+  'seedance-2.0-t2v': 'st-ai/super-seed2',
+  'seedance-2.0-i2v': 'st-ai/super-seed2',
+  'seedance-2.0-fast-t2v': 'st-ai/super-seed2',
+  'seedance-2.0-fast-i2v': 'st-ai/super-seed2',
 } as const;
 
 // ============================================

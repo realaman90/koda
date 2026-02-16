@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { fal } from '@fal-ai/client';
-import { FAL_VIDEO_MODELS, type VideoModelType } from '@/lib/types';
+import { FAL_VIDEO_MODELS, XSKILL_VIDEO_MODELS, VIDEO_MODEL_PROVIDERS, type VideoModelType } from '@/lib/types';
 import { getVideoModelAdapter, type VideoGenerateRequest } from '@/lib/model-adapters';
 import { getAssetStorageType, getExtensionFromUrl, type AssetStorageProvider } from '@/lib/assets';
 
@@ -16,12 +16,12 @@ fal.config({
  */
 async function getProvider(): Promise<AssetStorageProvider> {
   const storageType = getAssetStorageType();
-  
+
   if (storageType === 'r2' || storageType === 's3') {
     const { getS3AssetProvider } = await import('@/lib/assets/s3-provider');
     return getS3AssetProvider(storageType);
   }
-  
+
   const { getLocalAssetProvider } = await import('@/lib/assets/local-provider');
   return getLocalAssetProvider();
 }
@@ -35,7 +35,7 @@ async function saveGeneratedVideo(
   options: { prompt: string; model: string; canvasId?: string; nodeId?: string }
 ): Promise<string> {
   const storageType = getAssetStorageType();
-  
+
   // If using default (no storage configured), return original URL
   if (storageType === 'local' && !process.env.ASSET_STORAGE) {
     return url;
@@ -64,6 +64,52 @@ async function saveGeneratedVideo(
   }
 }
 
+/**
+ * Generate video via Fal.ai
+ */
+async function generateViaFal(
+  modelId: string,
+  input: Record<string, unknown>,
+  adapter: { extractVideoUrl: (result: Record<string, unknown>) => string | undefined }
+): Promise<string> {
+  const result = await fal.subscribe(modelId, {
+    input,
+    logs: true,
+    onQueueUpdate: (update) => {
+      console.log('Video queue update:', update.status);
+    },
+  });
+
+  console.log('Fal generation result:', result);
+
+  const videoUrl = adapter.extractVideoUrl(result as Record<string, unknown>);
+  if (!videoUrl) {
+    throw new Error('No video generated from Fal');
+  }
+  return videoUrl;
+}
+
+/**
+ * Generate video via xskill.ai (async task-based)
+ */
+async function generateViaXskill(
+  xskillModelId: string,
+  params: Record<string, unknown>
+): Promise<string> {
+  const { xskillGenerate } = await import('@/lib/xskill');
+
+  const videoUrl = await xskillGenerate(
+    { model: xskillModelId, params },
+    {
+      onStatusUpdate: (status) => {
+        console.log('xskill task status:', status);
+      },
+    }
+  );
+
+  return videoUrl;
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -81,15 +127,9 @@ export async function POST(request: Request) {
     } = body;
 
     const modelType = model as VideoModelType;
+    const provider = VIDEO_MODEL_PROVIDERS[modelType] || 'fal';
 
-    // Debug: Log received model
-    console.log('Received model from request:', { model, modelType, isValidKey: modelType in FAL_VIDEO_MODELS });
-
-    if (!model || !(model in FAL_VIDEO_MODELS)) {
-      console.warn(`Invalid or missing model: "${model}". Falling back to veo-3.`);
-    }
-
-    const modelId = FAL_VIDEO_MODELS[modelType] || FAL_VIDEO_MODELS['veo-3'];
+    console.log('Received model from request:', { model, modelType, provider });
 
     // Validate input - at least prompt or some image reference is needed
     if (!prompt && !referenceUrl && !firstFrameUrl && !referenceUrls?.length) {
@@ -118,7 +158,7 @@ export async function POST(request: Request) {
     const input = adapter.buildInput(generateRequest);
 
     console.log('Video generation request:', {
-      modelId,
+      provider,
       receivedModel: model,
       hasReferenceUrl: !!referenceUrl,
       hasFirstFrameUrl: !!firstFrameUrl,
@@ -127,43 +167,46 @@ export async function POST(request: Request) {
       input,
     });
 
-    // Call Fal API with queue subscription for long-running video generation
-    const result = await fal.subscribe(modelId, {
-      input,
-      logs: true,
-      onQueueUpdate: (update) => {
-        console.log('Video queue update:', update.status);
-      },
-    });
+    let videoUrl: string;
+    let modelLabel: string;
 
-    console.log('Video generation result:', result);
-
-    // Extract video URL using adapter
-    const videoUrl = adapter.extractVideoUrl(result as Record<string, unknown>);
-
-    if (!videoUrl) {
-      throw new Error('No video generated');
+    if (provider === 'xskill') {
+      // xskill.ai path — adapter.buildInput() returns the params block
+      const xskillModelId = XSKILL_VIDEO_MODELS[modelType];
+      if (!xskillModelId) {
+        throw new Error(`No xskill model ID for ${modelType}`);
+      }
+      modelLabel = xskillModelId;
+      videoUrl = await generateViaXskill(xskillModelId, input);
+    } else {
+      // Fal path (default)
+      const falModelId = FAL_VIDEO_MODELS[modelType];
+      if (!falModelId) {
+        console.warn(`No Fal model ID for "${modelType}". Falling back to veo-3.`);
+      }
+      modelLabel = falModelId || FAL_VIDEO_MODELS['veo-3']!;
+      videoUrl = await generateViaFal(modelLabel, input, adapter);
     }
 
     // Save video to configured asset storage (local filesystem, R2, or S3)
     const { canvasId, nodeId } = body;
     const savedUrl = await saveGeneratedVideo(videoUrl, {
       prompt: prompt || '',
-      model: modelId,
+      model: modelLabel,
       canvasId,
       nodeId,
     });
 
     return NextResponse.json({
       success: true,
-      videoUrl: savedUrl, // Now local URL if storage configured
-      originalUrl: videoUrl, // Keep original fal.ai URL as backup
-      model: modelId,
+      videoUrl: savedUrl,
+      originalUrl: videoUrl,
+      model: modelLabel,
     });
   } catch (error) {
     console.error('Video generation error:', error);
 
-    // Extract detailed error from Fal SDK (may include body/detail with validation info)
+    // Extract detailed error
     let errorMessage = 'Video generation failed';
     if (error instanceof Error) {
       errorMessage = error.message;
