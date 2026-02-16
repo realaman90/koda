@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { fal } from '@fal-ai/client';
 import { FAL_VIDEO_MODELS, XSKILL_VIDEO_MODELS, VIDEO_MODEL_PROVIDERS, type VideoModelType } from '@/lib/types';
 import { getVideoModelAdapter, type VideoGenerateRequest } from '@/lib/model-adapters';
-import { getAssetStorageType, getExtensionFromUrl, type AssetStorageProvider } from '@/lib/assets';
+import { saveGeneratedVideo } from '@/lib/video-storage';
 
 export const maxDuration = 600;
 
@@ -10,59 +10,6 @@ export const maxDuration = 600;
 fal.config({
   credentials: process.env.FAL_KEY,
 });
-
-/**
- * Get the asset storage provider (server-side only)
- */
-async function getProvider(): Promise<AssetStorageProvider> {
-  const storageType = getAssetStorageType();
-
-  if (storageType === 'r2' || storageType === 's3') {
-    const { getS3AssetProvider } = await import('@/lib/assets/s3-provider');
-    return getS3AssetProvider(storageType);
-  }
-
-  const { getLocalAssetProvider } = await import('@/lib/assets/local-provider');
-  return getLocalAssetProvider();
-}
-
-/**
- * Save generated video to configured asset storage
- * Returns local URL if storage is configured, otherwise returns original URL
- */
-async function saveGeneratedVideo(
-  url: string,
-  options: { prompt: string; model: string; canvasId?: string; nodeId?: string }
-): Promise<string> {
-  const storageType = getAssetStorageType();
-
-  // If using default (no storage configured), return original URL
-  if (storageType === 'local' && !process.env.ASSET_STORAGE) {
-    return url;
-  }
-
-  const provider = await getProvider();
-
-  try {
-    const extension = getExtensionFromUrl(url) || 'mp4';
-    const asset = await provider.saveFromUrl(url, {
-      type: 'video',
-      extension,
-      metadata: {
-        mimeType: `video/${extension}`,
-        prompt: options.prompt,
-        model: options.model,
-        canvasId: options.canvasId,
-        nodeId: options.nodeId,
-      },
-    });
-    return asset.url;
-  } catch (error) {
-    console.error('Failed to save video asset:', error);
-    // Fall back to original URL if save fails
-    return url;
-  }
-}
 
 /**
  * Generate video via Fal.ai
@@ -86,27 +33,6 @@ async function generateViaFal(
   if (!videoUrl) {
     throw new Error('No video generated from Fal');
   }
-  return videoUrl;
-}
-
-/**
- * Generate video via xskill.ai (async task-based)
- */
-async function generateViaXskill(
-  xskillModelId: string,
-  params: Record<string, unknown>
-): Promise<string> {
-  const { xskillGenerate } = await import('@/lib/xskill');
-
-  const videoUrl = await xskillGenerate(
-    { model: xskillModelId, params },
-    {
-      onStatusUpdate: (status) => {
-        console.log('xskill task status:', status);
-      },
-    }
-  );
-
   return videoUrl;
 }
 
@@ -169,26 +95,30 @@ export async function POST(request: Request) {
       input,
     });
 
-    let videoUrl: string;
-    let modelLabel: string;
-
     if (provider === 'xskill') {
-      // xskill.ai path — adapter.buildInput() returns the params block
+      // xskill.ai path — return taskId immediately for client-side polling
       const xskillModelId = XSKILL_VIDEO_MODELS[modelType];
       if (!xskillModelId) {
         throw new Error(`No xskill model ID for ${modelType}`);
       }
-      modelLabel = xskillModelId;
-      videoUrl = await generateViaXskill(xskillModelId, input);
-    } else {
-      // Fal path (default)
-      const falModelId = FAL_VIDEO_MODELS[modelType];
-      if (!falModelId) {
-        console.warn(`No Fal model ID for "${modelType}". Falling back to veo-3.`);
-      }
-      modelLabel = falModelId || FAL_VIDEO_MODELS['veo-3']!;
-      videoUrl = await generateViaFal(modelLabel, input, adapter);
+
+      const { xskillCreateTask } = await import('@/lib/xskill');
+      const { taskId } = await xskillCreateTask({ model: xskillModelId, params: input });
+
+      return NextResponse.json({
+        async: true,
+        taskId,
+        model: xskillModelId,
+      });
     }
+
+    // Fal path (default) — synchronous
+    const falModelId = FAL_VIDEO_MODELS[modelType];
+    if (!falModelId) {
+      console.warn(`No Fal model ID for "${modelType}". Falling back to veo-3.`);
+    }
+    const modelLabel = falModelId || FAL_VIDEO_MODELS['veo-3']!;
+    const videoUrl = await generateViaFal(modelLabel, input, adapter);
 
     // Save video to configured asset storage (local filesystem, R2, or S3)
     const { canvasId, nodeId } = body;

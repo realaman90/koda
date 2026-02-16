@@ -46,6 +46,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
   const [isHovered, setIsHovered] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Check if this node has any connections
   const isConnected = edges.some(edge => edge.source === id || edge.target === id);
@@ -85,6 +86,77 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
       nameInputRef.current.select();
     }
   }, [isEditingName]);
+
+  // Poll xskill task status
+  const pollXskillTask = useCallback((taskId: string, taskModel: string) => {
+    // Clear any existing poll
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+    }
+
+    pollIntervalRef.current = setInterval(async () => {
+      try {
+        const response = await fetch('/api/generate-video/poll', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            taskId,
+            model: taskModel,
+            prompt: data.prompt || '',
+            nodeId: id,
+          }),
+        });
+
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.error || 'Poll failed');
+        }
+
+        const result = await response.json();
+
+        if (result.status === 'completed') {
+          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+          updateNodeData(id, {
+            outputUrl: result.videoUrl,
+            isGenerating: false,
+            progress: 100,
+            xskillTaskId: undefined,
+            xskillTaskModel: undefined,
+          });
+          toast.success('Video generated successfully');
+        } else if (result.status === 'failed') {
+          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+          updateNodeData(id, {
+            error: result.error || 'Video generation failed',
+            isGenerating: false,
+            progress: 0,
+            xskillTaskId: undefined,
+            xskillTaskModel: undefined,
+          });
+          toast.error(`Generation failed: ${result.error || 'Unknown error'}`);
+        }
+        // pending/processing — keep polling
+      } catch (error) {
+        console.error('[VideoGenerator] Poll error:', error);
+        // Don't stop polling on transient network errors
+      }
+    }, 5000);
+  }, [id, data.prompt, updateNodeData]);
+
+  // Recovery: resume polling on page refresh if xskillTaskId is set
+  useEffect(() => {
+    if (data.xskillTaskId && data.xskillTaskModel && data.isGenerating) {
+      pollXskillTask(data.xskillTaskId, data.xskillTaskModel);
+    }
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- intentionally run once on mount
 
   const handleNameSubmit = useCallback(() => {
     setIsEditingName(false);
@@ -233,6 +305,16 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
 
       const result = await response.json();
 
+      if (result.async && result.taskId) {
+        // xskill async path — store taskId and start client-side polling
+        updateNodeData(id, {
+          xskillTaskId: result.taskId,
+          xskillTaskModel: result.model,
+        });
+        pollXskillTask(result.taskId, result.model);
+        return;
+      }
+
       updateNodeData(id, {
         outputUrl: result.videoUrl,
         thumbnailUrl: result.thumbnailUrl,
@@ -250,7 +332,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
       });
       toast.error(`Generation failed: ${errorMessage}`);
     }
-  }, [id, data.prompt, data.model, data.aspectRatio, data.duration, data.resolution, data.generateAudio, updateNodeData, getConnectedInputs]);
+  }, [id, data.prompt, data.model, data.aspectRatio, data.duration, data.resolution, data.generateAudio, updateNodeData, getConnectedInputs, pollXskillTask]);
 
   const handleDelete = useCallback(() => {
     deleteNode(id);

@@ -39,6 +39,87 @@ export interface XSkillGenerateParams {
 }
 
 /**
+ * Create an xskill task without polling. Returns the taskId for client-side polling.
+ */
+export async function xskillCreateTask(
+  request: XSkillGenerateParams
+): Promise<{ taskId: string; price?: number }> {
+  const apiKey = process.env.XSKILL_API_KEY;
+  if (!apiKey) {
+    throw new Error('XSKILL_API_KEY environment variable is not set');
+  }
+
+  const createRes = await fetch(`${XSKILL_BASE_URL}/api/v3/tasks/create`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: request.model,
+      params: request.params,
+    }),
+  });
+
+  if (!createRes.ok) {
+    const text = await createRes.text();
+    throw new Error(`xskill task create failed (${createRes.status}): ${text}`);
+  }
+
+  const createBody: XSkillTaskCreateResponse = await createRes.json();
+  if (createBody.code !== 200 || !createBody.data?.task_id) {
+    throw new Error(
+      `xskill task create error: ${createBody.message || JSON.stringify(createBody)}`
+    );
+  }
+
+  console.log('xskill task created:', { taskId: createBody.data.task_id, price: createBody.data.price });
+  return { taskId: createBody.data.task_id, price: createBody.data.price };
+}
+
+/**
+ * Query the status of an xskill task. Returns status and videoUrl if completed.
+ */
+export async function xskillQueryTask(
+  taskId: string
+): Promise<{ status: 'pending' | 'processing' | 'completed' | 'failed'; videoUrl?: string; error?: string }> {
+  const apiKey = process.env.XSKILL_API_KEY;
+  if (!apiKey) {
+    throw new Error('XSKILL_API_KEY environment variable is not set');
+  }
+
+  const queryRes = await fetch(`${XSKILL_BASE_URL}/api/v3/tasks/query`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({ task_id: taskId }),
+  });
+
+  if (!queryRes.ok) {
+    throw new Error(`xskill query failed (${queryRes.status})`);
+  }
+
+  const queryBody: XSkillTaskQueryResponse = await queryRes.json();
+  const status = queryBody.data?.status || 'pending';
+
+  if (status === 'completed') {
+    const videoUrl = queryBody.data?.result?.output?.images?.[0];
+    if (!videoUrl) {
+      throw new Error('xskill task completed but no video URL in response');
+    }
+    return { status, videoUrl };
+  }
+
+  if (status === 'failed') {
+    return { status, error: queryBody.data?.error || queryBody.message || 'unknown error' };
+  }
+
+  return { status };
+}
+
+/**
  * Generate a video via xskill.ai.
  * Creates a task, polls until completion, returns the video URL.
  */
