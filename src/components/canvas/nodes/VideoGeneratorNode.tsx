@@ -498,7 +498,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
                 <textarea
                   value={data.prompt}
                   onChange={handlePromptChange}
-                  placeholder={isReadOnly ? '' : 'Describe the video you want to generate...'}
+                  placeholder={isReadOnly ? '' : supportsVideoRef ? 'Describe the video... Use @image1, @video1 to reference connected files' : 'Describe the video you want to generate...'}
                   disabled={isReadOnly}
                   className={`w-full h-[130px] bg-transparent border-none text-sm resize-none focus:outline-none ${isReadOnly ? 'cursor-default' : ''}`}
                   style={{ color: 'var(--text-secondary)' }}

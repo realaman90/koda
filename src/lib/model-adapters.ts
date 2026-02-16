@@ -526,6 +526,16 @@ class Seedance2T2VAdapter implements VideoModelAdapter {
   }
 }
 
+/**
+ * Translate user-friendly @image1/@video1 shorthand to Seedance API format.
+ * @image1 → @image_file_1, @video1 → @video_file_1, etc.
+ */
+function transformSeedancePromptRefs(prompt: string): string {
+  return prompt
+    .replace(/@image(\d+)/gi, (_, n) => `@image_file_${n}`)
+    .replace(/@video(\d+)/gi, (_, n) => `@video_file_${n}`);
+}
+
 // Seedance 2.0 Image-to-Video (xskill.ai)
 // Supports omni_reference mode when both image and video are provided
 class Seedance2I2VAdapter implements VideoModelAdapter {
@@ -535,11 +545,13 @@ class Seedance2I2VAdapter implements VideoModelAdapter {
     const imageUrl = request.firstFrameUrl || request.referenceUrl;
     const videoUrl = request.videoUrl;
 
+    const prompt = transformSeedancePromptRefs(request.prompt);
+
     // If both image and video are provided, use omni_reference mode
     if (imageUrl && videoUrl) {
       return {
         model: this.innerModel,
-        prompt: request.prompt,
+        prompt,
         functionMode: 'omni_reference',
         image_files: [imageUrl],
         video_files: [videoUrl],
@@ -552,7 +564,7 @@ class Seedance2I2VAdapter implements VideoModelAdapter {
     const filePaths = imageUrl ? [imageUrl] : [];
     return {
       model: this.innerModel,
-      prompt: request.prompt,
+      prompt,
       functionMode: 'first_last_frames',
       ...(filePaths.length > 0 && { filePaths }),
       ratio: request.aspectRatio,
