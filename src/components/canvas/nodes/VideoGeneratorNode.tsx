@@ -630,7 +630,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
       {inputMode !== 'first-last-frame' && (
         <div
           className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
-          style={{ top: inputMode === 'text' ? '50%' : '30%', transform: 'translateY(-50%)' }}
+          style={{ top: inputMode === 'text' ? '50%' : supportsVideoRef ? '18%' : '30%', transform: 'translateY(-50%)' }}
         >
           <div className="relative">
             <Handle
@@ -675,7 +675,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
             <div
               key={`img${num}`}
               className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
-              style={{ top: `${35 + (num - 1) * 12}%`, transform: 'translateY(-50%)' }}
+              style={{ top: `${34 + (num - 1) * 16}%`, transform: 'translateY(-50%)' }}
             >
               <div className="relative">
                 <Handle
@@ -694,7 +694,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
           ))}
           <div
             className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
-            style={{ top: '75%', transform: 'translateY(-50%)' }}
+            style={{ top: '82%', transform: 'translateY(-50%)' }}
           >
             <div className="relative">
               <Handle
