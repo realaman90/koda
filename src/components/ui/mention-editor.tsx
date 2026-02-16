@@ -321,11 +321,21 @@ export function MentionEditor({
     editor?.setEditable(!disabled);
   }, [disabled, editor]);
 
+  // Focus the editor on click (React Flow intercepts clicks on contentEditable)
+  const handleContainerClick = useCallback(() => {
+    if (editor && !editor.isFocused) {
+      editor.commands.focus();
+    }
+  }, [editor]);
+
   return (
     <div
-      className={`nodrag nowheel ${className || ''}`}
+      className={`nodrag nopan nowheel ${className || ''}`}
+      onClick={handleContainerClick}
+      onMouseDown={(e) => e.stopPropagation()}
       onKeyDown={(e) => e.stopPropagation()}
       onKeyUp={(e) => e.stopPropagation()}
+      onFocus={(e) => e.stopPropagation()}
     >
       <EditorContent editor={editor} />
     </div>
