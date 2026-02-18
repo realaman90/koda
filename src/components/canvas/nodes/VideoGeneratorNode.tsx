@@ -31,6 +31,7 @@ import {
   Volume2,
   VolumeX,
   RefreshCw,
+  Music,
 } from 'lucide-react';
 
 /** Small elapsed-time display that ticks every second */
@@ -92,6 +93,9 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
     }
     if (connectedHandles.includes('video')) {
       items.push({ id: 'video1', label: 'video1', type: 'video' });
+    }
+    if (connectedHandles.includes('audio')) {
+      items.push({ id: 'audio1', label: 'audio1', type: 'audio' });
     }
     return items;
   }, [supportsVideoRef, edges, id]);
@@ -322,6 +326,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
           lastFrameUrl: connectedInputs.lastFrameUrl,
           referenceUrls: connectedInputs.referenceUrls,
           videoUrl: connectedInputs.videoUrl,
+          audioUrl: connectedInputs.audioUrl,
           generateAudio: data.generateAudio,
         }),
       });
@@ -858,6 +863,26 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
             </div>
             <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
               @video1
+            </span>
+          </div>
+
+          {/* Audio Reference Handle */}
+          <div
+            className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
+            style={{ top: '95%', transform: 'translateY(-50%)' }}
+          >
+            <div className="relative">
+              <Handle
+                type="target"
+                position={Position.Left}
+                id="audio"
+                className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-purple-400 !border-zinc-900 hover:!border-zinc-700"
+              />
+              <Music className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+              <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-zinc-900 text-[9px] text-purple-300 font-bold rounded-full flex items-center justify-center border border-purple-400/60">1</span>
+            </div>
+            <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
+              @audio1
             </span>
           </div>
         </>

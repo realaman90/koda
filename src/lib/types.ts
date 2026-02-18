@@ -451,6 +451,7 @@ export interface VideoModelCapabilities {
   maxReferences?: number; // For multi-reference models (default 1)
   lastFrameOptional?: boolean; // For first-last-frame mode: if true, last frame is optional
   supportsVideoRef?: boolean; // Shows a video reference handle (for omni-reference models like Seedance 2.0)
+  supportsAudioRef?: boolean; // Shows an audio reference handle (for Seedance 2.0 omni-reference)
   description: string;
 }
 
@@ -730,7 +731,8 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     aspectRatios: ['16:9', '9:16', '1:1'],
     supportsAudio: true,
     supportsVideoRef: true,
-    description: 'Image + video reference (omni)',
+    supportsAudioRef: true,
+    description: 'Image + video + audio reference (omni)',
   },
   'seedance-2.0-fast-t2v': {
     label: 'Seedance 2.0 Fast Text',
@@ -753,7 +755,8 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     aspectRatios: ['16:9', '9:16', '1:1'],
     supportsAudio: true,
     supportsVideoRef: true,
-    description: 'Fast image + video ref (omni)',
+    supportsAudioRef: true,
+    description: 'Fast image + video + audio ref (omni)',
   },
   'luma-ray2': {
     label: 'Luma Ray 2',

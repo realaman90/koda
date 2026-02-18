@@ -222,6 +222,8 @@ export interface VideoGenerateRequest {
   referenceUrls?: string[];
   // Video reference (for omni-reference models like Seedance 2.0)
   videoUrl?: string;
+  // Audio reference (for Seedance 2.0 omni-reference)
+  audioUrl?: string;
   generateAudio?: boolean;
 }
 
@@ -527,13 +529,14 @@ class Seedance2T2VAdapter implements VideoModelAdapter {
 }
 
 /**
- * Translate user-friendly @image1/@video1 shorthand to Seedance API format.
- * @image1 → @image_file_1, @video1 → @video_file_1, etc.
+ * Translate user-friendly shorthand to X-Skill Seedance API format.
+ * @image1 → @image_file_1, @video1 → @video_file_1, @audio1 → @audio_file_1, etc.
  */
 function transformSeedancePromptRefs(prompt: string): string {
   return prompt
     .replace(/@image(\d+)/gi, (_, n) => `@image_file_${n}`)
-    .replace(/@video(\d+)/gi, (_, n) => `@video_file_${n}`);
+    .replace(/@video(\d+)/gi, (_, n) => `@video_file_${n}`)
+    .replace(/@audio(\d+)/gi, (_, n) => `@audio_file_${n}`);
 }
 
 // Seedance 2.0 Image-to-Video (xskill.ai)
@@ -562,17 +565,18 @@ class Seedance2I2VAdapter implements VideoModelAdapter {
         functionMode: 'omni_reference',
         image_files: imageUrls,
         video_files: [videoUrl],
+        ...(request.audioUrl && { audio_files: [request.audioUrl] }),
         ratio: request.aspectRatio,
         duration: request.duration,
       };
     }
 
-    // Image-only: use first_last_frames with filePaths
+    // Image-only: use first_last_frames with image_files (not filePaths)
     return {
       model: this.innerModel,
       prompt,
       functionMode: 'first_last_frames',
-      ...(imageUrls.length > 0 && { filePaths: imageUrls }),
+      ...(imageUrls.length > 0 && { image_files: imageUrls }),
       ratio: request.aspectRatio,
       duration: request.duration,
     };

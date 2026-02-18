@@ -12,7 +12,7 @@ import { EditorContent, ReactRenderer, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Mention from '@tiptap/extension-mention';
 import Placeholder from '@tiptap/extension-placeholder';
-import { ImageIcon, Video } from 'lucide-react';
+import { ImageIcon, Video, Music } from 'lucide-react';
 
 // ==========================================
 // Types
@@ -21,7 +21,7 @@ import { ImageIcon, Video } from 'lucide-react';
 export interface MentionItem {
   id: string;
   label: string;
-  type: 'image' | 'video';
+  type: 'image' | 'video' | 'audio';
 }
 
 interface MentionEditorProps {
@@ -106,8 +106,10 @@ const MentionListComponent = forwardRef<
         >
           {item.type === 'image' ? (
             <ImageIcon className="h-3.5 w-3.5 text-red-400 shrink-0" />
-          ) : (
+          ) : item.type === 'video' ? (
             <Video className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+          ) : (
+            <Music className="h-3.5 w-3.5 text-purple-400 shrink-0" />
           )}
           <span className="text-zinc-200">@{item.label}</span>
           <span className="ml-auto text-emerald-400 text-[10px]">
@@ -201,7 +203,7 @@ function textToHTML(text: string): string {
 
   // Replace @mentions with mention node markup
   const withMentions = escaped.replace(
-    /@(image|video)(\d+)/gi,
+    /@(image|video|audio)(\d+)/gi,
     (_, type, num) => {
       const label = `${type.toLowerCase()}${num}`;
       return `<span data-type="mention" data-id="${label}" data-label="${label}">@${label}</span>`;
@@ -276,11 +278,12 @@ export function MentionEditor({
         renderHTML({ options, node }) {
           const label = node.attrs.label || node.attrs.id;
           const isImage = label.startsWith('image');
+          const isVideo = label.startsWith('video');
           return [
             'span',
             {
               ...options.HTMLAttributes,
-              'data-mention-type': isImage ? 'image' : 'video',
+              'data-mention-type': isImage ? 'image' : isVideo ? 'video' : 'audio',
             },
             `@${label}`,
           ];
