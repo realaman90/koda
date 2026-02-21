@@ -447,7 +447,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
       onMouseLeave={() => setIsHovered(false)}
     >
       {/* Floating Toolbar - hidden in read-only mode */}
-      {selected && !isReadOnly && (
+      {selected && !isReadOnly && !data.isGenerating && (
         <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1 rounded-lg px-2 py-1.5 node-toolbar-floating z-10">
           <Button
             variant="ghost"
@@ -523,12 +523,16 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
           {/* Loading State */}
           {data.isGenerating ? (
             <div className="p-4 min-h-[200px] flex flex-col items-center justify-center gap-4">
-              <div className="relative">
-                <div className="w-16 h-16 rounded-full border-4 border-muted border-t-muted-foreground animate-spin" />
-                <Loader2 className="absolute inset-0 m-auto h-6 w-6 text-muted-foreground animate-pulse" />
-              </div>
               <div className="text-center">
-                <p className="text-foreground text-sm font-medium">
+                <p
+                  className="text-base font-semibold bg-clip-text text-transparent"
+                  style={{
+                    backgroundImage:
+                      'linear-gradient(90deg, hsl(var(--muted-foreground)/0.45) 0%, hsl(var(--foreground)/0.95) 45%, hsl(var(--muted-foreground)/0.45) 100%)',
+                    backgroundSize: '200% 100%',
+                    animation: 'shimmer-text 2s ease-in-out infinite',
+                  }}
+                >
                   {data.xskillTaskId
                     ? data.xskillStatus === 'processing' ? 'Rendering video...' : 'Queued...'
                     : 'Generating video...'}
@@ -699,7 +703,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
         </div>
 
         {/* Bottom Toolbar - visible on hover or selected, only when no output */}
-        {!isReadOnly && !data.outputUrl && (selected || isHovered) && (
+        {!isReadOnly && !data.outputUrl && !data.isGenerating && (selected || isHovered) && (
         <div className="flex items-center flex-wrap gap-1.5 px-3 py-2.5 node-bottom-toolbar">
           {/* Model Selector */}
           <SearchableSelect
