@@ -16,6 +16,8 @@ export function DashboardPage() {
     setActiveTab,
     searchQuery,
     isLoadingList,
+    retryLoadCanvases,
+    loadError,
     filteredCanvases,
     filteredTemplates,
     handleCreateCanvas,
@@ -52,12 +54,14 @@ export function DashboardPage() {
               <ProjectsGrid
                 canvases={filteredCanvases}
                 isLoading={isLoadingList}
+                loadError={loadError}
                 searchQuery={searchQuery}
                 onCreateCanvas={handleCreateCanvas}
                 onRename={handleRename}
                 onDuplicate={handleDuplicate}
                 onDelete={handleDelete}
                 onRefreshPreview={handleRefreshPreview}
+                onRetryLoad={retryLoadCanvases}
               />
             </section>
 
