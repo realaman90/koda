@@ -6,6 +6,8 @@ import { MoreHorizontal, Pencil, Copy, Trash2, Calendar, AlertCircle, Loader2, I
 import { cn } from '@/lib/utils';
 import type { CanvasMetadata } from '@/lib/storage';
 
+const PREVIEW_SYSTEM_ENABLED = process.env.NEXT_PUBLIC_UX_PREVIEW_SYSTEM_V1 !== 'false';
+
 interface CanvasCardProps {
   canvas: CanvasMetadata;
   onRename: (id: string, name: string) => void;
@@ -38,6 +40,10 @@ export function CanvasCard({ canvas, onRename, onDuplicate, onDelete, onRefreshP
   const inputRef = useRef<HTMLInputElement>(null);
 
   const previewStatus = useMemo(() => {
+    if (!PREVIEW_SYSTEM_ENABLED) {
+      return (canvas.thumbnailUrl || canvas.thumbnail) ? 'ready' : 'empty';
+    }
+
     if (canvas.thumbnailStatus === 'ready' && canvas.thumbnailUpdatedAt && canvas.updatedAt > canvas.thumbnailUpdatedAt) {
       return 'stale';
     }
@@ -200,13 +206,15 @@ export function CanvasCard({ canvas, onRename, onDuplicate, onDelete, onRefreshP
                   <Copy className="h-3.5 w-3.5" />
                   Duplicate
                 </button>
-                <button
-                  onClick={() => handleMenuAction('refresh')}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-foreground hover:bg-muted"
-                >
-                  <Loader2 className="h-3.5 w-3.5" />
-                  Refresh preview
-                </button>
+                {PREVIEW_SYSTEM_ENABLED && (
+                  <button
+                    onClick={() => handleMenuAction('refresh')}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-foreground hover:bg-muted"
+                  >
+                    <Loader2 className="h-3.5 w-3.5" />
+                    Refresh preview
+                  </button>
+                )}
                 <div className="my-1 h-px bg-border" />
                 <button
                   onClick={() => handleMenuAction('delete')}

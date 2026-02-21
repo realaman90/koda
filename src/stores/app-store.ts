@@ -63,6 +63,7 @@ interface AppState {
 let saveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 const SAVE_DEBOUNCE_MS = 1000;
 const PREVIEW_DEBOUNCE_MS = 2000;
+const PREVIEW_SYSTEM_ENABLED = process.env.NEXT_PUBLIC_UX_PREVIEW_SYSTEM_V1 !== 'false';
 
 const previewTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const previewSignatures = new Map<string, string>();
@@ -353,9 +354,11 @@ export const useAppStore = create<AppState>()((set, get) => ({
         });
       }
 
-      get().requestPreviewRefresh(currentCanvasId).catch((err) => {
-        console.error('Preview refresh failed:', err);
-      });
+      if (PREVIEW_SYSTEM_ENABLED) {
+        get().requestPreviewRefresh(currentCanvasId).catch((err) => {
+          console.error('Preview refresh failed:', err);
+        });
+      }
     } catch (error) {
       console.error('Failed to save canvas:', error);
     } finally {
@@ -410,6 +413,8 @@ export const useAppStore = create<AppState>()((set, get) => ({
   },
 
   requestPreviewRefresh: async (id, force = false) => {
+    if (!PREVIEW_SYSTEM_ENABLED) return;
+
     const provider = getStorageProvider();
     const canvas = await provider.getCanvas(id);
     if (!canvas) return;
