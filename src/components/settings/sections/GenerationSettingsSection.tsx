@@ -46,11 +46,11 @@ export function GenerationSettingsSection() {
     <div className="space-y-6">
       {/* Image Model */}
       <div className="space-y-2">
-        <label className="text-sm font-medium text-zinc-200">Default Image Model</label>
+        <label className="text-sm font-medium text-foreground">Default Image Model</label>
         <select
           value={defaultSettings.imageModel}
           onChange={(e) => handleChange('imageModel', e.target.value)}
-          className="w-full h-10 px-3 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-200 outline-none focus:border-indigo-500"
+          className="w-full h-10 px-3 bg-muted border border-border rounded-lg text-sm text-foreground outline-none focus:border-primary"
         >
           {imageModels.map((model) => (
             <option key={model.id} value={model.id}>
@@ -62,11 +62,11 @@ export function GenerationSettingsSection() {
 
       {/* Video Model */}
       <div className="space-y-2">
-        <label className="text-sm font-medium text-zinc-200">Default Video Model</label>
+        <label className="text-sm font-medium text-foreground">Default Video Model</label>
         <select
           value={defaultSettings.videoModel}
           onChange={(e) => handleChange('videoModel', e.target.value)}
-          className="w-full h-10 px-3 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-200 outline-none focus:border-indigo-500"
+          className="w-full h-10 px-3 bg-muted border border-border rounded-lg text-sm text-foreground outline-none focus:border-primary"
         >
           {videoModels.map((model) => (
             <option key={model.id} value={model.id}>
@@ -78,11 +78,11 @@ export function GenerationSettingsSection() {
 
       {/* Aspect Ratio */}
       <div className="space-y-2">
-        <label className="text-sm font-medium text-zinc-200">Default Aspect Ratio</label>
+        <label className="text-sm font-medium text-foreground">Default Aspect Ratio</label>
         <select
           value={defaultSettings.aspectRatio}
           onChange={(e) => handleChange('aspectRatio', e.target.value)}
-          className="w-full h-10 px-3 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-200 outline-none focus:border-indigo-500"
+          className="w-full h-10 px-3 bg-muted border border-border rounded-lg text-sm text-foreground outline-none focus:border-primary"
         >
           {aspectRatios.map((ratio) => (
             <option key={ratio.id} value={ratio.id}>
@@ -94,7 +94,7 @@ export function GenerationSettingsSection() {
 
       {/* Image Count */}
       <div className="space-y-2">
-        <label className="text-sm font-medium text-zinc-200">Default Image Count</label>
+        <label className="text-sm font-medium text-foreground">Default Image Count</label>
         <div className="flex gap-2">
           {[1, 2, 3, 4].map((count) => (
             <button
@@ -102,8 +102,8 @@ export function GenerationSettingsSection() {
               onClick={() => handleChange('imageCount', count)}
               className={`flex-1 h-10 rounded-lg text-sm font-medium transition-colors ${
                 defaultSettings.imageCount === count
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-700'
+                  ? 'bg-indigo-600 text-foreground'
+                  : 'bg-muted text-muted-foreground hover:text-foreground border border-border'
               }`}
             >
               {count}
@@ -113,17 +113,17 @@ export function GenerationSettingsSection() {
       </div>
 
       {/* Magic Prompt */}
-      <div className="flex items-center justify-between p-4 bg-zinc-800/50 rounded-lg">
+      <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
         <div>
-          <label className="text-sm font-medium text-zinc-200">Magic Prompt</label>
-          <p className="text-xs text-zinc-500 mt-1">
+          <label className="text-sm font-medium text-foreground">Magic Prompt</label>
+          <p className="text-xs text-muted-foreground mt-1">
             Automatically enhance prompts with AI
           </p>
         </div>
         <button
           onClick={() => handleChange('magicPrompt', !defaultSettings.magicPrompt)}
           className={`relative w-12 h-6 rounded-full transition-colors ${
-            defaultSettings.magicPrompt ? 'bg-indigo-600' : 'bg-zinc-700'
+            defaultSettings.magicPrompt ? 'bg-indigo-600' : 'bg-muted'
           }`}
         >
           <span
