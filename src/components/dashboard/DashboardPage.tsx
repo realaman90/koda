@@ -23,6 +23,7 @@ export function DashboardPage() {
     handleRename,
     handleDuplicate,
     handleDelete,
+    handleRefreshPreview,
   } = useDashboardState();
 
   if (isCreating) {
@@ -56,6 +57,7 @@ export function DashboardPage() {
                 onRename={handleRename}
                 onDuplicate={handleDuplicate}
                 onDelete={handleDelete}
+                onRefreshPreview={handleRefreshPreview}
               />
             </section>
 

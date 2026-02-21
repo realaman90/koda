@@ -30,6 +30,7 @@ export interface DashboardState {
   handleRename: (id: string, name: string) => Promise<void>;
   handleDuplicate: (id: string) => Promise<void>;
   handleDelete: (id: string) => Promise<void>;
+  handleRefreshPreview: (id: string) => Promise<void>;
 }
 
 export function useDashboardState(): DashboardState {
@@ -61,6 +62,7 @@ export function useDashboardState(): DashboardState {
   const renameCanvas = useAppStore((state) => state.renameCanvas);
   const duplicateCanvas = useAppStore((state) => state.duplicateCanvas);
   const deleteCanvas = useAppStore((state) => state.deleteCanvas);
+  const requestPreviewRefresh = useAppStore((state) => state.requestPreviewRefresh);
   const migrateLegacyData = useAppStore((state) => state.migrateLegacyData);
   const initializeSync = useAppStore((state) => state.initializeSync);
 
@@ -162,6 +164,15 @@ export function useDashboardState(): DashboardState {
     }
   }, [deleteCanvas]);
 
+  const handleRefreshPreview = useCallback(async (id: string) => {
+    try {
+      await requestPreviewRefresh(id, true);
+      toast.success('Refreshing preview…');
+    } catch {
+      toast.error('Failed to refresh preview');
+    }
+  }, [requestPreviewRefresh]);
+
   return {
     isCreating,
     activeTab,
@@ -177,5 +188,6 @@ export function useDashboardState(): DashboardState {
     handleRename,
     handleDuplicate,
     handleDelete,
+    handleRefreshPreview,
   };
 }
