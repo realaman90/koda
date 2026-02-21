@@ -16,6 +16,7 @@ import {
 } from '@/lib/storage/sync-service';
 import { uploadAsset } from '@/lib/assets/upload';
 import { captureCanvasPreview, makeThumbnailVersion } from '@/lib/preview-utils';
+import { PreviewLifecycleQueue } from '@/lib/preview-lifecycle';
 import { useCanvasStore } from './canvas-store';
 import type { Template } from '@/lib/templates/types';
 
@@ -65,12 +66,8 @@ const SAVE_DEBOUNCE_MS = 1000;
 const PREVIEW_DEBOUNCE_MS = 2000;
 const PREVIEW_SYSTEM_ENABLED = process.env.NEXT_PUBLIC_UX_PREVIEW_SYSTEM_V1 !== 'false';
 
-const previewTimers = new Map<string, ReturnType<typeof setTimeout>>();
-const previewSignatures = new Map<string, string>();
-const previewInFlight = new Set<string>();
-
-function buildGraphSignature(canvas: Pick<StoredCanvas, 'nodes' | 'edges' | 'updatedAt'>): string {
-  return `${canvas.nodes.length}:${canvas.edges.length}:${canvas.updatedAt}`;
+function buildGraphSignature(canvas: Pick<StoredCanvas, 'nodes' | 'edges'>): string {
+  return JSON.stringify({ nodes: canvas.nodes, edges: canvas.edges });
 }
 
 function mapPreviewErrorCode(error: unknown): 'UPLOAD_FAILED' | 'CAPTURE_FAILED' | 'UNKNOWN' {
@@ -80,6 +77,47 @@ function mapPreviewErrorCode(error: unknown): 'UPLOAD_FAILED' | 'CAPTURE_FAILED'
   }
   return 'UNKNOWN';
 }
+
+const previewQueue = new PreviewLifecycleQueue({
+  debounceMs: PREVIEW_DEBOUNCE_MS,
+  run: async (id) => {
+    const { updateCanvasThumbnail } = useAppStore.getState();
+    const provider = getStorageProvider();
+
+    try {
+      await updateCanvasThumbnail(id, {
+        thumbnailStatus: 'processing',
+        thumbnailErrorCode: undefined,
+      });
+
+      const canvasElement = document.querySelector('.react-flow') as HTMLElement | null;
+      if (!canvasElement) {
+        throw new Error('CAPTURE_FAILED');
+      }
+
+      const blob = await captureCanvasPreview(canvasElement);
+      const file = new File([blob], `canvas-preview-${id}.jpg`, { type: 'image/jpeg' });
+      const uploaded = await uploadAsset(file, { canvasId: id });
+
+      await updateCanvasThumbnail(id, {
+        thumbnail: uploaded.url,
+        thumbnailUrl: uploaded.url,
+        thumbnailStatus: 'ready',
+        thumbnailUpdatedAt: Date.now(),
+        thumbnailVersion: makeThumbnailVersion(),
+        thumbnailErrorCode: undefined,
+      });
+    } catch (error) {
+      const current = await provider.getCanvas(id);
+      await updateCanvasThumbnail(id, {
+        thumbnail: current?.thumbnail,
+        thumbnailUrl: current?.thumbnailUrl,
+        thumbnailStatus: 'error',
+        thumbnailErrorCode: mapPreviewErrorCode(error),
+      });
+    }
+  },
+});
 
 export const useAppStore = create<AppState>()((set, get) => ({
   // Initial state
@@ -420,63 +458,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
     if (!canvas) return;
 
     const signature = buildGraphSignature(canvas);
-    const lastSignature = previewSignatures.get(id);
-
-    if (!force && signature === lastSignature) {
-      return;
-    }
-
-    previewSignatures.set(id, signature);
-
-    const previousTimer = previewTimers.get(id);
-    if (previousTimer) {
-      clearTimeout(previousTimer);
-    }
-
-    const timer = setTimeout(async () => {
-      if (previewInFlight.has(id)) {
-        return;
-      }
-
-      previewInFlight.add(id);
-
-      try {
-        await get().updateCanvasThumbnail(id, {
-          thumbnailStatus: 'processing',
-          thumbnailErrorCode: undefined,
-        });
-
-        const canvasElement = document.querySelector('.react-flow') as HTMLElement | null;
-        if (!canvasElement) {
-          throw new Error('CAPTURE_FAILED');
-        }
-
-        const blob = await captureCanvasPreview(canvasElement);
-        const file = new File([blob], `canvas-preview-${id}.jpg`, { type: 'image/jpeg' });
-        const uploaded = await uploadAsset(file, { canvasId: id });
-
-        await get().updateCanvasThumbnail(id, {
-          thumbnail: uploaded.url,
-          thumbnailUrl: uploaded.url,
-          thumbnailStatus: 'ready',
-          thumbnailUpdatedAt: Date.now(),
-          thumbnailVersion: makeThumbnailVersion(),
-          thumbnailErrorCode: undefined,
-        });
-      } catch (error) {
-        const current = await provider.getCanvas(id);
-        await get().updateCanvasThumbnail(id, {
-          thumbnail: current?.thumbnail,
-          thumbnailUrl: current?.thumbnailUrl,
-          thumbnailStatus: 'error',
-          thumbnailErrorCode: mapPreviewErrorCode(error),
-        });
-      } finally {
-        previewInFlight.delete(id);
-      }
-    }, PREVIEW_DEBOUNCE_MS);
-
-    previewTimers.set(id, timer);
+    previewQueue.request(id, signature, force);
   },
 
   migrateLegacyData: async () => {
