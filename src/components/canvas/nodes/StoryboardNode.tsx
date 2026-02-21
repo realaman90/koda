@@ -28,7 +28,7 @@ import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/comp
 import { toast } from 'sonner';
 import { ThinkingBlock, UserBubble } from '@/lib/plugins/official/agents/animation-generator/components/ChatMessages';
 import { StoryboardDraftCard } from './storyboard/StoryboardDraftCard';
-import { StoryboardChatInput } from './storyboard/StoryboardChatInput';
+import { ChatInput } from '@/lib/plugins/official/agents/animation-generator/components/ChatInput';
 
 // Style options
 const STYLE_OPTIONS: { value: StoryboardStyle; label: string }[] = [
@@ -47,6 +47,51 @@ type TimelineItem =
   | { type: 'user'; seq: number; message: StoryboardChatMessage }
   | { type: 'thinking'; seq: number; block: StoryboardThinkingBlock }
   | { type: 'draft'; seq: number; draft: StoryboardDraft; index: number };
+
+/**
+ * Keeps a local copy of a store-driven field so the textarea cursor doesn't jump.
+ *
+ * The problem: ReactFlow uses a two-hop state pipeline (Zustand → ReactFlow internal store → node re-render).
+ * After the user types, `setLocal` triggers an immediate re-render, but `storeValue` (from ReactFlow's
+ * data prop) still holds the OLD value because ReactFlow hasn't processed the update yet. Any ref-based
+ * comparison between the stale storeValue and what we just typed incorrectly detects an "external change"
+ * and resets local state, causing the cursor to jump.
+ *
+ * Fix: while the textarea is focused, local state is authoritative and store updates are ignored.
+ * On blur we reconcile so external changes (undo, migration) are picked up.
+ */
+function useLocalField(
+  storeValue: string,
+  onUpdate: (v: string) => void,
+) {
+  const [local, setLocal] = useState(storeValue);
+  const focused = useRef(false);
+  const storeRef = useRef(storeValue);
+  storeRef.current = storeValue;
+
+  // Sync from store when not focused (handles undo, migration, external updates)
+  if (!focused.current && storeValue !== local) {
+    setLocal(storeValue);
+  }
+
+  const handleChange = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
+      setLocal(e.target.value);
+      onUpdate(e.target.value);
+    },
+    [onUpdate],
+  );
+
+  const handleFocus = useCallback(() => { focused.current = true; }, []);
+  const handleBlur = useCallback(() => {
+    focused.current = false;
+    // Reconcile with store in case it drifted while focused (e.g. undo)
+    const sv = storeRef.current;
+    setLocal((cur) => (cur === sv ? cur : sv));
+  }, []);
+
+  return { value: local, onChange: handleChange, onFocus: handleFocus, onBlur: handleBlur };
+}
 
 function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNodeType>) {
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
@@ -143,6 +188,11 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
     },
     [id, updateNodeData]
   );
+
+  // Local field state to prevent cursor-jump in textareas
+  const productField = useLocalField(data.product || '', (v) => updateField('product', v));
+  const characterField = useLocalField(data.character || '', (v) => updateField('character', v));
+  const conceptField = useLocalField(data.concept || '', (v) => updateField('concept', v));
 
   // Validation
   const isValid = (data.product?.trim().length ?? 0) > 0 && (data.concept?.trim().length ?? 0) > 0;
@@ -826,8 +876,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
           Product / Subject {!isReadOnly && <span className="text-red-400">*</span>}
         </label>
         <textarea
-          value={data.product || ''}
-          onChange={(e) => updateField('product', e.target.value)}
+          {...productField}
           placeholder={isReadOnly ? '' : 'e.g., Premium coffee mug, Fitness app...'}
           disabled={isReadOnly}
           className={`w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 nodrag ${isReadOnly ? 'cursor-default' : ''}`}
@@ -841,8 +890,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
           Character {!isReadOnly && <span className="text-muted-foreground/70">(optional)</span>}
         </label>
         <textarea
-          value={data.character || ''}
-          onChange={(e) => updateField('character', e.target.value)}
+          {...characterField}
           placeholder={isReadOnly ? '' : 'e.g., Young professional woman in her 30s...'}
           disabled={isReadOnly}
           className={`w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 nodrag ${isReadOnly ? 'cursor-default' : ''}`}
@@ -856,8 +904,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
           Concept / Story {!isReadOnly && <span className="text-red-400">*</span>}
         </label>
         <textarea
-          value={data.concept || ''}
-          onChange={(e) => updateField('concept', e.target.value)}
+          {...conceptField}
           placeholder={isReadOnly ? '' : 'e.g., Morning routine ad showing how our coffee mug makes the perfect start...'}
           disabled={isReadOnly}
           className={`w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 nodrag ${isReadOnly ? 'cursor-default' : ''}`}
@@ -1051,7 +1098,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
 
       {/* Chat input — pinned at bottom */}
       {!isReadOnly && (
-        <StoryboardChatInput
+        <ChatInput
           onSubmit={handleRefinement}
           onStop={handleStop}
           isGenerating={data.chatPhase === 'streaming'}

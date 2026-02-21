@@ -84,10 +84,10 @@ export function CanvasCard({ canvas, onRename, onDuplicate, onDelete }: CanvasCa
   };
 
   return (
-    <div className="group relative bg-card border border-border rounded-xl overflow-hidden hover:border-muted-foreground/30 transition-all hover:shadow-lg hover:shadow-background/50">
+    <div className="group relative bg-card border border-border rounded-xl hover:border-muted-foreground/30 transition-all hover:shadow-lg hover:shadow-background/50">
       {/* Thumbnail */}
       <Link href={`/canvas/${canvas.id}`}>
-        <div className="aspect-video bg-muted flex items-center justify-center cursor-pointer">
+        <div className="aspect-video bg-muted flex items-center justify-center cursor-pointer overflow-hidden rounded-t-xl">
           {canvas.thumbnail ? (
             <img
               src={canvas.thumbnail}
