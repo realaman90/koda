@@ -13,6 +13,7 @@ interface ProjectsGridProps {
   onRename: (id: string, name: string) => void;
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
+  onRefreshPreview?: (id: string) => void;
 }
 
 export function ProjectsGrid({
@@ -23,6 +24,7 @@ export function ProjectsGrid({
   onRename,
   onDuplicate,
   onDelete,
+  onRefreshPreview,
 }: ProjectsGridProps) {
   if (isLoading) {
     return (
@@ -60,6 +62,7 @@ export function ProjectsGrid({
             onRename={onRename}
             onDuplicate={onDuplicate}
             onDelete={onDelete}
+            onRefreshPreview={onRefreshPreview}
           />
         </StaggerItem>
       ))}
