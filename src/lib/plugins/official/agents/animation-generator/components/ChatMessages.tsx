@@ -250,9 +250,9 @@ export function ThinkingBlock({ thinking, reasoning, isStreaming, startedAt, end
         <div className="flex items-center gap-1.5 px-2.5 py-1.5">
           <Loader2 className="w-3 h-3 text-[var(--an-text-muted)] animate-spin shrink-0" />
           <span
-            className="text-[11px] font-medium bg-clip-text text-transparent"
+            className="text-[11px] font-medium text-[var(--an-text-muted)]"
             style={{
-              backgroundImage: 'linear-gradient(90deg, #A1A1AA 0%, #FAFAFA 40%, #A1A1AA 60%, #71717A 100%)',
+              backgroundImage: 'none',
               backgroundSize: '200% 100%',
               animation: 'think-shimmer 2s linear infinite',
             }}
@@ -1131,26 +1131,26 @@ export function StreamingPlaceholder({ activeToolName }: StreamingPlaceholderPro
       {/* Animated flower/bloom loader */}
       <div className="relative w-3 h-3 flex items-center justify-center">
         <span
-          className="absolute w-1.5 h-1.5 rounded-full bg-[#8B5CF6]"
+          className="absolute w-1.5 h-1.5 rounded-full bg-[#3B82F6]"
           style={{ animation: 'bloom-center 1.5s ease-in-out infinite' }}
         />
         <span
-          className="absolute w-1 h-1 rounded-full bg-[#A78BFA]"
+          className="absolute w-1 h-1 rounded-full bg-[#60A5FA]"
           style={{ animation: 'bloom-petal 1.5s ease-in-out infinite', animationDelay: '0s' }}
         />
         <span
-          className="absolute w-1 h-1 rounded-full bg-[#C4B5FD]"
+          className="absolute w-1 h-1 rounded-full bg-[#93C5FD]"
           style={{ animation: 'bloom-petal 1.5s ease-in-out infinite', animationDelay: '0.3s' }}
         />
         <span
-          className="absolute w-1 h-1 rounded-full bg-[#DDD6FE]"
+          className="absolute w-1 h-1 rounded-full bg-[#BFDBFE]"
           style={{ animation: 'bloom-petal 1.5s ease-in-out infinite', animationDelay: '0.6s' }}
         />
       </div>
       <p
-        className="text-[11px] font-medium bg-clip-text text-transparent"
+        className="text-[11px] font-medium text-[var(--an-text-muted)]"
         style={{
-          backgroundImage: 'linear-gradient(90deg, #52525B 0%, #A1A1AA 30%, #52525B 50%, #71717A 80%, #52525B 100%)',
+          backgroundImage: 'none',
           backgroundSize: '200% 100%',
           animation: 'shimmer-text 2s ease-in-out infinite',
         }}

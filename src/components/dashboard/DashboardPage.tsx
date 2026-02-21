@@ -7,6 +7,7 @@ import { DashboardTabs } from './DashboardTabs';
 import { ProjectsGrid } from './ProjectsGrid';
 import { TemplatesSection } from './TemplatesSection';
 import { SharedSection } from './SharedSection';
+import { PageTransition } from '@/components/common/PageTransition';
 
 export function DashboardPage() {
   const {
@@ -36,45 +37,47 @@ export function DashboardPage() {
   }
 
   return (
-    <div className="max-w-[1600px] mx-auto px-6 py-8">
-      <DashboardHeader onCreateCanvas={handleCreateCanvas} />
+    <PageTransition>
+      <div className="max-w-[1600px] mx-auto px-6 py-8">
+        <DashboardHeader onCreateCanvas={handleCreateCanvas} />
 
-      <DashboardTabs activeTab={activeTab} onChange={setActiveTab} />
+        <DashboardTabs activeTab={activeTab} onChange={setActiveTab} />
 
-      {/* Content based on active tab */}
-      {activeTab === 'my-spaces' && (
-        <>
-          <section className="mb-12">
-            <h2 className="text-lg font-semibold text-foreground mb-4">Your projects</h2>
-            <ProjectsGrid
-              canvases={filteredCanvases}
-              isLoading={isLoadingList}
-              searchQuery={searchQuery}
-              onCreateCanvas={handleCreateCanvas}
-              onRename={handleRename}
-              onDuplicate={handleDuplicate}
-              onDelete={handleDelete}
+        {/* Content based on active tab */}
+        {activeTab === 'my-spaces' && (
+          <>
+            <section className="mb-12">
+              <h2 className="font-serif text-2xl font-normal text-foreground mb-4">Your projects</h2>
+              <ProjectsGrid
+                canvases={filteredCanvases}
+                isLoading={isLoadingList}
+                searchQuery={searchQuery}
+                onCreateCanvas={handleCreateCanvas}
+                onRename={handleRename}
+                onDuplicate={handleDuplicate}
+                onDelete={handleDelete}
+              />
+            </section>
+
+            {/* Showcase preview on My Spaces tab */}
+            <TemplatesSection
+              templates={filteredTemplates}
+              onSelectTemplate={handleSelectTemplate}
+              showViewAll
+              onViewAll={() => setActiveTab('templates')}
             />
-          </section>
+          </>
+        )}
 
-          {/* Showcase preview on My Spaces tab */}
+        {activeTab === 'shared' && <SharedSection />}
+
+        {activeTab === 'templates' && (
           <TemplatesSection
             templates={filteredTemplates}
             onSelectTemplate={handleSelectTemplate}
-            showViewAll
-            onViewAll={() => setActiveTab('templates')}
           />
-        </>
-      )}
-
-      {activeTab === 'shared' && <SharedSection />}
-
-      {activeTab === 'templates' && (
-        <TemplatesSection
-          templates={filteredTemplates}
-          onSelectTemplate={handleSelectTemplate}
-        />
-      )}
-    </div>
+        )}
+      </div>
+    </PageTransition>
   );
 }

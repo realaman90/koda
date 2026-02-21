@@ -109,7 +109,7 @@ const MentionListComponent = forwardRef<
           ) : item.type === 'video' ? (
             <Video className="h-3.5 w-3.5 text-blue-400 shrink-0" />
           ) : (
-            <Music className="h-3.5 w-3.5 text-purple-400 shrink-0" />
+            <Music className="h-3.5 w-3.5 text-pink-400 shrink-0" />
           )}
           <span className="text-zinc-200">@{item.label}</span>
           <span className="ml-auto text-emerald-400 text-[10px]">

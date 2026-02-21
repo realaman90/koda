@@ -21,13 +21,13 @@ function HistoryItem({ item, onDelete }: { item: GenerationHistoryItem; onDelete
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="bg-zinc-800/50 rounded-lg overflow-hidden">
+    <div className="bg-muted/50 rounded-lg overflow-hidden">
       <div
-        className="flex items-start gap-4 p-4 cursor-pointer hover:bg-zinc-800/70 transition-colors"
+        className="flex items-start gap-4 p-4 cursor-pointer hover:bg-muted/70 transition-colors"
         onClick={() => setExpanded(!expanded)}
       >
         {/* Thumbnail */}
-        <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 bg-zinc-700">
+        <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 bg-muted">
           {item.result?.urls[0] ? (
             item.type === 'video' ? (
               <video
@@ -48,9 +48,9 @@ function HistoryItem({ item, onDelete }: { item: GenerationHistoryItem; onDelete
               {item.status === 'failed' ? (
                 <AlertCircle className="h-6 w-6 text-red-500" />
               ) : item.type === 'video' ? (
-                <Video className="h-6 w-6 text-zinc-500" />
+                <Video className="h-6 w-6 text-muted-foreground" />
               ) : (
-                <Image className="h-6 w-6 text-zinc-500" />
+                <Image className="h-6 w-6 text-muted-foreground" />
               )}
             </div>
           )}
@@ -60,11 +60,11 @@ function HistoryItem({ item, onDelete }: { item: GenerationHistoryItem; onDelete
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             {item.type === 'video' ? (
-              <Video className="h-4 w-4 text-purple-400" />
+              <Video className="h-4 w-4 text-violet-400" />
             ) : (
               <Image className="h-4 w-4 text-blue-400" />
             )}
-            <span className="text-xs font-medium text-zinc-400 uppercase">
+            <span className="text-xs font-medium text-muted-foreground uppercase">
               {item.model}
             </span>
             <span
@@ -78,8 +78,8 @@ function HistoryItem({ item, onDelete }: { item: GenerationHistoryItem; onDelete
               {item.status}
             </span>
           </div>
-          <p className="text-sm text-zinc-200 line-clamp-2">{item.prompt}</p>
-          <div className="flex items-center gap-2 mt-2 text-xs text-zinc-500">
+          <p className="text-sm text-foreground line-clamp-2">{item.prompt}</p>
+          <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
             <Clock className="h-3 w-3" />
             {formatTimeAgo(item.timestamp)}
           </div>
@@ -91,7 +91,7 @@ function HistoryItem({ item, onDelete }: { item: GenerationHistoryItem; onDelete
             e.stopPropagation();
             onDelete();
           }}
-          className="p-2 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+          className="p-2 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
         >
           <Trash2 className="h-4 w-4" />
         </button>
@@ -99,20 +99,20 @@ function HistoryItem({ item, onDelete }: { item: GenerationHistoryItem; onDelete
 
       {/* Expanded details */}
       {expanded && (
-        <div className="px-4 pb-4 border-t border-zinc-700/50">
+        <div className="px-4 pb-4 border-t border-border/50">
           <div className="pt-4 space-y-3">
             <div>
-              <span className="text-xs text-zinc-500">Full Prompt</span>
-              <p className="text-sm text-zinc-300 mt-1">{item.prompt}</p>
+              <span className="text-xs text-muted-foreground">Full Prompt</span>
+              <p className="text-sm text-foreground mt-1">{item.prompt}</p>
             </div>
             {item.settings && (
               <div>
-                <span className="text-xs text-zinc-500">Settings</span>
+                <span className="text-xs text-muted-foreground">Settings</span>
                 <div className="flex flex-wrap gap-2 mt-1">
                   {Object.entries(item.settings).map(([key, value]) => (
                     <span
                       key={key}
-                      className="text-xs px-2 py-1 bg-zinc-700 rounded text-zinc-300"
+                      className="text-xs px-2 py-1 bg-muted rounded text-foreground"
                     >
                       {key}: {String(value)}
                     </span>
@@ -128,7 +128,7 @@ function HistoryItem({ item, onDelete }: { item: GenerationHistoryItem; onDelete
             )}
             {item.result?.urls && item.result.urls.length > 1 && (
               <div>
-                <span className="text-xs text-zinc-500">All Results ({item.result.urls.length})</span>
+                <span className="text-xs text-muted-foreground">All Results ({item.result.urls.length})</span>
                 <div className="flex gap-2 mt-2 overflow-x-auto pb-2">
                   {item.result.urls.map((url, i) => (
                     <a
@@ -142,7 +142,7 @@ function HistoryItem({ item, onDelete }: { item: GenerationHistoryItem; onDelete
                       <img
                         src={url}
                         alt={`Result ${i + 1}`}
-                        className="w-20 h-20 object-cover rounded-lg hover:ring-2 hover:ring-indigo-500"
+                        className="w-20 h-20 object-cover rounded-lg hover:ring-2 hover:ring-primary"
                       />
                     </a>
                   ))}
@@ -187,16 +187,16 @@ export function HistorySection() {
       {/* Search and Filter */}
       <div className="flex gap-3">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <input
             type="text"
             placeholder="Search history..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full h-10 pl-10 pr-4 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-200 placeholder-zinc-500 outline-none focus:border-indigo-500"
+            className="w-full h-10 pl-10 pr-4 bg-muted border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground outline-none focus:border-primary"
           />
         </div>
-        <div className="flex items-center gap-1 bg-zinc-800 rounded-lg p-1">
+        <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
           {(['all', 'image', 'video'] as const).map((type) => (
             <button
               key={type}
@@ -204,8 +204,8 @@ export function HistorySection() {
               className={cn(
                 'px-3 py-1.5 text-sm rounded-md transition-colors',
                 filterType === type
-                  ? 'bg-zinc-700 text-white'
-                  : 'text-zinc-400 hover:text-zinc-200'
+                  ? 'bg-muted text-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
               )}
             >
               {type.charAt(0).toUpperCase() + type.slice(1)}
@@ -216,7 +216,7 @@ export function HistorySection() {
 
       {/* Stats */}
       <div className="flex items-center justify-between text-sm">
-        <span className="text-zinc-400">
+        <span className="text-muted-foreground">
           {filteredHistory.length} of {history.length} items
         </span>
         {history.length > 0 && (
@@ -232,13 +232,13 @@ export function HistorySection() {
       {/* History List */}
       {filteredHistory.length === 0 ? (
         <div className="text-center py-12">
-          <Filter className="h-12 w-12 text-zinc-700 mx-auto mb-4" />
-          <p className="text-zinc-400">
+          <Filter className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+          <p className="text-muted-foreground">
             {history.length === 0
               ? 'No generation history yet'
               : 'No items match your search'}
           </p>
-          <p className="text-sm text-zinc-600 mt-1">
+          <p className="text-sm text-muted-foreground/50 mt-1">
             {history.length === 0
               ? 'Your generations will appear here'
               : 'Try adjusting your filters'}

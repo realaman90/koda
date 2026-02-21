@@ -2,7 +2,9 @@
 
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
+import { motion } from 'framer-motion';
 import { MoreHorizontal, Pencil, Copy, Trash2, Calendar } from 'lucide-react';
+import { GradientBorderCard } from '@/components/common/GradientBorderCard';
 import type { CanvasMetadata } from '@/lib/storage';
 
 interface CanvasCardProps {
@@ -84,7 +86,7 @@ export function CanvasCard({ canvas, onRename, onDuplicate, onDelete }: CanvasCa
   };
 
   return (
-    <div className="group relative bg-card border border-border rounded-xl hover:border-muted-foreground/30 transition-all hover:shadow-lg hover:shadow-background/50">
+    <GradientBorderCard className="group relative bg-card border border-border rounded-xl transition-all hover:shadow-lg hover:shadow-background/50" animateOnHover>
       {/* Thumbnail */}
       <Link href={`/canvas/${canvas.id}`}>
         <div className="aspect-video bg-muted flex items-center justify-center cursor-pointer overflow-hidden rounded-t-xl">
@@ -112,11 +114,11 @@ export function CanvasCard({ canvas, onRename, onDuplicate, onDelete }: CanvasCa
                 onChange={(e) => setEditName(e.target.value)}
                 onBlur={handleRenameSubmit}
                 onKeyDown={handleKeyDown}
-                className="w-full bg-muted border border-border rounded px-2 py-1 text-sm text-foreground outline-none focus:border-indigo-500"
+                className="w-full bg-muted border border-border rounded px-2 py-1 text-sm text-foreground outline-none focus:border-primary"
               />
             ) : (
               <Link href={`/canvas/${canvas.id}`}>
-                <h3 className="text-sm font-medium text-foreground truncate hover:text-foreground cursor-pointer">
+                <h3 className="font-serif text-sm font-normal text-foreground truncate hover:text-foreground cursor-pointer">
                   {canvas.name}
                 </h3>
               </Link>
@@ -167,6 +169,6 @@ export function CanvasCard({ canvas, onRename, onDuplicate, onDelete }: CanvasCa
           </div>
         </div>
       </div>
-    </div>
+    </GradientBorderCard>
   );
 }

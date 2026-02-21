@@ -2,6 +2,7 @@
 
 import { Loader2 } from 'lucide-react';
 import { CanvasCard } from './CanvasCard';
+import { StaggeredList, StaggerItem } from '@/components/common/StaggeredList';
 import type { CanvasMetadata } from '@/lib/storage';
 
 interface ProjectsGridProps {
@@ -41,7 +42,7 @@ export function ProjectsGrid({
         {!searchQuery && (
           <button
             onClick={onCreateCanvas}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors"
+            className="px-4 py-2 bg-[#3b82f6] hover:bg-[#2563eb] text-white rounded-lg transition-colors"
           >
             Create Project
           </button>
@@ -51,16 +52,17 @@ export function ProjectsGrid({
   }
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+    <StaggeredList className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
       {canvases.map((canvas) => (
-        <CanvasCard
-          key={canvas.id}
-          canvas={canvas}
-          onRename={onRename}
-          onDuplicate={onDuplicate}
-          onDelete={onDelete}
-        />
+        <StaggerItem key={canvas.id}>
+          <CanvasCard
+            canvas={canvas}
+            onRename={onRename}
+            onDuplicate={onDuplicate}
+            onDelete={onDelete}
+          />
+        </StaggerItem>
       ))}
-    </div>
+    </StaggeredList>
   );
 }

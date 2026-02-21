@@ -247,9 +247,9 @@ function MusicGeneratorNodeComponent({ id, data, selected }: NodeProps<MusicGene
           w-[320px] rounded-2xl overflow-hidden
           transition-[box-shadow,ring-color] duration-150
           ${data.isGenerating
-            ? 'ring-[2.5px] ring-orange-500 shadow-lg shadow-orange-500/20 animate-pulse-glow'
+            ? 'ring-[2.5px] generating-border-subtle animate-subtle-pulse'
             : selected
-              ? 'ring-[2.5px] ring-orange-500 shadow-lg shadow-orange-500/10'
+              ? 'ring-[2.5px] generating-border-subtle'
               : 'ring-1 ring-border hover:ring-muted-foreground/30'
           }
         `}
@@ -261,8 +261,8 @@ function MusicGeneratorNodeComponent({ id, data, selected }: NodeProps<MusicGene
           {data.isGenerating ? (
             <div className="p-4 min-h-[160px] flex flex-col items-center justify-center gap-4">
               <div className="relative">
-                <div className="w-16 h-16 rounded-full border-4 border-border border-t-orange-500 animate-spin" />
-                <Loader2 className="absolute inset-0 m-auto h-6 w-6 text-orange-500 animate-pulse" />
+                <div className="w-16 h-16 rounded-full border-4 border-border border-t-muted-foreground animate-spin" />
+                <Loader2 className="absolute inset-0 m-auto h-6 w-6 text-muted-foreground animate-pulse" />
               </div>
               <div className="text-center">
                 <p className="text-foreground text-sm font-medium">Generating music...</p>
@@ -278,13 +278,13 @@ function MusicGeneratorNodeComponent({ id, data, selected }: NodeProps<MusicGene
                   variant="ghost"
                   size="icon-sm"
                   onClick={handlePlayPause}
-                  className="h-10 w-10 bg-orange-500 hover:bg-orange-400 text-white rounded-full"
+                  className="h-10 w-10 bg-primary hover:bg-primary/80 text-white rounded-full"
                 >
                   {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
                 </Button>
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <Music2 className="h-4 w-4 text-orange-400" />
+                    <Music2 className="h-4 w-4 text-primary/80" />
                     <span className="text-sm text-foreground font-medium">Generated Music</span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5">{data.duration}s</p>
@@ -350,7 +350,7 @@ function MusicGeneratorNodeComponent({ id, data, selected }: NodeProps<MusicGene
             onClick={handleInstrumentalToggle}
             className={`h-7 px-2 text-xs ${
               data.instrumental
-                ? 'text-orange-400 bg-orange-500/20 hover:bg-orange-500/30'
+                ? 'text-primary/80 bg-primary/20 hover:bg-primary/30'
                 : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
             }`}
           >
@@ -364,7 +364,7 @@ function MusicGeneratorNodeComponent({ id, data, selected }: NodeProps<MusicGene
             onClick={() => setShowSettings(!showSettings)}
             className={`h-7 w-7 shrink-0 ${
               showSettings
-                ? 'text-orange-400 bg-orange-500/20 hover:bg-orange-500/30'
+                ? 'text-primary/80 bg-primary/20 hover:bg-primary/30'
                 : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
             }`}
           >
@@ -379,7 +379,7 @@ function MusicGeneratorNodeComponent({ id, data, selected }: NodeProps<MusicGene
             onClick={handleGenerate}
             disabled={!hasValidInput || data.isGenerating}
             size="icon-sm"
-            className="h-8 w-8 min-w-8 bg-orange-500 hover:bg-orange-400 text-white rounded-full disabled:opacity-40 shrink-0"
+            className="h-8 w-8 min-w-8 bg-primary hover:bg-primary/80 text-white rounded-full disabled:opacity-40 shrink-0"
           >
             {data.isGenerating ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -415,7 +415,7 @@ function MusicGeneratorNodeComponent({ id, data, selected }: NodeProps<MusicGene
             type="source"
             position={Position.Right}
             id="output"
-            className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-orange-400 !border-zinc-900 hover:!border-zinc-700"
+            className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-primary/80 !border-zinc-900 hover:!border-zinc-700"
           />
           <Music className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
         </div>

@@ -879,7 +879,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
           {...productField}
           placeholder={isReadOnly ? '' : 'e.g., Premium coffee mug, Fitness app...'}
           disabled={isReadOnly}
-          className={`w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 nodrag ${isReadOnly ? 'cursor-default' : ''}`}
+          className={`w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 nodrag ${isReadOnly ? 'cursor-default' : ''}`}
           rows={2}
         />
       </div>
@@ -893,7 +893,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
           {...characterField}
           placeholder={isReadOnly ? '' : 'e.g., Young professional woman in her 30s...'}
           disabled={isReadOnly}
-          className={`w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 nodrag ${isReadOnly ? 'cursor-default' : ''}`}
+          className={`w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 nodrag ${isReadOnly ? 'cursor-default' : ''}`}
           rows={2}
         />
       </div>
@@ -907,7 +907,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
           {...conceptField}
           placeholder={isReadOnly ? '' : 'e.g., Morning routine ad showing how our coffee mug makes the perfect start...'}
           disabled={isReadOnly}
-          className={`w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 nodrag ${isReadOnly ? 'cursor-default' : ''}`}
+          className={`w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 nodrag ${isReadOnly ? 'cursor-default' : ''}`}
           rows={3}
         />
       </div>
@@ -920,7 +920,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
             value={data.sceneCount}
             onChange={(e) => updateField('sceneCount', Number(e.target.value))}
             disabled={isReadOnly}
-            className={`w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 nodrag ${isReadOnly ? 'cursor-default' : ''}`}
+            className={`w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 nodrag ${isReadOnly ? 'cursor-default' : ''}`}
           >
             {SCENE_COUNTS.map((count) => (
               <option key={count} value={count}>
@@ -936,7 +936,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
             value={data.style}
             onChange={(e) => updateField('style', e.target.value as StoryboardStyle)}
             disabled={isReadOnly}
-            className={`w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 nodrag ${isReadOnly ? 'cursor-default' : ''}`}
+            className={`w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 nodrag ${isReadOnly ? 'cursor-default' : ''}`}
           >
             {STYLE_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -1016,7 +1016,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
         <button
           onClick={handleGenerate}
           disabled={!isValid}
-          className="w-full py-2 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-muted disabled:text-muted-foreground text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2 nodrag"
+          className="w-full py-2 px-4 bg-primary hover:bg-[var(--accent-primary-hover)] disabled:bg-muted disabled:text-muted-foreground text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2 nodrag"
         >
           <Sparkles className="w-4 h-4" />
           Generate Storyboard
@@ -1165,7 +1165,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
           animation-node w-[400px] rounded-2xl overflow-hidden flex flex-col
           transition-[box-shadow,ring-color] duration-150
           ${selected
-            ? 'ring-[2.5px] ring-indigo-500 shadow-lg shadow-indigo-500/10'
+            ? 'ring-[2.5px] ring-blue-500 shadow-lg shadow-blue-500/10'
             : 'ring-1 hover:ring-2'
           }
         `}
@@ -1262,7 +1262,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
                 type="target"
                 position={Position.Left}
                 id="characterImage"
-                className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-indigo-400 !border-zinc-900 hover:!border-zinc-700"
+                className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-blue-500 !border-zinc-900 hover:!border-zinc-700"
               />
               <User className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
             </div>
@@ -1287,7 +1287,7 @@ function ScenePreview({ scene }: { scene: StoryboardSceneData }) {
         className="w-full flex items-center justify-between p-2 text-left hover:bg-muted/80 nodrag"
       >
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-medium text-indigo-400 bg-indigo-500/20 px-1.5 py-0.5 rounded">
+          <span className="text-[10px] font-medium text-blue-400 bg-blue-500/20 px-1.5 py-0.5 rounded">
             {scene.number}
           </span>
           <span className="text-xs font-medium text-foreground">{scene.title}</span>

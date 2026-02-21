@@ -296,14 +296,14 @@ export function VideoSettingsPanel() {
   return (
     <div
       ref={panelRef}
-      className="fixed w-[280px] max-h-[450px] bg-zinc-900 border border-zinc-700 rounded-xl z-50 flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+      className="fixed w-[280px] max-h-[450px] bg-popover border border-border rounded-lg z-50 flex flex-col shadow-xl animate-in fade-in zoom-in-95 duration-150"
       style={{ left: position.left, top: position.top }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between p-3 border-b border-zinc-800">
+      <div className="flex items-center justify-between p-3 border-b border-border">
         <div className="flex items-center gap-2">
-          <Video className="h-4 w-4 text-purple-400" />
-          <span className="text-zinc-200 font-medium">
+          <Video className="h-4 w-4 text-muted-foreground" />
+          <span className="text-foreground font-medium text-sm">
             {data.name || 'Video Generator'}
           </span>
         </div>
@@ -312,7 +312,7 @@ export function VideoSettingsPanel() {
             size="icon-sm"
             onClick={handleGenerate}
             disabled={!hasValidInput || data.isGenerating}
-            className="h-8 w-8 bg-purple-500 hover:bg-purple-400 text-white rounded-full disabled:opacity-40"
+            className="h-8 w-8 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg disabled:opacity-40"
           >
             {data.isGenerating ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -324,7 +324,7 @@ export function VideoSettingsPanel() {
             variant="ghost"
             size="icon-sm"
             onClick={closeVideoSettingsPanel}
-            className="h-8 w-8 text-zinc-400 hover:text-white"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
           >
             <X className="h-4 w-4" />
           </Button>
@@ -335,16 +335,16 @@ export function VideoSettingsPanel() {
       <div className="flex-1 overflow-y-auto p-4 space-y-5">
         {/* Model */}
         <div>
-          <label className="text-xs text-zinc-500 uppercase tracking-wider mb-2 block">
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2 block">
             Model
           </label>
           <Select value={data.model} onValueChange={handleModelChange}>
-            <SelectTrigger className="w-full bg-zinc-800 border-zinc-700 text-zinc-200">
+            <SelectTrigger className="w-full bg-background border-border text-foreground">
               <SelectValue>{modelCapabilities.label}</SelectValue>
             </SelectTrigger>
-            <SelectContent className="bg-zinc-800 border-zinc-700">
+            <SelectContent className="bg-popover border-border">
               {ENABLED_VIDEO_MODELS.map(key => (
-                <SelectItem key={key} value={key} className="flex flex-col items-start">
+                <SelectItem key={key} value={key} className="flex flex-col items-start text-foreground">
                   <span>{VIDEO_MODEL_CAPABILITIES[key].label}</span>
                 </SelectItem>
               ))}
@@ -355,14 +355,14 @@ export function VideoSettingsPanel() {
 
         {/* Duration */}
         <div>
-          <label className="text-xs text-zinc-500 uppercase tracking-wider mb-2 block">
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2 block">
             Duration
           </label>
           <Select value={String(data.duration)} onValueChange={handleDurationChange}>
-            <SelectTrigger className="w-full bg-zinc-800 border-zinc-700 text-zinc-200">
+            <SelectTrigger className="w-full bg-background border-border text-foreground">
               <SelectValue>{data.duration}s</SelectValue>
             </SelectTrigger>
-            <SelectContent className="bg-zinc-800 border-zinc-700">
+            <SelectContent className="bg-popover border-border">
               {modelCapabilities.durations.map((dur) => (
                 <SelectItem key={dur} value={String(dur)}>
                   {dur} seconds
@@ -377,14 +377,14 @@ export function VideoSettingsPanel() {
 
         {/* Aspect Ratio */}
         <div>
-          <label className="text-xs text-zinc-500 uppercase tracking-wider mb-2 block">
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2 block">
             Aspect Ratio
           </label>
           <Select value={data.aspectRatio} onValueChange={handleAspectRatioChange}>
-            <SelectTrigger className="w-full bg-zinc-800 border-zinc-700 text-zinc-200">
+            <SelectTrigger className="w-full bg-background border-border text-foreground">
               <SelectValue>{data.aspectRatio}</SelectValue>
             </SelectTrigger>
-            <SelectContent className="bg-zinc-800 border-zinc-700">
+            <SelectContent className="bg-popover border-border">
               {modelCapabilities.aspectRatios.map((ratio) => (
                 <SelectItem key={ratio} value={ratio}>{ratio}</SelectItem>
               ))}
@@ -395,14 +395,14 @@ export function VideoSettingsPanel() {
         {/* Resolution - for models that support it */}
         {modelCapabilities.resolutions && (
           <div>
-            <label className="text-xs text-zinc-500 uppercase tracking-wider mb-2 block">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2 block">
               Resolution
             </label>
             <Select value={data.resolution || '720p'} onValueChange={handleResolutionChange}>
-              <SelectTrigger className="w-full bg-zinc-800 border-zinc-700 text-zinc-200">
+              <SelectTrigger className="w-full bg-background border-border text-foreground">
                 <SelectValue>{data.resolution || '720p'}</SelectValue>
               </SelectTrigger>
-              <SelectContent className="bg-zinc-800 border-zinc-700">
+              <SelectContent className="bg-popover border-border">
                 {modelCapabilities.resolutions.map((res) => (
                   <SelectItem key={res} value={res}>{res}</SelectItem>
                 ))}
@@ -414,7 +414,7 @@ export function VideoSettingsPanel() {
         {/* Audio Toggle - for models that support audio */}
         {modelCapabilities.supportsAudio && (
           <div>
-            <label className="text-xs text-zinc-500 uppercase tracking-wider mb-2 block">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2 block">
               Audio
             </label>
             <Button
@@ -422,8 +422,8 @@ export function VideoSettingsPanel() {
               onClick={handleAudioToggle}
               className={`w-full justify-start gap-2 ${
                 data.generateAudio !== false
-                  ? 'bg-purple-500/20 border-purple-500/50 text-purple-300 hover:bg-purple-500/30'
-                  : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:bg-zinc-700'
+                  ? 'bg-accent border-border text-accent-foreground hover:bg-accent/80'
+                  : 'bg-background border-border text-muted-foreground hover:bg-muted'
               }`}
             >
               {data.generateAudio !== false ? (
@@ -470,13 +470,13 @@ export function VideoSettingsPanel() {
             value={data.prompt}
             onChange={handlePromptChange}
             placeholder="Describe the video you want to generate..."
-            className="w-full h-[100px] bg-zinc-800 border border-zinc-700 rounded-lg p-3 text-zinc-200 text-sm placeholder:text-zinc-600 resize-none focus:outline-none focus:border-zinc-600"
+            className="w-full h-[100px] bg-background border border-border rounded-md p-3 text-foreground text-sm placeholder:text-muted-foreground resize-none focus:outline-none focus:border-input"
           />
         </div>
 
         {/* Error */}
         {data.error && (
-          <p className="text-xs text-red-400 p-2 bg-red-500/10 rounded-lg">{data.error}</p>
+          <p className="text-xs text-destructive p-2 bg-destructive/10 rounded-md">{data.error}</p>
         )}
       </div>
     </div>
