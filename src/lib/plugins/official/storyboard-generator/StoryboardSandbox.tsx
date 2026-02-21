@@ -219,42 +219,42 @@ export function StoryboardSandbox({ canvas, onClose, notify }: AgentSandboxProps
     <div className="p-4 space-y-4">
       {/* Product/Subject */}
       <div className="space-y-1.5">
-        <label className="text-sm font-medium text-zinc-300">
+        <label className="text-sm font-medium text-foreground">
           Product / Subject <span className="text-red-400">*</span>
         </label>
         <textarea
           value={product}
           onChange={(e) => setProduct(e.target.value)}
           placeholder="e.g., Premium coffee mug, Fitness app, Electric car..."
-          className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder:text-zinc-500 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
           rows={2}
         />
       </div>
 
       {/* Character (optional) */}
       <div className="space-y-1.5">
-        <label className="text-sm font-medium text-zinc-300">
-          Character <span className="text-zinc-500">(optional)</span>
+        <label className="text-sm font-medium text-foreground">
+          Character <span className="text-muted-foreground">(optional)</span>
         </label>
         <textarea
           value={character}
           onChange={(e) => setCharacter(e.target.value)}
           placeholder="e.g., Young professional woman in her 30s, Athletic male model..."
-          className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder:text-zinc-500 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
           rows={2}
         />
       </div>
 
       {/* Concept/Story */}
       <div className="space-y-1.5">
-        <label className="text-sm font-medium text-zinc-300">
+        <label className="text-sm font-medium text-foreground">
           Concept / Story <span className="text-red-400">*</span>
         </label>
         <textarea
           value={concept}
           onChange={(e) => setConcept(e.target.value)}
           placeholder="e.g., Morning routine ad showing how our coffee mug makes the perfect start to the day..."
-          className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder:text-zinc-500 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
           rows={3}
         />
       </div>
@@ -262,11 +262,11 @@ export function StoryboardSandbox({ canvas, onClose, notify }: AgentSandboxProps
       {/* Scene Count & Style */}
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1.5">
-          <label className="text-sm font-medium text-zinc-300">Scenes</label>
+          <label className="text-sm font-medium text-foreground">Scenes</label>
           <select
             value={sceneCount}
             onChange={(e) => setSceneCount(Number(e.target.value))}
-            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full px-3 py-2 bg-muted/50 border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             {SCENE_COUNTS.map((count) => (
               <option key={count} value={count}>
@@ -277,11 +277,11 @@ export function StoryboardSandbox({ canvas, onClose, notify }: AgentSandboxProps
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-sm font-medium text-zinc-300">Style</label>
+          <label className="text-sm font-medium text-foreground">Style</label>
           <select
             value={style}
             onChange={(e) => setStyle(e.target.value as StoryboardInput['style'])}
-            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full px-3 py-2 bg-muted/50 border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             {STYLE_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -303,7 +303,7 @@ export function StoryboardSandbox({ canvas, onClose, notify }: AgentSandboxProps
       <button
         onClick={handleGenerate}
         disabled={!isValid}
-        className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
+        className="w-full py-2.5 px-4 bg-primary hover:bg-[var(--accent-primary-hover)] disabled:bg-muted disabled:text-muted-foreground text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
       >
         <Sparkles className="w-4 h-4" />
         Generate Storyboard
@@ -314,8 +314,8 @@ export function StoryboardSandbox({ canvas, onClose, notify }: AgentSandboxProps
   // Render loading view
   const renderLoading = () => (
     <div className="flex flex-col items-center justify-center p-12 space-y-4">
-      <Loader2 className="w-10 h-10 text-indigo-400 animate-spin" />
-      <p className="text-zinc-400">Generating your storyboard...</p>
+      <Loader2 className="w-10 h-10 text-blue-400 animate-spin" />
+      <p className="text-muted-foreground">Generating your storyboard...</p>
     </div>
   );
 
@@ -326,14 +326,14 @@ export function StoryboardSandbox({ canvas, onClose, notify }: AgentSandboxProps
     return (
       <div className="p-4 space-y-4">
         {/* Summary */}
-        <div className="p-3 bg-zinc-800 rounded-lg">
-          <h3 className="text-sm font-medium text-zinc-300 mb-1">Summary</h3>
-          <p className="text-sm text-zinc-400">{result.summary}</p>
+        <div className="p-3 bg-muted/50 rounded-lg">
+          <h3 className="text-sm font-medium text-foreground mb-1">Summary</h3>
+          <p className="text-sm text-muted-foreground">{result.summary}</p>
         </div>
 
         {/* Scenes preview */}
         <div className="space-y-2">
-          <h3 className="text-sm font-medium text-zinc-300">Scenes</h3>
+          <h3 className="text-sm font-medium text-foreground">Scenes</h3>
           <div className="space-y-2 max-h-[300px] overflow-y-auto">
             {result.scenes.map((scene) => (
               <ScenePreview key={scene.number} scene={scene} />
@@ -345,13 +345,13 @@ export function StoryboardSandbox({ canvas, onClose, notify }: AgentSandboxProps
         <div className="flex gap-3 pt-2">
           <button
             onClick={() => setViewState('form')}
-            className="flex-1 py-2.5 px-4 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 font-medium rounded-lg transition-colors"
+            className="flex-1 py-2.5 px-4 bg-muted hover:bg-muted/80 text-foreground font-medium rounded-lg transition-colors"
           >
             Back to Edit
           </button>
           <button
             onClick={handleCreateOnCanvas}
-            className="flex-1 py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
+            className="flex-1 py-2.5 px-4 bg-primary hover:bg-[var(--accent-primary-hover)] text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
           >
             <Grid3X3 className="w-4 h-4" />
             Create on Canvas
@@ -375,35 +375,35 @@ function ScenePreview({ scene }: { scene: StoryboardScene }) {
   const [expanded, setExpanded] = React.useState(false);
 
   return (
-    <div className="bg-zinc-800 rounded-lg overflow-hidden">
+    <div className="bg-muted/50 rounded-lg overflow-hidden">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between p-3 text-left hover:bg-zinc-750"
+        className="w-full flex items-center justify-between p-3 text-left hover:bg-muted/70"
       >
         <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-indigo-400 bg-indigo-900/30 px-2 py-0.5 rounded">
+          <span className="text-xs font-medium text-blue-400 bg-blue-500/15 px-2 py-0.5 rounded">
             {scene.number}
           </span>
-          <span className="text-sm font-medium text-zinc-200">{scene.title}</span>
+          <span className="text-sm font-medium text-foreground">{scene.title}</span>
         </div>
         <ChevronRight
-          className={`w-4 h-4 text-zinc-500 transition-transform ${
+          className={`w-4 h-4 text-muted-foreground transition-transform ${
             expanded ? 'rotate-90' : ''
           }`}
         />
       </button>
       {expanded && (
         <div className="px-3 pb-3 space-y-2 text-sm">
-          <p className="text-zinc-400">{scene.description}</p>
+          <p className="text-muted-foreground">{scene.description}</p>
           <div className="flex gap-2 text-xs">
-            <span className="bg-zinc-700 px-2 py-0.5 rounded text-zinc-300">
+            <span className="bg-muted px-2 py-0.5 rounded text-foreground">
               {scene.camera}
             </span>
-            <span className="bg-zinc-700 px-2 py-0.5 rounded text-zinc-300">
+            <span className="bg-muted px-2 py-0.5 rounded text-foreground">
               {scene.mood}
             </span>
           </div>
-          <div className="p-2 bg-zinc-900 rounded text-xs text-zinc-400 font-mono">
+          <div className="p-2 bg-muted/70 rounded text-xs text-muted-foreground font-mono">
             {scene.prompt}
           </div>
         </div>

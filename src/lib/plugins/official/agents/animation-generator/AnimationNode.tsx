@@ -2072,7 +2072,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
   return (
     <div
       ref={nodeContainerRef}
-      className={`${nodeClasses}${isDragOver ? ' ring-1 ring-teal-500/50' : ''}`}
+      className={`${nodeClasses}${isDragOver ? ' ring-1 ring-blue-500/50' : ''}`}
       style={{ minHeight }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
@@ -2119,7 +2119,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           {imageRefCount < MAX_IMAGE_REFS && (
             <button
               onClick={handleAddImageRef}
-              className="w-4 h-4 rounded-full flex items-center justify-center bg-[var(--an-bg-card)] border border-[var(--an-border-input)] text-[var(--an-text-muted)] hover:border-teal-500 hover:text-teal-400 transition-colors ml-0.5"
+              className="w-4 h-4 rounded-full flex items-center justify-center bg-[var(--an-bg-card)] border border-[var(--an-border-input)] text-[var(--an-text-muted)] hover:border-blue-500 hover:text-blue-400 transition-colors ml-0.5"
             >
               <Plus className="h-2.5 w-2.5" />
             </button>
@@ -2162,7 +2162,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           {videoRefCount < MAX_VIDEO_REFS && (
             <button
               onClick={handleAddVideoRef}
-              className="w-4 h-4 rounded-full flex items-center justify-center bg-[var(--an-bg-card)] border border-[var(--an-border-input)] text-[var(--an-text-muted)] hover:border-purple-500 hover:text-purple-400 transition-colors ml-0.5"
+              className="w-4 h-4 rounded-full flex items-center justify-center bg-[var(--an-bg-card)] border border-[var(--an-border-input)] text-[var(--an-text-muted)] hover:border-blue-500 hover:text-blue-400 transition-colors ml-0.5"
             >
               <Plus className="h-2.5 w-2.5" />
             </button>
@@ -2269,7 +2269,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
             ) && (
               <div className="py-2">
                 <span
-                  className="text-[11px] font-medium bg-clip-text text-transparent bg-gradient-to-r from-[#52525B] via-[#D4D4D8] to-[#52525B] bg-[length:200%_100%]"
+                  className="text-[11px] font-medium text-[var(--an-text-muted)]"
                   style={{ animation: 'think-shimmer 2.5s ease-in-out infinite' }}
                 >
                   {state.execution?.thinking || 'Working on it...'}

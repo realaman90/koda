@@ -195,9 +195,9 @@ function ThinkingBlockUI({
         <div className="flex items-center gap-1.5 px-2.5 py-1.5">
           <Loader2 className="w-3 h-3 text-[var(--an-text-muted)] animate-spin shrink-0" />
           <span
-            className="text-[11px] font-medium bg-clip-text text-transparent"
+            className="text-[11px] font-medium text-[var(--an-text-muted)]"
             style={{
-              backgroundImage: 'linear-gradient(90deg, #A1A1AA 0%, #FAFAFA 40%, #A1A1AA 60%, #71717A 100%)',
+              backgroundImage: 'none',
               backgroundSize: '200% 100%',
               animation: 'think-shimmer 2s linear infinite',
             }}
