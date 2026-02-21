@@ -539,6 +539,22 @@ function transformSeedancePromptRefs(prompt: string): string {
     .replace(/@audio(\d+)/gi, (_, n) => `@audio_file_${n}`);
 }
 
+/**
+ * first_last_frames mode doesn't use explicit @*_file_* references.
+ * Strip/normalize mention tokens to avoid provider-side parameter validation errors.
+ */
+function normalizeSeedanceFirstLastPrompt(prompt: string): string {
+  return prompt
+    .replace(/@image_file_\d+/gi, 'reference image')
+    .replace(/@image\d+/gi, 'reference image')
+    .replace(/@video_file_\d+/gi, '')
+    .replace(/@video\d+/gi, '')
+    .replace(/@audio_file_\d+/gi, '')
+    .replace(/@audio\d+/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 // Seedance 2.0 Image-to-Video (xskill.ai)
 // Supports omni_reference mode when both image and video are provided
 class Seedance2I2VAdapter implements VideoModelAdapter {
@@ -555,13 +571,13 @@ class Seedance2I2VAdapter implements VideoModelAdapter {
     }
 
     const videoUrl = request.videoUrl;
-    const prompt = transformSeedancePromptRefs(request.prompt);
+    const omniPrompt = transformSeedancePromptRefs(request.prompt);
 
     // If both images and video are provided, use omni_reference mode
     if (imageUrls.length > 0 && videoUrl) {
       return {
         model: this.innerModel,
-        prompt,
+        prompt: omniPrompt,
         functionMode: 'omni_reference',
         image_files: imageUrls,
         video_files: [videoUrl],
@@ -571,14 +587,15 @@ class Seedance2I2VAdapter implements VideoModelAdapter {
       };
     }
 
-    // Image-only: use first_last_frames with image_files (not filePaths)
+    const firstLastPrompt = normalizeSeedanceFirstLastPrompt(request.prompt);
+    // Image-only: use legacy-compatible media_files shape.
+    // Some xskill channels/accounts reject first_last_frames+filePaths with 1000.
     return {
       model: this.innerModel,
-      prompt,
-      functionMode: 'first_last_frames',
-      ...(imageUrls.length > 0 && { image_files: imageUrls }),
-      ratio: request.aspectRatio,
-      duration: request.duration,
+      prompt: firstLastPrompt,
+      ...(imageUrls.length > 0 && { media_files: imageUrls }),
+      aspect_ratio: request.aspectRatio,
+      duration: String(request.duration),
     };
   }
 

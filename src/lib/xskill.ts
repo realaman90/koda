@@ -11,7 +11,10 @@
  * Status may be "completed"/"success" or "failed"/"error".
  */
 
+import { Agent } from '@mastra/core/agent';
+
 const XSKILL_BASE_URL = 'https://api.xskill.ai';
+const ERROR_TRANSLATOR_MODEL = 'google/gemini-3-flash-preview';
 
 interface XSkillTaskCreateResponse {
   code: number;
@@ -29,6 +32,103 @@ interface XSkillTaskQueryResponse {
   code: number;
   data?: XSkillData;
   message?: string;
+}
+
+function hasCJK(text: string): boolean {
+  return /[\u3400-\u9FFF]/.test(text);
+}
+
+function extractXskillCode(raw: string): string | undefined {
+  const m = raw.match(/错误码[:：]\s*(\d+)/);
+  return m?.[1];
+}
+
+function mapKnownXskillError(raw: string): string | undefined {
+  const code = extractXskillCode(raw);
+
+  if (code === '4011') {
+    return 'Video generation was blocked because a face was detected in the uploaded media (code 4011).';
+  }
+
+  if (code === '1000' || /invalid parameter/i.test(raw)) {
+    return 'The request was rejected due to invalid input parameters (code 1000).';
+  }
+
+  return undefined;
+}
+
+async function translateXskillErrorToEnglish(raw: string): Promise<string | undefined> {
+  if (!raw.trim()) return undefined;
+
+  try {
+    const agent = new Agent({
+      id: `xskill-error-translator-${Date.now()}`,
+      name: 'xskill-error-translator',
+      instructions:
+        'You translate API error messages into concise, accurate English. Keep codes and policy reasons.',
+      model: ERROR_TRANSLATOR_MODEL,
+    });
+
+    const translationTask = agent.generate([
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text:
+              `Translate this error into plain English for a UI toast.\n` +
+              `Rules:\n` +
+              `- One sentence.\n` +
+              `- Keep status/error codes.\n` +
+              `- Do not add advice.\n` +
+              `- Output English only.\n\n` +
+              `Error:\n${raw}`,
+          },
+        ],
+      },
+    ], {
+      modelSettings: {
+        temperature: 0,
+      },
+      providerOptions: {
+        google: {
+          thinkingConfig: {
+            thinkingBudget: 0,
+            includeThoughts: false,
+          },
+        },
+      },
+    });
+
+    // Keep failure path responsive.
+    const result = await Promise.race([
+      translationTask,
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Gemini translation timed out')), 5000);
+      }),
+    ]);
+
+    const text = result.text?.trim();
+    if (!text) return undefined;
+    return text.replace(/^["'\s]+|["'\s]+$/g, '');
+  } catch (err) {
+    console.warn('[xskill] Gemini error translation failed, falling back:', err);
+    return undefined;
+  }
+}
+
+async function humanizeXskillError(raw: string): Promise<string> {
+  const known = mapKnownXskillError(raw);
+
+  // For Chinese provider errors, prefer model translation, fallback to known/static mapping.
+  if (hasCJK(raw)) {
+    const translated = await translateXskillErrorToEnglish(raw);
+    if (translated) return translated;
+    if (known) return known;
+    return raw;
+  }
+
+  return known || raw;
 }
 
 /**
@@ -49,9 +149,11 @@ function extractVideoUrl(data: XSkillData | undefined): string | undefined {
 /**
  * Extract error message from xskill query response data.
  */
-function extractError(data: XSkillData | undefined): string {
+async function extractError(data: XSkillData | undefined): Promise<string> {
   if (!data) return 'Video generation failed';
-  return data.output?.error || data.error || 'Video generation failed';
+  const raw = data.output?.error || data.error || 'Video generation failed';
+  if (typeof raw !== 'string') return 'Video generation failed';
+  return humanizeXskillError(raw);
 }
 
 /**
@@ -93,6 +195,7 @@ export async function xskillCreateTask(
     body: JSON.stringify({
       model: request.model,
       params: request.params,
+      channel: null,
     }),
   });
 
@@ -150,7 +253,7 @@ export async function xskillQueryTask(
   }
 
   if (status === 'failed') {
-    return { status, error: extractError(queryBody.data) };
+    return { status, error: await extractError(queryBody.data) };
   }
 
   return { status };
@@ -186,6 +289,7 @@ export async function xskillGenerate(
     body: JSON.stringify({
       model: request.model,
       params: request.params,
+      channel: null,
     }),
   });
 
@@ -239,7 +343,7 @@ export async function xskillGenerate(
     }
 
     if (status === 'failed') {
-      throw new Error(`xskill task failed: ${extractError(queryBody.data)}`);
+      throw new Error(`xskill task failed: ${await extractError(queryBody.data)}`);
     }
 
     // pending or processing — keep polling

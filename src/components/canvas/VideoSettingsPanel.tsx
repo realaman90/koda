@@ -141,6 +141,14 @@ export function VideoSettingsPanel() {
 
     const connectedInputs = getConnectedInputs(videoSettingsPanelNodeId);
     const modelCaps = VIDEO_MODEL_CAPABILITIES[data.model];
+    const hasAnyMediaInput = !!(
+      connectedInputs.referenceUrl ||
+      connectedInputs.firstFrameUrl ||
+      connectedInputs.lastFrameUrl ||
+      connectedInputs.referenceUrls?.length ||
+      connectedInputs.videoUrl ||
+      connectedInputs.audioUrl
+    );
 
     let finalPrompt = data.prompt || '';
     if (connectedInputs.textContent) {
@@ -166,7 +174,7 @@ export function VideoSettingsPanel() {
       }
     }
 
-    if (!finalPrompt && !connectedInputs.referenceUrl && !connectedInputs.firstFrameUrl) {
+    if (!finalPrompt && !hasAnyMediaInput) {
       return;
     }
 
@@ -186,6 +194,8 @@ export function VideoSettingsPanel() {
           firstFrameUrl: connectedInputs.firstFrameUrl,
           lastFrameUrl: connectedInputs.lastFrameUrl,
           referenceUrls: connectedInputs.referenceUrls,
+          videoUrl: connectedInputs.videoUrl,
+          audioUrl: connectedInputs.audioUrl,
           generateAudio: data.generateAudio,
         }),
       });
@@ -196,6 +206,16 @@ export function VideoSettingsPanel() {
       }
 
       const result = await response.json();
+
+      if (result.async && result.taskId) {
+        updateNodeData(videoSettingsPanelNodeId, {
+          xskillTaskId: result.taskId,
+          xskillTaskModel: result.model,
+          xskillStatus: 'pending',
+          xskillStartedAt: Date.now(),
+        });
+        return;
+      }
 
       updateNodeData(videoSettingsPanelNodeId, {
         outputUrl: result.videoUrl,
@@ -219,6 +239,15 @@ export function VideoSettingsPanel() {
   const { inputMode } = modelCapabilities;
 
   // Determine if we have valid inputs
+  const hasAnyMediaInput = !!(
+    connectedInputs.referenceUrl ||
+    connectedInputs.firstFrameUrl ||
+    connectedInputs.lastFrameUrl ||
+    connectedInputs.referenceUrls?.length ||
+    connectedInputs.videoUrl ||
+    connectedInputs.audioUrl
+  );
+
   const hasValidInput = (() => {
     const hasPrompt = !!(data.prompt || connectedInputs.textContent);
 
@@ -226,7 +255,7 @@ export function VideoSettingsPanel() {
       case 'text':
         return hasPrompt;
       case 'single-image':
-        return hasPrompt || !!connectedInputs.referenceUrl;
+        return hasPrompt || hasAnyMediaInput;
       case 'first-last-frame':
         // First frame required, last frame depends on lastFrameOptional
         if (!connectedInputs.firstFrameUrl) return false;

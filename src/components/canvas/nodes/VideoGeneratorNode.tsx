@@ -177,18 +177,22 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
     }, 5000);
   }, [id, data.prompt, updateNodeData]);
 
-  // Recovery: resume polling on page refresh if xskillTaskId is set
+  // Resume/start polling whenever an async xskill task is active.
   useEffect(() => {
     if (data.xskillTaskId && data.xskillTaskModel && data.isGenerating) {
       pollXskillTask(data.xskillTaskId, data.xskillTaskModel);
     }
+  }, [data.xskillTaskId, data.xskillTaskModel, data.isGenerating, pollXskillTask]);
+
+  // Cleanup polling interval on unmount.
+  useEffect(() => {
     return () => {
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
         pollIntervalRef.current = null;
       }
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- intentionally run once on mount
+  }, []);
 
   const handleNameSubmit = useCallback(() => {
     setIsEditingName(false);
@@ -266,6 +270,14 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
   const handleGenerate = useCallback(async () => {
     const connectedInputs = getConnectedInputs(id);
     const modelCaps = VIDEO_MODEL_CAPABILITIES[data.model];
+    const hasAnyMediaInput = !!(
+      connectedInputs.referenceUrl ||
+      connectedInputs.firstFrameUrl ||
+      connectedInputs.lastFrameUrl ||
+      connectedInputs.referenceUrls?.length ||
+      connectedInputs.videoUrl ||
+      connectedInputs.audioUrl
+    );
 
     let finalPrompt = data.prompt || '';
     if (connectedInputs.textContent) {
@@ -295,8 +307,8 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
       }
     }
 
-    if (!finalPrompt && !connectedInputs.referenceUrl && !connectedInputs.firstFrameUrl) {
-      toast.error('Please enter a prompt or connect an image');
+    if (!finalPrompt && !hasAnyMediaInput) {
+      toast.error('Please enter a prompt or connect media references');
       return;
     }
 
@@ -309,6 +321,9 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
       hasReferenceUrl: !!connectedInputs.referenceUrl,
       hasFirstFrameUrl: !!connectedInputs.firstFrameUrl,
       hasLastFrameUrl: !!connectedInputs.lastFrameUrl,
+      referenceUrlsCount: connectedInputs.referenceUrls?.length || 0,
+      hasVideoUrl: !!connectedInputs.videoUrl,
+      hasAudioUrl: !!connectedInputs.audioUrl,
     });
 
     try {
@@ -396,6 +411,14 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
   }, [data.outputUrl]);
 
   const connectedInputs = getConnectedInputs(id);
+  const hasAnyMediaInput = !!(
+    connectedInputs.referenceUrl ||
+    connectedInputs.firstFrameUrl ||
+    connectedInputs.lastFrameUrl ||
+    connectedInputs.referenceUrls?.length ||
+    connectedInputs.videoUrl ||
+    connectedInputs.audioUrl
+  );
 
   // Determine if we have valid inputs based on mode
   const hasValidInput = (() => {
@@ -405,7 +428,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
       case 'text':
         return hasPrompt;
       case 'single-image':
-        return hasPrompt || !!connectedInputs.referenceUrl;
+        return hasPrompt || hasAnyMediaInput;
       case 'first-last-frame':
         // First frame required, last frame depends on lastFrameOptional
         if (!connectedInputs.firstFrameUrl) return false;
