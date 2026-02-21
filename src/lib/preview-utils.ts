@@ -45,3 +45,9 @@ export async function captureCanvasPreview(canvasElement: HTMLElement): Promise<
 export function makeThumbnailVersion(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
+
+export function withThumbnailVersion(url: string, version?: string): string {
+  if (!version) return url;
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}v=${encodeURIComponent(version)}`;
+}

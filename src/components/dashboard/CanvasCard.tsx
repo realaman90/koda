@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { MoreHorizontal, Pencil, Copy, Trash2, Calendar, AlertCircle, Loader2, ImageOff, Clock3 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { CanvasMetadata } from '@/lib/storage';
+import { withThumbnailVersion } from '@/lib/preview-utils';
 import { deriveCanvasPreviewState } from './canvas-preview-state';
 
 const PREVIEW_SYSTEM_ENABLED = process.env.NEXT_PUBLIC_UX_PREVIEW_SYSTEM_V1 !== 'false';
@@ -48,9 +49,7 @@ export function CanvasCard({ canvas, onRename, onDuplicate, onDelete, onRefreshP
   const basePreviewSrc = canvas.thumbnailUrl || canvas.thumbnail;
   const previewSrc = useMemo(() => {
     if (!basePreviewSrc) return undefined;
-    if (!canvas.thumbnailVersion) return basePreviewSrc;
-    const separator = basePreviewSrc.includes('?') ? '&' : '?';
-    return `${basePreviewSrc}${separator}v=${encodeURIComponent(canvas.thumbnailVersion)}`;
+    return withThumbnailVersion(basePreviewSrc, canvas.thumbnailVersion);
   }, [basePreviewSrc, canvas.thumbnailVersion]);
 
   useEffect(() => {
