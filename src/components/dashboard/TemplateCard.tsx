@@ -19,7 +19,7 @@ export function TemplateCard({ template, onSelect }: TemplateCardProps) {
   return (
     <button
       onClick={() => onSelect(template.id)}
-      className="group text-left rounded-xl overflow-hidden hover:ring-2 hover:ring-indigo-500/50 transition-all cursor-pointer"
+      className="group text-left rounded-xl overflow-hidden hover:ring-2 hover:ring-primary/50 transition-all cursor-pointer"
     >
       {/* Thumbnail */}
       <div className="aspect-[4/3] bg-muted relative overflow-hidden">
@@ -32,7 +32,7 @@ export function TemplateCard({ template, onSelect }: TemplateCardProps) {
             sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
           />
         ) : (
-          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-muted to-muted/80">
+          <div className="absolute inset-0 flex items-center justify-center bg-muted">
             <span className="text-6xl opacity-70 group-hover:scale-110 transition-transform duration-300">
               {template.thumbnail}
             </span>

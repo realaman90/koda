@@ -20,7 +20,7 @@ export function ProfileSection() {
       {/* Avatar */}
       <div className="flex items-center gap-4">
         <div className="relative">
-          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-2xl font-bold">
+          <div className="w-20 h-20 rounded-full bg-primary flex items-center justify-center text-white text-2xl font-bold">
             {displayName.charAt(0).toUpperCase()}
           </div>
           <button className="absolute bottom-0 right-0 w-8 h-8 bg-muted rounded-full flex items-center justify-center border border-border hover:bg-muted/80 transition-colors">

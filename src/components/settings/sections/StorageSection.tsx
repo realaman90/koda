@@ -88,7 +88,7 @@ export function StorageSection() {
             </div>
             <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
               <div
-                className="h-full bg-indigo-500 rounded-full"
+                className="h-full bg-primary rounded-full"
                 style={{ width: `${Math.min(parseFloat(storageInfo.used) / 5 * 100, 100)}%` }}
               />
             </div>

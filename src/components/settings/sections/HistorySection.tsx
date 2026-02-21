@@ -60,7 +60,7 @@ function HistoryItem({ item, onDelete }: { item: GenerationHistoryItem; onDelete
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             {item.type === 'video' ? (
-              <Video className="h-4 w-4 text-purple-400" />
+              <Video className="h-4 w-4 text-violet-400" />
             ) : (
               <Image className="h-4 w-4 text-blue-400" />
             )}
@@ -142,7 +142,7 @@ function HistoryItem({ item, onDelete }: { item: GenerationHistoryItem; onDelete
                       <img
                         src={url}
                         alt={`Result ${i + 1}`}
-                        className="w-20 h-20 object-cover rounded-lg hover:ring-2 hover:ring-indigo-500"
+                        className="w-20 h-20 object-cover rounded-lg hover:ring-2 hover:ring-primary"
                       />
                     </a>
                   ))}
