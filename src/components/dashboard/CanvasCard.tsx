@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { MoreHorizontal, Pencil, Copy, Trash2, Calendar, AlertCircle, Loader2, ImageOff, Clock3 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { CanvasMetadata } from '@/lib/storage';
+import { deriveCanvasPreviewState } from './canvas-preview-state';
 
 const PREVIEW_SYSTEM_ENABLED = process.env.NEXT_PUBLIC_UX_PREVIEW_SYSTEM_V1 !== 'false';
 
@@ -39,20 +40,10 @@ export function CanvasCard({ canvas, onRename, onDuplicate, onDelete, onRefreshP
   const menuRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const previewStatus = useMemo(() => {
-    if (!PREVIEW_SYSTEM_ENABLED) {
-      return (canvas.thumbnailUrl || canvas.thumbnail) ? 'ready' : 'empty';
-    }
-
-    if (canvas.thumbnailStatus === 'ready' && canvas.thumbnailUpdatedAt && canvas.updatedAt > canvas.thumbnailUpdatedAt) {
-      return 'stale';
-    }
-    if (canvas.thumbnailStatus === 'error') return 'error';
-    if (canvas.thumbnailStatus === 'processing') return 'processing';
-    if (canvas.thumbnailStatus === 'stale') return 'stale';
-    if (canvas.thumbnailUrl || canvas.thumbnail) return 'ready';
-    return 'empty';
-  }, [canvas.thumbnail, canvas.thumbnailStatus, canvas.thumbnailUpdatedAt, canvas.thumbnailUrl, canvas.updatedAt]);
+  const previewStatus = useMemo(
+    () => deriveCanvasPreviewState(canvas, PREVIEW_SYSTEM_ENABLED),
+    [canvas],
+  );
 
   const basePreviewSrc = canvas.thumbnailUrl || canvas.thumbnail;
   const previewSrc = useMemo(() => {
@@ -182,6 +173,8 @@ export function CanvasCard({ canvas, onRename, onDuplicate, onDelete, onRefreshP
             <button
               onClick={() => setShowMenu((s) => !s)}
               aria-label={`Open actions for ${canvas.name}`}
+              aria-haspopup="menu"
+              aria-expanded={showMenu}
               className={cn(
                 'rounded p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3b82f6]'
@@ -191,8 +184,9 @@ export function CanvasCard({ canvas, onRename, onDuplicate, onDelete, onRefreshP
             </button>
 
             {showMenu && (
-              <div className="absolute right-0 top-full z-50 mt-1 min-w-[160px] rounded-lg border border-border bg-popover py-1 shadow-xl">
+              <div role="menu" className="absolute right-0 top-full z-50 mt-1 min-w-[160px] rounded-lg border border-border bg-popover py-1 shadow-xl">
                 <button
+                  role="menuitem"
                   onClick={() => handleMenuAction('rename')}
                   className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-foreground hover:bg-muted"
                 >
@@ -200,6 +194,7 @@ export function CanvasCard({ canvas, onRename, onDuplicate, onDelete, onRefreshP
                   Rename
                 </button>
                 <button
+                  role="menuitem"
                   onClick={() => handleMenuAction('duplicate')}
                   className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-foreground hover:bg-muted"
                 >
@@ -208,6 +203,7 @@ export function CanvasCard({ canvas, onRename, onDuplicate, onDelete, onRefreshP
                 </button>
                 {PREVIEW_SYSTEM_ENABLED && (
                   <button
+                    role="menuitem"
                     onClick={() => handleMenuAction('refresh')}
                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-foreground hover:bg-muted"
                   >
@@ -217,6 +213,7 @@ export function CanvasCard({ canvas, onRename, onDuplicate, onDelete, onRefreshP
                 )}
                 <div className="my-1 h-px bg-border" />
                 <button
+                  role="menuitem"
                   onClick={() => handleMenuAction('delete')}
                   className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-500 hover:bg-muted"
                 >
