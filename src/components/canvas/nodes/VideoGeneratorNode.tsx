@@ -514,7 +514,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
         className={`
           w-[420px] rounded-2xl overflow-hidden
           transition-all duration-150
-          ${data.isGenerating ? 'animate-pulse-glow generating-border-purple' : ''}
+          ${data.isGenerating ? 'animate-subtle-pulse generating-border-subtle' : ''}
           ${!data.isGenerating ? (selected ? 'node-card-selected' : 'node-card') : ''}
         `}
       >
@@ -524,8 +524,8 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
           {data.isGenerating ? (
             <div className="p-4 min-h-[200px] flex flex-col items-center justify-center gap-4">
               <div className="relative">
-                <div className="w-16 h-16 rounded-full border-4 border-border border-t-purple-500 animate-spin" />
-                <Loader2 className="absolute inset-0 m-auto h-6 w-6 text-purple-500 animate-pulse" />
+                <div className="w-16 h-16 rounded-full border-4 border-muted border-t-muted-foreground animate-spin" />
+                <Loader2 className="absolute inset-0 m-auto h-6 w-6 text-muted-foreground animate-pulse" />
               </div>
               <div className="text-center">
                 <p className="text-foreground text-sm font-medium">
@@ -543,7 +543,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
               {!data.xskillTaskId && data.progress !== undefined && data.progress > 0 && (
                 <div className="w-full max-w-[200px] h-1.5 bg-muted rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-purple-500 transition-all duration-300"
+                    className="h-full bg-muted-foreground transition-all duration-300"
                     style={{ width: `${data.progress}%` }}
                   />
                 </div>
@@ -556,9 +556,16 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
                 ref={videoRef}
                 src={data.outputUrl}
                 poster={data.thumbnailUrl}
-                controls
-                className="w-full h-auto"
+                className="w-full h-auto cursor-pointer"
                 style={{ maxHeight: '300px' }}
+                onClick={(e) => {
+                  const video = e.currentTarget;
+                  if (video.paused) {
+                    video.play();
+                  } else {
+                    video.pause();
+                  }
+                }}
               />
               {/* Duration badge - visible on hover */}
               <div className="absolute top-3 right-3 px-2 py-0.5 bg-black/50 backdrop-blur-sm rounded text-xs text-zinc-300 font-medium opacity-0 group-hover/video:opacity-100 transition-opacity duration-200">
@@ -627,7 +634,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
                       onClick={handleAudioToggle}
                       className={`h-7 w-7 shrink-0 ${
                         data.generateAudio !== false
-                          ? 'text-purple-300 bg-purple-500/30 hover:bg-purple-500/40'
+                          ? 'text-foreground bg-muted/50 hover:bg-muted/80'
                           : 'text-white/70 hover:text-white hover:bg-white/10'
                       }`}
                       title={data.generateAudio !== false ? 'Audio ON' : 'Audio OFF'}
@@ -652,7 +659,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
                     onClick={handleGenerate}
                     disabled={!hasValidInput || data.isGenerating}
                     size="icon-sm"
-                    className="h-8 w-8 min-w-8 bg-purple-500 hover:bg-purple-400 text-white rounded-full disabled:opacity-40 shrink-0 shadow-lg hover:shadow-purple-500/25 transition-all duration-200 hover:scale-105"
+                    className="h-8 w-8 min-w-8 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg disabled:opacity-40 shrink-0 transition-all duration-200 hover:scale-105"
                   >
                     <RefreshCw className="h-4 w-4" />
                   </Button>
@@ -758,7 +765,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
               onClick={handleAudioToggle}
               className={`h-7 w-7 shrink-0 ${
                 data.generateAudio !== false
-                  ? 'text-purple-400 bg-purple-500/20 hover:bg-purple-500/30'
+                  ? 'text-foreground bg-muted hover:bg-muted/80'
                   : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
               }`}
               title={data.generateAudio !== false ? 'Audio ON' : 'Audio OFF'}
@@ -789,7 +796,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
             onClick={handleGenerate}
             disabled={!hasValidInput || data.isGenerating}
             size="icon-sm"
-            className="h-8 w-8 min-w-8 bg-purple-500 hover:bg-purple-400 text-white rounded-full disabled:opacity-40 shrink-0"
+            className="h-8 w-8 min-w-8 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg disabled:opacity-40 shrink-0"
           >
             {data.isGenerating ? (
               <Loader2 className="h-4 w-4 animate-spin" />

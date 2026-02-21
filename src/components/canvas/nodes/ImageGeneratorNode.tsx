@@ -372,7 +372,7 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
         className={`
           w-[420px] rounded-2xl overflow-hidden
           transition-all duration-150
-          ${data.isGenerating ? 'animate-pulse-glow-teal generating-border-teal' : ''}
+          ${data.isGenerating ? 'animate-subtle-pulse generating-border-subtle' : ''}
           ${!data.isGenerating && !data.outputUrl ? (selected ? 'node-card node-card-selected' : 'node-card') : ''}
         `}
         style={{
@@ -386,8 +386,8 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
           {data.isGenerating ? (
             <div className="p-4 min-h-[200px] flex flex-col items-center justify-center gap-4" style={{ backgroundColor: 'var(--node-card-bg)' }}>
               <div className="relative">
-                <div className="w-16 h-16 rounded-full border-4 border-border border-t-teal-500 animate-spin" />
-                <Loader2 className="absolute inset-0 m-auto h-6 w-6 text-teal-500 animate-pulse" />
+                <div className="w-16 h-16 rounded-full border-4 border-muted border-t-muted-foreground animate-spin" />
+                <Loader2 className="absolute inset-0 m-auto h-6 w-6 text-muted-foreground animate-pulse" />
               </div>
               <div className="text-center">
                 <p className="text-foreground text-sm font-medium">Generating...</p>
@@ -489,7 +489,7 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
                     onClick={handleGenerate}
                     disabled={!hasValidPrompt || data.isGenerating}
                     size="icon-sm"
-                    className="h-8 w-8 min-w-8 bg-teal-500 hover:bg-teal-400 text-white rounded-full disabled:opacity-40 shrink-0 shadow-lg hover:shadow-teal-500/25 transition-all duration-200 hover:scale-105"
+                    className="h-8 w-8 min-w-8 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg disabled:opacity-40 shrink-0 transition-all duration-200 hover:scale-105"
                   >
                     <RefreshCw className="h-4 w-4" />
                   </Button>
@@ -596,7 +596,7 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
                     onClick={handleMagicPromptToggle}
                     className={`h-7 w-7 shrink-0 ${
                       data.magicPrompt
-                        ? 'text-purple-400 bg-purple-500/20 hover:bg-purple-500/30'
+                        ? 'text-foreground bg-muted/50 hover:bg-muted/80'
                         : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                     }`}
                     title={data.magicPrompt ? 'Magic Prompt ON' : 'Magic Prompt OFF'}
@@ -636,7 +636,7 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
                   onClick={handleGenerate}
                   disabled={!hasValidPrompt || data.isGenerating}
                   size="icon-sm"
-                  className="h-8 w-8 min-w-8 bg-teal-500 hover:bg-teal-400 text-white rounded-full disabled:opacity-40 shrink-0"
+                  className="h-8 w-8 min-w-8 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg disabled:opacity-40 shrink-0"
                 >
                   <Play className="h-4 w-4" />
                 </Button>
