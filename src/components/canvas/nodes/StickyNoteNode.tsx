@@ -262,7 +262,7 @@ function StickyNoteNodeComponent({ id, data, selected }: NodeProps<StickyNoteNod
           <Button
             variant="ghost"
             size="icon-sm"
-            className={`h-7 w-7 hover:bg-zinc-700/50 ${bold ? 'text-indigo-400' : 'text-zinc-400 hover:text-zinc-200'}`}
+            className={`h-7 w-7 hover:bg-zinc-700/50 ${bold ? 'text-blue-400' : 'text-zinc-400 hover:text-zinc-200'}`}
             onClick={handleBoldToggle}
             title="Bold"
           >
@@ -271,7 +271,7 @@ function StickyNoteNodeComponent({ id, data, selected }: NodeProps<StickyNoteNod
           <Button
             variant="ghost"
             size="icon-sm"
-            className={`h-7 w-7 hover:bg-zinc-700/50 ${italic ? 'text-indigo-400' : 'text-zinc-400 hover:text-zinc-200'}`}
+            className={`h-7 w-7 hover:bg-zinc-700/50 ${italic ? 'text-blue-400' : 'text-zinc-400 hover:text-zinc-200'}`}
             onClick={handleItalicToggle}
             title="Italic"
           >
@@ -284,7 +284,7 @@ function StickyNoteNodeComponent({ id, data, selected }: NodeProps<StickyNoteNod
           <Button
             variant="ghost"
             size="icon-sm"
-            className={`h-7 w-7 hover:bg-zinc-700/50 ${textAlign === 'left' ? 'text-indigo-400' : 'text-zinc-400 hover:text-zinc-200'}`}
+            className={`h-7 w-7 hover:bg-zinc-700/50 ${textAlign === 'left' ? 'text-blue-400' : 'text-zinc-400 hover:text-zinc-200'}`}
             onClick={() => handleTextAlignChange('left')}
             title="Align left"
           >
@@ -293,7 +293,7 @@ function StickyNoteNodeComponent({ id, data, selected }: NodeProps<StickyNoteNod
           <Button
             variant="ghost"
             size="icon-sm"
-            className={`h-7 w-7 hover:bg-zinc-700/50 ${textAlign === 'center' ? 'text-indigo-400' : 'text-zinc-400 hover:text-zinc-200'}`}
+            className={`h-7 w-7 hover:bg-zinc-700/50 ${textAlign === 'center' ? 'text-blue-400' : 'text-zinc-400 hover:text-zinc-200'}`}
             onClick={() => handleTextAlignChange('center')}
             title="Align center"
           >
@@ -302,7 +302,7 @@ function StickyNoteNodeComponent({ id, data, selected }: NodeProps<StickyNoteNod
           <Button
             variant="ghost"
             size="icon-sm"
-            className={`h-7 w-7 hover:bg-zinc-700/50 ${textAlign === 'right' ? 'text-indigo-400' : 'text-zinc-400 hover:text-zinc-200'}`}
+            className={`h-7 w-7 hover:bg-zinc-700/50 ${textAlign === 'right' ? 'text-blue-400' : 'text-zinc-400 hover:text-zinc-200'}`}
             onClick={() => handleTextAlignChange('right')}
             title="Align right"
           >
@@ -352,7 +352,7 @@ function StickyNoteNodeComponent({ id, data, selected }: NodeProps<StickyNoteNod
                   max="100"
                   value={opacity}
                   onChange={handleOpacityChange}
-                  className="w-24 h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                  className="w-24 h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
                 />
               </div>
             )}

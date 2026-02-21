@@ -219,7 +219,7 @@ export function ZoomControls() {
                   className={`
                     px-2 py-1 text-xs rounded
                     ${Math.abs(zoom - preset) < 5
-                      ? 'bg-indigo-600 text-white'
+                      ? 'bg-primary text-white'
                       : 'bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground'
                     }
                     transition-colors

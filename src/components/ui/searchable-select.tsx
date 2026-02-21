@@ -9,6 +9,7 @@ interface Option {
   value: string;
   label: string;
   description?: string;
+  group?: string;
 }
 
 interface SearchableSelectProps {
@@ -45,9 +46,29 @@ export function SearchableSelect({
     return options.filter(
       (opt) =>
         opt.label.toLowerCase().includes(query) ||
-        opt.description?.toLowerCase().includes(query)
+        opt.description?.toLowerCase().includes(query) ||
+        opt.group?.toLowerCase().includes(query)
     );
   }, [options, search]);
+
+  // Group options by their group field
+  const groupedOptions = React.useMemo(() => {
+    const groups: { label: string | null; options: Option[] }[] = [];
+    let currentGroup: string | null | undefined = undefined;
+
+    for (const opt of filteredOptions) {
+      const group = opt.group ?? null;
+      if (group !== currentGroup) {
+        groups.push({ label: group, options: [opt] });
+        currentGroup = group;
+      } else {
+        groups[groups.length - 1].options.push(opt);
+      }
+    }
+    return groups;
+  }, [filteredOptions]);
+
+  const hasGroups = options.some((opt) => opt.group);
 
   // Update position when opening
   React.useEffect(() => {
@@ -104,6 +125,25 @@ export function SearchableSelect({
     setSearch('');
   };
 
+  const renderOption = (option: Option) => (
+    <button
+      key={option.value}
+      type="button"
+      onClick={() => handleSelect(option.value)}
+      className={cn(
+        'w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors cursor-pointer',
+        option.value === value
+          ? 'bg-accent text-accent-foreground'
+          : 'text-foreground hover:bg-muted/50'
+      )}
+    >
+      <span className="flex-1">{option.label}</span>
+      {option.value === value && (
+        <Check className="h-3 w-3 text-emerald-400" />
+      )}
+    </button>
+  );
+
   const dropdown = open ? (
     <div
       ref={dropdownRef}
@@ -127,30 +167,24 @@ export function SearchableSelect({
       </div>
 
       {/* Options List */}
-      <div className="max-h-[250px] overflow-y-auto py-1">
+      <div className="max-h-[300px] overflow-y-auto py-1">
         {filteredOptions.length === 0 ? (
           <div className="px-3 py-2 text-xs text-muted-foreground text-center">
             No results found
           </div>
-        ) : (
-          filteredOptions.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              onClick={() => handleSelect(option.value)}
-              className={cn(
-                'w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors cursor-pointer',
-                option.value === value
-                  ? 'bg-accent text-accent-foreground'
-                  : 'text-foreground hover:bg-muted/50'
+        ) : hasGroups ? (
+          groupedOptions.map((group) => (
+            <div key={group.label ?? '__ungrouped'}>
+              {group.label && (
+                <div className="px-3 pt-2 pb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  {group.label}
+                </div>
               )}
-            >
-              <span className="flex-1">{option.label}</span>
-              {option.value === value && (
-                <Check className="h-3 w-3 text-emerald-400" />
-              )}
-            </button>
+              {group.options.map(renderOption)}
+            </div>
           ))
+        ) : (
+          filteredOptions.map(renderOption)
         )}
       </div>
     </div>

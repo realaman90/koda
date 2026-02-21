@@ -441,7 +441,7 @@ export function SettingsPanel() {
               size="icon-sm"
               onClick={handleGenerate}
               disabled={!hasValidPrompt || data.isGenerating}
-              className="h-8 w-8 bg-teal-500 hover:bg-teal-400 text-white rounded-full disabled:opacity-40"
+              className="h-8 w-8 bg-primary hover:bg-[var(--accent-primary-hover)] text-white rounded-full disabled:opacity-40"
             >
               {data.isGenerating ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -545,7 +545,7 @@ export function SettingsPanel() {
                     onClick={handleMagicPromptToggle}
                     className={`h-7 px-2 gap-1.5 ${
                       data.magicPrompt
-                        ? 'text-purple-400 bg-purple-500/20 hover:bg-purple-500/30'
+                        ? 'text-primary bg-primary/15 hover:bg-primary/25'
                         : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                     }`}
                   >
@@ -723,7 +723,7 @@ export function SettingsPanel() {
               value={data.prompt}
               onChange={handlePromptChange}
               placeholder="Describe the image you want to generate..."
-              className="w-full h-[120px] bg-muted border border-border rounded-lg p-3 text-foreground text-sm placeholder:text-muted-foreground/60 resize-none focus:outline-none focus:border-muted-foreground/50"
+              className="w-full h-[120px] bg-muted border border-border rounded-lg p-3 text-foreground text-sm placeholder:text-muted-foreground/60 resize-none focus:outline-none focus:border-primary"
             />
           </div>
 

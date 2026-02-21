@@ -45,7 +45,7 @@ export function StoryboardDraftCard({
             {sceneCount} images, {videoCount} {mode === 'single-shot' ? 'videos' : 'transitions'}
           </span>
         </div>
-        <span className="text-[10px] font-medium text-indigo-400 bg-indigo-500/15 px-1.5 py-0.5 rounded">
+        <span className="text-[10px] font-medium text-blue-400 bg-blue-500/15 px-1.5 py-0.5 rounded">
           v{draftIndex + 1}
         </span>
       </div>
@@ -67,7 +67,7 @@ export function StoryboardDraftCard({
         <div className="px-3 pb-3">
           <button
             onClick={onCreateNodes}
-            className="w-full py-2 px-3 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium rounded-lg transition-colors flex items-center justify-center gap-1.5 nodrag"
+            className="w-full py-2 px-3 bg-primary hover:bg-[var(--accent-primary-hover)] text-white text-xs font-medium rounded-lg transition-colors flex items-center justify-center gap-1.5 nodrag"
           >
             <Grid3X3 className="w-3 h-3" />
             Create Nodes
@@ -89,7 +89,7 @@ function DraftScenePreview({ scene }: { scene: StoryboardSceneData }) {
         className="w-full flex items-center justify-between px-2 py-1.5 text-left hover:bg-[#12141A] nodrag"
       >
         <div className="flex items-center gap-1.5 min-w-0">
-          <span className="text-[10px] font-medium text-indigo-400 bg-indigo-500/20 px-1 py-0.5 rounded shrink-0">
+          <span className="text-[10px] font-medium text-blue-400 bg-blue-500/20 px-1 py-0.5 rounded shrink-0">
             {scene.number}
           </span>
           <span className="text-[11px] font-medium text-foreground truncate">{scene.title}</span>
