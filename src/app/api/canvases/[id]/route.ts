@@ -63,7 +63,19 @@ export async function PUT(
 
   try {
     const body = await request.json();
-    const { name, nodes, edges, thumbnail, createdAt, updatedAt } = body;
+    const {
+      name,
+      nodes,
+      edges,
+      thumbnail,
+      thumbnailUrl,
+      thumbnailStatus,
+      thumbnailUpdatedAt,
+      thumbnailVersion,
+      thumbnailErrorCode,
+      createdAt,
+      updatedAt,
+    } = body;
 
     const { getSQLiteStorageProvider } = await import('@/lib/storage/sqlite-provider');
     const provider = getSQLiteStorageProvider();
@@ -77,6 +89,11 @@ export async function PUT(
       nodes: nodes ?? existing?.nodes ?? [],
       edges: edges ?? existing?.edges ?? [],
       thumbnail: thumbnail ?? existing?.thumbnail,
+      thumbnailUrl: thumbnailUrl ?? existing?.thumbnailUrl,
+      thumbnailStatus: thumbnailStatus ?? existing?.thumbnailStatus,
+      thumbnailUpdatedAt: thumbnailUpdatedAt ?? existing?.thumbnailUpdatedAt,
+      thumbnailVersion: thumbnailVersion ?? existing?.thumbnailVersion,
+      thumbnailErrorCode: thumbnailErrorCode ?? existing?.thumbnailErrorCode,
       createdAt: createdAt ?? existing?.createdAt ?? Date.now(),
       updatedAt: updatedAt ?? Date.now(),
     };

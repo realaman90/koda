@@ -58,6 +58,11 @@ const SCHEMA_SQL_STATEMENTS = [
     nodes TEXT,
     edges TEXT,
     thumbnail TEXT,
+    thumbnail_url TEXT,
+    thumbnail_status TEXT NOT NULL DEFAULT 'empty',
+    thumbnail_updated_at INTEGER,
+    thumbnail_version TEXT,
+    thumbnail_error_code TEXT,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
   )`,
@@ -86,6 +91,26 @@ const SCHEMA_SQL_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_animation_versions_project ON animation_versions(project_id, created_at DESC)`,
 ];
 
+const CANVAS_COLUMN_MIGRATIONS = [
+  `ALTER TABLE canvases ADD COLUMN thumbnail_url TEXT`,
+  `ALTER TABLE canvases ADD COLUMN thumbnail_status TEXT NOT NULL DEFAULT 'empty'`,
+  `ALTER TABLE canvases ADD COLUMN thumbnail_updated_at INTEGER`,
+  `ALTER TABLE canvases ADD COLUMN thumbnail_version TEXT`,
+  `ALTER TABLE canvases ADD COLUMN thumbnail_error_code TEXT`,
+];
+
+const CANVAS_BACKFILL_SQL = [
+  `UPDATE canvases
+   SET thumbnail_url = COALESCE(thumbnail_url, thumbnail)
+   WHERE thumbnail_url IS NULL AND thumbnail IS NOT NULL`,
+  `UPDATE canvases
+   SET thumbnail_status = CASE
+     WHEN (thumbnail_url IS NOT NULL AND TRIM(thumbnail_url) != '') OR (thumbnail IS NOT NULL AND TRIM(thumbnail) != '') THEN 'ready'
+     ELSE 'empty'
+   END
+   WHERE thumbnail_status IS NULL OR TRIM(thumbnail_status) = '' OR thumbnail_status = 'empty'`,
+];
+
 async function migrateLocal(dbPath: string) {
   console.log('📁 Using better-sqlite3 for local database\n');
   
@@ -104,6 +129,18 @@ async function migrateLocal(dbPath: string) {
     console.log('📝 Creating tables...');
     
     for (const sql of SCHEMA_SQL_STATEMENTS) {
+      db.exec(sql);
+    }
+
+    for (const sql of CANVAS_COLUMN_MIGRATIONS) {
+      try {
+        db.exec(sql);
+      } catch {
+        // Column already exists (safe to ignore)
+      }
+    }
+
+    for (const sql of CANVAS_BACKFILL_SQL) {
       db.exec(sql);
     }
     
@@ -139,6 +176,18 @@ async function migrateTurso(url: string, authToken?: string) {
     console.log('📝 Creating tables...');
     
     for (const sql of SCHEMA_SQL_STATEMENTS) {
+      await client.execute(sql);
+    }
+
+    for (const sql of CANVAS_COLUMN_MIGRATIONS) {
+      try {
+        await client.execute(sql);
+      } catch {
+        // Column already exists (safe to ignore)
+      }
+    }
+
+    for (const sql of CANVAS_BACKFILL_SQL) {
       await client.execute(sql);
     }
     

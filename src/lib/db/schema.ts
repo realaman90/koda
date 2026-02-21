@@ -14,8 +14,14 @@ export const canvases = sqliteTable('canvases', {
   // JSON blobs for nodes and edges (stored as text)
   nodes: text('nodes'),
   edges: text('edges'),
-  // Optional thumbnail (base64 or URL)
+  // Optional thumbnail (legacy)
   thumbnail: text('thumbnail'),
+  // Canonical preview lifecycle metadata
+  thumbnailUrl: text('thumbnail_url'),
+  thumbnailStatus: text('thumbnail_status').notNull().default('empty'),
+  thumbnailUpdatedAt: integer('thumbnail_updated_at', { mode: 'timestamp_ms' }),
+  thumbnailVersion: text('thumbnail_version'),
+  thumbnailErrorCode: text('thumbnail_error_code'),
   // Timestamps stored as Unix milliseconds
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),

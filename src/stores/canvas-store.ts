@@ -943,10 +943,7 @@ export const useCanvasStore = create<CanvasState>()(
         // Helper to get audio URL from a node
         const getAudioUrl = (node: AppNode | null | undefined): string | undefined => {
           if (!node) return undefined;
-          if (node.type === 'media') {
-            const mediaData = node.data as MediaNodeData;
-            return mediaData.type === 'audio' ? mediaData.url : undefined;
-          } else if (node.type === 'musicGenerator') {
+          if (node.type === 'musicGenerator') {
             return (node.data as MusicGeneratorNodeData).outputUrl;
           } else if (node.type === 'speech') {
             return (node.data as SpeechNodeData).outputUrl;

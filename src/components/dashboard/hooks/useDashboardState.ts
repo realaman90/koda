@@ -18,6 +18,7 @@ export interface DashboardState {
   activeTab: TabType;
   searchQuery: string;
   isLoadingList: boolean;
+  loadError: string | null;
   filteredCanvases: ReturnType<typeof useAppStore.getState>['canvasList'];
   filteredTemplates: TemplateMetadata[];
   templates: TemplateMetadata[];
@@ -25,11 +26,13 @@ export interface DashboardState {
   // Actions
   setActiveTab: (tab: TabType) => void;
   setSearchQuery: (query: string) => void;
+  retryLoadCanvases: () => Promise<void>;
   handleCreateCanvas: () => Promise<void>;
   handleSelectTemplate: (templateId: string) => Promise<void>;
   handleRename: (id: string, name: string) => Promise<void>;
   handleDuplicate: (id: string) => Promise<void>;
   handleDelete: (id: string) => Promise<void>;
+  handleRefreshPreview: (id: string) => Promise<void>;
 }
 
 export function useDashboardState(): DashboardState {
@@ -37,6 +40,7 @@ export function useDashboardState(): DashboardState {
   const searchParams = useSearchParams();
   const [isCreating, setIsCreating] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Read tab from URL params
   const tabParam = searchParams.get('tab');
@@ -61,6 +65,7 @@ export function useDashboardState(): DashboardState {
   const renameCanvas = useAppStore((state) => state.renameCanvas);
   const duplicateCanvas = useAppStore((state) => state.duplicateCanvas);
   const deleteCanvas = useAppStore((state) => state.deleteCanvas);
+  const requestPreviewRefresh = useAppStore((state) => state.requestPreviewRefresh);
   const migrateLegacyData = useAppStore((state) => state.migrateLegacyData);
   const initializeSync = useAppStore((state) => state.initializeSync);
 
@@ -79,18 +84,32 @@ export function useDashboardState(): DashboardState {
     c.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const retryLoadCanvases = useCallback(async () => {
+    try {
+      setLoadError(null);
+      await loadCanvasList();
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Unknown error');
+    }
+  }, [loadCanvasList]);
+
   useEffect(() => {
     async function init() {
-      // Initialize sync with SQLite (if configured)
-      await initializeSync();
+      try {
+        setLoadError(null);
+        // Initialize sync with SQLite (if configured)
+        await initializeSync();
 
-      // Migrate legacy localStorage data
-      const migratedId = await migrateLegacyData();
-      if (migratedId) {
-        toast.success('Migrated your existing canvas');
+        // Migrate legacy localStorage data
+        const migratedId = await migrateLegacyData();
+        if (migratedId) {
+          toast.success('Migrated your existing canvas');
+        }
+
+        await loadCanvasList();
+      } catch (error) {
+        setLoadError(error instanceof Error ? error.message : 'Unknown error');
       }
-      
-      await loadCanvasList();
     }
     init();
   }, [loadCanvasList, migrateLegacyData, initializeSync]);
@@ -162,20 +181,32 @@ export function useDashboardState(): DashboardState {
     }
   }, [deleteCanvas]);
 
+  const handleRefreshPreview = useCallback(async (id: string) => {
+    try {
+      await requestPreviewRefresh(id, true);
+      toast.success('Refreshing preview…');
+    } catch {
+      toast.error('Failed to refresh preview');
+    }
+  }, [requestPreviewRefresh]);
+
   return {
     isCreating,
     activeTab,
     searchQuery,
     isLoadingList,
+    loadError,
     filteredCanvases,
     filteredTemplates,
     templates,
     setActiveTab,
     setSearchQuery,
+    retryLoadCanvases,
     handleCreateCanvas,
     handleSelectTemplate,
     handleRename,
     handleDuplicate,
     handleDelete,
+    handleRefreshPreview,
   };
 }

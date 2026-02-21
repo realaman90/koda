@@ -40,7 +40,20 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { id, name, nodes, edges, thumbnail, createdAt, updatedAt } = body;
+    const {
+      id,
+      name,
+      nodes,
+      edges,
+      thumbnail,
+      thumbnailUrl,
+      thumbnailStatus,
+      thumbnailUpdatedAt,
+      thumbnailVersion,
+      thumbnailErrorCode,
+      createdAt,
+      updatedAt,
+    } = body;
 
     if (!id || !name) {
       return NextResponse.json(
@@ -58,6 +71,11 @@ export async function POST(request: NextRequest) {
       nodes: nodes || [],
       edges: edges || [],
       thumbnail,
+      thumbnailUrl,
+      thumbnailStatus,
+      thumbnailUpdatedAt,
+      thumbnailVersion,
+      thumbnailErrorCode,
       createdAt: createdAt || Date.now(),
       updatedAt: updatedAt || Date.now(),
     };

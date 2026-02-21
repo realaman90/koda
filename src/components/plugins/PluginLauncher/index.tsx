@@ -10,6 +10,7 @@
 import * as React from 'react';
 import { Puzzle, ChevronRight } from 'lucide-react';
 import { pluginRegistry } from '@/lib/plugins/registry';
+import type { AgentPlugin } from '@/lib/plugins/types';
 
 interface PluginLauncherProps {
   onLaunch: (pluginId: string) => void;
@@ -18,9 +19,23 @@ interface PluginLauncherProps {
   anchorRef: React.RefObject<HTMLElement | null>;
 }
 
-/**
- * Plugin Launcher Dropdown
- */
+function getLaunchMode(plugin: AgentPlugin): 'Node' | 'Modal' {
+  if (plugin.rendering?.mode === 'node') return 'Node';
+  if (plugin.rendering?.mode === 'modal') return 'Modal';
+  if (plugin.sandbox && !plugin.rendering?.mode) return 'Modal';
+  return 'Node';
+}
+
+function getIoHint(plugin: AgentPlugin): string | null {
+  if (!plugin.handles) return null;
+  const inputTypes = plugin.handles.inputs.map((h) => h.type).join(', ');
+  const outputTypes = plugin.handles.outputs.map((h) => h.type).join(', ');
+  if (!inputTypes && !outputTypes) return null;
+  if (!inputTypes) return `Output: ${outputTypes}`;
+  if (!outputTypes) return `Input: ${inputTypes}`;
+  return `In: ${inputTypes} · Out: ${outputTypes}`;
+}
+
 export function PluginLauncher({
   onLaunch,
   isOpen,
@@ -30,13 +45,10 @@ export function PluginLauncher({
   const dropdownRef = React.useRef<HTMLDivElement>(null);
   const [position, setPosition] = React.useState({ top: -9999, left: -9999 });
 
-  // Get all plugins from registry
   const plugins = React.useMemo(() => pluginRegistry.getAll(), []);
 
-  // Position dropdown near anchor, clamped to viewport
   React.useEffect(() => {
     if (isOpen && anchorRef.current) {
-      // Wait a frame so the dropdown renders and we can measure it
       requestAnimationFrame(() => {
         const anchorRect = anchorRef.current?.getBoundingClientRect();
         const dropRect = dropdownRef.current?.getBoundingClientRect();
@@ -53,7 +65,6 @@ export function PluginLauncher({
     }
   }, [isOpen, anchorRef]);
 
-  // Close on click outside
   React.useEffect(() => {
     if (!isOpen) return;
 
@@ -83,7 +94,6 @@ export function PluginLauncher({
     };
   }, [isOpen, onClose, anchorRef]);
 
-  // Reset position when closed
   React.useEffect(() => {
     if (!isOpen) setPosition({ top: -9999, left: -9999 });
   }, [isOpen]);
@@ -95,16 +105,15 @@ export function PluginLauncher({
     onClose();
   };
 
-  // No plugins available
   if (plugins.length === 0) {
     return (
       <div
         ref={dropdownRef}
         style={{ top: position.top, left: position.left, visibility: position.top === -9999 ? 'hidden' : 'visible' }}
-        className="fixed z-[200] w-[280px] bg-popover border border-border rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150"
+        className="fixed z-[200] w-[320px] overflow-hidden rounded-xl border border-border bg-popover shadow-2xl animate-in fade-in slide-in-from-top-2 duration-150"
       >
         <div className="p-4 text-center">
-          <Puzzle className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+          <Puzzle className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">No plugins available</p>
         </div>
       </div>
@@ -115,33 +124,40 @@ export function PluginLauncher({
     <div
       ref={dropdownRef}
       style={{ top: position.top, left: position.left, visibility: position.top === -9999 ? 'hidden' : 'visible' }}
-      className="fixed z-[200] w-[280px] bg-popover border border-border rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150"
+      className="fixed z-[200] w-[320px] overflow-hidden rounded-xl border border-border bg-popover shadow-2xl animate-in fade-in slide-in-from-top-2 duration-150"
     >
-      {/* Header */}
-      <div className="px-3 py-2 border-b border-border">
+      <div className="border-b border-border px-3 py-2">
         <h3 className="text-sm font-medium text-foreground">Plugins</h3>
       </div>
 
-      {/* Plugin list */}
-      <div className="max-h-[320px] overflow-y-auto">
-        {plugins.map((plugin) => (
-          <button
-            key={plugin.id}
-            onClick={() => handlePluginClick(plugin.id)}
-            className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-muted transition-colors text-left"
-          >
-            <plugin.icon className="w-5 h-5 text-muted-foreground" />
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-foreground">
-                {plugin.name}
+      <div className="max-h-[360px] overflow-y-auto">
+        {plugins.map((plugin) => {
+          const mode = getLaunchMode(plugin);
+          const ioHint = getIoHint(plugin);
+
+          return (
+            <button
+              key={plugin.id}
+              onClick={() => handlePluginClick(plugin.id)}
+              className="w-full px-3 py-2.5 text-left transition-colors hover:bg-muted"
+            >
+              <div className="flex items-start gap-3">
+                <plugin.icon className="mt-0.5 h-5 w-5 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <div className="truncate text-sm font-medium text-foreground">{plugin.name}</div>
+                    <span className="rounded bg-[#3b82f6]/15 px-1.5 py-0.5 text-[10px] font-medium text-[#3b82f6]">
+                      {mode}
+                    </span>
+                  </div>
+                  <div className="truncate text-xs text-muted-foreground">{plugin.description}</div>
+                  {ioHint && <div className="truncate text-[11px] text-muted-foreground/90">{ioHint}</div>}
+                </div>
+                <ChevronRight className="mt-1 h-4 w-4 text-muted-foreground" />
               </div>
-              <div className="text-xs text-muted-foreground truncate">
-                {plugin.description}
-              </div>
-            </div>
-            <ChevronRight className="w-4 h-4 text-muted-foreground" />
-          </button>
-        ))}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

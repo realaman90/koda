@@ -1,5 +1,5 @@
 import type { StorageProvider, StoredCanvas, CanvasMetadata } from './types';
-import { canvasToMetadata } from './types';
+import { canvasToMetadata, normalizeStoredCanvas } from './types';
 
 const STORAGE_KEY = 'spaces-canvases';
 const LEGACY_STORAGE_KEY = 'spaces-canvas-storage';
@@ -28,8 +28,9 @@ export class LocalStorageProvider implements StorageProvider {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const canvases: StoredCanvas[] = JSON.parse(stored);
-        canvases.forEach(canvas => {
-          this.canvases.set(canvas.id, canvas);
+        canvases.forEach((canvas) => {
+          const normalized = normalizeStoredCanvas(canvas);
+          this.canvases.set(normalized.id, normalized);
         });
       }
     } catch (error) {
@@ -73,7 +74,8 @@ export class LocalStorageProvider implements StorageProvider {
 
   async getCanvas(id: string): Promise<StoredCanvas | null> {
     this.ensureInitialized();
-    return this.canvases.get(id) || null;
+    const canvas = this.canvases.get(id);
+    return canvas ? normalizeStoredCanvas(canvas) : null;
   }
 
   async saveCanvas(canvas: StoredCanvas): Promise<void> {
@@ -82,7 +84,7 @@ export class LocalStorageProvider implements StorageProvider {
     // Ensure updatedAt is set
     canvas.updatedAt = Date.now();
 
-    this.canvases.set(canvas.id, canvas);
+    this.canvases.set(canvas.id, normalizeStoredCanvas(canvas));
     this.persist();
   }
 
