@@ -3,6 +3,19 @@ import type { AppNode, AppEdge } from '@/lib/types';
 export type ThumbnailStatus = 'ready' | 'empty' | 'stale' | 'processing' | 'error';
 export type ThumbnailErrorCode = 'UPLOAD_FAILED' | 'CAPTURE_FAILED' | 'UNSUPPORTED' | 'UNKNOWN';
 
+const NON_EMPTY_THUMBNAIL_STATUSES: ThumbnailStatus[] = ['ready', 'stale', 'processing', 'error'];
+
+export function resolveThumbnailStatus(
+  thumbnailStatus: ThumbnailStatus | undefined,
+  thumbnailUrl: string | undefined,
+): ThumbnailStatus {
+  if (thumbnailStatus && NON_EMPTY_THUMBNAIL_STATUSES.includes(thumbnailStatus)) {
+    return thumbnailStatus;
+  }
+
+  return thumbnailUrl ? 'ready' : 'empty';
+}
+
 /**
  * Canvas data structure for storage
  */
@@ -120,7 +133,7 @@ export function createEmptyCanvas(name: string = 'Untitled Canvas'): StoredCanva
  */
 export function normalizeStoredCanvas(canvas: StoredCanvas): StoredCanvas {
   const thumbnailUrl = canvas.thumbnailUrl ?? canvas.thumbnail;
-  const thumbnailStatus = canvas.thumbnailStatus ?? (thumbnailUrl ? 'ready' : 'empty');
+  const thumbnailStatus = resolveThumbnailStatus(canvas.thumbnailStatus, thumbnailUrl);
 
   return {
     ...canvas,
@@ -141,7 +154,7 @@ export function canvasToMetadata(canvas: StoredCanvas): CanvasMetadata {
     name: normalized.name,
     thumbnail: normalized.thumbnail,
     thumbnailUrl: normalized.thumbnailUrl,
-    thumbnailStatus: normalized.thumbnailStatus ?? 'empty',
+    thumbnailStatus: resolveThumbnailStatus(normalized.thumbnailStatus, normalized.thumbnailUrl),
     thumbnailUpdatedAt: normalized.thumbnailUpdatedAt,
     thumbnailVersion: normalized.thumbnailVersion,
     thumbnailErrorCode: normalized.thumbnailErrorCode,
