@@ -7,8 +7,8 @@
 import 'server-only';
 
 import { eq, desc } from 'drizzle-orm';
-import type { StorageProvider, StoredCanvas, CanvasMetadata, ThumbnailStatus } from './types';
-import { normalizeStoredCanvas } from './types';
+import type { StorageProvider, StoredCanvas, CanvasMetadata } from './types';
+import { normalizeStoredCanvas, resolveThumbnailStatus } from './types';
 
 // Dynamic import helper for database
 async function getDb() {
@@ -49,7 +49,7 @@ export class SQLiteStorageProvider implements StorageProvider {
       }
       
       const thumbnailUrl = canvas.thumbnailUrl || canvas.thumbnail || undefined;
-      const thumbnailStatus = (canvas.thumbnailStatus || (thumbnailUrl ? 'ready' : 'empty')) as ThumbnailStatus;
+      const thumbnailStatus = resolveThumbnailStatus(canvas.thumbnailStatus || undefined, thumbnailUrl);
 
       return {
         id: canvas.id,
