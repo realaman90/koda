@@ -82,7 +82,7 @@ export function CommandPalette({ open: controlledOpen, onOpenChange }: CommandPa
         <Command.Group heading="Navigation" className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider mb-2 px-3 pt-2">
           <Command.Item
             onSelect={() => navigateTo("/")}
-            className="flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-colors hover:bg-[var(--node-card-bg-secondary)] data-[selected=true]:bg-gradient-to-r data-[selected=true]:from-[rgba(245,158,11,0.15)] data-[selected=true]:to-[rgba(236,72,153,0.15)]"
+            className="flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-colors hover:bg-[var(--node-card-bg-secondary)] data-[selected=true]:bg-[#3b82f6]/15 data-[selected=true]:text-[#3b82f6]"
           >
             <Home className="w-4 h-4" />
             <span>Go to Dashboard</span>
@@ -90,7 +90,7 @@ export function CommandPalette({ open: controlledOpen, onOpenChange }: CommandPa
           
           <Command.Item
             onSelect={() => navigateTo("/canvas")}
-            className="flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-colors hover:bg-[var(--node-card-bg-secondary)] data-[selected=true]:bg-gradient-to-r data-[selected=true]:from-[rgba(245,158,11,0.15)] data-[selected=true]:to-[rgba(236,72,153,0.15)]"
+            className="flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-colors hover:bg-[var(--node-card-bg-secondary)] data-[selected=true]:bg-[#3b82f6]/15 data-[selected=true]:text-[#3b82f6]"
           >
             <FolderOpen className="w-4 h-4" />
             <span>Go to Projects</span>
@@ -98,7 +98,7 @@ export function CommandPalette({ open: controlledOpen, onOpenChange }: CommandPa
           
           <Command.Item
             onSelect={() => navigateTo("/settings")}
-            className="flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-colors hover:bg-[var(--node-card-bg-secondary)] data-[selected=true]:bg-gradient-to-r data-[selected=true]:from-[rgba(245,158,11,0.15)] data-[selected=true]:to-[rgba(236,72,153,0.15)]"
+            className="flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-colors hover:bg-[var(--node-card-bg-secondary)] data-[selected=true]:bg-[#3b82f6]/15 data-[selected=true]:text-[#3b82f6]"
           >
             <Settings className="w-4 h-4" />
             <span>Go to Settings</span>
@@ -108,7 +108,7 @@ export function CommandPalette({ open: controlledOpen, onOpenChange }: CommandPa
         <Command.Group heading="Actions" className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider mb-2 px-3 pt-2">
           <Command.Item
             onSelect={() => navigateTo("/canvas?new=true")}
-            className="flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-colors hover:bg-[var(--node-card-bg-secondary)] data-[selected=true]:bg-gradient-to-r data-[selected=true]:from-[rgba(245,158,11,0.15)] data-[selected=true]:to-[rgba(236,72,153,0.15)]"
+            className="flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-colors hover:bg-[var(--node-card-bg-secondary)] data-[selected=true]:bg-[#3b82f6]/15 data-[selected=true]:text-[#3b82f6]"
           >
             <Plus className="w-4 h-4" />
             <span>Create New Project</span>
@@ -117,7 +117,7 @@ export function CommandPalette({ open: controlledOpen, onOpenChange }: CommandPa
           
           <Command.Item
             onSelect={() => {/* Import action */}}
-            className="flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-colors hover:bg-[var(--node-card-bg-secondary)] data-[selected=true]:bg-gradient-to-r data-[selected=true]:from-[rgba(245,158,11,0.15)] data-[selected=true]:to-[rgba(236,72,153,0.15)]"
+            className="flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-colors hover:bg-[var(--node-card-bg-secondary)] data-[selected=true]:bg-[#3b82f6]/15 data-[selected=true]:text-[#3b82f6]"
           >
             <Download className="w-4 h-4" />
             <span>Import Project</span>
@@ -126,7 +126,7 @@ export function CommandPalette({ open: controlledOpen, onOpenChange }: CommandPa
           
           <Command.Item
             onSelect={() => {/* Export action */}}
-            className="flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-colors hover:bg-[var(--node-card-bg-secondary)] data-[selected=true]:bg-gradient-to-r data-[selected=true]:from-[rgba(245,158,11,0.15)] data-[selected=true]:to-[rgba(236,72,153,0.15)]"
+            className="flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-colors hover:bg-[var(--node-card-bg-secondary)] data-[selected=true]:bg-[#3b82f6]/15 data-[selected=true]:text-[#3b82f6]"
           >
             <Upload className="w-4 h-4" />
             <span>Export Data</span>
@@ -137,7 +137,7 @@ export function CommandPalette({ open: controlledOpen, onOpenChange }: CommandPa
         <Command.Group heading="Recent" className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider mb-2 px-3 pt-2">
           <Command.Item
             onSelect={() => navigateTo("/canvas")}
-            className="flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-colors hover:bg-[var(--node-card-bg-secondary)] data-[selected=true]:bg-gradient-to-r data-[selected=true]:from-[rgba(245,158,11,0.15)] data-[selected=true]:to-[rgba(236,72,153,0.15)]"
+            className="flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-colors hover:bg-[var(--node-card-bg-secondary)] data-[selected=true]:bg-[#3b82f6]/15 data-[selected=true]:text-[#3b82f6]"
           >
             <Clock className="w-4 h-4" />
             <span>Recent Project</span>
@@ -147,7 +147,7 @@ export function CommandPalette({ open: controlledOpen, onOpenChange }: CommandPa
         <Command.Group heading="Settings" className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider mb-2 px-3 pt-2">
           <Command.Item
             onSelect={() => {/* Toggle theme */}}
-            className="flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-colors hover:bg-[var(--node-card-bg-secondary)] data-[selected=true]:bg-gradient-to-r data-[selected=true]:from-[rgba(245,158,11,0.15)] data-[selected=true]:to-[rgba(236,72,153,0.15)]"
+            className="flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-colors hover:bg-[var(--node-card-bg-secondary)] data-[selected=true]:bg-[#3b82f6]/15 data-[selected=true]:text-[#3b82f6]"
           >
             <Sun className="w-4 h-4" />
             <span>Toggle Theme</span>
@@ -156,7 +156,7 @@ export function CommandPalette({ open: controlledOpen, onOpenChange }: CommandPa
           
           <Command.Item
             onSelect={() => navigateTo("/settings")}
-            className="flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-colors hover:bg-[var(--node-card-bg-secondary)] data-[selected=true]:bg-gradient-to-r data-[selected=true]:from-[rgba(245,158,11,0.15)] data-[selected=true]:to-[rgba(236,72,153,0.15)]"
+            className="flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-colors hover:bg-[var(--node-card-bg-secondary)] data-[selected=true]:bg-[#3b82f6]/15 data-[selected=true]:text-[#3b82f6]"
           >
             <HelpCircle className="w-4 h-4" />
             <span>Keyboard Shortcuts</span>
@@ -165,7 +165,7 @@ export function CommandPalette({ open: controlledOpen, onOpenChange }: CommandPa
       </Command.List>
       
       <div className="border-t border-[var(--node-card-border)] px-4 py-2 text-xs text-[var(--text-muted)] flex items-center gap-2">
-        <Sparkles className="w-3 h-3 text-[var(--accent-amber)]" />
+        <Sparkles className="w-3 h-3 text-[#3b82f6]" />
         <span>Type to search or use arrow keys</span>
         <span className="ml-auto">ESC to close</span>
       </div>

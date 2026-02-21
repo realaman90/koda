@@ -139,6 +139,7 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   }
   /* Ensure interactive elements have pointer cursor */
   button,
@@ -1070,19 +1071,20 @@ select {
 }
 
 /* ==========================================
-   SPEC-001: Typography - Instrument Serif
+   Typography: Unified Sans (Codex/Linear style)
    ========================================== */
 .font-serif,
-.font-display {
-  font-family: var(--font-instrument-serif), Georgia, serif;
+.font-display,
+.heading-serif {
+  font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-/* Heading styles using Instrument Serif */
-h1, h2, h3, h4, .heading-serif {
-  font-family: var(--font-instrument-serif), Georgia, serif;
-  font-weight: 400;
+/* Headings use the same sans family for visual consistency */
+h1, h2, h3, h4 {
+  font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-weight: 600;
   line-height: 1.2;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
 }
 
 /* ==========================================

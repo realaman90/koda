@@ -42,7 +42,7 @@ export function ProjectsGrid({
         {!searchQuery && (
           <button
             onClick={onCreateCanvas}
-            className="px-4 py-2 bg-gradient-to-r from-[var(--accent-amber)] to-[var(--accent-pink)] hover:opacity-90 text-white rounded-lg transition-opacity"
+            className="px-4 py-2 bg-[#3b82f6] hover:bg-[#2563eb] text-white rounded-lg transition-colors"
           >
             Create Project
           </button>

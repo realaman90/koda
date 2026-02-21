@@ -60,7 +60,7 @@ export function FloatingActionButton({
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--node-card-border)]">
               <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-[var(--accent-amber)]" />
+                <Sparkles className="w-4 h-4 text-[#3b82f6]" />
                 <span className="font-semibold text-[var(--text-primary)]">AI Assistant</span>
               </div>
               <button
@@ -85,7 +85,7 @@ export function FloatingActionButton({
                   key={index}
                   className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left text-sm text-[var(--text-secondary)] hover:bg-[var(--node-card-bg-secondary)] transition-colors"
                 >
-                  <item.icon className="w-4 h-4 text-[var(--accent-pink)]" />
+                  <item.icon className="w-4 h-4 text-[#3b82f6]" />
                   {item.label}
                 </button>
               ))}
@@ -99,7 +99,7 @@ export function FloatingActionButton({
                   placeholder="Type your message..."
                   className="flex-1 bg-transparent border-none outline-none text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
                 />
-                <button className="p-1.5 rounded-md bg-gradient-to-r from-[var(--accent-amber)] to-[var(--accent-pink)] text-white">
+                <button className="p-1.5 rounded-md bg-[#3b82f6] text-white hover:bg-[#2563eb] transition-colors">
                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" />
                   </svg>
@@ -113,11 +113,11 @@ export function FloatingActionButton({
       {/* FAB Button */}
       <motion.button
         onClick={handleClick}
-        className={`${buttonSizeClasses[size]} rounded-full border-0 cursor-pointer flex items-center justify-center bg-gradient-to-r from-[var(--accent-amber)] to-[var(--accent-pink)] shadow-[0_4px_20px_rgba(245,158,11,0.4)] transition-shadow`}
+        className={`${buttonSizeClasses[size]} rounded-full border-0 cursor-pointer flex items-center justify-center bg-[#3b82f6] shadow-[0_4px_14px_rgba(59,130,246,0.35)] hover:shadow-[0_6px_18px_rgba(59,130,246,0.4)] transition-shadow`}
         style={{
           boxShadow: isOpen 
-            ? "0 6px 24px rgba(245, 158, 11, 0.5), 0 6px 24px rgba(236, 72, 153, 0.3)"
-            : "0 4px 20px rgba(245, 158, 11, 0.4)"
+            ? "0 6px 18px rgba(59, 130, 246, 0.4)"
+            : "0 4px 14px rgba(59, 130, 246, 0.35)"
         }}
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.95 }}

@@ -97,7 +97,7 @@ export default function CanvasPage({ params }: CanvasPageProps) {
             </p>
             <Link
               href="/"
-              className="mt-4 px-4 py-2 bg-gradient-to-r from-[var(--accent-amber)] to-[var(--accent-pink)] text-white rounded-lg transition-opacity hover:opacity-90"
+              className="mt-4 px-4 py-2 bg-[#3b82f6] hover:bg-[#2563eb] text-white rounded-lg transition-colors"
             >
               Go to Dashboard
             </Link>
