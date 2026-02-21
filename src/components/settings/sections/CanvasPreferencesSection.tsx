@@ -28,7 +28,7 @@ export function CanvasPreferencesSection() {
         <button
           onClick={() => handleChange('gridSnap', !canvasPreferences.gridSnap)}
           className={`relative w-12 h-6 rounded-full transition-colors ${
-            canvasPreferences.gridSnap ? 'bg-indigo-600' : 'bg-muted'
+            canvasPreferences.gridSnap ? 'bg-primary' : 'bg-muted'
           }`}
         >
           <span
@@ -50,7 +50,7 @@ export function CanvasPreferencesSection() {
         <button
           onClick={() => handleChange('showMinimap', !canvasPreferences.showMinimap)}
           className={`relative w-12 h-6 rounded-full transition-colors ${
-            canvasPreferences.showMinimap ? 'bg-indigo-600' : 'bg-muted'
+            canvasPreferences.showMinimap ? 'bg-primary' : 'bg-muted'
           }`}
         >
           <span
@@ -80,7 +80,7 @@ export function CanvasPreferencesSection() {
               onClick={() => handleChange('autoSaveInterval', option.value)}
               className={`flex-1 h-10 rounded-lg text-sm font-medium transition-colors ${
                 canvasPreferences.autoSaveInterval === option.value
-                  ? 'bg-indigo-600 text-foreground'
+                  ? 'bg-primary text-foreground'
                   : 'bg-muted text-muted-foreground hover:text-foreground border border-border'
               }`}
             >
@@ -104,7 +104,7 @@ export function CanvasPreferencesSection() {
             step="0.25"
             value={canvasPreferences.defaultZoom}
             onChange={(e) => handleChange('defaultZoom', parseFloat(e.target.value))}
-            className="flex-1 h-2 bg-muted rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-indigo-500 [&::-webkit-slider-thumb]:rounded-full"
+            className="flex-1 h-2 bg-muted rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:rounded-full"
           />
           <span className="text-sm text-foreground w-12 text-right">
             {Math.round(canvasPreferences.defaultZoom * 100)}%

@@ -114,7 +114,7 @@ export function CanvasCard({ canvas, onRename, onDuplicate, onDelete }: CanvasCa
                 onChange={(e) => setEditName(e.target.value)}
                 onBlur={handleRenameSubmit}
                 onKeyDown={handleKeyDown}
-                className="w-full bg-muted border border-border rounded px-2 py-1 text-sm text-foreground outline-none focus:border-[var(--accent-amber)]"
+                className="w-full bg-muted border border-border rounded px-2 py-1 text-sm text-foreground outline-none focus:border-primary"
               />
             ) : (
               <Link href={`/canvas/${canvas.id}`}>

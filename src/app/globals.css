@@ -56,15 +56,24 @@
   /* Accent - Blue (professional, not AI slop) */
   --accent-primary: #3b82f6;
   --accent-primary-hover: #2563eb;
+  --accent-primary-active: #1d4ed8;
   --accent-primary-fg: #FFFFFF;
+  --focus-ring: rgba(59, 130, 246, 0.35);
+  --focus-ring-strong: rgba(59, 130, 246, 0.5);
+  --danger: #ef4444;
+  --danger-hover: #dc2626;
+  --danger-fg: #ffffff;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --info: #3b82f6;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
+  --primary: #3b82f6;
+  --primary-foreground: #ffffff;
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
@@ -97,8 +106,8 @@
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
+  --primary: #3b82f6;
+  --primary-foreground: #ffffff;
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
@@ -270,8 +279,8 @@ select {
   --node-card-shadow-hover: 0 0 0 1px rgba(255,255,255,0.05);
 
   /* Selection - dark mode */
-  --node-border-selected: #6366f1;
-  --node-shadow-selected: 0 0 0 3px rgba(99,102,241,0.25);
+  --node-border-selected: #3b82f6;
+  --node-shadow-selected: 0 0 0 3px rgba(59,130,246,0.3);
 
   /* Node type backgrounds - dark mode */
   --node-bg-text: #292524;
@@ -375,7 +384,7 @@ select {
 .node-handle:hover {
   background-color: var(--handle-hover-bg) !important;
   border-color: var(--node-border-selected) !important;
-  transform: scale(1.1);
+  transform: scale(1.02);
 }
 
 .node-tooltip {
@@ -444,7 +453,7 @@ select {
 }
 
 .light .react-flow__edge.selected .react-flow__edge-path {
-  stroke: #f472b6 !important;
+  stroke: #3b82f6 !important;
 }
 
 .light .react-flow__connection-line {
@@ -460,13 +469,13 @@ select {
 
 /* Light mode React Flow controls and selection */
 .light .react-flow__selection {
-  background: rgba(99, 102, 241, 0.1) !important;
-  border-color: #6366f1 !important;
+  background: rgba(59, 130, 246, 0.1) !important;
+  border-color: #3b82f6 !important;
 }
 
 .light .react-flow__nodesselection-rect {
-  background: rgba(99, 102, 241, 0.1) !important;
-  border-color: #6366f1 !important;
+  background: rgba(59, 130, 246, 0.1) !important;
+  border-color: #3b82f6 !important;
 }
 
 .react-flow__handle {
@@ -937,11 +946,11 @@ select {
 
 /* TipTap editor selection */
 .ProseMirror ::selection {
-  background-color: rgba(99, 102, 241, 0.3);
+  background-color: rgba(59, 130, 246, 0.3);
 }
 
 .light .ProseMirror ::selection {
-  background-color: rgba(99, 102, 241, 0.25);
+  background-color: rgba(59, 130, 246, 0.25);
 }
 
 /* Light mode RTE toolbar */
@@ -1061,70 +1070,6 @@ select {
 }
 
 /* ==========================================
-   SPEC-002: Gradient Accent Utilities
-   ========================================== */
-.bg-gradient-accent {
-  background: linear-gradient(135deg, #F59E0B 0%, #EC4899 100%);
-}
-
-.bg-gradient-accent-subtle {
-  background: linear-gradient(135deg, rgba(245,158,11,0.15) 0%, rgba(236,72,153,0.15) 100%);
-}
-
-.bg-gradient-accent-dark {
-  background: linear-gradient(135deg, #FBBF24 0%, #F472B6 100%);
-}
-
-.text-gradient-accent {
-  background: linear-gradient(135deg, #F59E0B 0%, #EC4899 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.ring-gradient-accent {
-  --tw-ring-color: #F59E0B;
-}
-
-.border-gradient-accent {
-  border-color: transparent;
-  background: linear-gradient(var(--tw-bg-opacity), var(--tw-bg-opacity)) padding-box,
-              linear-gradient(135deg, #F59E0B, #EC4899) border-box;
-}
-
-/* Animated gradient border - SPEC-003 */
-@keyframes gradient-rotate {
-  0% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-  100% {
-    background-position: 0% 50%;
-  }
-}
-
-.animate-gradient-border {
-  position: relative;
-  background: linear-gradient(var(--node-card-bg), var(--node-card-bg)) padding-box,
-              linear-gradient(135deg, #F59E0B, #EC4899, #F59E0B) border-box;
-  border: 2px solid transparent;
-  border-radius: 12px;
-  background-size: 200% 200%;
-  animation: gradient-rotate 3s ease infinite;
-}
-
-.animate-gradient-border:hover {
-  animation-duration: 1.5s;
-}
-
-/* Gradient shadow */
-.shadow-gradient-accent {
-  box-shadow: 0 4px 20px rgba(245, 158, 11, 0.3), 0 4px 20px rgba(236, 72, 153, 0.2);
-}
-
-/* ==========================================
    SPEC-001: Typography - Instrument Serif
    ========================================== */
 .font-serif,
@@ -1202,7 +1147,8 @@ h1, h2, h3, h4, .heading-serif {
 }
 
 [data-cmdk-item][data-selected="true"] {
-  background: linear-gradient(135deg, rgba(245,158,11,0.15) 0%, rgba(236,72,153,0.15) 100%);
+  background: rgba(59, 130, 246, 0.12);
+  color: #3b82f6;
 }
 
 [data-cmdk-item]:hover {
@@ -1211,7 +1157,7 @@ h1, h2, h3, h4, .heading-serif {
 
 [data-cmdk-item]:focus {
   outline: none;
-  background: linear-gradient(135deg, rgba(245,158,11,0.1) 0%, rgba(236,72,153,0.1) 100%);
+  background: rgba(59, 130, 246, 0.08);
 }
 
 [data-cmdk-shortcut] {
@@ -1269,14 +1215,14 @@ h1, h2, h3, h4, .heading-serif {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #F59E0B 0%, #EC4899 100%);
-  box-shadow: 0 4px 20px rgba(245, 158, 11, 0.4);
+  background: #3b82f6;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
   transition: all 0.2s ease;
 }
 
 .fab-button:hover {
-  transform: scale(1.1);
-  box-shadow: 0 6px 24px rgba(245, 158, 11, 0.5), 0 6px 24px rgba(236, 72, 153, 0.3);
+  transform: scale(1.02);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
 }
 
 .fab-button:active {
@@ -1284,7 +1230,7 @@ h1, h2, h3, h4, .heading-serif {
 }
 
 .fab-button:focus-visible {
-  outline: 2px solid #F59E0B;
+  outline: 2px solid var(--accent-primary);
   outline-offset: 2px;
 }
 

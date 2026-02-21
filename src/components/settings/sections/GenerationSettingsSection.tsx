@@ -102,7 +102,7 @@ export function GenerationSettingsSection() {
               onClick={() => handleChange('imageCount', count)}
               className={`flex-1 h-10 rounded-lg text-sm font-medium transition-colors ${
                 defaultSettings.imageCount === count
-                  ? 'bg-indigo-600 text-foreground'
+                  ? 'bg-primary text-foreground'
                   : 'bg-muted text-muted-foreground hover:text-foreground border border-border'
               }`}
             >
@@ -123,7 +123,7 @@ export function GenerationSettingsSection() {
         <button
           onClick={() => handleChange('magicPrompt', !defaultSettings.magicPrompt)}
           className={`relative w-12 h-6 rounded-full transition-colors ${
-            defaultSettings.magicPrompt ? 'bg-indigo-600' : 'bg-muted'
+            defaultSettings.magicPrompt ? 'bg-primary' : 'bg-muted'
           }`}
         >
           <span
