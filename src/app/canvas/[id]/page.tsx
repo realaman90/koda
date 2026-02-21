@@ -91,13 +91,13 @@ export default function CanvasPage({ params }: CanvasPageProps) {
         <div className="flex-1 flex items-center justify-center">
           <div className="flex flex-col items-center gap-4">
             <div className="text-6xl">🖼️</div>
-            <h1 className="text-xl font-semibold text-foreground">{error}</h1>
+            <h1 className="font-serif text-xl font-normal text-foreground">{error}</h1>
             <p className="text-muted-foreground">
               The canvas you&apos;re looking for doesn&apos;t exist or has been deleted.
             </p>
             <Link
               href="/"
-              className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors"
+              className="mt-4 px-4 py-2 bg-gradient-to-r from-[var(--accent-amber)] to-[var(--accent-pink)] text-white rounded-lg transition-opacity hover:opacity-90"
             >
               Go to Dashboard
             </Link>
@@ -122,6 +122,7 @@ export default function CanvasPage({ params }: CanvasPageProps) {
       >
         <Canvas />
       </AppShell>
+      {/* FAB removed - AI slop */}
     </ReactFlowProvider>
   );
 }
