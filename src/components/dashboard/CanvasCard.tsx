@@ -48,7 +48,13 @@ export function CanvasCard({ canvas, onRename, onDuplicate, onDelete, onRefreshP
     return 'empty';
   }, [canvas.thumbnail, canvas.thumbnailStatus, canvas.thumbnailUpdatedAt, canvas.thumbnailUrl, canvas.updatedAt]);
 
-  const previewSrc = canvas.thumbnailUrl || canvas.thumbnail;
+  const basePreviewSrc = canvas.thumbnailUrl || canvas.thumbnail;
+  const previewSrc = useMemo(() => {
+    if (!basePreviewSrc) return undefined;
+    if (!canvas.thumbnailVersion) return basePreviewSrc;
+    const separator = basePreviewSrc.includes('?') ? '&' : '?';
+    return `${basePreviewSrc}${separator}v=${encodeURIComponent(canvas.thumbnailVersion)}`;
+  }, [basePreviewSrc, canvas.thumbnailVersion]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
