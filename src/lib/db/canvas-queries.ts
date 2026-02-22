@@ -34,6 +34,7 @@ export async function listCanvasesForWorkspaces(workspaceIds: string[]): Promise
     return {
       id: canvas.id,
       name: canvas.name,
+      workspaceId: canvas.workspaceId || undefined,
       thumbnail: canvas.thumbnail || thumbnailUrl,
       thumbnailUrl,
       thumbnailStatus,

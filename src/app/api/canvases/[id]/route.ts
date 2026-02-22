@@ -8,6 +8,9 @@ import {
   getCanvasWorkspaceIdForWorkspaces,
   upsertWorkspaceCanvas,
 } from '@/lib/db/canvas-queries';
+import { getDatabaseAsync } from '@/lib/db';
+import { workspaces } from '@/lib/db/schema';
+import { eq } from 'drizzle-orm';
 import { can, type WorkspaceRole } from '@/lib/permissions/matrix';
 import { logAuditEvent } from '@/lib/audit/log';
 
@@ -26,7 +29,27 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Canvas not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ canvas, backend: 'sqlite' });
+    const workspaceId = await getCanvasWorkspaceIdForWorkspaces(id, actorResult.actor.workspaceIds);
+    const membership = actorResult.actor.memberships.find(
+      (item: { workspaceId: string; role: string }) => item.workspaceId === workspaceId
+    );
+
+    let workspaceType: string | undefined;
+    if (workspaceId) {
+      const db = await getDatabaseAsync();
+      const [workspace] = await db.select({ type: workspaces.type }).from(workspaces).where(eq(workspaces.id, workspaceId));
+      workspaceType = workspace?.type;
+    }
+
+    return NextResponse.json({
+      canvas: {
+        ...canvas,
+        workspaceId,
+        workspaceType: workspaceType || 'personal',
+        accessRole: membership?.role || 'viewer',
+      },
+      backend: 'sqlite',
+    });
   } catch (error) {
     console.error('Failed to get canvas:', error);
     return NextResponse.json(

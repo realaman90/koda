@@ -48,6 +48,10 @@ export interface StoredCanvas {
 export interface CanvasMetadata {
   id: string;
   name: string;
+  workspaceId?: string;
+  workspaceType?: 'personal' | 'team';
+  accessRole?: 'owner' | 'admin' | 'editor' | 'viewer';
+  isShared?: boolean;
 
   /**
    * Legacy field kept for UI compatibility during rollout.

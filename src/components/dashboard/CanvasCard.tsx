@@ -89,6 +89,13 @@ export function CanvasCard({ canvas, onRename, onDuplicate, onDelete, onRefreshP
     }
   };
 
+  const isReadOnly = canvas.accessRole === 'viewer';
+  const surfaceBadge = canvas.isShared
+    ? 'Shared'
+    : canvas.workspaceType === 'team'
+      ? 'Team'
+      : 'Personal';
+
   const handleMenuAction = (action: 'rename' | 'duplicate' | 'delete' | 'refresh') => {
     setShowMenu(false);
     if (action === 'rename') {
@@ -164,6 +171,12 @@ export function CanvasCard({ canvas, onRename, onDuplicate, onDelete, onRefreshP
                 <h3 className="truncate text-sm font-medium text-foreground">{canvas.name}</h3>
               </Link>
             )}
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px]">
+              <span className="rounded-full border border-border bg-muted px-2 py-0.5 text-muted-foreground">{surfaceBadge}</span>
+              {isReadOnly && (
+                <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-amber-200">Read-only</span>
+              )}
+            </div>
             <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
               <Calendar className="h-3 w-3" />
               <span>{formatRelativeTime(canvas.updatedAt)}</span>
@@ -191,7 +204,8 @@ export function CanvasCard({ canvas, onRename, onDuplicate, onDelete, onRefreshP
                 <button
                   role="menuitem"
                   onClick={() => handleMenuAction('rename')}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-foreground hover:bg-muted"
+                  disabled={isReadOnly}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Pencil className="h-3.5 w-3.5" />
                   Rename
@@ -199,7 +213,8 @@ export function CanvasCard({ canvas, onRename, onDuplicate, onDelete, onRefreshP
                 <button
                   role="menuitem"
                   onClick={() => handleMenuAction('duplicate')}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-foreground hover:bg-muted"
+                  disabled={isReadOnly}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Copy className="h-3.5 w-3.5" />
                   Duplicate
@@ -215,11 +230,15 @@ export function CanvasCard({ canvas, onRename, onDuplicate, onDelete, onRefreshP
                     Refresh preview
                   </button>
                 )}
+                {isReadOnly && (
+                  <p className="px-3 py-2 text-xs text-muted-foreground">View-only access: editing is disabled.</p>
+                )}
                 <div className="my-1 h-px bg-border" />
                 <button
                   role="menuitem"
                   onClick={() => handleMenuAction('delete')}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-500 hover:bg-muted"
+                  disabled={isReadOnly}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-500 hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                   Delete

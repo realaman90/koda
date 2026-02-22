@@ -11,6 +11,7 @@ import {
   Palette,
   Keyboard,
   User,
+  UserPlus,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ApiKeysSection } from './sections/ApiKeysSection';
@@ -21,6 +22,7 @@ import { CanvasPreferencesSection } from './sections/CanvasPreferencesSection';
 import { ThemeSection } from './sections/ThemeSection';
 import { KeyboardShortcutsSection } from './sections/KeyboardShortcutsSection';
 import { ProfileSection } from './sections/ProfileSection';
+import { InviteStatusSection } from './sections/InviteStatusSection';
 
 type SettingsTab =
   | 'api-keys'
@@ -30,7 +32,8 @@ type SettingsTab =
   | 'canvas'
   | 'theme'
   | 'shortcuts'
-  | 'profile';
+  | 'profile'
+  | 'invites';
 
 interface TabItem {
   id: SettingsTab;
@@ -88,6 +91,12 @@ const tabs: TabItem[] = [
     icon: User,
     description: 'Your account information',
   },
+  {
+    id: 'invites',
+    label: 'Invites',
+    icon: UserPlus,
+    description: 'Track pending, accepted, declined, revoked, and expired invites',
+  },
 ];
 
 const defaultTab: SettingsTab = 'api-keys';
@@ -136,6 +145,8 @@ export function SettingsContent() {
         return <KeyboardShortcutsSection />;
       case 'profile':
         return <ProfileSection />;
+      case 'invites':
+        return <InviteStatusSection />;
       default:
         return <ApiKeysSection />;
     }

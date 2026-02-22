@@ -7,14 +7,24 @@ import { SyncStatusIndicator } from './SyncStatusIndicator';
 
 interface DashboardHeaderProps {
   onCreateCanvas: () => void;
+  memberships: Array<{ workspaceId: string; workspaceName: string; workspaceType: string; role: string }>;
 }
 
-export function DashboardHeader({ onCreateCanvas }: DashboardHeaderProps) {
+export function DashboardHeader({ onCreateCanvas, memberships }: DashboardHeaderProps) {
   return (
     <div className="mb-8">
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">Create a new project and start creating</p>
-        <SyncStatusIndicator />
+        <div className="flex items-center gap-2">
+          <select className="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground">
+            {memberships.map((membership) => (
+              <option key={membership.workspaceId} value={membership.workspaceId}>
+                {membership.workspaceName} · {membership.workspaceType === 'team' ? 'Team' : 'Personal'}
+              </option>
+            ))}
+          </select>
+          <SyncStatusIndicator />
+        </div>
       </div>
       <div className="flex items-center gap-3">
         <motion.div whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}>

@@ -1,8 +1,11 @@
 import 'server-only';
 
 import { NextRequest, NextResponse } from 'next/server';
+import { inArray } from 'drizzle-orm';
 import { requireActor, resolveDefaultWorkspaceId } from '@/lib/auth/actor';
 import { listCanvasesForWorkspaces, upsertWorkspaceCanvas } from '@/lib/db/canvas-queries';
+import { getDatabaseAsync } from '@/lib/db';
+import { canvasShares, workspaces } from '@/lib/db/schema';
 import { can, type WorkspaceRole } from '@/lib/permissions/matrix';
 import { logAuditEvent } from '@/lib/audit/log';
 
@@ -11,7 +14,38 @@ export async function GET() {
   if (!actorResult.ok) return actorResult.response;
 
   const canvases = await listCanvasesForWorkspaces(actorResult.actor.workspaceIds);
-  return NextResponse.json({ canvases, backend: 'sqlite' });
+
+  const db = await getDatabaseAsync();
+  const workspaceRows = actorResult.actor.workspaceIds.length
+    ? await db
+        .select({ id: workspaces.id, type: workspaces.type })
+        .from(workspaces)
+        .where(inArray(workspaces.id, actorResult.actor.workspaceIds))
+    : [];
+  const workspaceTypeById = new Map(workspaceRows.map((row: { id: string; type: string }) => [row.id, row.type]));
+
+  const shareRows = canvases.length
+    ? await db
+        .select({ canvasId: canvasShares.canvasId })
+        .from(canvasShares)
+        .where(inArray(canvasShares.canvasId, canvases.map((canvas) => canvas.id)))
+    : [];
+  const sharedCanvasIds = new Set(shareRows.map((row: { canvasId: string }) => row.canvasId));
+
+  const enriched = canvases.map((canvas) => {
+    const membership = actorResult.actor.memberships.find(
+      (item: { workspaceId: string; role: string }) => item.workspaceId === canvas.workspaceId
+    );
+
+    return {
+      ...canvas,
+      workspaceType: (canvas.workspaceId && workspaceTypeById.get(canvas.workspaceId)) || 'personal',
+      accessRole: (membership?.role as WorkspaceRole | undefined) || 'viewer',
+      isShared: sharedCanvasIds.has(canvas.id),
+    };
+  });
+
+  return NextResponse.json({ canvases: enriched, backend: 'sqlite' });
 }
 
 export async function POST(request: NextRequest) {

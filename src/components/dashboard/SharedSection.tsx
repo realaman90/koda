@@ -1,14 +1,40 @@
 'use client';
 
-export function SharedSection() {
+import { ProjectsGrid } from './ProjectsGrid';
+import type { CanvasMetadata } from '@/lib/storage';
+
+interface SharedSectionProps {
+  canvases: CanvasMetadata[];
+  onCreateCanvas: () => void;
+  onRename: (id: string, name: string) => void;
+  onDuplicate: (id: string) => void;
+  onDelete: (id: string) => void;
+  onRefreshPreview?: (id: string) => void;
+}
+
+export function SharedSection({
+  canvases,
+  onCreateCanvas,
+  onRename,
+  onDuplicate,
+  onDelete,
+  onRefreshPreview,
+}: SharedSectionProps) {
   return (
     <section>
-      <div className="text-center py-16 bg-card/50 rounded-xl border border-border">
-        <div className="text-5xl mb-4">👥</div>
-        <p className="text-muted-foreground">
-          Shared projects will appear here when collaboration is enabled.
-        </p>
-      </div>
+      <h2 className="mb-2 font-serif text-2xl font-normal text-foreground">Shared</h2>
+      <p className="mb-4 text-sm text-muted-foreground">Projects shared with you across workspaces.</p>
+      <ProjectsGrid
+        canvases={canvases}
+        isLoading={false}
+        loadError={null}
+        searchQuery=""
+        onCreateCanvas={onCreateCanvas}
+        onRename={onRename}
+        onDuplicate={onDuplicate}
+        onDelete={onDelete}
+        onRefreshPreview={onRefreshPreview}
+      />
     </section>
   );
 }
