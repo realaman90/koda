@@ -9,7 +9,26 @@ import { workspaceInvites, workspaceMembers, workspaces } from '@/lib/db/schema'
 import { isWorkspacesV1Enabled } from '@/lib/flags';
 import { emitLaunchMetric } from '@/lib/observability/launch-metrics';
 
-export async function POST() {
+function parseBootstrapAttempt(request: Request): number {
+  const rawAttempt = request.headers.get('x-workspace-bootstrap-attempt');
+  const parsed = Number.parseInt(rawAttempt ?? '', 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return 1;
+  }
+  return parsed;
+}
+
+function retryOutcome(attempt: number, status: 'success' | 'error'): 'not_needed' | 'recovered' | 'initial_failed' | 'retry_failed' {
+  if (status === 'success') {
+    return attempt > 1 ? 'recovered' : 'not_needed';
+  }
+
+  return attempt > 1 ? 'retry_failed' : 'initial_failed';
+}
+
+export async function POST(request: Request) {
+  const attempt = parseBootstrapAttempt(request);
+
   try {
     if (!isWorkspacesV1Enabled()) {
       emitLaunchMetric({
@@ -17,6 +36,11 @@ export async function POST() {
         status: 'error',
         source: 'api',
         errorCode: 'feature_disabled',
+        metadata: {
+          errorClass: 'feature_gate',
+          attempt,
+          retryOutcome: retryOutcome(attempt, 'error'),
+        },
       });
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
@@ -28,6 +52,11 @@ export async function POST() {
         status: 'error',
         source: 'api',
         errorCode: 'auth_required',
+        metadata: {
+          errorClass: 'auth',
+          attempt,
+          retryOutcome: retryOutcome(attempt, 'error'),
+        },
       });
       return actorResult.response;
     }
@@ -88,6 +117,8 @@ export async function POST() {
         userId: actorResult.actor.user.id,
         memberships: memberships.length,
         invites: invites.length,
+        attempt,
+        retryOutcome: retryOutcome(attempt, 'success'),
       },
     });
 
@@ -102,7 +133,12 @@ export async function POST() {
       status: 'error',
       source: 'api',
       errorCode: 'bootstrap_exception',
-      metadata: { message: error instanceof Error ? error.message : String(error) },
+      metadata: {
+        errorClass: 'exception',
+        attempt,
+        retryOutcome: retryOutcome(attempt, 'error'),
+        message: error instanceof Error ? error.message : String(error),
+      },
     });
 
     return NextResponse.json(

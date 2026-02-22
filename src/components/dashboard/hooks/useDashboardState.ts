@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { useAppStore } from '@/stores/app-store';
@@ -12,6 +12,8 @@ export type TemplateFilter = 'all';
 
 const validTabs: TabType[] = ['my-spaces', 'shared', 'templates'];
 
+type DashboardLoadFailureStage = 'bootstrap' | 'canvases' | null;
+
 export interface DashboardState {
   // State
   isCreating: boolean;
@@ -19,6 +21,8 @@ export interface DashboardState {
   searchQuery: string;
   isLoadingList: boolean;
   loadError: string | null;
+  loadErrorTitle: string;
+  retryActionLabel: string;
   filteredCanvases: ReturnType<typeof useAppStore.getState>['canvasList'];
   personalCanvases: ReturnType<typeof useAppStore.getState>['canvasList'];
   teamCanvases: ReturnType<typeof useAppStore.getState>['canvasList'];
@@ -46,6 +50,9 @@ export function useDashboardState(): DashboardState {
   const [isCreating, setIsCreating] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadErrorTitle, setLoadErrorTitle] = useState('Couldn’t load your projects');
+  const [loadFailureStage, setLoadFailureStage] = useState<DashboardLoadFailureStage>(null);
+  const bootstrapAttemptRef = useRef(0);
 
   // Read tab from URL params
   const tabParam = searchParams.get('tab');
@@ -95,19 +102,81 @@ export function useDashboardState(): DashboardState {
   const teamCanvases = filteredCanvases.filter((canvas) => canvas.workspaceType === 'team' && !canvas.isShared);
   const sharedCanvases = filteredCanvases.filter((canvas) => canvas.isShared);
 
-  const retryLoadCanvases = useCallback(async () => {
-    try {
-      setLoadError(null);
-      await loadCanvasList();
-    } catch (error) {
-      setLoadError(error instanceof Error ? error.message : 'Unknown error');
-    }
-  }, [loadCanvasList]);
+  const clearLoadError = useCallback(() => {
+    setLoadError(null);
+    setLoadErrorTitle('Couldn’t load your projects');
+    setLoadFailureStage(null);
+  }, []);
 
-  useEffect(() => {
-    async function init() {
-      try {
-        setLoadError(null);
+  const loadCanvasesWithHandling = useCallback(async () => {
+    try {
+      await loadCanvasList();
+      clearLoadError();
+      return true;
+    } catch (error) {
+      setLoadFailureStage('canvases');
+      setLoadErrorTitle('Couldn’t load your projects');
+      setLoadError(error instanceof Error ? error.message : 'Unknown error');
+      return false;
+    }
+  }, [clearLoadError, loadCanvasList]);
+
+  const runWorkspaceBootstrap = useCallback(async () => {
+    bootstrapAttemptRef.current += 1;
+
+    const response = await fetch('/api/workspaces/bootstrap', {
+      method: 'POST',
+      headers: {
+        'x-workspace-bootstrap-attempt': String(bootstrapAttemptRef.current),
+      },
+    });
+
+    let payload: unknown = null;
+    try {
+      payload = await response.json();
+    } catch {
+      // no-op, fallback message is used below
+    }
+
+    if (!response.ok) {
+      let errorMessage = 'Failed to initialize workspace.';
+      if (
+        payload &&
+        typeof payload === 'object' &&
+        'error' in payload &&
+        typeof payload.error === 'string' &&
+        payload.error.trim()
+      ) {
+        errorMessage = payload.error;
+      }
+
+      setLoadFailureStage('bootstrap');
+      setLoadErrorTitle('Workspace setup failed');
+      setLoadError(errorMessage);
+      toast.error(`Workspace setup failed: ${errorMessage}`);
+      return false;
+    }
+
+    if (payload && typeof payload === 'object') {
+      const bootstrap = payload as {
+        invites?: Array<{ id: string; status: string; email: string; role: string }>;
+        memberships?: Array<{ workspaceId: string; workspaceName: string; workspaceType: string; role: string }>;
+      };
+      setInvites(bootstrap.invites || []);
+      setMemberships(bootstrap.memberships || []);
+    } else {
+      setInvites([]);
+      setMemberships([]);
+    }
+
+    return true;
+  }, []);
+
+  const initializeDashboard = useCallback(async (options?: { runSetup?: boolean }) => {
+    clearLoadError();
+
+    try {
+      if (options?.runSetup !== false) {
         // Initialize sync with SQLite (if configured)
         await initializeSync();
 
@@ -116,36 +185,38 @@ export function useDashboardState(): DashboardState {
         if (migratedId) {
           toast.success('Migrated your existing canvas');
         }
-
-        const bootstrapResponse = await fetch('/api/workspaces/bootstrap', { method: 'POST' });
-        if (!bootstrapResponse.ok) {
-          let errorMessage = 'Failed to initialize workspace.';
-
-          try {
-            const body = await bootstrapResponse.json();
-            if (typeof body?.error === 'string' && body.error.trim()) {
-              errorMessage = body.error;
-            }
-          } catch {
-            // no-op: fallback message is already set
-          }
-
-          setLoadError(errorMessage);
-          toast.error(`Workspace setup failed: ${errorMessage}`);
-          return;
-        }
-
-        const bootstrap = await bootstrapResponse.json();
-        setInvites(bootstrap.invites || []);
-        setMemberships(bootstrap.memberships || []);
-
-        await loadCanvasList();
-      } catch (error) {
-        setLoadError(error instanceof Error ? error.message : 'Unknown error');
       }
+
+      const bootstrapped = await runWorkspaceBootstrap();
+      if (!bootstrapped) {
+        return;
+      }
+
+      await loadCanvasesWithHandling();
+    } catch (error) {
+      setLoadFailureStage('canvases');
+      setLoadErrorTitle('Couldn’t load your projects');
+      setLoadError(error instanceof Error ? error.message : 'Unknown error');
     }
-    init();
-  }, [loadCanvasList, migrateLegacyData, initializeSync]);
+  }, [clearLoadError, initializeSync, loadCanvasesWithHandling, migrateLegacyData, runWorkspaceBootstrap]);
+
+  const retryLoadCanvases = useCallback(async () => {
+    if (loadFailureStage === 'bootstrap') {
+      await initializeDashboard({ runSetup: false });
+      return;
+    }
+
+    clearLoadError();
+    await loadCanvasesWithHandling();
+  }, [clearLoadError, initializeDashboard, loadCanvasesWithHandling, loadFailureStage]);
+
+  useEffect(() => {
+    initializeDashboard();
+  }, [initializeDashboard]);
+
+  const retryActionLabel = loadFailureStage === 'bootstrap'
+    ? 'Retry workspace setup'
+    : 'Retry loading projects';
 
   const handleCreateCanvas = useCallback(async () => {
     setIsCreating(true);
@@ -229,6 +300,8 @@ export function useDashboardState(): DashboardState {
     searchQuery,
     isLoadingList,
     loadError,
+    loadErrorTitle,
+    retryActionLabel,
     filteredCanvases,
     personalCanvases,
     teamCanvases,

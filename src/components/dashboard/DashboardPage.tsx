@@ -18,6 +18,8 @@ export function DashboardPage() {
     isLoadingList,
     retryLoadCanvases,
     loadError,
+    loadErrorTitle,
+    retryActionLabel,
     filteredCanvases,
     personalCanvases,
     teamCanvases,
@@ -62,6 +64,7 @@ export function DashboardPage() {
                   canvases={personalCanvases}
                   isLoading={isLoadingList}
                   loadError={loadError}
+                  loadErrorTitle={loadErrorTitle}
                   searchQuery={searchQuery}
                   onCreateCanvas={handleCreateCanvas}
                   onRename={handleRename}
@@ -69,6 +72,7 @@ export function DashboardPage() {
                   onDelete={handleDelete}
                   onRefreshPreview={handleRefreshPreview}
                   onRetryLoad={retryLoadCanvases}
+                  retryLabel={retryActionLabel}
                   onBrowseTemplates={() => setActiveTab('templates')}
                 />
               </div>

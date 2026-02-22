@@ -9,6 +9,7 @@ interface ProjectsGridProps {
   canvases: CanvasMetadata[];
   isLoading: boolean;
   loadError?: string | null;
+  loadErrorTitle?: string;
   searchQuery: string;
   onCreateCanvas: () => void;
   onRename: (id: string, name: string) => void;
@@ -16,6 +17,7 @@ interface ProjectsGridProps {
   onDelete: (id: string) => void;
   onRefreshPreview?: (id: string) => void;
   onRetryLoad?: () => void;
+  retryLabel?: string;
   onBrowseTemplates?: () => void;
 }
 
@@ -39,6 +41,7 @@ export function ProjectsGrid({
   canvases,
   isLoading,
   loadError,
+  loadErrorTitle,
   searchQuery,
   onCreateCanvas,
   onRename,
@@ -46,6 +49,7 @@ export function ProjectsGrid({
   onDelete,
   onRefreshPreview,
   onRetryLoad,
+  retryLabel,
   onBrowseTemplates,
 }: ProjectsGridProps) {
   if (isLoading) {
@@ -56,13 +60,13 @@ export function ProjectsGrid({
     return (
       <div className="rounded-xl border border-border bg-card/50 px-6 py-12 text-center">
         <AlertCircle className="mx-auto mb-3 h-7 w-7 text-amber-400" />
-        <p className="text-base font-medium text-foreground">Couldn’t load your projects</p>
+        <p className="text-base font-medium text-foreground">{loadErrorTitle || 'Couldn’t load your projects'}</p>
         <p className="mx-auto mt-2 max-w-xl text-sm text-muted-foreground">{loadError}</p>
         <button
           onClick={onRetryLoad}
           className="mt-5 rounded-lg bg-[#3b82f6] px-4 py-2 text-white transition-colors hover:bg-[#2563eb]"
         >
-          Retry loading projects
+          {retryLabel || 'Retry loading projects'}
         </button>
       </div>
     );
