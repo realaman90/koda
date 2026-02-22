@@ -20,6 +20,11 @@ export interface DashboardState {
   isLoadingList: boolean;
   loadError: string | null;
   filteredCanvases: ReturnType<typeof useAppStore.getState>['canvasList'];
+  personalCanvases: ReturnType<typeof useAppStore.getState>['canvasList'];
+  teamCanvases: ReturnType<typeof useAppStore.getState>['canvasList'];
+  sharedCanvases: ReturnType<typeof useAppStore.getState>['canvasList'];
+  invites: Array<{ id: string; status: string; email: string; role: string }>;
+  memberships: Array<{ workspaceId: string; workspaceName: string; workspaceType: string; role: string }>;
   filteredTemplates: TemplateMetadata[];
   templates: TemplateMetadata[];
 
@@ -70,6 +75,8 @@ export function useDashboardState(): DashboardState {
   const initializeSync = useAppStore((state) => state.initializeSync);
 
   const [showcaseTemplates, setShowcaseTemplates] = useState<TemplateMetadata[]>([]);
+  const [invites, setInvites] = useState<Array<{ id: string; status: string; email: string; role: string }>>([]);
+  const [memberships, setMemberships] = useState<Array<{ workspaceId: string; workspaceName: string; workspaceType: string; role: string }>>([]);
 
   // Load showcase templates asynchronously (JSON files from /public/templates/)
   useEffect(() => {
@@ -83,6 +90,10 @@ export function useDashboardState(): DashboardState {
   const filteredCanvases = canvasList.filter((c) =>
     c.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const personalCanvases = filteredCanvases.filter((canvas) => canvas.workspaceType !== 'team');
+  const teamCanvases = filteredCanvases.filter((canvas) => canvas.workspaceType === 'team' && !canvas.isShared);
+  const sharedCanvases = filteredCanvases.filter((canvas) => canvas.isShared);
 
   const retryLoadCanvases = useCallback(async () => {
     try {
@@ -105,6 +116,28 @@ export function useDashboardState(): DashboardState {
         if (migratedId) {
           toast.success('Migrated your existing canvas');
         }
+
+        const bootstrapResponse = await fetch('/api/workspaces/bootstrap', { method: 'POST' });
+        if (!bootstrapResponse.ok) {
+          let errorMessage = 'Failed to initialize workspace.';
+
+          try {
+            const body = await bootstrapResponse.json();
+            if (typeof body?.error === 'string' && body.error.trim()) {
+              errorMessage = body.error;
+            }
+          } catch {
+            // no-op: fallback message is already set
+          }
+
+          setLoadError(errorMessage);
+          toast.error(`Workspace setup failed: ${errorMessage}`);
+          return;
+        }
+
+        const bootstrap = await bootstrapResponse.json();
+        setInvites(bootstrap.invites || []);
+        setMemberships(bootstrap.memberships || []);
 
         await loadCanvasList();
       } catch (error) {
@@ -197,6 +230,11 @@ export function useDashboardState(): DashboardState {
     isLoadingList,
     loadError,
     filteredCanvases,
+    personalCanvases,
+    teamCanvases,
+    sharedCanvases,
+    invites,
+    memberships,
     filteredTemplates,
     templates,
     setActiveTab,

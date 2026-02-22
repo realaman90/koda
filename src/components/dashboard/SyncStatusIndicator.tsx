@@ -13,20 +13,26 @@ export function SyncStatusIndicator() {
   const syncStatus = useAppStore((state) => state.syncStatus);
   const syncError = useAppStore((state) => state.syncError);
   const isSyncEnabled = useAppStore((state) => state.isSyncEnabled);
+  const syncCapability = useAppStore((state) => state.syncCapability);
 
-  // Don't show anything if sync is not enabled (localStorage only mode)
   if (!isSyncEnabled) {
+    const label = syncCapability === 'provisioning-blocked' ? 'Setup needed' : 'Local';
+    const tooltip =
+      syncCapability === 'provisioning-blocked'
+        ? syncError || 'Authenticated, but account provisioning is not complete yet.'
+        : 'Saving to browser storage only';
+
     return (
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <HardDrive className="h-3.5 w-3.5" />
-              <span>Local</span>
+              <span>{label}</span>
             </div>
           </TooltipTrigger>
           <TooltipContent>
-            <p>Saving to browser storage only</p>
+            <p>{tooltip}</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>

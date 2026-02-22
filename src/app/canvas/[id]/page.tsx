@@ -19,6 +19,7 @@ export default function CanvasPage({ params }: CanvasPageProps) {
   const { id } = use(params);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [accessRole, setAccessRole] = useState<'owner' | 'admin' | 'editor' | 'viewer'>('owner');
 
   const loadCanvas = useAppStore((state) => state.loadCanvas);
   const currentCanvasName = useAppStore((state) => state.currentCanvasName);
@@ -39,6 +40,13 @@ export default function CanvasPage({ params }: CanvasPageProps) {
         const success = await loadCanvas(id);
         if (!success) {
           setError('Canvas not found');
+          return;
+        }
+
+        const response = await fetch(`/api/canvases/${id}`);
+        if (response.ok) {
+          const payload = await response.json();
+          setAccessRole(payload.canvas?.accessRole || 'owner');
         }
       } catch (err) {
         console.error('Failed to load canvas:', err);
@@ -120,7 +128,14 @@ export default function CanvasPage({ params }: CanvasPageProps) {
         onExportPNG={handleExportPNG}
         showSidebar={false}
       >
-        <Canvas />
+        {accessRole === 'viewer' && (
+          <div className="mx-4 mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+            Read-only access: you can view this canvas but cannot edit it.
+          </div>
+        )}
+        <div className={accessRole === 'viewer' ? 'pointer-events-none opacity-80' : ''}>
+          <Canvas />
+        </div>
       </AppShell>
       {/* FAB removed - AI slop */}
     </ReactFlowProvider>

@@ -11,6 +11,7 @@ import {
   Palette,
   Keyboard,
   User,
+  UserPlus,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ApiKeysSection } from './sections/ApiKeysSection';
@@ -21,6 +22,7 @@ import { CanvasPreferencesSection } from './sections/CanvasPreferencesSection';
 import { ThemeSection } from './sections/ThemeSection';
 import { KeyboardShortcutsSection } from './sections/KeyboardShortcutsSection';
 import { ProfileSection } from './sections/ProfileSection';
+import { InviteStatusSection } from './sections/InviteStatusSection';
 
 type SettingsTab =
   | 'api-keys'
@@ -30,7 +32,8 @@ type SettingsTab =
   | 'canvas'
   | 'theme'
   | 'shortcuts'
-  | 'profile';
+  | 'profile'
+  | 'invites';
 
 interface TabItem {
   id: SettingsTab;
@@ -88,13 +91,19 @@ const tabs: TabItem[] = [
     icon: User,
     description: 'Your account information',
   },
+  {
+    id: 'invites',
+    label: 'Invites',
+    icon: UserPlus,
+    description: 'Track pending, accepted, declined, revoked, and expired invites',
+  },
 ];
 
 const defaultTab: SettingsTab = 'api-keys';
-const tabSet = new Set<SettingsTab>(tabs.map((t) => t.id));
 
-function parseTab(tabParam: string | null): SettingsTab {
-  if (tabParam && tabSet.has(tabParam as SettingsTab)) {
+function parseTab(tabParam: string | null, allowedTabs: TabItem[]): SettingsTab {
+  const allowedTabSet = new Set<SettingsTab>(allowedTabs.map((t) => t.id));
+  if (tabParam && allowedTabSet.has(tabParam as SettingsTab)) {
     return tabParam as SettingsTab;
   }
   return defaultTab;
@@ -105,8 +114,17 @@ export function SettingsContent() {
   const router = useRouter();
   const pathname = usePathname();
 
+  const invitesEnabled =
+    process.env.NEXT_PUBLIC_WORKSPACES_V1 !== 'false' &&
+    process.env.NEXT_PUBLIC_COLLAB_SHARING_V1 !== 'false';
+
+  const visibleTabs = useMemo(
+    () => tabs.filter((tab) => tab.id !== 'invites' || invitesEnabled),
+    [invitesEnabled]
+  );
+
   const tabParam = searchParams.get('tab');
-  const activeTab = parseTab(tabParam);
+  const activeTab = parseTab(tabParam, visibleTabs);
 
   useEffect(() => {
     if (tabParam === activeTab) {
@@ -136,6 +154,8 @@ export function SettingsContent() {
         return <KeyboardShortcutsSection />;
       case 'profile':
         return <ProfileSection />;
+      case 'invites':
+        return <InviteStatusSection />;
       default:
         return <ApiKeysSection />;
     }
@@ -147,7 +167,10 @@ export function SettingsContent() {
     router.push(`${pathname}?${params.toString()}`);
   };
 
-  const activeTabInfo = useMemo(() => tabs.find((t) => t.id === activeTab), [activeTab]);
+  const activeTabInfo = useMemo(
+    () => visibleTabs.find((t) => t.id === activeTab),
+    [activeTab, visibleTabs]
+  );
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-8">
@@ -156,7 +179,7 @@ export function SettingsContent() {
       <div className="flex gap-8">
         <nav className="w-64 flex-shrink-0">
           <ul className="space-y-1">
-            {tabs.map((tab) => {
+            {visibleTabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
 

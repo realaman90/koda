@@ -1,0 +1,37 @@
+name: auth-collab-gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test-auth-collab:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Validate collaboration schema
+        run: npm run db:validate:collab
+
+      - name: Validate backfill regression
+        run: npm run db:validate:backfill
+
+      - name: Validate role matrix
+        run: npm run validate:permissions
+
+      - name: Validate invite lifecycle
+        run: npm run validate:invites
+
+      - name: Build gate
+        run: npm run build

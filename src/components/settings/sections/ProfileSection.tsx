@@ -1,110 +1,87 @@
 'use client';
 
-import { useState } from 'react';
-import { User, Mail, Camera } from 'lucide-react';
-import { toast } from 'sonner';
+import { Mail, User } from 'lucide-react';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
+
+function getDisplayName(firstName: string | null, lastName: string | null, email: string) {
+  const fullName = [firstName, lastName].filter(Boolean).join(' ').trim();
+  return fullName || email.split('@')[0] || 'User';
+}
 
 export function ProfileSection() {
-  const [displayName, setDisplayName] = useState('User');
-  const [email, setEmail] = useState('');
-  const [isDirty, setIsDirty] = useState(false);
+  const { user, isLoading } = useCurrentUser();
 
-  const handleSave = () => {
-    // In a real app, this would save to a backend
-    toast.success('Profile saved');
-    setIsDirty(false);
-  };
+  if (isLoading) {
+    return <p className="text-sm text-muted-foreground">Loading account details…</p>;
+  }
+
+  if (!user) {
+    return (
+      <div className="rounded-lg border border-border bg-muted/30 p-4">
+        <p className="text-sm text-muted-foreground">No authenticated user found.</p>
+      </div>
+    );
+  }
+
+  const displayName = getDisplayName(user.firstName, user.lastName, user.email);
+  const initials = displayName
+    .split(' ')
+    .map((part) => part[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
 
   return (
     <div className="space-y-6">
-      {/* Avatar */}
       <div className="flex items-center gap-4">
-        <div className="relative">
-          <div className="w-20 h-20 rounded-full bg-primary flex items-center justify-center text-white text-2xl font-bold">
-            {displayName.charAt(0).toUpperCase()}
+        {user.imageUrl ? (
+          <img
+            src={user.imageUrl}
+            alt={displayName}
+            className="h-20 w-20 rounded-full border border-border object-cover"
+          />
+        ) : (
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary text-2xl font-bold text-white">
+            {initials}
           </div>
-          <button className="absolute bottom-0 right-0 w-8 h-8 bg-muted rounded-full flex items-center justify-center border border-border hover:bg-muted/80 transition-colors">
-            <Camera className="h-4 w-4 text-muted-foreground" />
-          </button>
-        </div>
+        )}
         <div>
           <h3 className="text-lg font-medium text-foreground">{displayName}</h3>
-          <p className="text-sm text-muted-foreground">
-            {email || 'No email set'}
-          </p>
+          <p className="text-sm text-muted-foreground">{user.email}</p>
         </div>
       </div>
 
-      {/* Display Name */}
       <div className="space-y-2">
         <label className="text-sm font-medium text-foreground">Display Name</label>
         <div className="relative">
-          <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
             type="text"
             value={displayName}
-            onChange={(e) => {
-              setDisplayName(e.target.value);
-              setIsDirty(true);
-            }}
-            placeholder="Enter your name"
-            className="w-full h-10 pl-10 pr-4 bg-muted border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-primary"
+            readOnly
+            className="h-10 w-full rounded-lg border border-border bg-muted pl-10 pr-4 text-sm text-foreground"
           />
         </div>
-        <p className="text-xs text-muted-foreground">
-          This name will be shown in shared projects
-        </p>
       </div>
 
-      {/* Email */}
       <div className="space-y-2">
         <label className="text-sm font-medium text-foreground">Email</label>
         <div className="relative">
-          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
             type="email"
-            value={email}
-            onChange={(e) => {
-              setEmail(e.target.value);
-              setIsDirty(true);
-            }}
-            placeholder="Enter your email"
-            className="w-full h-10 pl-10 pr-4 bg-muted border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-primary"
+            value={user.email}
+            readOnly
+            className="h-10 w-full rounded-lg border border-border bg-muted pl-10 pr-4 text-sm text-foreground"
           />
         </div>
-        <p className="text-xs text-muted-foreground">
-          Used for notifications when collaboration is enabled
-        </p>
       </div>
 
-      {/* Save Button */}
-      {isDirty && (
-        <button
-          onClick={handleSave}
-          className="w-full h-10 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium rounded-lg transition-colors"
-        >
-          Save Changes
-        </button>
-      )}
-
-      {/* Account Info */}
-      <div className="pt-4 border-t border-border">
-        <h3 className="text-sm font-medium text-foreground mb-3">Account</h3>
-        <div className="p-4 bg-muted/50 rounded-lg">
-          <p className="text-sm text-muted-foreground">
-            You are using <span className="text-foreground font-medium">Local Mode</span>
-          </p>
-          <p className="text-xs text-muted-foreground mt-2">
-            All data is stored locally in your browser. Sign up for cloud sync
-            and collaboration features (coming soon).
-          </p>
-          <button
-            disabled
-            className="mt-4 px-4 py-2 bg-muted text-muted-foreground text-sm rounded-lg cursor-not-allowed"
-          >
-            Sign Up (Coming Soon)
-          </button>
-        </div>
+      <div className="rounded-lg border border-border bg-muted/30 p-4">
+        <p className="text-sm text-muted-foreground">
+          Account details are synced from your authenticated profile.
+        </p>
       </div>
     </div>
   );

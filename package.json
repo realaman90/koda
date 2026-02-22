@@ -9,10 +9,17 @@
     "lint": "eslint",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/lib/db/migrate.ts",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "db:validate:collab": "tsx scripts/validate-collaboration-schema.ts",
+    "db:backfill:workspaces": "tsx scripts/backfill-workspaces.ts",
+    "db:validate:backfill": "tsx scripts/validate-backfill.ts",
+    "validate:permissions": "tsx scripts/validate-permissions-matrix.ts",
+    "validate:invites": "tsx scripts/validate-invite-lifecycle.ts",
+    "validate:auth-collab": "npm run db:validate:collab && npm run db:validate:backfill && npm run validate:permissions && npm run validate:invites && npm run build"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.7",
+    "@clerk/nextjs": "^6.38.1",
     "@fal-ai/client": "^1.8.1",
     "@libsql/client": "^0.14.0",
     "@mastra/core": "^1.2.0",
@@ -52,6 +59,7 @@
     "remark-gfm": "^4.0.1",
     "server-only": "^0.0.1",
     "sonner": "^2.0.7",
+    "svix": "^1.85.0",
     "tailwind-merge": "^3.4.0",
     "zod": "^4.3.5",
     "zustand": "^5.0.9"
