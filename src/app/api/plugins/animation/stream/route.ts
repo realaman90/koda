@@ -218,15 +218,23 @@ export async function POST(request: Request) {
         const mediaBuffersLocal: Array<{ m: typeof context.media[0]; buffer: Buffer; destPath: string }> = [];
         // Ensure filenames have proper extensions for sandbox filesystem
         const ensureExt = (name: string, type: string, dataUrl: string): string => {
-          if (/\.(png|jpg|jpeg|gif|webp|mp4|webm|mov)$/i.test(name)) return name;
+          if (/\.(png|jpg|jpeg|gif|webp|svg|mp4|webm|mov)$/i.test(name)) return name;
           // Infer from data URL mime type
           if (dataUrl.startsWith('data:')) {
             const mime = dataUrl.split(';')[0]?.split(':')[1];
-            const mimeExt: Record<string, string> = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif', 'image/webp': '.webp', 'video/mp4': '.mp4', 'video/webm': '.webm' };
+            const mimeExt: Record<string, string> = {
+              'image/png': '.png',
+              'image/jpeg': '.jpg',
+              'image/gif': '.gif',
+              'image/webp': '.webp',
+              'image/svg+xml': '.svg',
+              'video/mp4': '.mp4',
+              'video/webm': '.webm',
+            };
             if (mime && mimeExt[mime]) return name + mimeExt[mime];
           }
           // Infer from URL path
-          const urlExt = dataUrl.split('?')[0].match(/\.(png|jpg|jpeg|gif|webp|mp4|webm|mov)$/i)?.[0];
+          const urlExt = dataUrl.split('?')[0].match(/\.(png|jpg|jpeg|gif|webp|svg|mp4|webm|mov)$/i)?.[0];
           if (urlExt) return name + urlExt;
           // Fallback based on type
           return name + (type === 'video' ? '.mp4' : '.png');

@@ -71,6 +71,7 @@ const MIME_TO_EXT: Record<string, string> = {
   'image/jpeg': 'jpg',
   'image/webp': 'webp',
   'image/gif': 'gif',
+  'image/svg+xml': 'svg',
 };
 
 export async function POST(request: Request) {

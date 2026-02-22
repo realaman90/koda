@@ -21,6 +21,11 @@ const OFFICIAL_PLUGIN_POLICY_CATALOG: Record<string, PluginPolicy> = {
     distributionVisibility: ['oss', 'hosted'],
     trustTier: 'official',
   },
+  'svg-studio': {
+    capabilityDeclarations: ['canvas:read', 'storage:upload'],
+    distributionVisibility: ['oss', 'hosted'],
+    trustTier: 'official',
+  },
 };
 
 export function getPluginPolicyFromCatalog(pluginId: string): PluginPolicy | undefined {

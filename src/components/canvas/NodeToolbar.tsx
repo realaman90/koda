@@ -36,6 +36,7 @@ import {
   Mic,
   Film,
   Clapperboard,
+  PenTool,
   Search,
   Upload,
   ChevronDown,
@@ -48,6 +49,7 @@ import '@/lib/plugins/official/storyboard-generator';
 import '@/lib/plugins/official/product-shot';
 import '@/lib/plugins/official/agents/animation-generator';
 import '@/lib/plugins/official/agents/motion-analyzer';
+import '@/lib/plugins/official/agents/svg-studio';
 import {
   Tooltip,
   TooltipContent,
@@ -75,6 +77,7 @@ export function NodeToolbar({ onPluginLaunch }: NodeToolbarProps) {
   // Plugin launcher state
   const [showPluginLauncher, setShowPluginLauncher] = useState(false);
   const pluginButtonRef = useRef<HTMLButtonElement>(null);
+  const svgPluginEnabled = process.env.NEXT_PUBLIC_SVG_PLUGIN_V1 === 'true';
 
   // Check if there are any generators with prompts
   const hasRunnableGenerators = nodes.some((n) => {
@@ -226,6 +229,18 @@ export function NodeToolbar({ onPluginLaunch }: NodeToolbarProps) {
           ),
           keywords: ['animation', 'animate', 'motion', 'theatre'],
         },
+        ...(svgPluginEnabled
+          ? [{
+              id: 'svgStudio',
+              icon: <PenTool className="h-4 w-4 text-emerald-400" />,
+              label: 'SVG Studio',
+              action: () => handleAddNode(
+                (pos, name) => createPluginNode(pos, 'svg-studio', name),
+                'SVG Studio'
+              ),
+              keywords: ['svg', 'vector', 'icon', 'logo'],
+            }]
+          : []),
       ],
     },
     {
@@ -281,7 +296,7 @@ export function NodeToolbar({ onPluginLaunch }: NodeToolbarProps) {
         },
       ],
     },
-  ], []);
+  ], [svgPluginEnabled]);
 
   // Filter sections based on search query
   const filteredSections = useMemo(() => {
