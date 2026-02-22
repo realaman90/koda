@@ -1,5 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
+import { isAuthV1Enabled } from '@/lib/flags';
 
 const isPublicRoute = createRouteMatcher([
   '/sign-in(.*)',
@@ -10,6 +11,10 @@ const isPublicRoute = createRouteMatcher([
 const isAuthRoute = createRouteMatcher(['/sign-in(.*)', '/sign-up(.*)']);
 
 export default clerkMiddleware(async (auth, req) => {
+  if (!isAuthV1Enabled()) {
+    return NextResponse.next();
+  }
+
   const { userId } = await auth();
 
   if (isAuthRoute(req) && userId) {
