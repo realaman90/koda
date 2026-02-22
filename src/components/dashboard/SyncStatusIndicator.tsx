@@ -16,11 +16,11 @@ export function SyncStatusIndicator() {
   const syncCapability = useAppStore((state) => state.syncCapability);
 
   if (!isSyncEnabled) {
-    const label = syncCapability === 'provisioning-blocked' ? 'Setup needed' : 'Local';
+    const label = syncCapability === 'provisioning-blocked' ? 'Sync blocked' : 'Local-only';
     const tooltip =
       syncCapability === 'provisioning-blocked'
         ? syncError || 'Authenticated, but account provisioning is not complete yet.'
-        : 'Saving to browser storage only';
+        : 'Database sync is unavailable; saving to browser storage only.';
 
     return (
       <TooltipProvider>
@@ -72,8 +72,8 @@ export function SyncStatusIndicator() {
       default:
         return {
           icon: <Cloud className="h-3.5 w-3.5" />,
-          text: 'Ready',
-          tooltip: 'Connected to database',
+          text: 'DB ready',
+          tooltip: 'Database sync is available',
           className: 'text-muted-foreground',
         };
     }

@@ -18,8 +18,9 @@ import { captureCanvasPreview, makeThumbnailVersion } from '@/lib/preview-utils'
 import { PreviewLifecycleQueue } from '@/lib/preview-lifecycle';
 import { useCanvasStore } from './canvas-store';
 import type { Template } from '@/lib/templates/types';
+import { parseSyncCapabilityProbe } from '@/lib/runtime/sync-capability';
 
-type SyncCapability = 'unknown' | 'enabled' | 'local-only' | 'provisioning-blocked';
+type SyncCapability = 'unknown' | 'db-sync-available' | 'local-only' | 'provisioning-blocked';
 
 interface AppState {
   // Current canvas being edited
@@ -148,10 +149,10 @@ export const useAppStore = create<AppState>()((set, get) => ({
   isSyncEnabled: false,
 
   initializeSync: async () => {
-    let response: Response | null = null;
+    let probeResponse: Response | null = null;
 
     try {
-      response = await fetch('/api/canvases', { method: 'GET' });
+      probeResponse = await fetch('/api/runtime/sync-capability', { method: 'GET' });
     } catch {
       set({
         isSyncEnabled: false,
@@ -161,26 +162,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
       return;
     }
 
-    if (response.status === 409 || response.status === 503) {
-      let errorMessage = 'User provisioning is incomplete.';
-      try {
-        const body = await response.json();
-        if (typeof body?.error === 'string' && body.error.trim()) {
-          errorMessage = body.error;
-        }
-      } catch {
-        // no-op
-      }
-
-      set({
-        isSyncEnabled: false,
-        syncCapability: 'provisioning-blocked',
-        syncError: errorMessage,
-      });
-      return;
-    }
-
-    if (!response.ok) {
+    if (!probeResponse.ok) {
       set({
         isSyncEnabled: false,
         syncCapability: 'local-only',
@@ -189,9 +171,39 @@ export const useAppStore = create<AppState>()((set, get) => ({
       return;
     }
 
+    const probePayload = await probeResponse.json().catch(() => null);
+    const probe = parseSyncCapabilityProbe(probePayload);
+
+    if (!probe) {
+      set({
+        isSyncEnabled: false,
+        syncCapability: 'local-only',
+        syncError: null,
+      });
+      return;
+    }
+
+    if (probe.mode === 'local-only') {
+      set({
+        isSyncEnabled: false,
+        syncCapability: 'local-only',
+        syncError: null,
+      });
+      return;
+    }
+
+    if (probe.mode === 'provisioning-blocked') {
+      set({
+        isSyncEnabled: false,
+        syncCapability: 'provisioning-blocked',
+        syncError: probe.message || 'User provisioning is incomplete.',
+      });
+      return;
+    }
+
     set({
       isSyncEnabled: true,
-      syncCapability: 'enabled',
+      syncCapability: 'db-sync-available',
       syncError: null,
     });
 
