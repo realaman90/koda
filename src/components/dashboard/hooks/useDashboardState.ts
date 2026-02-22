@@ -118,11 +118,26 @@ export function useDashboardState(): DashboardState {
         }
 
         const bootstrapResponse = await fetch('/api/workspaces/bootstrap', { method: 'POST' });
-        if (bootstrapResponse.ok) {
-          const bootstrap = await bootstrapResponse.json();
-          setInvites(bootstrap.invites || []);
-          setMemberships(bootstrap.memberships || []);
+        if (!bootstrapResponse.ok) {
+          let errorMessage = 'Failed to initialize workspace.';
+
+          try {
+            const body = await bootstrapResponse.json();
+            if (typeof body?.error === 'string' && body.error.trim()) {
+              errorMessage = body.error;
+            }
+          } catch {
+            // no-op: fallback message is already set
+          }
+
+          setLoadError(errorMessage);
+          toast.error(`Workspace setup failed: ${errorMessage}`);
+          return;
         }
+
+        const bootstrap = await bootstrapResponse.json();
+        setInvites(bootstrap.invites || []);
+        setMemberships(bootstrap.memberships || []);
 
         await loadCanvasList();
       } catch (error) {
