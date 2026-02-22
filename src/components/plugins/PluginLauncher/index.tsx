@@ -27,6 +27,14 @@ function getLaunchMode(plugin: AgentPlugin): 'Node' | 'Modal' {
 }
 
 function getIoHint(plugin: AgentPlugin): string | null {
+  const hintedInput = plugin.launcherHints?.input?.trim();
+  const hintedOutput = plugin.launcherHints?.output?.trim();
+  if (hintedInput || hintedOutput) {
+    if (!hintedInput) return `Output: ${hintedOutput}`;
+    if (!hintedOutput) return `Input: ${hintedInput}`;
+    return `In: ${hintedInput} · Out: ${hintedOutput}`;
+  }
+
   if (!plugin.handles) return null;
   const inputTypes = plugin.handles.inputs.map((h) => h.type).join(', ');
   const outputTypes = plugin.handles.outputs.map((h) => h.type).join(', ');
@@ -146,7 +154,14 @@ export function PluginLauncher({
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <div className="truncate text-sm font-medium text-foreground">{plugin.name}</div>
-                    <span className="rounded bg-[#3b82f6]/15 px-1.5 py-0.5 text-[10px] font-medium text-[#3b82f6]">
+                    <span
+                      className={[
+                        'rounded px-1.5 py-0.5 text-[10px] font-medium',
+                        mode === 'Node'
+                          ? 'bg-emerald-500/15 text-emerald-400'
+                          : 'bg-violet-500/15 text-violet-400',
+                      ].join(' ')}
+                    >
                       {mode}
                     </span>
                   </div>

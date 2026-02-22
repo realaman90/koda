@@ -92,6 +92,18 @@ const previewQueue = new PreviewLifecycleQueue({
 
       const canvasElement = document.querySelector('.react-flow') as HTMLElement | null;
       if (!canvasElement) {
+        const current = await provider.getCanvas(id);
+        if (current?.thumbnail || current?.thumbnailUrl) {
+          await updateCanvasThumbnail(id, {
+            thumbnail: current.thumbnail,
+            thumbnailUrl: current.thumbnailUrl,
+            thumbnailStatus: 'ready',
+            thumbnailUpdatedAt: Date.now(),
+            thumbnailVersion: makeThumbnailVersion(),
+            thumbnailErrorCode: undefined,
+          });
+          return;
+        }
         throw new Error('CAPTURE_FAILED');
       }
 

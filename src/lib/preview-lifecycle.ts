@@ -29,10 +29,10 @@ export class PreviewLifecycleQueue {
     }
 
     this.signatures.set(id, signature);
-    this.schedule(id);
+    this.schedule(id, force ? 0 : this.debounceMs);
   }
 
-  private schedule(id: string) {
+  private schedule(id: string, delayMs = this.debounceMs) {
     const existing = this.timers.get(id);
     if (existing) {
       clearTimeout(existing);
@@ -41,7 +41,7 @@ export class PreviewLifecycleQueue {
     const timer = setTimeout(() => {
       this.timers.delete(id);
       void this.kickoff(id);
-    }, this.debounceMs);
+    }, delayMs);
 
     this.timers.set(id, timer);
   }

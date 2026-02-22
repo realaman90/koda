@@ -62,6 +62,7 @@ export function DashboardPage() {
                 onDelete={handleDelete}
                 onRefreshPreview={handleRefreshPreview}
                 onRetryLoad={retryLoadCanvases}
+                onBrowseTemplates={() => setActiveTab('templates')}
               />
             </section>
 

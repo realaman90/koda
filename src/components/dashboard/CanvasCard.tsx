@@ -46,6 +46,8 @@ export function CanvasCard({ canvas, onRename, onDuplicate, onDelete, onRefreshP
     [canvas],
   );
 
+  const canRefreshPreview = previewStatus === 'stale' || previewStatus === 'error' || previewStatus === 'ready';
+
   const basePreviewSrc = canvas.thumbnailUrl || canvas.thumbnail;
   const previewSrc = useMemo(() => {
     if (!basePreviewSrc) return undefined;
@@ -94,7 +96,9 @@ export function CanvasCard({ canvas, onRename, onDuplicate, onDelete, onRefreshP
     } else if (action === 'duplicate') {
       onDuplicate(canvas.id);
     } else if (action === 'refresh') {
-      onRefreshPreview?.(canvas.id);
+      if (canRefreshPreview) {
+        onRefreshPreview?.(canvas.id);
+      }
     } else {
       onDelete(canvas.id);
     }
@@ -204,9 +208,10 @@ export function CanvasCard({ canvas, onRename, onDuplicate, onDelete, onRefreshP
                   <button
                     role="menuitem"
                     onClick={() => handleMenuAction('refresh')}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-foreground hover:bg-muted"
+                    disabled={!canRefreshPreview}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    <Loader2 className="h-3.5 w-3.5" />
+                    <Loader2 className={cn('h-3.5 w-3.5', previewStatus === 'processing' && 'animate-spin')} />
                     Refresh preview
                   </button>
                 )}

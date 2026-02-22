@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useMemo, useEffect } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   Key,
   Sliders,
@@ -103,8 +103,20 @@ function parseTab(tabParam: string | null): SettingsTab {
 export function SettingsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const pathname = usePathname();
 
-  const activeTab = parseTab(searchParams.get('tab'));
+  const tabParam = searchParams.get('tab');
+  const activeTab = parseTab(tabParam);
+
+  useEffect(() => {
+    if (tabParam === activeTab) {
+      return;
+    }
+
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('tab', activeTab);
+    router.replace(`${pathname}?${params.toString()}`);
+  }, [activeTab, pathname, router, searchParams, tabParam]);
 
   const renderContent = () => {
     switch (activeTab) {
@@ -132,7 +144,7 @@ export function SettingsContent() {
   const setActiveTab = (tab: SettingsTab) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set('tab', tab);
-    router.push(`/settings?${params.toString()}`);
+    router.push(`${pathname}?${params.toString()}`);
   };
 
   const activeTabInfo = useMemo(() => tabs.find((t) => t.id === activeTab), [activeTab]);

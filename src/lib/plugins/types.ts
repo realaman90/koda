@@ -6,7 +6,7 @@
  * own schemas and prompts, while the AIService handles execution.
  */
 
-import type { ComponentType, SVGProps } from 'react';
+import type { ComponentType } from 'react';
 import type { z } from 'zod';
 import type { AppNode, AppEdge } from '@/lib/types';
 
@@ -172,6 +172,12 @@ export interface PluginRendering {
  */
 export interface AgentPlugin extends PluginBase {
   type: 'agent';
+
+  // Optional launcher metadata for UX hints
+  launcherHints?: {
+    input?: string;
+    output?: string;
+  };
 
   // Rendering mode (NEW) - determines how the plugin appears
   rendering?: PluginRendering;
