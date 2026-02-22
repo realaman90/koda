@@ -825,6 +825,13 @@ export async function POST(request: Request) {
               pluginId: 'animation-generator',
               metadata: { finishReason: finishReason ?? null },
             });
+            emitLaunchMetric({
+              metric: 'activation_first_plugin_run',
+              status: 'success',
+              source: 'api',
+              pluginId: 'animation-generator',
+              metadata: { finishReason: finishReason ?? null },
+            });
 
             safeEnqueue(encoder.encode(`data: ${JSON.stringify({
               type: 'complete',

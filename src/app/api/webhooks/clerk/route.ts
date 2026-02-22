@@ -147,6 +147,12 @@ export async function POST(req: Request) {
         source: 'webhook',
         metadata: { userId: evt.data.id },
       });
+      emitLaunchMetric({
+        metric: 'activation_signup',
+        status: 'success',
+        source: 'webhook',
+        metadata: { userId: evt.data.id },
+      });
     }
 
     return NextResponse.json({ ok: true, action: 'upserted' });
