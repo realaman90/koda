@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 
@@ -21,8 +22,17 @@ export function AuthCard({ children }: { children: React.ReactNode }) {
 
 export function AuthHeader({ title, subtitle }: { title: string; subtitle: string }) {
   return (
-    <header className="space-y-2 text-center">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-primary)]">Koda</p>
+    <header className="space-y-3 text-center">
+      <div className="flex justify-center">
+        <Image
+          src="/logos/koda_main.png"
+          alt="Koda"
+          width={86}
+          height={20}
+          className="h-5 w-auto dark:invert-0 invert"
+          priority
+        />
+      </div>
       <h1 className="text-2xl font-semibold text-foreground">{title}</h1>
       <p className="text-sm text-muted-foreground">{subtitle}</p>
     </header>

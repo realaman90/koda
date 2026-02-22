@@ -55,7 +55,7 @@ export function KodaLogo({ variant = 'icon', className, size = 'md' }: KodaLogoP
       alt="Koda.video"
       width={dimensions.width}
       height={dimensions.height}
-      className={cn('flex-shrink-0 w-14', className)}
+      className={cn('flex-shrink-0 w-14 dark:invert-0 invert', className)}
       priority
     />
   );
