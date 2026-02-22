@@ -45,6 +45,19 @@ export interface PluginAuthor {
 /**
  * Base plugin interface - shared by all plugin types
  */
+export type PluginDistribution = 'oss' | 'hosted';
+
+export type PluginTrustTier =
+  | 'official'   // First-party plugin maintained by Koda
+  | 'verified'   // Third-party plugin reviewed by Koda team
+  | 'community'; // Community plugin with no explicit review
+
+export interface PluginPolicy {
+  capabilityDeclarations: AgentCapability[];
+  distributionVisibility: PluginDistribution[];
+  trustTier: PluginTrustTier;
+}
+
 export interface PluginBase {
   id: string;
   name: string;
@@ -54,6 +67,7 @@ export interface PluginBase {
   author: PluginAuthor;
   version: string;
   visibility: 'private' | 'team' | 'public';
+  policy: PluginPolicy;
 }
 
 // ============================================
