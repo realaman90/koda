@@ -404,6 +404,23 @@ Operational rollback invariant:
 - `NEXT_PUBLIC_UX_PREVIEW_SYSTEM_V1=true` (default behavior) enables preview lifecycle state rendering + background preview refresh queue.
 - `NEXT_PUBLIC_UX_PREVIEW_SYSTEM_V1=false` disables preview lifecycle queue and falls back to legacy thumbnail-only card rendering.
 
+### Rollback Playbook (validated)
+1. Set `NEXT_PUBLIC_UX_PREVIEW_SYSTEM_V1=false` in the active environment.
+2. Redeploy app (or restart dev server) so client bundles pick up the flag.
+3. Smoke test critical flows:
+   - Dashboard cards still render from legacy `thumbnail`/`thumbnailUrl` data.
+   - Canvas CRUD (create, rename, duplicate, delete, save) remains functional.
+   - No preview refresh jobs are triggered from autosave path.
+4. Keep additive DB fields in place (`thumbnail_*` columns); no schema rollback required.
+5. Re-enable by setting `NEXT_PUBLIC_UX_PREVIEW_SYSTEM_V1=true` when stability is confirmed.
+
+### P0 Rollout Checklist + Sign-off
+- [x] Flag ON/OFF smoke test coverage added (preview state fallback test).
+- [x] Rollback path documented and validated in code path (`CanvasCard` + `app-store` gate).
+- [x] Regression focus retained for dashboard + save path (preview async side-effect remains non-blocking).
+
+**Sign-off:** 2026-02-22 — UX preview rollout can be safely disabled via flag without impacting core canvas CRUD.
+
 ---
 
 ## 11) Open Questions / Decisions Needed

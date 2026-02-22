@@ -46,3 +46,18 @@ test('returns processing and error states explicitly', () => {
   assert.equal(processing, 'processing');
   assert.equal(error, 'error');
 });
+
+test('falls back to legacy thumbnail readiness when feature flag is disabled', () => {
+  const legacyReady = deriveCanvasPreviewState(
+    { ...baseCanvas, thumbnailStatus: 'processing' as const, thumbnail: '/api/assets/legacy-thumb' },
+    false,
+  );
+
+  const legacyEmpty = deriveCanvasPreviewState(
+    { ...baseCanvas, thumbnailStatus: 'ready' as const, thumbnail: undefined, thumbnailUrl: undefined },
+    false,
+  );
+
+  assert.equal(legacyReady, 'ready');
+  assert.equal(legacyEmpty, 'empty');
+});
