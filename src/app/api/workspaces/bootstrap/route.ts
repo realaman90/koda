@@ -6,8 +6,12 @@ import { NextResponse } from 'next/server';
 import { requireActor } from '@/lib/auth/actor';
 import { getDatabaseAsync } from '@/lib/db';
 import { workspaceInvites, workspaceMembers, workspaces } from '@/lib/db/schema';
+import { isWorkspacesV1Enabled } from '@/lib/flags';
 
 export async function POST() {
+  if (!isWorkspacesV1Enabled()) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
   const actorResult = await requireActor();
   if (!actorResult.ok) return actorResult.response;
 

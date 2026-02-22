@@ -7,10 +7,15 @@ import { getDatabaseAsync } from '@/lib/db';
 import { workspaceMembers, workspaces } from '@/lib/db/schema';
 import { can, type WorkspaceRole } from '@/lib/permissions/matrix';
 import { logAuditEvent } from '@/lib/audit/log';
+import { isCollabSharingV1Enabled, isWorkspacesV1Enabled } from '@/lib/flags';
 
 type RouteParams = { params: Promise<{ workspaceId: string }> };
 
 export async function POST(request: NextRequest, { params }: RouteParams) {
+  if (!isWorkspacesV1Enabled() || !isCollabSharingV1Enabled()) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+
   const { workspaceId } = await params;
   const workspaceActor = await requireWorkspaceActor(workspaceId);
   if (!workspaceActor.ok) return workspaceActor.response;

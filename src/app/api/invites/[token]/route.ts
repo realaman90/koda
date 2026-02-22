@@ -8,6 +8,7 @@ import { requireWorkspaceActor } from '@/lib/auth/workspace';
 import { getDatabaseAsync } from '@/lib/db';
 import { workspaceInvites, workspaceMembers } from '@/lib/db/schema';
 import { logAuditEvent } from '@/lib/audit/log';
+import { isCollabSharingV1Enabled, isWorkspacesV1Enabled } from '@/lib/flags';
 
 type RouteParams = { params: Promise<{ token: string }> };
 
@@ -18,6 +19,10 @@ function isExpired(expiresAt: Date | number | null | undefined) {
 }
 
 export async function POST(request: NextRequest, { params }: RouteParams) {
+  if (!isWorkspacesV1Enabled() || !isCollabSharingV1Enabled()) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+
   const { token } = await params;
   const { action } = await request.json();
 

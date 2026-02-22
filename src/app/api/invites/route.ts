@@ -8,8 +8,16 @@ import { getDatabaseAsync } from '@/lib/db';
 import { workspaceInvites } from '@/lib/db/schema';
 import { can, type WorkspaceRole } from '@/lib/permissions/matrix';
 import { logAuditEvent } from '@/lib/audit/log';
+import { isCollabSharingV1Enabled, isWorkspacesV1Enabled } from '@/lib/flags';
+
+function areInviteApisEnabled() {
+  return isWorkspacesV1Enabled() && isCollabSharingV1Enabled();
+}
 
 export async function GET(request: NextRequest) {
+  if (!areInviteApisEnabled()) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
   const workspaceId = request.nextUrl.searchParams.get('workspaceId');
   if (!workspaceId) {
     return NextResponse.json({ error: 'workspaceId is required' }, { status: 400 });
@@ -28,6 +36,10 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (!areInviteApisEnabled()) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+
   const body = await request.json();
   const workspaceId = body.workspaceId as string | undefined;
 

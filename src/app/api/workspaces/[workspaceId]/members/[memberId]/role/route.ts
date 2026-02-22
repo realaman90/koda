@@ -7,12 +7,17 @@ import { getDatabaseAsync } from '@/lib/db';
 import { workspaceMembers } from '@/lib/db/schema';
 import { can, type WorkspaceRole } from '@/lib/permissions/matrix';
 import { logAuditEvent } from '@/lib/audit/log';
+import { isCollabSharingV1Enabled, isWorkspacesV1Enabled } from '@/lib/flags';
 
 type RouteParams = {
   params: Promise<{ workspaceId: string; memberId: string }>;
 };
 
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
+  if (!isWorkspacesV1Enabled() || !isCollabSharingV1Enabled()) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+
   const { workspaceId, memberId } = await params;
   const workspaceActor = await requireWorkspaceActor(workspaceId);
   if (!workspaceActor.ok) return workspaceActor.response;
