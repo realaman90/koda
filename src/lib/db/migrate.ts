@@ -134,6 +134,20 @@ const SCHEMA_SQL_STATEMENTS = [
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS canvas_shares (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    canvas_id TEXT NOT NULL,
+    grantee_type TEXT NOT NULL DEFAULT 'user',
+    grantee_id TEXT NOT NULL,
+    permission TEXT NOT NULL DEFAULT 'view',
+    created_by_user_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS canvas_shares_canvas_grantee_unique ON canvas_shares(canvas_id, grantee_type, grantee_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_canvas_shares_workspace ON canvas_shares(workspace_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_canvas_shares_canvas ON canvas_shares(canvas_id)`,
   `CREATE TABLE IF NOT EXISTS audit_logs (
     id TEXT PRIMARY KEY,
     workspace_id TEXT NOT NULL,

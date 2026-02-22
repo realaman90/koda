@@ -13,7 +13,8 @@
     "db:validate:collab": "tsx scripts/validate-collaboration-schema.ts",
     "db:backfill:workspaces": "tsx scripts/backfill-workspaces.ts",
     "db:validate:backfill": "tsx scripts/validate-backfill.ts",
-    "validate:permissions": "tsx scripts/validate-permissions-matrix.ts"
+    "validate:permissions": "tsx scripts/validate-permissions-matrix.ts",
+    "validate:invites": "tsx scripts/validate-invite-lifecycle.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.7",

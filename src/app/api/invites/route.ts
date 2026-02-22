@@ -44,6 +44,9 @@ export async function POST(request: NextRequest) {
 
   const email = body.email as string | undefined;
   const role = (body.role as WorkspaceRole | undefined) || 'viewer';
+  if (!['owner', 'admin', 'editor', 'viewer'].includes(role)) {
+    return NextResponse.json({ error: 'Invalid role' }, { status: 400 });
+  }
   const expiresInDays = Number(body.expiresInDays ?? 7);
 
   if (!email) {

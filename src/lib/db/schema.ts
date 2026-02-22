@@ -165,6 +165,33 @@ export type NewCanvas = typeof canvases.$inferInsert;
 // Type for selecting a canvas
 export type Canvas = typeof canvases.$inferSelect;
 
+export const canvasShares = sqliteTable(
+  'canvas_shares',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id').notNull(),
+    canvasId: text('canvas_id').notNull(),
+    granteeType: text('grantee_type').notNull().default('user'), // user | link
+    granteeId: text('grantee_id').notNull(),
+    permission: text('permission').notNull().default('view'), // view | edit
+    createdByUserId: text('created_by_user_id').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (table) => ({
+    canvasGranteeUnique: uniqueIndex('canvas_shares_canvas_grantee_unique').on(
+      table.canvasId,
+      table.granteeType,
+      table.granteeId
+    ),
+    workspaceIdx: index('idx_canvas_shares_workspace').on(table.workspaceId),
+    canvasIdx: index('idx_canvas_shares_canvas').on(table.canvasId),
+  })
+);
+
+export type NewCanvasShare = typeof canvasShares.$inferInsert;
+export type CanvasShare = typeof canvasShares.$inferSelect;
+
 export const auditLogs = sqliteTable(
   'audit_logs',
   {
