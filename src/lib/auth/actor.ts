@@ -6,21 +6,81 @@ import { eq } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { getDatabaseAsync } from '@/lib/db';
 import { users, workspaceMembers, workspaces } from '@/lib/db/schema';
+import { emitLaunchMetric } from '@/lib/observability/launch-metrics';
 
-async function provisionUserFromClerk(clerkUserId: string): Promise<boolean> {
+type ProvisioningFailureReason = 'missing_email' | 'clerk_lookup_failed' | 'db_upsert_failed';
+
+type ProvisionUserResult =
+  | { ok: true }
+  | {
+      ok: false;
+      reason: ProvisioningFailureReason;
+      retryable: boolean;
+      message: string;
+    };
+
+const FALLBACK_PROVISION_MAX_ATTEMPTS = 2;
+const FALLBACK_PROVISION_RETRY_DELAY_MS = 120;
+
+function emitActorProvisioningEvent(event: {
+  status: 'success' | 'error';
+  event: string;
+  clerkUserId: string;
+  attempt?: number;
+  reason?: ProvisioningFailureReason;
+  message?: string;
+}) {
+  const payload = {
+    ...event,
+    ts: new Date().toISOString(),
+  };
+
+  const line = `[actor-provisioning] ${JSON.stringify(payload)}`;
+
+  if (event.status === 'error') {
+    console.error(line);
+    return;
+  }
+
+  console.log(line);
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function provisionUserFromClerk(clerkUserId: string): Promise<ProvisionUserResult> {
+  const client = await clerkClient();
+  let clerkUser;
+
   try {
-    const client = await clerkClient();
-    const clerkUser = await client.users.getUser(clerkUserId);
+    clerkUser = await client.users.getUser(clerkUserId);
+  } catch (error) {
+    return {
+      ok: false,
+      reason: 'clerk_lookup_failed',
+      retryable: true,
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
 
-    const primaryEmail = clerkUser.primaryEmailAddressId
-      ? clerkUser.emailAddresses.find((email) => email.id === clerkUser.primaryEmailAddressId)?.emailAddress
-      : clerkUser.emailAddresses[0]?.emailAddress;
+  const primaryEmail = clerkUser.primaryEmailAddressId
+    ? clerkUser.emailAddresses.find((email) => email.id === clerkUser.primaryEmailAddressId)?.emailAddress
+    : clerkUser.emailAddresses[0]?.emailAddress;
 
-    if (!primaryEmail) return false;
+  if (!primaryEmail) {
+    return {
+      ok: false,
+      reason: 'missing_email',
+      retryable: false,
+      message: 'Clerk user has no resolvable primary email.',
+    };
+  }
 
-    const db = await getDatabaseAsync();
-    const now = new Date();
+  const db = await getDatabaseAsync();
+  const now = new Date();
 
+  try {
     await db
       .insert(users)
       .values({
@@ -43,12 +103,16 @@ async function provisionUserFromClerk(clerkUserId: string): Promise<boolean> {
           updatedAt: now,
         },
       });
-
-    return true;
   } catch (error) {
-    console.error('Failed to provision user from Clerk:', error);
-    return false;
+    return {
+      ok: false,
+      reason: 'db_upsert_failed',
+      retryable: true,
+      message: error instanceof Error ? error.message : String(error),
+    };
   }
+
+  return { ok: true };
 }
 
 export async function requireActor() {
@@ -65,14 +129,74 @@ export async function requireActor() {
   let [user] = await db.select().from(users).where(eq(users.clerkUserId, session.userId));
 
   if (!user) {
-    const didProvision = await provisionUserFromClerk(session.userId);
+    emitActorProvisioningEvent({
+      status: 'success',
+      event: 'fallback_started',
+      clerkUserId: session.userId,
+    });
 
-    if (didProvision) {
-      [user] = await db.select().from(users).where(eq(users.clerkUserId, session.userId));
+    for (let attempt = 1; attempt <= FALLBACK_PROVISION_MAX_ATTEMPTS; attempt += 1) {
+      const provisionResult = await provisionUserFromClerk(session.userId);
+
+      if (provisionResult.ok) {
+        [user] = await db.select().from(users).where(eq(users.clerkUserId, session.userId));
+
+        emitActorProvisioningEvent({
+          status: user ? 'success' : 'error',
+          event: user ? 'fallback_succeeded' : 'fallback_upserted_but_missing_row',
+          clerkUserId: session.userId,
+          attempt,
+          ...(user
+            ? {}
+            : {
+                reason: 'db_upsert_failed',
+                message: 'User row still missing after successful upsert.',
+              }),
+        });
+
+        if (user) {
+          emitLaunchMetric({
+            metric: 'signup_completion',
+            status: 'success',
+            source: 'api',
+            metadata: {
+              clerkUserId: session.userId,
+              fallbackProvisioning: true,
+              attempt,
+            },
+          });
+          break;
+        }
+      } else {
+        emitActorProvisioningEvent({
+          status: 'error',
+          event: 'fallback_attempt_failed',
+          clerkUserId: session.userId,
+          attempt,
+          reason: provisionResult.reason,
+          message: provisionResult.message,
+        });
+
+        if (!provisionResult.retryable) {
+          break;
+        }
+      }
+
+      if (attempt < FALLBACK_PROVISION_MAX_ATTEMPTS) {
+        await sleep(FALLBACK_PROVISION_RETRY_DELAY_MS * attempt);
+      }
     }
   }
 
   if (!user) {
+    emitLaunchMetric({
+      metric: 'signup_completion',
+      status: 'error',
+      source: 'api',
+      errorCode: 'fallback_actor_provisioning_failed',
+      metadata: { clerkUserId: session.userId },
+    });
+
     return {
       ok: false as const,
       response: NextResponse.json(
@@ -80,7 +204,7 @@ export async function requireActor() {
           error:
             'User provisioning in progress. We could not sync your account yet—please retry in a few seconds.',
         },
-        { status: 503 }
+        { status: 503, headers: { 'retry-after': '2' } }
       ),
     };
   }

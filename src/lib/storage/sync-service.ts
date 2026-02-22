@@ -10,6 +10,7 @@
  */
 
 import type { StoredCanvas, CanvasMetadata } from './types';
+import { parseSyncCapabilityProbe } from '@/lib/runtime/sync-capability';
 
 export type SyncStatus = 'idle' | 'syncing' | 'synced' | 'error' | 'offline';
 
@@ -54,13 +55,16 @@ export function getSyncStatus(): SyncState {
 }
 
 /**
- * Check if SQLite backend is enabled (via API)
+ * Check if DB sync is runtime-available (via capability probe)
  */
 export async function isSQLiteEnabled(): Promise<boolean> {
   try {
-    const response = await fetch('/api/canvases', { method: 'GET' });
+    const response = await fetch('/api/runtime/sync-capability', { method: 'GET' });
+    if (!response.ok) return false;
+
     const data = await response.json();
-    return data.backend === 'sqlite';
+    const probe = parseSyncCapabilityProbe(data);
+    return probe?.mode === 'db-sync-available';
   } catch {
     return false;
   }
