@@ -1,6 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
-import { isAuthV1Enabled } from '@/lib/flags';
 
 const isPublicRoute = createRouteMatcher([
   '/sign-in(.*)',
@@ -11,20 +10,22 @@ const isPublicRoute = createRouteMatcher([
 ]);
 
 const isAuthRoute = createRouteMatcher(['/sign-in(.*)', '/sign-up(.*)']);
+const isApiRoute = createRouteMatcher(['/api(.*)']);
 
 export default clerkMiddleware(async (auth, req) => {
-  if (!isAuthV1Enabled()) {
-    return NextResponse.next();
-  }
-
-  const { userId } = await auth();
+  const authState = await auth();
+  const { userId } = authState;
 
   if (isAuthRoute(req) && userId) {
     return NextResponse.redirect(new URL('/', req.url));
   }
 
-  if (!isPublicRoute(req)) {
-    await auth.protect();
+  if (!isPublicRoute(req) && !userId) {
+    if (isApiRoute(req)) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    return authState.redirectToSignIn({ returnBackUrl: req.url });
   }
 
   return NextResponse.next();
