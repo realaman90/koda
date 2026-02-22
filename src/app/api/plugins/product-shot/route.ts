@@ -14,9 +14,37 @@ import {
   buildProductShotPrompt,
 } from '@/lib/plugins/official/product-shot/schema';
 import { emitLaunchMetric } from '@/lib/observability/launch-metrics';
+import { evaluatePluginLaunchById, emitPluginPolicyAuditEvent } from '@/lib/plugins/launch-policy';
 
 export async function POST(request: Request) {
   try {
+    const policyDecision = evaluatePluginLaunchById('product-shot');
+    emitPluginPolicyAuditEvent({
+      source: 'api',
+      decision: policyDecision,
+      metadata: { method: 'POST', path: '/api/plugins/product-shot' },
+    });
+
+    if (!policyDecision.allowed) {
+      emitLaunchMetric({
+        metric: 'plugin_execution',
+        status: 'error',
+        source: 'api',
+        pluginId: 'product-shot',
+        errorCode: policyDecision.code,
+      });
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Plugin launch blocked by policy.',
+          code: policyDecision.code,
+          reason: policyDecision.reason,
+        },
+        { status: policyDecision.code === 'PLUGIN_NOT_FOUND' ? 404 : 403 }
+      );
+    }
+
     const body = await request.json();
     console.log('\n========== PRODUCT SHOT GENERATION START ==========');
     console.log('[ProductShot] Input received:', JSON.stringify(body, null, 2));

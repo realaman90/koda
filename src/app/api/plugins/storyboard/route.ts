@@ -17,6 +17,7 @@ import {
   buildRefinementPrompt,
 } from '@/lib/plugins/official/storyboard-generator/schema';
 import { emitLaunchMetric } from '@/lib/observability/launch-metrics';
+import { evaluatePluginLaunchById, emitPluginPolicyAuditEvent } from '@/lib/plugins/launch-policy';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -27,6 +28,33 @@ const DEFAULT_MODEL = 'google/gemini-3-pro-preview';
 
 export async function POST(request: Request) {
   try {
+    const policyDecision = evaluatePluginLaunchById('storyboard-generator');
+    emitPluginPolicyAuditEvent({
+      source: 'api',
+      decision: policyDecision,
+      metadata: { method: 'POST', path: '/api/plugins/storyboard' },
+    });
+
+    if (!policyDecision.allowed) {
+      emitLaunchMetric({
+        metric: 'plugin_execution',
+        status: 'error',
+        source: 'api',
+        pluginId: 'storyboard-generator',
+        errorCode: policyDecision.code,
+      });
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Plugin launch blocked by policy.',
+          code: policyDecision.code,
+          reason: policyDecision.reason,
+        },
+        { status: policyDecision.code === 'PLUGIN_NOT_FOUND' ? 404 : 403 }
+      );
+    }
+
     const body = await request.json();
     console.log('\n========== STORYBOARD GENERATION START ==========');
     console.log('[Storyboard] Input received:', JSON.stringify(body, null, 2));

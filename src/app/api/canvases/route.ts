@@ -1,13 +1,14 @@
 import 'server-only';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { inArray } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { requireActor, resolveDefaultWorkspaceId } from '@/lib/auth/actor';
 import { listCanvasesForWorkspaces, upsertWorkspaceCanvas } from '@/lib/db/canvas-queries';
 import { getDatabaseAsync } from '@/lib/db';
-import { canvasShares, workspaces } from '@/lib/db/schema';
+import { canvasShares, canvases, workspaces } from '@/lib/db/schema';
 import { can, type WorkspaceRole } from '@/lib/permissions/matrix';
 import { logAuditEvent } from '@/lib/audit/log';
+import { emitLaunchMetric } from '@/lib/observability/launch-metrics';
 
 export async function GET() {
   const actorResult = await requireActor();
@@ -94,6 +95,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    const db = await getDatabaseAsync();
+    const existingCanvasCountResult = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(canvases)
+      .where(eq(canvases.ownerUserId, actorResult.actor.user.id));
+    const existingCanvasCount = Number(existingCanvasCountResult[0]?.count ?? 0);
+
     const canvas = {
       id,
       name,
@@ -119,6 +127,19 @@ export async function POST(request: NextRequest) {
       targetId: id,
       metadata: { projectId: projectId || null },
     });
+
+    if (existingCanvasCount === 0) {
+      emitLaunchMetric({
+        metric: 'activation_first_canvas',
+        status: 'success',
+        source: 'api',
+        metadata: {
+          userId: actorResult.actor.user.id,
+          canvasId: id,
+          workspaceId: targetWorkspaceId,
+        },
+      });
+    }
 
     return NextResponse.json({ success: true, canvas: { ...canvas, workspaceId: targetWorkspaceId } });
   } catch (error) {

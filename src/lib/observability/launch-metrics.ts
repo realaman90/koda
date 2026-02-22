@@ -5,7 +5,11 @@ import { resolveDistributionMode } from '@/lib/distribution/capabilities';
 export type LaunchMetricName =
   | 'signup_completion'
   | 'workspace_bootstrap'
-  | 'plugin_execution';
+  | 'plugin_execution'
+  | 'activation_signup'
+  | 'activation_first_workspace'
+  | 'activation_first_canvas'
+  | 'activation_first_plugin_run';
 
 export type LaunchMetricStatus = 'success' | 'error';
 

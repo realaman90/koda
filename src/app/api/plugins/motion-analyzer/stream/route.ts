@@ -9,6 +9,7 @@ import { NextResponse } from 'next/server';
 import { motionAnalyzerAgent } from '@/mastra/agents/motion-analyzer-agent';
 import { RequestContext } from '@mastra/core/di';
 import { emitLaunchMetric } from '@/lib/observability/launch-metrics';
+import { evaluatePluginLaunchById, emitPluginPolicyAuditEvent } from '@/lib/plugins/launch-policy';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -38,6 +39,32 @@ interface StreamRequestBody {
 
 export async function POST(request: Request) {
   try {
+    const policyDecision = evaluatePluginLaunchById('motion-analyzer');
+    emitPluginPolicyAuditEvent({
+      source: 'api',
+      decision: policyDecision,
+      metadata: { method: 'POST', path: '/api/plugins/motion-analyzer/stream' },
+    });
+
+    if (!policyDecision.allowed) {
+      emitLaunchMetric({
+        metric: 'plugin_execution',
+        status: 'error',
+        source: 'api',
+        pluginId: 'motion-analyzer',
+        errorCode: policyDecision.code,
+      });
+
+      return NextResponse.json(
+        {
+          error: 'Plugin launch blocked by policy.',
+          code: policyDecision.code,
+          reason: policyDecision.reason,
+        },
+        { status: policyDecision.code === 'PLUGIN_NOT_FOUND' ? 404 : 403 }
+      );
+    }
+
     const body: StreamRequestBody = await request.json();
     const { prompt, messages, context } = body;
 

@@ -448,6 +448,14 @@ Detailed documentation lives in the [`docs/`](docs/) directory:
 | [`DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Cloud and self-hosted deployment guide |
 | [`SELF_HOSTING.md`](docs/SELF_HOSTING.md) | Local hosting setup and configuration |
 | [`SANDBOX_CONFIGURATION.md`](docs/SANDBOX_CONFIGURATION.md) | Docker sandbox resource tuning |
+| [`oss/QUICKSTART.md`](docs/oss/QUICKSTART.md) | OSS clean install quickstart |
+| [`oss/UPGRADE.md`](docs/oss/UPGRADE.md) | OSS upgrade + rollback guidance |
+| [`oss/TROUBLESHOOTING.md`](docs/oss/TROUBLESHOOTING.md) | Common self-host issues and fixes |
+| [`oss/KNOWN_LIMITS.md`](docs/oss/KNOWN_LIMITS.md) | OSS support boundaries and known limits |
+| [`roadmap/phase-3-plugin-governance-playbook.md`](docs/roadmap/phase-3-plugin-governance-playbook.md) | Plugin governance review, escalation, and operator override/rollback playbook |
+| [`roadmap/phase-4-oss-release-readiness.md`](docs/roadmap/phase-4-oss-release-readiness.md) | OSS release smoke automation + evidence checklist |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Issue/PR conventions and plugin policy contribution rules |
+| [`SECURITY.md`](SECURITY.md) | Private vulnerability reporting path |
 
 ---
 
@@ -484,7 +492,12 @@ npm run db:studio    # Open Drizzle Studio (DB browser)
 
 ## Contributing
 
-Contributions are welcome. Here's how to get started:
+Contributions are welcome.
+
+- Full workflow, issue/PR conventions, and plugin policy requirements: [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- Security disclosures: [`SECURITY.md`](SECURITY.md)
+
+Quick start:
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feat/my-feature`)
@@ -492,6 +505,28 @@ Contributions are welcome. Here's how to get started:
 4. Run `npm run lint` and `npm run build` to verify
 5. Commit and push
 6. Open a pull request
+
+### Plugin policy metadata requirements
+
+When contributing plugin changes, declare policy metadata on every `AgentPlugin`:
+
+```ts
+policy: {
+  capabilityDeclarations: AgentCapability[];
+  distributionVisibility: ('oss' | 'hosted')[];
+  trustTier: 'official' | 'verified' | 'community';
+}
+```
+
+Checklist:
+- Keep `capabilityDeclarations` in sync with runtime `capabilities`
+- Set explicit `distributionVisibility` (`oss`, `hosted`, or both)
+- Set correct `trustTier` based on review status
+- Run `npm run build` before opening a PR
+
+For governance and operator response flow, see:
+- [`docs/roadmap/phase-3-plugin-policy-schema.md`](docs/roadmap/phase-3-plugin-policy-schema.md)
+- [`docs/roadmap/phase-3-plugin-governance-playbook.md`](docs/roadmap/phase-3-plugin-governance-playbook.md)
 
 ### Adding a new node type
 

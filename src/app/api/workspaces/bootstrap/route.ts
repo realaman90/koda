@@ -66,6 +66,7 @@ export async function POST(request: Request) {
     let personalWorkspace = actorResult.actor.memberships.find(
       (membership: { role: string; workspaceId: string }) => membership.role === 'owner'
     );
+    let createdPersonalWorkspace = false;
 
     if (!personalWorkspace) {
       const workspaceId = `ws_personal_${actorResult.actor.user.id}`;
@@ -91,6 +92,7 @@ export async function POST(request: Request) {
       });
 
       personalWorkspace = { workspaceId, role: 'owner' };
+      createdPersonalWorkspace = true;
     }
 
     const memberships = await db
@@ -121,6 +123,18 @@ export async function POST(request: Request) {
         retryOutcome: retryOutcome(attempt, 'success'),
       },
     });
+
+    if (createdPersonalWorkspace) {
+      emitLaunchMetric({
+        metric: 'activation_first_workspace',
+        status: 'success',
+        source: 'api',
+        metadata: {
+          userId: actorResult.actor.user.id,
+          workspaceId: personalWorkspace.workspaceId,
+        },
+      });
+    }
 
     return NextResponse.json({
       memberships,

@@ -51,3 +51,11 @@ For future plugin migrations:
 5. Registration should fail fast until policy schema validation passes.
 
 This keeps plugin governance consistent across OSS and Hosted while preventing undeclared capability drift.
+
+## 4) Governance + Operator References (Issue #42)
+
+- Plugin governance and escalation playbook:
+  - `docs/roadmap/phase-3-plugin-governance-playbook.md`
+- Contributor metadata declaration guide:
+  - `README.md` (Contributing)
+  - `docs/roadmap/phase-3-plugin-governance-playbook.md` (Section 3)

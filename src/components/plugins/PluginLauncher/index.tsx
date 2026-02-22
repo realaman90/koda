@@ -10,6 +10,7 @@
 import * as React from 'react';
 import { Puzzle, ChevronRight } from 'lucide-react';
 import { pluginRegistry } from '@/lib/plugins/registry';
+import { evaluatePluginLaunchPolicy, emitPluginPolicyAuditEvent } from '@/lib/plugins/launch-policy';
 import type { AgentPlugin } from '@/lib/plugins/types';
 
 interface PluginLauncherProps {
@@ -53,7 +54,10 @@ export function PluginLauncher({
   const dropdownRef = React.useRef<HTMLDivElement>(null);
   const [position, setPosition] = React.useState({ top: -9999, left: -9999 });
 
-  const plugins = React.useMemo(() => pluginRegistry.getAll(), []);
+  const plugins = React.useMemo(
+    () => pluginRegistry.getAll().map((plugin) => ({ plugin, decision: evaluatePluginLaunchPolicy(plugin) })),
+    []
+  );
 
   React.useEffect(() => {
     if (isOpen && anchorRef.current) {
@@ -108,8 +112,19 @@ export function PluginLauncher({
 
   if (!isOpen) return null;
 
-  const handlePluginClick = (pluginId: string) => {
-    onLaunch(pluginId);
+  const handlePluginClick = (plugin: AgentPlugin) => {
+    const decision = evaluatePluginLaunchPolicy(plugin);
+    emitPluginPolicyAuditEvent({
+      source: 'launcher',
+      decision,
+      metadata: { interaction: 'click' },
+    });
+
+    if (!decision.allowed) {
+      return;
+    }
+
+    onLaunch(plugin.id);
     onClose();
   };
 
@@ -139,15 +154,19 @@ export function PluginLauncher({
       </div>
 
       <div className="max-h-[360px] overflow-y-auto">
-        {plugins.map((plugin) => {
+        {plugins.map(({ plugin, decision }) => {
           const mode = getLaunchMode(plugin);
           const ioHint = getIoHint(plugin);
 
           return (
             <button
               key={plugin.id}
-              onClick={() => handlePluginClick(plugin.id)}
-              className="w-full px-3 py-2.5 text-left transition-colors hover:bg-muted"
+              onClick={() => handlePluginClick(plugin)}
+              disabled={!decision.allowed}
+              className={[
+                'w-full px-3 py-2.5 text-left transition-colors',
+                decision.allowed ? 'hover:bg-muted' : 'cursor-not-allowed opacity-60',
+              ].join(' ')}
             >
               <div className="flex items-start gap-3">
                 <plugin.icon className="mt-0.5 h-5 w-5 text-muted-foreground" />
@@ -167,6 +186,9 @@ export function PluginLauncher({
                   </div>
                   <div className="truncate text-xs text-muted-foreground">{plugin.description}</div>
                   {ioHint && <div className="truncate text-[11px] text-muted-foreground/90">{ioHint}</div>}
+                  {!decision.allowed && (
+                    <div className="truncate text-[11px] text-amber-500">Unavailable: {decision.code}</div>
+                  )}
                 </div>
                 <ChevronRight className="mt-1 h-4 w-4 text-muted-foreground" />
               </div>

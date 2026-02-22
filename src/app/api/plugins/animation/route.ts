@@ -14,11 +14,31 @@ import type {
   AnimationAPIResponse,
 } from '@/lib/plugins/official/agents/animation-generator/types';
 import { getSandboxProvider, getSandboxInstance } from '@/lib/sandbox/sandbox-factory';
+import { evaluatePluginLaunchById, emitPluginPolicyAuditEvent } from '@/lib/plugins/launch-policy';
 
 export const maxDuration = 300;
 
 export async function POST(request: Request) {
   try {
+    const policyDecision = evaluatePluginLaunchById('animation-generator');
+    emitPluginPolicyAuditEvent({
+      source: 'api',
+      decision: policyDecision,
+      metadata: { method: 'POST', path: '/api/plugins/animation' },
+    });
+
+    if (!policyDecision.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Plugin launch blocked by policy.',
+          code: policyDecision.code,
+          reason: policyDecision.reason,
+        },
+        { status: policyDecision.code === 'PLUGIN_NOT_FOUND' ? 404 : 403 }
+      );
+    }
+
     const body: AnimationAPIRequest = await request.json();
     const { nodeId, action, previewUrl, sandboxId, duration, resolution } = body;
 

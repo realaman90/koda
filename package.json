@@ -18,6 +18,7 @@
     "validate:auth-collab": "npm run db:validate:collab && npm run db:validate:backfill && npm run validate:permissions && npm run validate:invites && npm run build",
     "validate:distribution-contract": "tsx scripts/validate-distribution-contract.ts",
     "ci:smoke-profile": "tsx src/lib/ci/smoke-profile.ts",
+    "ci:oss-release-smoke": "tsx scripts/ci/oss-release-smoke.ts",
     "roadmap:baseline": "tsx scripts/capture-launch-baseline.ts"
   },
   "dependencies": {

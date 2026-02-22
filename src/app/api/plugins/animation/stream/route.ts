@@ -13,6 +13,7 @@ import { STYLE_PRESETS } from '@/lib/plugins/official/agents/animation-generator
 import { RequestContext } from '@mastra/core/di';
 import { getSandboxProvider } from '@/lib/sandbox/sandbox-factory';
 import { emitLaunchMetric } from '@/lib/observability/launch-metrics';
+import { evaluatePluginLaunchById, emitPluginPolicyAuditEvent } from '@/lib/plugins/launch-policy';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -62,6 +63,32 @@ interface StreamRequestBody {
 
 export async function POST(request: Request) {
   try {
+    const policyDecision = evaluatePluginLaunchById('animation-generator');
+    emitPluginPolicyAuditEvent({
+      source: 'api',
+      decision: policyDecision,
+      metadata: { method: 'POST', path: '/api/plugins/animation/stream' },
+    });
+
+    if (!policyDecision.allowed) {
+      emitLaunchMetric({
+        metric: 'plugin_execution',
+        status: 'error',
+        source: 'api',
+        pluginId: 'animation-generator',
+        errorCode: policyDecision.code,
+      });
+
+      return NextResponse.json(
+        {
+          error: 'Plugin launch blocked by policy.',
+          code: policyDecision.code,
+          reason: policyDecision.reason,
+        },
+        { status: policyDecision.code === 'PLUGIN_NOT_FOUND' ? 404 : 403 }
+      );
+    }
+
     const body: StreamRequestBody = await request.json();
     const { prompt, messages, context } = body;
 
@@ -793,6 +820,13 @@ export async function POST(request: Request) {
 
             emitLaunchMetric({
               metric: 'plugin_execution',
+              status: 'success',
+              source: 'api',
+              pluginId: 'animation-generator',
+              metadata: { finishReason: finishReason ?? null },
+            });
+            emitLaunchMetric({
+              metric: 'activation_first_plugin_run',
               status: 'success',
               source: 'api',
               pluginId: 'animation-generator',
