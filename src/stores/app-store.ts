@@ -4,7 +4,6 @@ import {
   getStorageProvider,
   getLocalStorageProvider,
   createEmptyCanvas,
-  isSQLiteConfigured,
 } from '@/lib/storage';
 import {
   syncCanvasToServer,
@@ -19,6 +18,8 @@ import { captureCanvasPreview, makeThumbnailVersion } from '@/lib/preview-utils'
 import { PreviewLifecycleQueue } from '@/lib/preview-lifecycle';
 import { useCanvasStore } from './canvas-store';
 import type { Template } from '@/lib/templates/types';
+
+type SyncCapability = 'unknown' | 'enabled' | 'local-only' | 'provisioning-blocked';
 
 interface AppState {
   // Current canvas being edited
@@ -37,6 +38,7 @@ interface AppState {
   // Sync status (for SQLite backend)
   syncStatus: SyncStatus;
   syncError: string | null;
+  syncCapability: SyncCapability;
   isSyncEnabled: boolean;
 
   // Actions
@@ -142,16 +144,56 @@ export const useAppStore = create<AppState>()((set, get) => ({
   hasUnsavedChanges: false,
   syncStatus: 'idle',
   syncError: null,
+  syncCapability: 'unknown',
   isSyncEnabled: false,
 
   initializeSync: async () => {
-    // Check if SQLite is configured
-    const syncEnabled = isSQLiteConfigured();
-    set({ isSyncEnabled: syncEnabled });
+    let response: Response | null = null;
 
-    if (!syncEnabled) {
+    try {
+      response = await fetch('/api/canvases', { method: 'GET' });
+    } catch {
+      set({
+        isSyncEnabled: false,
+        syncCapability: 'local-only',
+        syncError: null,
+      });
       return;
     }
+
+    if (response.status === 409 || response.status === 503) {
+      let errorMessage = 'User provisioning is incomplete.';
+      try {
+        const body = await response.json();
+        if (typeof body?.error === 'string' && body.error.trim()) {
+          errorMessage = body.error;
+        }
+      } catch {
+        // no-op
+      }
+
+      set({
+        isSyncEnabled: false,
+        syncCapability: 'provisioning-blocked',
+        syncError: errorMessage,
+      });
+      return;
+    }
+
+    if (!response.ok) {
+      set({
+        isSyncEnabled: false,
+        syncCapability: 'local-only',
+        syncError: null,
+      });
+      return;
+    }
+
+    set({
+      isSyncEnabled: true,
+      syncCapability: 'enabled',
+      syncError: null,
+    });
 
     // Subscribe to sync status changes
     subscribeSyncStatus((state) => {
@@ -160,7 +202,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
 
     // Perform initial sync
     const localProvider = getLocalStorageProvider();
-    
+
     await performInitialSync(
       async () => {
         const metaList = await localProvider.listCanvases();
