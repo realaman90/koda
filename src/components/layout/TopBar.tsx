@@ -16,6 +16,8 @@ import {
   Check,
   Loader2,
 } from 'lucide-react';
+import { UserButton } from '@clerk/nextjs';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { cn } from '@/lib/utils';
 
 interface TopBarProps {
@@ -94,6 +96,18 @@ export function TopBar({
     },
     [handleNameSubmit, canvasName]
   );
+
+  const { user } = useCurrentUser();
+  const isClerkUiEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
+
+  const displayName = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() || user?.email || 'User';
+  const initials = displayName
+    .split(' ')
+    .map((part) => part[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
 
   // Format save status
   const formatSaveStatus = () => {
@@ -255,10 +269,21 @@ export function TopBar({
           </>
         )}
 
-        {/* User Avatar */}
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-xs font-medium">
-          A
-        </div>
+        {/* User Menu / Avatar */}
+        {isClerkUiEnabled ? (
+          <UserButton
+            afterSignOutUrl="/sign-in"
+            appearance={{
+              elements: {
+                userButtonAvatarBox: 'h-8 w-8',
+              },
+            }}
+          />
+        ) : (
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-medium text-primary-foreground">
+            {initials || 'U'}
+          </div>
+        )}
       </div>
     </header>
   );

@@ -4,7 +4,6 @@ import {
   getStorageProvider,
   getLocalStorageProvider,
   createEmptyCanvas,
-  isSQLiteConfigured,
 } from '@/lib/storage';
 import {
   syncCanvasToServer,
@@ -14,8 +13,14 @@ import {
   subscribeSyncStatus,
   type SyncStatus,
 } from '@/lib/storage/sync-service';
+import { uploadAsset } from '@/lib/assets/upload';
+import { captureCanvasPreview, makeThumbnailVersion } from '@/lib/preview-utils';
+import { PreviewLifecycleQueue } from '@/lib/preview-lifecycle';
 import { useCanvasStore } from './canvas-store';
 import type { Template } from '@/lib/templates/types';
+import { parseSyncCapabilityProbe } from '@/lib/runtime/sync-capability';
+
+type SyncCapability = 'unknown' | 'db-sync-available' | 'local-only' | 'provisioning-blocked';
 
 interface AppState {
   // Current canvas being edited
@@ -34,6 +39,7 @@ interface AppState {
   // Sync status (for SQLite backend)
   syncStatus: SyncStatus;
   syncError: string | null;
+  syncCapability: SyncCapability;
   isSyncEnabled: boolean;
 
   // Actions
@@ -47,6 +53,8 @@ interface AppState {
   saveCurrentCanvas: () => Promise<void>;
   setCurrentCanvasName: (name: string) => void;
   markUnsavedChanges: () => void;
+  updateCanvasThumbnail: (id: string, patch: Pick<StoredCanvas, 'thumbnail' | 'thumbnailUrl' | 'thumbnailStatus' | 'thumbnailUpdatedAt' | 'thumbnailVersion' | 'thumbnailErrorCode'>) => Promise<void>;
+  requestPreviewRefresh: (id: string, force?: boolean) => Promise<void>;
 
   // Migration
   migrateLegacyData: () => Promise<string | null>;
@@ -58,6 +66,73 @@ interface AppState {
 // Debounce timer for auto-save
 let saveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 const SAVE_DEBOUNCE_MS = 1000;
+const PREVIEW_DEBOUNCE_MS = 2000;
+const PREVIEW_SYSTEM_ENABLED = process.env.NEXT_PUBLIC_UX_PREVIEW_SYSTEM_V1 !== 'false';
+
+function buildGraphSignature(canvas: Pick<StoredCanvas, 'nodes' | 'edges'>): string {
+  return JSON.stringify({ nodes: canvas.nodes, edges: canvas.edges });
+}
+
+function mapPreviewErrorCode(error: unknown): 'UPLOAD_FAILED' | 'CAPTURE_FAILED' | 'UNKNOWN' {
+  if (error instanceof Error) {
+    if (error.message.includes('CAPTURE_FAILED')) return 'CAPTURE_FAILED';
+    if (error.message.toLowerCase().includes('upload')) return 'UPLOAD_FAILED';
+  }
+  return 'UNKNOWN';
+}
+
+const previewQueue = new PreviewLifecycleQueue({
+  debounceMs: PREVIEW_DEBOUNCE_MS,
+  run: async (id) => {
+    const { updateCanvasThumbnail } = useAppStore.getState();
+    const provider = getStorageProvider();
+
+    try {
+      await updateCanvasThumbnail(id, {
+        thumbnailStatus: 'processing',
+        thumbnailErrorCode: undefined,
+      });
+
+      const canvasElement = document.querySelector('.react-flow') as HTMLElement | null;
+      if (!canvasElement) {
+        const current = await provider.getCanvas(id);
+        if (current?.thumbnail || current?.thumbnailUrl) {
+          await updateCanvasThumbnail(id, {
+            thumbnail: current.thumbnail,
+            thumbnailUrl: current.thumbnailUrl,
+            thumbnailStatus: 'ready',
+            thumbnailUpdatedAt: Date.now(),
+            thumbnailVersion: makeThumbnailVersion(),
+            thumbnailErrorCode: undefined,
+          });
+          return;
+        }
+        throw new Error('CAPTURE_FAILED');
+      }
+
+      const blob = await captureCanvasPreview(canvasElement);
+      const file = new File([blob], `canvas-preview-${id}.jpg`, { type: 'image/jpeg' });
+      const uploaded = await uploadAsset(file, { canvasId: id });
+
+      await updateCanvasThumbnail(id, {
+        thumbnail: uploaded.url,
+        thumbnailUrl: uploaded.url,
+        thumbnailStatus: 'ready',
+        thumbnailUpdatedAt: Date.now(),
+        thumbnailVersion: makeThumbnailVersion(),
+        thumbnailErrorCode: undefined,
+      });
+    } catch (error) {
+      const current = await provider.getCanvas(id);
+      await updateCanvasThumbnail(id, {
+        thumbnail: current?.thumbnail,
+        thumbnailUrl: current?.thumbnailUrl,
+        thumbnailStatus: 'error',
+        thumbnailErrorCode: mapPreviewErrorCode(error),
+      });
+    }
+  },
+});
 
 export const useAppStore = create<AppState>()((set, get) => ({
   // Initial state
@@ -70,16 +145,67 @@ export const useAppStore = create<AppState>()((set, get) => ({
   hasUnsavedChanges: false,
   syncStatus: 'idle',
   syncError: null,
+  syncCapability: 'unknown',
   isSyncEnabled: false,
 
   initializeSync: async () => {
-    // Check if SQLite is configured
-    const syncEnabled = isSQLiteConfigured();
-    set({ isSyncEnabled: syncEnabled });
+    let probeResponse: Response | null = null;
 
-    if (!syncEnabled) {
+    try {
+      probeResponse = await fetch('/api/runtime/sync-capability', { method: 'GET' });
+    } catch {
+      set({
+        isSyncEnabled: false,
+        syncCapability: 'local-only',
+        syncError: null,
+      });
       return;
     }
+
+    if (!probeResponse.ok) {
+      set({
+        isSyncEnabled: false,
+        syncCapability: 'local-only',
+        syncError: null,
+      });
+      return;
+    }
+
+    const probePayload = await probeResponse.json().catch(() => null);
+    const probe = parseSyncCapabilityProbe(probePayload);
+
+    if (!probe) {
+      set({
+        isSyncEnabled: false,
+        syncCapability: 'local-only',
+        syncError: null,
+      });
+      return;
+    }
+
+    if (probe.mode === 'local-only') {
+      set({
+        isSyncEnabled: false,
+        syncCapability: 'local-only',
+        syncError: null,
+      });
+      return;
+    }
+
+    if (probe.mode === 'provisioning-blocked') {
+      set({
+        isSyncEnabled: false,
+        syncCapability: 'provisioning-blocked',
+        syncError: probe.message || 'User provisioning is incomplete.',
+      });
+      return;
+    }
+
+    set({
+      isSyncEnabled: true,
+      syncCapability: 'db-sync-available',
+      syncError: null,
+    });
 
     // Subscribe to sync status changes
     subscribeSyncStatus((state) => {
@@ -88,7 +214,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
 
     // Perform initial sync
     const localProvider = getLocalStorageProvider();
-    
+
     await performInitialSync(
       async () => {
         const metaList = await localProvider.listCanvases();
@@ -238,6 +364,11 @@ export const useAppStore = create<AppState>()((set, get) => ({
       nodes: JSON.parse(JSON.stringify(original.nodes)),
       edges: JSON.parse(JSON.stringify(original.edges)),
       thumbnail: original.thumbnail,
+      thumbnailUrl: original.thumbnailUrl,
+      thumbnailStatus: original.thumbnailStatus,
+      thumbnailUpdatedAt: original.thumbnailUpdatedAt,
+      thumbnailVersion: original.thumbnailVersion,
+      thumbnailErrorCode: original.thumbnailErrorCode,
       createdAt: now,
       updatedAt: now,
     };
@@ -295,22 +426,21 @@ export const useAppStore = create<AppState>()((set, get) => ({
     set({ isSaving: true });
 
     try {
+      const existing = await provider.getCanvas(currentCanvasId);
       const canvas: StoredCanvas = {
         id: currentCanvasId,
         name: currentCanvasName,
         nodes: canvasStore.nodes,
         edges: canvasStore.edges,
-        createdAt: 0, // Will be set by provider if new
+        thumbnail: existing?.thumbnail,
+        thumbnailUrl: existing?.thumbnailUrl,
+        thumbnailStatus: existing?.thumbnailStatus,
+        thumbnailUpdatedAt: existing?.thumbnailUpdatedAt,
+        thumbnailVersion: existing?.thumbnailVersion,
+        thumbnailErrorCode: existing?.thumbnailErrorCode,
+        createdAt: existing?.createdAt ?? Date.now(),
         updatedAt: Date.now(),
       };
-
-      // Get existing canvas to preserve createdAt
-      const existing = await provider.getCanvas(currentCanvasId);
-      if (existing) {
-        canvas.createdAt = existing.createdAt;
-      } else {
-        canvas.createdAt = Date.now();
-      }
 
       // Save to localStorage first (instant)
       await provider.saveCanvas(canvas);
@@ -325,6 +455,12 @@ export const useAppStore = create<AppState>()((set, get) => ({
         // Don't await - let it run in background
         syncCanvasToServer(canvas).catch((err) => {
           console.error('Background sync failed:', err);
+        });
+      }
+
+      if (PREVIEW_SYSTEM_ENABLED) {
+        get().requestPreviewRefresh(currentCanvasId).catch((err) => {
+          console.error('Preview refresh failed:', err);
         });
       }
     } catch (error) {
@@ -352,6 +488,43 @@ export const useAppStore = create<AppState>()((set, get) => ({
     saveDebounceTimer = setTimeout(() => {
       get().saveCurrentCanvas();
     }, SAVE_DEBOUNCE_MS);
+  },
+
+  updateCanvasThumbnail: async (id, patch) => {
+    const { isSyncEnabled } = get();
+    const provider = getStorageProvider();
+    const existing = await provider.getCanvas(id);
+    if (!existing) return;
+
+    const next: StoredCanvas = {
+      ...existing,
+      ...patch,
+      thumbnail: patch.thumbnail ?? patch.thumbnailUrl ?? existing.thumbnail,
+      updatedAt: Date.now(),
+    };
+
+    await provider.saveCanvas(next);
+
+    if (isSyncEnabled) {
+      syncCanvasToServer(next).catch((err) => {
+        console.error('Thumbnail sync failed:', err);
+      });
+    }
+
+    if (get().currentCanvasId !== id) {
+      await get().loadCanvasList();
+    }
+  },
+
+  requestPreviewRefresh: async (id, force = false) => {
+    if (!PREVIEW_SYSTEM_ENABLED) return;
+
+    const provider = getStorageProvider();
+    const canvas = await provider.getCanvas(id);
+    if (!canvas) return;
+
+    const signature = buildGraphSignature(canvas);
+    previewQueue.request(id, signature, force);
   },
 
   migrateLegacyData: async () => {

@@ -220,6 +220,10 @@ export interface VideoGenerateRequest {
   lastFrameUrl?: string;
   // Multi-reference mode
   referenceUrls?: string[];
+  // Video reference (for omni-reference models like Seedance 2.0)
+  videoUrl?: string;
+  // Audio reference (for Seedance 2.0 omni-reference)
+  audioUrl?: string;
   generateAudio?: boolean;
 }
 
@@ -285,6 +289,7 @@ class Veo31RefAdapter implements VideoModelAdapter {
     return {
       prompt: request.prompt,
       image_urls: imageUrls,
+      aspect_ratio: request.aspectRatio,
       duration: `${request.duration}s`,
       resolution: request.resolution || '720p',
       generate_audio: request.generateAudio ?? true,
@@ -330,7 +335,7 @@ class KlingT2VAdapter implements VideoModelAdapter {
       prompt: request.prompt,
       duration: String(request.duration),
       aspect_ratio: request.aspectRatio,
-      enable_audio: request.generateAudio !== false,
+      generate_audio: request.generateAudio !== false,
     };
   }
 
@@ -350,16 +355,253 @@ class KlingI2VAdapter implements VideoModelAdapter {
     return {
       prompt: request.prompt,
       duration: String(request.duration),
-      aspect_ratio: request.aspectRatio,
-      ...(startImage && { image_url: startImage }),
-      ...(endImage && { tail_image_url: endImage }),
-      enable_audio: request.generateAudio !== false,
+      ...(startImage && { start_image_url: startImage }),
+      ...(endImage && { end_image_url: endImage }),
+      generate_audio: request.generateAudio !== false,
     };
   }
 
   extractVideoUrl(result: Record<string, unknown>): string | undefined {
     const data = result.data as { video?: { url: string } } | undefined;
     return data?.video?.url;
+  }
+}
+
+// Kling O3 Text-to-Video (Pro)
+class KlingO3T2VAdapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    return {
+      prompt: request.prompt,
+      duration: String(request.duration),
+      aspect_ratio: request.aspectRatio,
+      generate_audio: request.generateAudio !== false,
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+}
+
+// Kling O3 Image-to-Video (Standard & Pro - same API shape)
+class KlingO3I2VAdapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    const startImage = request.firstFrameUrl || request.referenceUrl;
+    const endImage = request.lastFrameUrl;
+
+    return {
+      prompt: request.prompt,
+      duration: String(request.duration),
+      aspect_ratio: request.aspectRatio,
+      ...(startImage && { image_url: startImage }),
+      ...(endImage && { end_image_url: endImage }),
+      generate_audio: request.generateAudio !== false,
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+}
+
+// Kling 3.0 Image-to-Video (uses start_image_url like 2.6, but also supports aspect_ratio)
+class Kling3I2VAdapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    const startImage = request.firstFrameUrl || request.referenceUrl;
+    const endImage = request.lastFrameUrl;
+
+    return {
+      prompt: request.prompt,
+      duration: String(request.duration),
+      aspect_ratio: request.aspectRatio,
+      ...(startImage && { start_image_url: startImage }),
+      ...(endImage && { end_image_url: endImage }),
+      generate_audio: request.generateAudio !== false,
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+}
+
+// Seedance 1.5 Text-to-Video (supports audio)
+class Seedance15T2VAdapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    return {
+      prompt: request.prompt,
+      aspect_ratio: request.aspectRatio,
+      ...(request.resolution && { resolution: request.resolution }),
+      duration: String(request.duration),
+      generate_audio: request.generateAudio ?? true,
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+}
+
+// Seedance 1.5 Image-to-Video (supports audio + optional end frame)
+class Seedance15I2VAdapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    const startImage = request.firstFrameUrl || request.referenceUrl;
+    const endImage = request.lastFrameUrl;
+
+    return {
+      prompt: request.prompt,
+      ...(startImage && { image_url: startImage }),
+      ...(endImage && { end_image_url: endImage }),
+      aspect_ratio: request.aspectRatio,
+      ...(request.resolution && { resolution: request.resolution }),
+      duration: String(request.duration),
+      generate_audio: request.generateAudio ?? true,
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+}
+
+// Seedance 1.0 Pro Text-to-Video (no audio)
+class Seedance10T2VAdapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    return {
+      prompt: request.prompt,
+      aspect_ratio: request.aspectRatio,
+      ...(request.resolution && { resolution: request.resolution }),
+      duration: String(request.duration),
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+}
+
+// Seedance 1.0 Pro Image-to-Video (no audio, single image)
+class Seedance10I2VAdapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    const imageUrl = request.firstFrameUrl || request.referenceUrl;
+
+    return {
+      prompt: request.prompt,
+      ...(imageUrl && { image_url: imageUrl }),
+      aspect_ratio: request.aspectRatio,
+      ...(request.resolution && { resolution: request.resolution }),
+      duration: String(request.duration),
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+}
+
+// Seedance 2.0 Text-to-Video (xskill.ai)
+// buildInput returns the xskill `params` block (not Fal input)
+class Seedance2T2VAdapter implements VideoModelAdapter {
+  constructor(private innerModel: 'seedance_2.0' | 'seedance_2.0_fast') {}
+
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    return {
+      model: this.innerModel,
+      prompt: request.prompt,
+      functionMode: 'first_last_frames',
+      ratio: request.aspectRatio,
+      duration: request.duration,
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    // xskill response: { data: { result: { output: { images: [url] } } } }
+    const data = result.data as { result?: { output?: { images?: string[] } } } | undefined;
+    return data?.result?.output?.images?.[0];
+  }
+}
+
+/**
+ * Translate user-friendly shorthand to X-Skill Seedance API format.
+ * @image1 → @image_file_1, @video1 → @video_file_1, @audio1 → @audio_file_1, etc.
+ */
+function transformSeedancePromptRefs(prompt: string): string {
+  return prompt
+    .replace(/@image(\d+)/gi, (_, n) => `@image_file_${n}`)
+    .replace(/@video(\d+)/gi, (_, n) => `@video_file_${n}`)
+    .replace(/@audio(\d+)/gi, (_, n) => `@audio_file_${n}`);
+}
+
+/**
+ * first_last_frames mode doesn't use explicit @*_file_* references.
+ * Strip/normalize mention tokens to avoid provider-side parameter validation errors.
+ */
+function normalizeSeedanceFirstLastPrompt(prompt: string): string {
+  return prompt
+    .replace(/@image_file_\d+/gi, 'reference image')
+    .replace(/@image\d+/gi, 'reference image')
+    .replace(/@video_file_\d+/gi, '')
+    .replace(/@video\d+/gi, '')
+    .replace(/@audio_file_\d+/gi, '')
+    .replace(/@audio\d+/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+// Seedance 2.0 Image-to-Video (xskill.ai)
+// Supports omni_reference mode when both image and video are provided
+class Seedance2I2VAdapter implements VideoModelAdapter {
+  constructor(private innerModel: 'seedance_2.0' | 'seedance_2.0_fast') {}
+
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    // Collect all image URLs from multi-ref handles, falling back to single ref
+    const imageUrls: string[] = [];
+    if (request.referenceUrls?.length) {
+      imageUrls.push(...request.referenceUrls);
+    } else {
+      const singleUrl = request.firstFrameUrl || request.referenceUrl;
+      if (singleUrl) imageUrls.push(singleUrl);
+    }
+
+    const videoUrl = request.videoUrl;
+    const omniPrompt = transformSeedancePromptRefs(request.prompt);
+
+    // If both images and video are provided, use omni_reference mode
+    if (imageUrls.length > 0 && videoUrl) {
+      return {
+        model: this.innerModel,
+        prompt: omniPrompt,
+        functionMode: 'omni_reference',
+        image_files: imageUrls,
+        video_files: [videoUrl],
+        ...(request.audioUrl && { audio_files: [request.audioUrl] }),
+        ratio: request.aspectRatio,
+        duration: request.duration,
+      };
+    }
+
+    const firstLastPrompt = normalizeSeedanceFirstLastPrompt(request.prompt);
+    // Image-only: use legacy-compatible media_files shape.
+    // Some xskill channels/accounts reject first_last_frames+filePaths with 1000.
+    return {
+      model: this.innerModel,
+      prompt: firstLastPrompt,
+      ...(imageUrls.length > 0 && { media_files: imageUrls }),
+      aspect_ratio: request.aspectRatio,
+      duration: String(request.duration),
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { result?: { output?: { images?: string[] } } } | undefined;
+    return data?.result?.output?.images?.[0];
   }
 }
 
@@ -427,6 +669,21 @@ const videoAdapters: Record<VideoModelType, VideoModelAdapter> = {
   'veo-3.1-fast-flf': new Veo31FLFAdapter(), // Uses same adapter as regular FLF
   'kling-2.6-t2v': new KlingT2VAdapter(),
   'kling-2.6-i2v': new KlingI2VAdapter(),
+  'kling-o3-t2v': new KlingO3T2VAdapter(),
+  'kling-o3-i2v': new KlingO3I2VAdapter(),
+  'kling-o3-pro-i2v': new KlingO3I2VAdapter(),
+  'kling-3.0-t2v': new KlingO3T2VAdapter(),       // Same API shape as O3
+  'kling-3.0-i2v': new Kling3I2VAdapter(),           // Uses start_image_url (not image_url like O3)
+  'kling-3.0-pro-t2v': new KlingO3T2VAdapter(),    // Same API shape as O3
+  'kling-3.0-pro-i2v': new Kling3I2VAdapter(),     // Uses start_image_url (not image_url like O3)
+  'seedance-1.5-t2v': new Seedance15T2VAdapter(),
+  'seedance-1.5-i2v': new Seedance15I2VAdapter(),
+  'seedance-1.0-pro-t2v': new Seedance10T2VAdapter(),
+  'seedance-1.0-pro-i2v': new Seedance10I2VAdapter(),
+  'seedance-2.0-t2v': new Seedance2T2VAdapter('seedance_2.0'),
+  'seedance-2.0-i2v': new Seedance2I2VAdapter('seedance_2.0'),
+  'seedance-2.0-fast-t2v': new Seedance2T2VAdapter('seedance_2.0_fast'),
+  'seedance-2.0-fast-i2v': new Seedance2I2VAdapter('seedance_2.0_fast'),
   'luma-ray2': new LumaRay2Adapter(),
   'minimax-video': new MinimaxVideoAdapter(),
   'runway-gen3': new RunwayGen3Adapter(),

@@ -125,6 +125,7 @@ interface CanvasState {
     productImageUrl?: string;
     characterImageUrl?: string;
     videoUrl?: string;
+    audioUrl?: string;
   };
   clearCanvas: () => void;
 
@@ -939,6 +940,19 @@ export const useCanvasStore = create<CanvasState>()(
           return undefined;
         };
 
+        // Helper to get audio URL from a node
+        const getAudioUrl = (node: AppNode | null | undefined): string | undefined => {
+          if (!node) return undefined;
+          if (node.type === 'musicGenerator') {
+            return (node.data as MusicGeneratorNodeData).outputUrl;
+          } else if (node.type === 'speech') {
+            return (node.data as SpeechNodeData).outputUrl;
+          } else if (node.type === 'videoAudio') {
+            return (node.data as VideoAudioNodeData).outputUrl;
+          }
+          return undefined;
+        };
+
         // Find edges connected to specific handles
         const textEdge = incomingEdges.find((e) => e.targetHandle === 'text');
         const refEdge = incomingEdges.find((e) => e.targetHandle === 'reference');
@@ -947,6 +961,7 @@ export const useCanvasStore = create<CanvasState>()(
         const productImageEdge = incomingEdges.find((e) => e.targetHandle === 'productImage');
         const characterImageEdge = incomingEdges.find((e) => e.targetHandle === 'characterImage');
         const videoEdge = incomingEdges.find((e) => e.targetHandle === 'video');
+        const audioEdge = incomingEdges.find((e) => e.targetHandle === 'audio');
 
         // Multi-reference handles (ref2-ref8 for ImageGenerator, ref1-ref3 for VideoGenerator)
         const refEdges = ['ref1', 'ref2', 'ref3', 'ref4', 'ref5', 'ref6', 'ref7', 'ref8']
@@ -961,6 +976,7 @@ export const useCanvasStore = create<CanvasState>()(
         const productImageNode = productImageEdge ? nodes.find((n) => n.id === productImageEdge.source) : null;
         const characterImageNode = characterImageEdge ? nodes.find((n) => n.id === characterImageEdge.source) : null;
         const videoNode = videoEdge ? nodes.find((n) => n.id === videoEdge.source) : null;
+        const audioNode = audioEdge ? nodes.find((n) => n.id === audioEdge.source) : null;
 
         // Get multi-reference URLs
         const referenceUrls = refEdges
@@ -979,6 +995,7 @@ export const useCanvasStore = create<CanvasState>()(
           productImageUrl: getImageUrl(productImageNode),
           characterImageUrl: getImageUrl(characterImageNode),
           videoUrl: getVideoUrl(videoNode),
+          audioUrl: getAudioUrl(audioNode),
         };
       },
 

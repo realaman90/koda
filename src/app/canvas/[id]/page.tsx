@@ -19,6 +19,7 @@ export default function CanvasPage({ params }: CanvasPageProps) {
   const { id } = use(params);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [accessRole, setAccessRole] = useState<'owner' | 'admin' | 'editor' | 'viewer'>('owner');
 
   const loadCanvas = useAppStore((state) => state.loadCanvas);
   const currentCanvasName = useAppStore((state) => state.currentCanvasName);
@@ -39,6 +40,13 @@ export default function CanvasPage({ params }: CanvasPageProps) {
         const success = await loadCanvas(id);
         if (!success) {
           setError('Canvas not found');
+          return;
+        }
+
+        const response = await fetch(`/api/canvases/${id}`);
+        if (response.ok) {
+          const payload = await response.json();
+          setAccessRole(payload.canvas?.accessRole || 'owner');
         }
       } catch (err) {
         console.error('Failed to load canvas:', err);
@@ -91,13 +99,13 @@ export default function CanvasPage({ params }: CanvasPageProps) {
         <div className="flex-1 flex items-center justify-center">
           <div className="flex flex-col items-center gap-4">
             <div className="text-6xl">🖼️</div>
-            <h1 className="text-xl font-semibold text-foreground">{error}</h1>
+            <h1 className="font-serif text-xl font-normal text-foreground">{error}</h1>
             <p className="text-muted-foreground">
               The canvas you&apos;re looking for doesn&apos;t exist or has been deleted.
             </p>
             <Link
               href="/"
-              className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors"
+              className="mt-4 px-4 py-2 bg-[#3b82f6] hover:bg-[#2563eb] text-white rounded-lg transition-colors"
             >
               Go to Dashboard
             </Link>
@@ -120,8 +128,16 @@ export default function CanvasPage({ params }: CanvasPageProps) {
         onExportPNG={handleExportPNG}
         showSidebar={false}
       >
-        <Canvas />
+        {accessRole === 'viewer' && (
+          <div className="mx-4 mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+            Read-only access: you can view this canvas but cannot edit it.
+          </div>
+        )}
+        <div className={accessRole === 'viewer' ? 'pointer-events-none opacity-80' : ''}>
+          <Canvas />
+        </div>
       </AppShell>
+      {/* FAB removed - AI slop */}
     </ReactFlowProvider>
   );
 }

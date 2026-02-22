@@ -1,6 +1,7 @@
 'use client';
 
-import { memo, useCallback, useState, useRef, useEffect } from 'react';
+import { memo, useCallback, useMemo, useState, useRef, useEffect } from 'react';
+import { MentionEditor, type MentionItem } from '@/components/ui/mention-editor';
 import { Handle, Position, useUpdateNodeInternals, type NodeProps } from '@xyflow/react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -30,7 +31,29 @@ import {
   Volume2,
   VolumeX,
   RefreshCw,
+  Music,
 } from 'lucide-react';
+
+/** Small elapsed-time display that ticks every second */
+function ElapsedTimer({ startedAt }: { startedAt: number }) {
+  const [elapsed, setElapsed] = useState(() => Math.floor((Date.now() - startedAt) / 1000));
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [startedAt]);
+
+  const mins = Math.floor(elapsed / 60);
+  const secs = elapsed % 60;
+
+  return (
+    <p className="text-muted-foreground text-xs tabular-nums">
+      {mins}:{secs.toString().padStart(2, '0')} elapsed
+    </p>
+  );
+}
 
 function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGeneratorNodeType>) {
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
@@ -45,6 +68,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
   const [isHovered, setIsHovered] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Check if this node has any connections
   const isConnected = edges.some(edge => edge.source === id || edge.target === id);
@@ -52,12 +76,34 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
 
   // Get model capabilities
   const modelCapabilities = VIDEO_MODEL_CAPABILITIES[data.model];
-  const { inputMode } = modelCapabilities;
+  const { inputMode, supportsVideoRef } = modelCapabilities;
+
+  // Build mention items from connected handles (for Tiptap @ autocomplete)
+  const mentionItems = useMemo((): MentionItem[] => {
+    if (!supportsVideoRef) return [];
+    const connectedHandles = edges
+      .filter(e => e.target === id)
+      .map(e => e.targetHandle)
+      .filter(Boolean);
+    const items: MentionItem[] = [];
+    for (let i = 1; i <= 3; i++) {
+      if (connectedHandles.includes(`ref${i}`)) {
+        items.push({ id: `image${i}`, label: `image${i}`, type: 'image' });
+      }
+    }
+    if (connectedHandles.includes('video')) {
+      items.push({ id: 'video1', label: 'video1', type: 'video' });
+    }
+    if (connectedHandles.includes('audio')) {
+      items.push({ id: 'audio1', label: 'audio1', type: 'audio' });
+    }
+    return items;
+  }, [supportsVideoRef, edges, id]);
 
   // Update node internals when input mode changes (handles change)
   useEffect(() => {
     updateNodeInternals(id);
-  }, [id, inputMode, updateNodeInternals]);
+  }, [id, inputMode, supportsVideoRef, updateNodeInternals]);
 
   useEffect(() => {
     if (isEditingName && nameInputRef.current) {
@@ -66,14 +112,96 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
     }
   }, [isEditingName]);
 
+  // Poll xskill task status
+  const pollXskillTask = useCallback((taskId: string, taskModel: string) => {
+    // Clear any existing poll
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+    }
+
+    pollIntervalRef.current = setInterval(async () => {
+      try {
+        const response = await fetch('/api/generate-video/poll', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            taskId,
+            model: taskModel,
+            prompt: data.prompt || '',
+            nodeId: id,
+          }),
+        });
+
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.error || 'Poll failed');
+        }
+
+        const result = await response.json();
+
+        if (result.status === 'completed') {
+          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+          updateNodeData(id, {
+            outputUrl: result.videoUrl,
+            isGenerating: false,
+            progress: 100,
+            xskillTaskId: undefined,
+            xskillTaskModel: undefined,
+            xskillStatus: undefined,
+            xskillStartedAt: undefined,
+          });
+          toast.success('Video generated successfully');
+        } else if (result.status === 'failed') {
+          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+          updateNodeData(id, {
+            error: result.error || 'Video generation failed',
+            isGenerating: false,
+            progress: 0,
+            xskillTaskId: undefined,
+            xskillTaskModel: undefined,
+            xskillStatus: undefined,
+            xskillStartedAt: undefined,
+          });
+          toast.error(`Generation failed: ${result.error || 'Unknown error'}`);
+        }
+        // pending/processing — update status for UI
+        if (result.status === 'pending' || result.status === 'processing') {
+          updateNodeData(id, { xskillStatus: result.status });
+        }
+      } catch (error) {
+        console.error('[VideoGenerator] Poll error:', error);
+        // Don't stop polling on transient network errors
+      }
+    }, 5000);
+  }, [id, data.prompt, updateNodeData]);
+
+  // Resume/start polling whenever an async xskill task is active.
+  useEffect(() => {
+    if (data.xskillTaskId && data.xskillTaskModel && data.isGenerating) {
+      pollXskillTask(data.xskillTaskId, data.xskillTaskModel);
+    }
+  }, [data.xskillTaskId, data.xskillTaskModel, data.isGenerating, pollXskillTask]);
+
+  // Cleanup polling interval on unmount.
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, []);
+
   const handleNameSubmit = useCallback(() => {
     setIsEditingName(false);
     updateNodeData(id, { name: nodeName });
   }, [id, nodeName, updateNodeData]);
 
   const handlePromptChange = useCallback(
-    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      updateNodeData(id, { prompt: e.target.value });
+    (value: string) => {
+      updateNodeData(id, { prompt: value });
     },
     [id, updateNodeData]
   );
@@ -142,6 +270,14 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
   const handleGenerate = useCallback(async () => {
     const connectedInputs = getConnectedInputs(id);
     const modelCaps = VIDEO_MODEL_CAPABILITIES[data.model];
+    const hasAnyMediaInput = !!(
+      connectedInputs.referenceUrl ||
+      connectedInputs.firstFrameUrl ||
+      connectedInputs.lastFrameUrl ||
+      connectedInputs.referenceUrls?.length ||
+      connectedInputs.videoUrl ||
+      connectedInputs.audioUrl
+    );
 
     let finalPrompt = data.prompt || '';
     if (connectedInputs.textContent) {
@@ -171,8 +307,8 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
       }
     }
 
-    if (!finalPrompt && !connectedInputs.referenceUrl && !connectedInputs.firstFrameUrl) {
-      toast.error('Please enter a prompt or connect an image');
+    if (!finalPrompt && !hasAnyMediaInput) {
+      toast.error('Please enter a prompt or connect media references');
       return;
     }
 
@@ -185,6 +321,9 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
       hasReferenceUrl: !!connectedInputs.referenceUrl,
       hasFirstFrameUrl: !!connectedInputs.firstFrameUrl,
       hasLastFrameUrl: !!connectedInputs.lastFrameUrl,
+      referenceUrlsCount: connectedInputs.referenceUrls?.length || 0,
+      hasVideoUrl: !!connectedInputs.videoUrl,
+      hasAudioUrl: !!connectedInputs.audioUrl,
     });
 
     try {
@@ -196,10 +335,13 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
           model: data.model,
           aspectRatio: data.aspectRatio,
           duration: data.duration,
+          resolution: data.resolution,
           referenceUrl: connectedInputs.referenceUrl,
           firstFrameUrl: connectedInputs.firstFrameUrl,
           lastFrameUrl: connectedInputs.lastFrameUrl,
           referenceUrls: connectedInputs.referenceUrls,
+          videoUrl: connectedInputs.videoUrl,
+          audioUrl: connectedInputs.audioUrl,
           generateAudio: data.generateAudio,
         }),
       });
@@ -210,6 +352,18 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
       }
 
       const result = await response.json();
+
+      if (result.async && result.taskId) {
+        // xskill async path — store taskId and start client-side polling
+        updateNodeData(id, {
+          xskillTaskId: result.taskId,
+          xskillTaskModel: result.model,
+          xskillStatus: 'pending',
+          xskillStartedAt: Date.now(),
+        });
+        pollXskillTask(result.taskId, result.model);
+        return;
+      }
 
       updateNodeData(id, {
         outputUrl: result.videoUrl,
@@ -228,7 +382,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
       });
       toast.error(`Generation failed: ${errorMessage}`);
     }
-  }, [id, data.prompt, data.model, data.aspectRatio, data.duration, data.generateAudio, updateNodeData, getConnectedInputs]);
+  }, [id, data.prompt, data.model, data.aspectRatio, data.duration, data.resolution, data.generateAudio, updateNodeData, getConnectedInputs, pollXskillTask]);
 
   const handleDelete = useCallback(() => {
     deleteNode(id);
@@ -257,6 +411,14 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
   }, [data.outputUrl]);
 
   const connectedInputs = getConnectedInputs(id);
+  const hasAnyMediaInput = !!(
+    connectedInputs.referenceUrl ||
+    connectedInputs.firstFrameUrl ||
+    connectedInputs.lastFrameUrl ||
+    connectedInputs.referenceUrls?.length ||
+    connectedInputs.videoUrl ||
+    connectedInputs.audioUrl
+  );
 
   // Determine if we have valid inputs based on mode
   const hasValidInput = (() => {
@@ -266,7 +428,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
       case 'text':
         return hasPrompt;
       case 'single-image':
-        return hasPrompt || !!connectedInputs.referenceUrl;
+        return hasPrompt || hasAnyMediaInput;
       case 'first-last-frame':
         // First frame required, last frame depends on lastFrameOptional
         if (!connectedInputs.firstFrameUrl) return false;
@@ -285,7 +447,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
       onMouseLeave={() => setIsHovered(false)}
     >
       {/* Floating Toolbar - hidden in read-only mode */}
-      {selected && !isReadOnly && (
+      {selected && !isReadOnly && !data.isGenerating && (
         <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1 rounded-lg px-2 py-1.5 node-toolbar-floating z-10">
           <Button
             variant="ghost"
@@ -352,7 +514,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
         className={`
           w-[420px] rounded-2xl overflow-hidden
           transition-all duration-150
-          ${data.isGenerating ? 'animate-pulse-glow generating-border-purple' : ''}
+          ${data.isGenerating ? 'animate-subtle-pulse generating-border-subtle' : ''}
           ${!data.isGenerating ? (selected ? 'node-card-selected' : 'node-card') : ''}
         `}
       >
@@ -361,19 +523,31 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
           {/* Loading State */}
           {data.isGenerating ? (
             <div className="p-4 min-h-[200px] flex flex-col items-center justify-center gap-4">
-              <div className="relative">
-                <div className="w-16 h-16 rounded-full border-4 border-border border-t-purple-500 animate-spin" />
-                <Loader2 className="absolute inset-0 m-auto h-6 w-6 text-purple-500 animate-pulse" />
-              </div>
               <div className="text-center">
-                <p className="text-foreground text-sm font-medium">Generating video...</p>
-                <p className="text-muted-foreground text-xs mt-1">This may take a few minutes</p>
+                <p
+                  className="text-base font-semibold bg-clip-text text-transparent"
+                  style={{
+                    backgroundImage:
+                      'linear-gradient(90deg, hsl(var(--muted-foreground)/0.45) 0%, hsl(var(--foreground)/0.95) 45%, hsl(var(--muted-foreground)/0.45) 100%)',
+                    backgroundSize: '200% 100%',
+                    animation: 'shimmer-text 2s ease-in-out infinite',
+                  }}
+                >
+                  {data.xskillTaskId
+                    ? data.xskillStatus === 'processing' ? 'Rendering video...' : 'Queued...'
+                    : 'Generating video...'}
+                </p>
+                <p className="text-muted-foreground text-xs mt-1">
+                  {data.xskillTaskId ? 'Typically 2-5 minutes' : 'This may take a few minutes'}
+                </p>
               </div>
+              {/* Elapsed timer for xskill */}
+              {data.xskillStartedAt && <ElapsedTimer startedAt={data.xskillStartedAt} />}
               {/* Progress bar */}
-              {data.progress !== undefined && data.progress > 0 && (
+              {!data.xskillTaskId && data.progress !== undefined && data.progress > 0 && (
                 <div className="w-full max-w-[200px] h-1.5 bg-muted rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-purple-500 transition-all duration-300"
+                    className="h-full bg-muted-foreground transition-all duration-300"
                     style={{ width: `${data.progress}%` }}
                   />
                 </div>
@@ -386,9 +560,16 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
                 ref={videoRef}
                 src={data.outputUrl}
                 poster={data.thumbnailUrl}
-                controls
-                className="w-full h-auto"
+                className="w-full h-auto cursor-pointer"
                 style={{ maxHeight: '300px' }}
+                onClick={(e) => {
+                  const video = e.currentTarget;
+                  if (video.paused) {
+                    video.play();
+                  } else {
+                    video.pause();
+                  }
+                }}
               />
               {/* Duration badge - visible on hover */}
               <div className="absolute top-3 right-3 px-2 py-0.5 bg-black/50 backdrop-blur-sm rounded text-xs text-zinc-300 font-medium opacity-0 group-hover/video:opacity-100 transition-opacity duration-200">
@@ -421,6 +602,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
                       value: key,
                       label: cap.label,
                       description: cap.description,
+                      group: cap.group,
                     }))}
                     placeholder="Select model"
                     searchPlaceholder="Search models..."
@@ -456,7 +638,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
                       onClick={handleAudioToggle}
                       className={`h-7 w-7 shrink-0 ${
                         data.generateAudio !== false
-                          ? 'text-purple-300 bg-purple-500/30 hover:bg-purple-500/40'
+                          ? 'text-foreground bg-muted/50 hover:bg-muted/80'
                           : 'text-white/70 hover:text-white hover:bg-white/10'
                       }`}
                       title={data.generateAudio !== false ? 'Audio ON' : 'Audio OFF'}
@@ -481,7 +663,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
                     onClick={handleGenerate}
                     disabled={!hasValidInput || data.isGenerating}
                     size="icon-sm"
-                    className="h-8 w-8 min-w-8 bg-purple-500 hover:bg-purple-400 text-white rounded-full disabled:opacity-40 shrink-0 shadow-lg hover:shadow-purple-500/25 transition-all duration-200 hover:scale-105"
+                    className="h-8 w-8 min-w-8 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg disabled:opacity-40 shrink-0 transition-all duration-200 hover:scale-105"
                   >
                     <RefreshCw className="h-4 w-4" />
                   </Button>
@@ -492,14 +674,24 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
             /* Prompt Input - Freepik style with inner content area */
             <div className="p-3">
               <div className="node-content-area p-3 min-h-[160px]">
-                <textarea
-                  value={data.prompt}
-                  onChange={handlePromptChange}
-                  placeholder={isReadOnly ? '' : 'Describe the video you want to generate...'}
-                  disabled={isReadOnly}
-                  className={`w-full h-[130px] bg-transparent border-none text-sm resize-none focus:outline-none ${isReadOnly ? 'cursor-default' : ''}`}
-                  style={{ color: 'var(--text-secondary)' }}
-                />
+                {supportsVideoRef ? (
+                  <MentionEditor
+                    content={data.prompt}
+                    onChange={handlePromptChange}
+                    items={mentionItems}
+                    placeholder="Type @ to reference connected images/videos..."
+                    disabled={isReadOnly}
+                  />
+                ) : (
+                  <textarea
+                    value={data.prompt}
+                    onChange={(e) => handlePromptChange(e.target.value)}
+                    placeholder={isReadOnly ? '' : 'Describe the video you want to generate...'}
+                    disabled={isReadOnly}
+                    className={`w-full h-[130px] bg-transparent border-none text-sm resize-none focus:outline-none ${isReadOnly ? 'cursor-default' : ''}`}
+                    style={{ color: 'var(--text-secondary)' }}
+                  />
+                )}
               </div>
             </div>
           )}
@@ -511,7 +703,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
         </div>
 
         {/* Bottom Toolbar - visible on hover or selected, only when no output */}
-        {!isReadOnly && !data.outputUrl && (selected || isHovered) && (
+        {!isReadOnly && !data.outputUrl && !data.isGenerating && (selected || isHovered) && (
         <div className="flex items-center flex-wrap gap-1.5 px-3 py-2.5 node-bottom-toolbar">
           {/* Model Selector */}
           <SearchableSelect
@@ -521,6 +713,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
               value: key,
               label: VIDEO_MODEL_CAPABILITIES[key].label,
               description: VIDEO_MODEL_CAPABILITIES[key].description,
+              group: VIDEO_MODEL_CAPABILITIES[key].group,
             }))}
             placeholder="Select model"
             searchPlaceholder="Search models..."
@@ -576,7 +769,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
               onClick={handleAudioToggle}
               className={`h-7 w-7 shrink-0 ${
                 data.generateAudio !== false
-                  ? 'text-purple-400 bg-purple-500/20 hover:bg-purple-500/30'
+                  ? 'text-foreground bg-muted hover:bg-muted/80'
                   : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
               }`}
               title={data.generateAudio !== false ? 'Audio ON' : 'Audio OFF'}
@@ -607,7 +800,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
             onClick={handleGenerate}
             disabled={!hasValidInput || data.isGenerating}
             size="icon-sm"
-            className="h-8 w-8 min-w-8 bg-purple-500 hover:bg-purple-400 text-white rounded-full disabled:opacity-40 shrink-0"
+            className="h-8 w-8 min-w-8 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg disabled:opacity-40 shrink-0"
           >
             {data.isGenerating ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -626,7 +819,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
       {inputMode !== 'first-last-frame' && (
         <div
           className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
-          style={{ top: inputMode === 'text' ? '50%' : '30%', transform: 'translateY(-50%)' }}
+          style={{ top: inputMode === 'text' ? '50%' : supportsVideoRef ? '18%' : '30%', transform: 'translateY(-50%)' }}
         >
           <div className="relative">
             <Handle
@@ -643,8 +836,8 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
         </div>
       )}
 
-      {/* Single Image Reference - for single-image mode */}
-      {inputMode === 'single-image' && (
+      {/* Single Image Reference - for single-image mode without multi-ref */}
+      {inputMode === 'single-image' && !supportsVideoRef && (
         <div
           className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
           style={{ top: '60%', transform: 'translateY(-50%)' }}
@@ -662,6 +855,71 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
             Reference Image
           </span>
         </div>
+      )}
+
+      {/* Numbered image + video handles for omni-reference models (e.g. Seedance 2.0) */}
+      {supportsVideoRef && (
+        <>
+          {[1, 2, 3].map((num) => (
+            <div
+              key={`img${num}`}
+              className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
+              style={{ top: `${34 + (num - 1) * 16}%`, transform: 'translateY(-50%)' }}
+            >
+              <div className="relative">
+                <Handle
+                  type="target"
+                  position={Position.Left}
+                  id={`ref${num}`}
+                  className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-red-400 !border-zinc-900 hover:!border-zinc-700"
+                />
+                <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-zinc-900 text-[9px] text-red-300 font-bold rounded-full flex items-center justify-center border border-red-400/60">{num}</span>
+              </div>
+              <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
+                @image{num}
+              </span>
+            </div>
+          ))}
+          <div
+            className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
+            style={{ top: '82%', transform: 'translateY(-50%)' }}
+          >
+            <div className="relative">
+              <Handle
+                type="target"
+                position={Position.Left}
+                id="video"
+                className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-blue-400 !border-zinc-900 hover:!border-zinc-700"
+              />
+              <Video className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+              <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-zinc-900 text-[9px] text-blue-300 font-bold rounded-full flex items-center justify-center border border-blue-400/60">1</span>
+            </div>
+            <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
+              @video1
+            </span>
+          </div>
+
+          {/* Audio Reference Handle */}
+          <div
+            className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
+            style={{ top: '95%', transform: 'translateY(-50%)' }}
+          >
+            <div className="relative">
+              <Handle
+                type="target"
+                position={Position.Left}
+                id="audio"
+                className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-purple-400 !border-zinc-900 hover:!border-zinc-700"
+              />
+              <Music className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+              <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-zinc-900 text-[9px] text-purple-300 font-bold rounded-full flex items-center justify-center border border-purple-400/60">1</span>
+            </div>
+            <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
+              @audio1
+            </span>
+          </div>
+        </>
       )}
 
       {/* First/Last Frame - for first-last-frame mode */}

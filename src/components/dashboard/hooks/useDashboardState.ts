@@ -18,18 +18,26 @@ export interface DashboardState {
   activeTab: TabType;
   searchQuery: string;
   isLoadingList: boolean;
+  loadError: string | null;
   filteredCanvases: ReturnType<typeof useAppStore.getState>['canvasList'];
+  personalCanvases: ReturnType<typeof useAppStore.getState>['canvasList'];
+  teamCanvases: ReturnType<typeof useAppStore.getState>['canvasList'];
+  sharedCanvases: ReturnType<typeof useAppStore.getState>['canvasList'];
+  invites: Array<{ id: string; status: string; email: string; role: string }>;
+  memberships: Array<{ workspaceId: string; workspaceName: string; workspaceType: string; role: string }>;
   filteredTemplates: TemplateMetadata[];
   templates: TemplateMetadata[];
 
   // Actions
   setActiveTab: (tab: TabType) => void;
   setSearchQuery: (query: string) => void;
+  retryLoadCanvases: () => Promise<void>;
   handleCreateCanvas: () => Promise<void>;
   handleSelectTemplate: (templateId: string) => Promise<void>;
   handleRename: (id: string, name: string) => Promise<void>;
   handleDuplicate: (id: string) => Promise<void>;
   handleDelete: (id: string) => Promise<void>;
+  handleRefreshPreview: (id: string) => Promise<void>;
 }
 
 export function useDashboardState(): DashboardState {
@@ -37,6 +45,7 @@ export function useDashboardState(): DashboardState {
   const searchParams = useSearchParams();
   const [isCreating, setIsCreating] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Read tab from URL params
   const tabParam = searchParams.get('tab');
@@ -61,10 +70,13 @@ export function useDashboardState(): DashboardState {
   const renameCanvas = useAppStore((state) => state.renameCanvas);
   const duplicateCanvas = useAppStore((state) => state.duplicateCanvas);
   const deleteCanvas = useAppStore((state) => state.deleteCanvas);
+  const requestPreviewRefresh = useAppStore((state) => state.requestPreviewRefresh);
   const migrateLegacyData = useAppStore((state) => state.migrateLegacyData);
   const initializeSync = useAppStore((state) => state.initializeSync);
 
   const [showcaseTemplates, setShowcaseTemplates] = useState<TemplateMetadata[]>([]);
+  const [invites, setInvites] = useState<Array<{ id: string; status: string; email: string; role: string }>>([]);
+  const [memberships, setMemberships] = useState<Array<{ workspaceId: string; workspaceName: string; workspaceType: string; role: string }>>([]);
 
   // Load showcase templates asynchronously (JSON files from /public/templates/)
   useEffect(() => {
@@ -79,18 +91,58 @@ export function useDashboardState(): DashboardState {
     c.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const personalCanvases = filteredCanvases.filter((canvas) => canvas.workspaceType !== 'team');
+  const teamCanvases = filteredCanvases.filter((canvas) => canvas.workspaceType === 'team' && !canvas.isShared);
+  const sharedCanvases = filteredCanvases.filter((canvas) => canvas.isShared);
+
+  const retryLoadCanvases = useCallback(async () => {
+    try {
+      setLoadError(null);
+      await loadCanvasList();
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Unknown error');
+    }
+  }, [loadCanvasList]);
+
   useEffect(() => {
     async function init() {
-      // Initialize sync with SQLite (if configured)
-      await initializeSync();
+      try {
+        setLoadError(null);
+        // Initialize sync with SQLite (if configured)
+        await initializeSync();
 
-      // Migrate legacy localStorage data
-      const migratedId = await migrateLegacyData();
-      if (migratedId) {
-        toast.success('Migrated your existing canvas');
+        // Migrate legacy localStorage data
+        const migratedId = await migrateLegacyData();
+        if (migratedId) {
+          toast.success('Migrated your existing canvas');
+        }
+
+        const bootstrapResponse = await fetch('/api/workspaces/bootstrap', { method: 'POST' });
+        if (!bootstrapResponse.ok) {
+          let errorMessage = 'Failed to initialize workspace.';
+
+          try {
+            const body = await bootstrapResponse.json();
+            if (typeof body?.error === 'string' && body.error.trim()) {
+              errorMessage = body.error;
+            }
+          } catch {
+            // no-op: fallback message is already set
+          }
+
+          setLoadError(errorMessage);
+          toast.error(`Workspace setup failed: ${errorMessage}`);
+          return;
+        }
+
+        const bootstrap = await bootstrapResponse.json();
+        setInvites(bootstrap.invites || []);
+        setMemberships(bootstrap.memberships || []);
+
+        await loadCanvasList();
+      } catch (error) {
+        setLoadError(error instanceof Error ? error.message : 'Unknown error');
       }
-      
-      await loadCanvasList();
     }
     init();
   }, [loadCanvasList, migrateLegacyData, initializeSync]);
@@ -162,20 +214,37 @@ export function useDashboardState(): DashboardState {
     }
   }, [deleteCanvas]);
 
+  const handleRefreshPreview = useCallback(async (id: string) => {
+    try {
+      await requestPreviewRefresh(id, true);
+      toast.success('Refreshing preview…');
+    } catch {
+      toast.error('Failed to refresh preview');
+    }
+  }, [requestPreviewRefresh]);
+
   return {
     isCreating,
     activeTab,
     searchQuery,
     isLoadingList,
+    loadError,
     filteredCanvases,
+    personalCanvases,
+    teamCanvases,
+    sharedCanvases,
+    invites,
+    memberships,
     filteredTemplates,
     templates,
     setActiveTab,
     setSearchQuery,
+    retryLoadCanvases,
     handleCreateCanvas,
     handleSelectTemplate,
     handleRename,
     handleDuplicate,
     handleDelete,
+    handleRefreshPreview,
   };
 }

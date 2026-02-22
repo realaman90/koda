@@ -27,7 +27,7 @@ function ApiKeyInput({ label, description, value, onChange, placeholder }: ApiKe
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <label className="text-sm font-medium text-zinc-200">{label}</label>
+        <label className="text-sm font-medium text-foreground">{label}</label>
         {hasValue && (
           <span className="flex items-center gap-1 text-xs text-green-500">
             <Check className="h-3 w-3" />
@@ -35,7 +35,7 @@ function ApiKeyInput({ label, description, value, onChange, placeholder }: ApiKe
           </span>
         )}
       </div>
-      <p className="text-xs text-zinc-500">{description}</p>
+      <p className="text-xs text-muted-foreground">{description}</p>
       <div className="flex gap-2">
         <div className="relative flex-1">
           <input
@@ -43,12 +43,12 @@ function ApiKeyInput({ label, description, value, onChange, placeholder }: ApiKe
             value={localValue}
             onChange={(e) => setLocalValue(e.target.value)}
             placeholder={placeholder}
-            className="w-full h-10 px-3 pr-10 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-200 placeholder-zinc-500 outline-none focus:border-indigo-500"
+            className="w-full h-10 px-3 pr-10 bg-muted border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-primary"
           />
           <button
             type="button"
             onClick={() => setShowKey(!showKey)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
           >
             {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           </button>
@@ -56,7 +56,7 @@ function ApiKeyInput({ label, description, value, onChange, placeholder }: ApiKe
         {isDirty && (
           <button
             onClick={handleSave}
-            className="px-4 h-10 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors"
+            className="px-4 h-10 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium rounded-lg transition-colors"
           >
             Save
           </button>
@@ -118,7 +118,7 @@ export function ApiKeysSection() {
         />
       </div>
 
-      <div className="pt-4 border-t border-zinc-800">
+      <div className="pt-4 border-t border-border">
         <button
           onClick={handleClearAll}
           className="px-4 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"

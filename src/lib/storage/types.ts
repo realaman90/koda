@@ -1,5 +1,21 @@
 import type { AppNode, AppEdge } from '@/lib/types';
 
+export type ThumbnailStatus = 'ready' | 'empty' | 'stale' | 'processing' | 'error';
+export type ThumbnailErrorCode = 'UPLOAD_FAILED' | 'CAPTURE_FAILED' | 'UNSUPPORTED' | 'UNKNOWN';
+
+const NON_EMPTY_THUMBNAIL_STATUSES: ThumbnailStatus[] = ['ready', 'stale', 'processing', 'error'];
+
+export function resolveThumbnailStatus(
+  thumbnailStatus: ThumbnailStatus | undefined,
+  thumbnailUrl: string | undefined,
+): ThumbnailStatus {
+  if (thumbnailStatus && NON_EMPTY_THUMBNAIL_STATUSES.includes(thumbnailStatus)) {
+    return thumbnailStatus;
+  }
+
+  return thumbnailUrl ? 'ready' : 'empty';
+}
+
 /**
  * Canvas data structure for storage
  */
@@ -8,7 +24,20 @@ export interface StoredCanvas {
   name: string;
   nodes: AppNode[];
   edges: AppEdge[];
+
+  /**
+   * Legacy field kept for backward compatibility.
+   * Prefer thumbnailUrl for all new writes.
+   */
   thumbnail?: string;
+
+  // Canonical preview metadata
+  thumbnailUrl?: string;
+  thumbnailStatus?: ThumbnailStatus;
+  thumbnailUpdatedAt?: number;
+  thumbnailVersion?: string;
+  thumbnailErrorCode?: ThumbnailErrorCode;
+
   createdAt: number;
   updatedAt: number;
 }
@@ -19,7 +48,22 @@ export interface StoredCanvas {
 export interface CanvasMetadata {
   id: string;
   name: string;
+  workspaceId?: string;
+  workspaceType?: 'personal' | 'team';
+  accessRole?: 'owner' | 'admin' | 'editor' | 'viewer';
+  isShared?: boolean;
+
+  /**
+   * Legacy field kept for UI compatibility during rollout.
+   */
   thumbnail?: string;
+
+  thumbnailUrl?: string;
+  thumbnailStatus: ThumbnailStatus;
+  thumbnailUpdatedAt?: number;
+  thumbnailVersion?: string;
+  thumbnailErrorCode?: ThumbnailErrorCode;
+
   createdAt: number;
   updatedAt: number;
   nodeCount: number;
@@ -82,8 +126,24 @@ export function createEmptyCanvas(name: string = 'Untitled Canvas'): StoredCanva
     name,
     nodes: [],
     edges: [],
+    thumbnailStatus: 'empty',
     createdAt: now,
     updatedAt: now,
+  };
+}
+
+/**
+ * Normalize legacy/partial canvas objects into the canonical shape.
+ */
+export function normalizeStoredCanvas(canvas: StoredCanvas): StoredCanvas {
+  const thumbnailUrl = canvas.thumbnailUrl ?? canvas.thumbnail;
+  const thumbnailStatus = resolveThumbnailStatus(canvas.thumbnailStatus, thumbnailUrl);
+
+  return {
+    ...canvas,
+    thumbnail: canvas.thumbnail ?? thumbnailUrl,
+    thumbnailUrl,
+    thumbnailStatus,
   };
 }
 
@@ -91,12 +151,19 @@ export function createEmptyCanvas(name: string = 'Untitled Canvas'): StoredCanva
  * Convert full canvas to metadata (for listing)
  */
 export function canvasToMetadata(canvas: StoredCanvas): CanvasMetadata {
+  const normalized = normalizeStoredCanvas(canvas);
+
   return {
-    id: canvas.id,
-    name: canvas.name,
-    thumbnail: canvas.thumbnail,
-    createdAt: canvas.createdAt,
-    updatedAt: canvas.updatedAt,
-    nodeCount: canvas.nodes.length,
+    id: normalized.id,
+    name: normalized.name,
+    thumbnail: normalized.thumbnail,
+    thumbnailUrl: normalized.thumbnailUrl,
+    thumbnailStatus: resolveThumbnailStatus(normalized.thumbnailStatus, normalized.thumbnailUrl),
+    thumbnailUpdatedAt: normalized.thumbnailUpdatedAt,
+    thumbnailVersion: normalized.thumbnailVersion,
+    thumbnailErrorCode: normalized.thumbnailErrorCode,
+    createdAt: normalized.createdAt,
+    updatedAt: normalized.updatedAt,
+    nodeCount: normalized.nodes.length,
   };
 }

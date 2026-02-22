@@ -252,6 +252,7 @@ export function Canvas() {
         panOnDrag={activeTool === 'pan'}
         panOnScroll={false}
         zoomOnScroll
+        minZoom={0.25}
         selectionOnDrag={activeTool === 'select' || activeTool === 'scissors'}
         selectionMode={SelectionMode.Partial}
         edgesReconnectable

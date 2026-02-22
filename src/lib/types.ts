@@ -83,12 +83,12 @@ export type ImageModelType = 'flux-schnell' | 'flux-pro' | 'nanobanana-pro' | 'r
 
 // Enabled models - comment/uncomment to toggle visibility in UI
 export const ENABLED_IMAGE_MODELS: ImageModelType[] = [
-  // 'flux-schnell',
-  // 'flux-pro',
+  'flux-schnell',
+  'flux-pro',
   'nanobanana-pro',
-  // 'recraft-v3',
-  // 'ideogram-v3',
-  // 'sd-3.5',
+  'recraft-v3',
+  'ideogram-v3',
+  'sd-3.5',
 ];
 
 // Image Generator Node
@@ -381,18 +381,33 @@ export type VideoModelType =
   | 'veo-3.1-fast-flf'
   | 'kling-2.6-t2v'
   | 'kling-2.6-i2v'
+  | 'kling-o3-t2v'
+  | 'kling-o3-i2v'
+  | 'kling-o3-pro-i2v'
+  | 'kling-3.0-t2v'
+  | 'kling-3.0-i2v'
+  | 'kling-3.0-pro-t2v'
+  | 'kling-3.0-pro-i2v'
+  | 'seedance-1.5-t2v'
+  | 'seedance-1.5-i2v'
+  | 'seedance-1.0-pro-t2v'
+  | 'seedance-1.0-pro-i2v'
+  | 'seedance-2.0-t2v'
+  | 'seedance-2.0-i2v'
+  | 'seedance-2.0-fast-t2v'
+  | 'seedance-2.0-fast-i2v'
   | 'luma-ray2'
   | 'minimax-video'
   | 'runway-gen3';
 
 // Video duration options (in seconds)
-export type VideoDuration = 4 | 5 | 6 | 8 | 9 | 10;
+export type VideoDuration = 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 15;
 
 // Video aspect ratios
 export type VideoAspectRatio = '16:9' | '9:16' | '1:1' | '4:3' | '3:4';
 
 // Video resolution
-export type VideoResolution = '540p' | '720p' | '1080p';
+export type VideoResolution = '480p' | '540p' | '720p' | '1080p';
 
 // Video Generator Node Data
 export interface VideoGeneratorNodeData extends Record<string, unknown> {
@@ -410,6 +425,11 @@ export interface VideoGeneratorNodeData extends Record<string, unknown> {
   isGenerating?: boolean;
   progress?: number; // 0-100
   error?: string;
+  // xskill async polling (Seedance 2.0 models)
+  xskillTaskId?: string; // Active task being polled
+  xskillTaskModel?: string; // Model label for saving
+  xskillStatus?: 'pending' | 'processing'; // Current poll status for UI display
+  xskillStartedAt?: number; // Timestamp when generation started (for elapsed timer)
 }
 
 export type VideoGeneratorNode = Node<VideoGeneratorNodeData, 'videoGenerator'>;
@@ -420,6 +440,7 @@ export type VideoInputMode = 'text' | 'single-image' | 'first-last-frame' | 'mul
 // Video model capabilities
 export interface VideoModelCapabilities {
   label: string;
+  group: string; // Category for grouped dropdown display
   inputType: ModelInputType;
   inputMode: VideoInputMode; // Determines which handles to show
   durations: readonly VideoDuration[];
@@ -429,6 +450,8 @@ export interface VideoModelCapabilities {
   supportsAudio?: boolean;
   maxReferences?: number; // For multi-reference models (default 1)
   lastFrameOptional?: boolean; // For first-last-frame mode: if true, last frame is optional
+  supportsVideoRef?: boolean; // Shows a video reference handle (for omni-reference models like Seedance 2.0)
+  supportsAudioRef?: boolean; // Shows an audio reference handle (for Seedance 2.0 omni-reference)
   description: string;
 }
 
@@ -440,16 +463,32 @@ export const ENABLED_VIDEO_MODELS: VideoModelType[] = [
   'veo-3.1-ref',
   'veo-3.1-flf',
   'veo-3.1-fast-flf',
-  // 'kling-2.6-t2v',
-  // 'kling-2.6-i2v',
-  // 'luma-ray2',
-  // 'minimax-video',
-  // 'runway-gen3',
+  'kling-2.6-t2v',
+  'kling-2.6-i2v',
+  'kling-o3-t2v',
+  'kling-o3-i2v',
+  'kling-o3-pro-i2v',
+  'kling-3.0-t2v',
+  'kling-3.0-i2v',
+  'kling-3.0-pro-t2v',
+  'kling-3.0-pro-i2v',
+  'seedance-1.5-t2v',
+  'seedance-1.5-i2v',
+  'seedance-1.0-pro-t2v',
+  'seedance-1.0-pro-i2v',
+  'seedance-2.0-t2v',
+  'seedance-2.0-i2v',
+  'seedance-2.0-fast-t2v',
+  'seedance-2.0-fast-i2v',
+  'luma-ray2',
+  'minimax-video',
+  'runway-gen3',
 ];
 
 export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabilities> = {
   'veo-3': {
     label: 'Veo 3',
+    group: 'Google Veo',
     inputType: 'text-only',
     inputMode: 'text',
     durations: [4, 6, 8],
@@ -461,6 +500,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
   },
   'veo-3.1-i2v': {
     label: 'Veo 3.1 Image',
+    group: 'Google Veo',
     inputType: 'text-and-image',
     inputMode: 'single-image',
     durations: [4, 6, 8],
@@ -472,6 +512,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
   },
   'veo-3.1-fast-i2v': {
     label: 'Veo 3.1 Fast Image',
+    group: 'Google Veo',
     inputType: 'text-and-image',
     inputMode: 'single-image',
     durations: [4, 6, 8],
@@ -483,6 +524,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
   },
   'veo-3.1-ref': {
     label: 'Veo 3.1 Multi-Ref',
+    group: 'Google Veo',
     inputType: 'text-and-image',
     inputMode: 'multi-reference',
     durations: [8],
@@ -495,6 +537,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
   },
   'veo-3.1-flf': {
     label: 'Veo 3.1 First-Last',
+    group: 'Google Veo',
     inputType: 'image-only',
     inputMode: 'first-last-frame',
     durations: [4, 6, 8],
@@ -505,7 +548,8 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     description: 'First & last frame to video',
   },
   'veo-3.1-fast-flf': {
-    label: 'Veo 3.1 Fast First-Last',
+    label: 'Veo 3.1 Fast F-L',
+    group: 'Google Veo',
     inputType: 'image-only',
     inputMode: 'first-last-frame',
     durations: [4, 6, 8],
@@ -517,6 +561,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
   },
   'kling-2.6-t2v': {
     label: 'Kling 2.6 Text',
+    group: 'Kling',
     inputType: 'text-only',
     inputMode: 'text',
     durations: [5, 10],
@@ -527,6 +572,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
   },
   'kling-2.6-i2v': {
     label: 'Kling 2.6 Image',
+    group: 'Kling',
     inputType: 'text-and-image',
     inputMode: 'first-last-frame',
     durations: [5, 10],
@@ -536,8 +582,185 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     lastFrameOptional: true,
     description: 'Start + optional end frame with audio',
   },
+  'kling-o3-t2v': {
+    label: 'Kling O3 Text',
+    group: 'Kling',
+    inputType: 'text-only',
+    inputMode: 'text',
+    durations: [5, 10, 15],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    supportsAudio: true,
+    description: 'O3 Pro text-to-video',
+  },
+  'kling-o3-i2v': {
+    label: 'Kling O3 Image',
+    group: 'Kling',
+    inputType: 'text-and-image',
+    inputMode: 'first-last-frame',
+    durations: [5, 10, 15],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    supportsAudio: true,
+    lastFrameOptional: true,
+    description: 'O3 Standard image-to-video',
+  },
+  'kling-o3-pro-i2v': {
+    label: 'Kling O3 Pro Image',
+    group: 'Kling',
+    inputType: 'text-and-image',
+    inputMode: 'first-last-frame',
+    durations: [5, 10, 15],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    supportsAudio: true,
+    lastFrameOptional: true,
+    description: 'O3 Pro image-to-video',
+  },
+  'kling-3.0-t2v': {
+    label: 'Kling 3.0 Text',
+    group: 'Kling',
+    inputType: 'text-only',
+    inputMode: 'text',
+    durations: [5, 10, 15],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    supportsAudio: true,
+    description: '3.0 Standard text-to-video',
+  },
+  'kling-3.0-i2v': {
+    label: 'Kling 3.0 Image',
+    group: 'Kling',
+    inputType: 'text-and-image',
+    inputMode: 'first-last-frame',
+    durations: [5, 10, 15],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    supportsAudio: true,
+    lastFrameOptional: true,
+    description: '3.0 Standard image-to-video',
+  },
+  'kling-3.0-pro-t2v': {
+    label: 'Kling 3.0 Pro Text',
+    group: 'Kling',
+    inputType: 'text-only',
+    inputMode: 'text',
+    durations: [5, 10, 15],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    supportsAudio: true,
+    description: '3.0 Pro text-to-video',
+  },
+  'kling-3.0-pro-i2v': {
+    label: 'Kling 3.0 Pro Image',
+    group: 'Kling',
+    inputType: 'text-and-image',
+    inputMode: 'first-last-frame',
+    durations: [5, 10, 15],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    supportsAudio: true,
+    lastFrameOptional: true,
+    description: '3.0 Pro image-to-video',
+  },
+  'seedance-1.5-t2v': {
+    label: 'Seedance 1.5 Text',
+    group: 'Seedance',
+    inputType: 'text-only',
+    inputMode: 'text',
+    durations: [4, 5, 6, 7, 8, 9, 10, 11, 12],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    resolutions: ['480p', '720p', '1080p'],
+    supportsAudio: true,
+    description: 'Latest with audio generation',
+  },
+  'seedance-1.5-i2v': {
+    label: 'Seedance 1.5 Image',
+    group: 'Seedance',
+    inputType: 'text-and-image',
+    inputMode: 'first-last-frame',
+    durations: [4, 5, 6, 7, 8, 9, 10, 11, 12],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    resolutions: ['480p', '720p', '1080p'],
+    supportsAudio: true,
+    lastFrameOptional: true,
+    description: 'Image-to-video with audio',
+  },
+  'seedance-1.0-pro-t2v': {
+    label: 'Seedance 1.0 Pro Text',
+    group: 'Seedance',
+    inputType: 'text-only',
+    inputMode: 'text',
+    durations: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    resolutions: ['480p', '720p', '1080p'],
+    description: '1080p text-to-video',
+  },
+  'seedance-1.0-pro-i2v': {
+    label: 'Seedance 1.0 Pro Image',
+    group: 'Seedance',
+    inputType: 'text-and-image',
+    inputMode: 'single-image',
+    durations: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    resolutions: ['480p', '720p', '1080p'],
+    description: '1080p image-to-video',
+  },
+  'seedance-2.0-t2v': {
+    label: 'Seedance 2.0 Text',
+    group: 'Seedance 2.0',
+    inputType: 'text-only',
+    inputMode: 'text',
+    durations: [4, 5, 6, 7, 8, 9, 10, 11, 12, 15],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    supportsAudio: true,
+    description: 'Best quality, multi-modal',
+  },
+  'seedance-2.0-i2v': {
+    label: 'Seedance 2.0 Image',
+    group: 'Seedance 2.0',
+    inputType: 'text-and-image',
+    inputMode: 'single-image',
+    durations: [4, 5, 6, 7, 8, 9, 10, 11, 12, 15],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    supportsAudio: true,
+    supportsVideoRef: true,
+    supportsAudioRef: true,
+    description: 'Image + video + audio reference (omni)',
+  },
+  'seedance-2.0-fast-t2v': {
+    label: 'Seedance 2.0 Fast Text',
+    group: 'Seedance 2.0',
+    inputType: 'text-only',
+    inputMode: 'text',
+    durations: [4, 5, 6, 7, 8, 9, 10, 11, 12, 15],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    supportsAudio: true,
+    description: 'Faster + cheaper',
+  },
+  'seedance-2.0-fast-i2v': {
+    label: 'Seedance 2.0 Fast Image',
+    group: 'Seedance 2.0',
+    inputType: 'text-and-image',
+    inputMode: 'single-image',
+    durations: [4, 5, 6, 7, 8, 9, 10, 11, 12, 15],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    supportsAudio: true,
+    supportsVideoRef: true,
+    supportsAudioRef: true,
+    description: 'Fast image + video + audio ref (omni)',
+  },
   'luma-ray2': {
     label: 'Luma Ray 2',
+    group: 'Other',
     inputType: 'text-and-image',
     inputMode: 'single-image',
     durations: [5, 9],
@@ -548,6 +771,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
   },
   'minimax-video': {
     label: 'Minimax',
+    group: 'Other',
     inputType: 'text-and-image',
     inputMode: 'single-image',
     durations: [5],
@@ -557,6 +781,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
   },
   'runway-gen3': {
     label: 'Runway Gen-3',
+    group: 'Other',
     inputType: 'image-only',
     inputMode: 'single-image',
     durations: [5, 10],
@@ -566,8 +791,41 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
   },
 } as const;
 
-// Fal model IDs for video
-export const FAL_VIDEO_MODELS: Record<VideoModelType, string> = {
+// Video model API provider
+export type VideoModelProvider = 'fal' | 'xskill';
+
+/** Which API provider each model uses */
+export const VIDEO_MODEL_PROVIDERS: Record<VideoModelType, VideoModelProvider> = {
+  'veo-3': 'fal',
+  'veo-3.1-i2v': 'fal',
+  'veo-3.1-fast-i2v': 'fal',
+  'veo-3.1-ref': 'fal',
+  'veo-3.1-flf': 'fal',
+  'veo-3.1-fast-flf': 'fal',
+  'kling-2.6-t2v': 'fal',
+  'kling-2.6-i2v': 'fal',
+  'kling-o3-t2v': 'fal',
+  'kling-o3-i2v': 'fal',
+  'kling-o3-pro-i2v': 'fal',
+  'kling-3.0-t2v': 'fal',
+  'kling-3.0-i2v': 'fal',
+  'kling-3.0-pro-t2v': 'fal',
+  'kling-3.0-pro-i2v': 'fal',
+  'seedance-1.5-t2v': 'fal',
+  'seedance-1.5-i2v': 'fal',
+  'seedance-1.0-pro-t2v': 'fal',
+  'seedance-1.0-pro-i2v': 'fal',
+  'seedance-2.0-t2v': 'xskill',
+  'seedance-2.0-i2v': 'xskill',
+  'seedance-2.0-fast-t2v': 'xskill',
+  'seedance-2.0-fast-i2v': 'xskill',
+  'luma-ray2': 'fal',
+  'minimax-video': 'fal',
+  'runway-gen3': 'fal',
+} as const;
+
+// Fal model IDs for video (only for provider === 'fal')
+export const FAL_VIDEO_MODELS: Partial<Record<VideoModelType, string>> = {
   'veo-3': 'fal-ai/veo3',
   'veo-3.1-i2v': 'fal-ai/veo3.1/image-to-video',
   'veo-3.1-fast-i2v': 'fal-ai/veo3.1/fast/image-to-video',
@@ -576,9 +834,28 @@ export const FAL_VIDEO_MODELS: Record<VideoModelType, string> = {
   'veo-3.1-fast-flf': 'fal-ai/veo3.1/fast/first-last-frame-to-video',
   'kling-2.6-t2v': 'fal-ai/kling-video/v2.6/pro/text-to-video',
   'kling-2.6-i2v': 'fal-ai/kling-video/v2.6/pro/image-to-video',
+  'kling-o3-t2v': 'fal-ai/kling-video/o3/pro/text-to-video',
+  'kling-o3-i2v': 'fal-ai/kling-video/o3/standard/image-to-video',
+  'kling-o3-pro-i2v': 'fal-ai/kling-video/o3/pro/image-to-video',
+  'kling-3.0-t2v': 'fal-ai/kling-video/v3/standard/text-to-video',
+  'kling-3.0-i2v': 'fal-ai/kling-video/v3/standard/image-to-video',
+  'kling-3.0-pro-t2v': 'fal-ai/kling-video/v3/pro/text-to-video',
+  'kling-3.0-pro-i2v': 'fal-ai/kling-video/v3/pro/image-to-video',
+  'seedance-1.5-t2v': 'fal-ai/bytedance/seedance/v1.5/pro/text-to-video',
+  'seedance-1.5-i2v': 'fal-ai/bytedance/seedance/v1.5/pro/image-to-video',
+  'seedance-1.0-pro-t2v': 'fal-ai/bytedance/seedance/v1/pro/text-to-video',
+  'seedance-1.0-pro-i2v': 'fal-ai/bytedance/seedance/v1/pro/image-to-video',
   'luma-ray2': 'fal-ai/luma-dream-machine',
   'minimax-video': 'fal-ai/minimax-video/image-to-video',
   'runway-gen3': 'fal-ai/runway-gen3/turbo/image-to-video',
+} as const;
+
+// xskill.ai outer model IDs (only for provider === 'xskill')
+export const XSKILL_VIDEO_MODELS: Partial<Record<VideoModelType, string>> = {
+  'seedance-2.0-t2v': 'st-ai/super-seed2',
+  'seedance-2.0-i2v': 'st-ai/super-seed2',
+  'seedance-2.0-fast-t2v': 'st-ai/super-seed2',
+  'seedance-2.0-fast-i2v': 'st-ai/super-seed2',
 } as const;
 
 // ============================================

@@ -12,6 +12,7 @@ import { loadRecipes } from '@/mastra/recipes';
 import { STYLE_PRESETS } from '@/lib/plugins/official/agents/animation-generator/presets';
 import { RequestContext } from '@mastra/core/di';
 import { getSandboxProvider } from '@/lib/sandbox/sandbox-factory';
+import { emitLaunchMetric } from '@/lib/observability/launch-metrics';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -72,6 +73,13 @@ export async function POST(request: Request) {
     } else if (prompt) {
       agentMessages = [{ role: 'user', content: prompt }];
     } else {
+      emitLaunchMetric({
+        metric: 'plugin_execution',
+        status: 'error',
+        source: 'api',
+        pluginId: 'animation-generator',
+        errorCode: 'missing_prompt_or_messages',
+      });
       return NextResponse.json(
         { error: 'Either prompt or messages is required' },
         { status: 400 }
@@ -783,6 +791,14 @@ export async function POST(request: Request) {
               console.warn('Stream aggregation failed (likely tool-only response):', aggregationErr);
             }
 
+            emitLaunchMetric({
+              metric: 'plugin_execution',
+              status: 'success',
+              source: 'api',
+              pluginId: 'animation-generator',
+              metadata: { finishReason: finishReason ?? null },
+            });
+
             safeEnqueue(encoder.encode(`data: ${JSON.stringify({
               type: 'complete',
               text: text || '',
@@ -794,6 +810,14 @@ export async function POST(request: Request) {
         } catch (error) {
           if (!closed) {
             console.error('Stream processing error:', error);
+            emitLaunchMetric({
+              metric: 'plugin_execution',
+              status: 'error',
+              source: 'api',
+              pluginId: 'animation-generator',
+              errorCode: 'stream_error',
+              metadata: { message: error instanceof Error ? error.message : String(error) },
+            });
             safeEnqueue(encoder.encode(`data: ${JSON.stringify({
               type: 'error',
               error: error instanceof Error ? error.message : 'Stream error',
@@ -817,6 +841,14 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error('Animation streaming error:', error);
+    emitLaunchMetric({
+      metric: 'plugin_execution',
+      status: 'error',
+      source: 'api',
+      pluginId: 'animation-generator',
+      errorCode: 'execution_failed',
+      metadata: { message: error instanceof Error ? error.message : String(error) },
+    });
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Streaming failed' },
       { status: 500 }

@@ -1,43 +1,55 @@
-/**
- * Single Canvas API Routes
- * 
- * GET /api/canvases/[id] - Get a canvas by ID
- * PUT /api/canvases/[id] - Update a canvas
- * DELETE /api/canvases/[id] - Delete a canvas
- */
 import 'server-only';
+
 import { NextRequest, NextResponse } from 'next/server';
-import { isSQLiteConfigured } from '@/lib/storage';
+import { requireActor } from '@/lib/auth/actor';
+import {
+  deleteCanvasByIdForWorkspace,
+  getCanvasByIdForWorkspaces,
+  getCanvasWorkspaceIdForWorkspaces,
+  upsertWorkspaceCanvas,
+} from '@/lib/db/canvas-queries';
+import { getDatabaseAsync } from '@/lib/db';
+import { workspaces } from '@/lib/db/schema';
+import { eq } from 'drizzle-orm';
+import { can, type WorkspaceRole } from '@/lib/permissions/matrix';
+import { logAuditEvent } from '@/lib/audit/log';
 
 type RouteParams = { params: Promise<{ id: string }> };
 
-export async function GET(
-  request: NextRequest,
-  { params }: RouteParams
-) {
+export async function GET(_request: NextRequest, { params }: RouteParams) {
+  const actorResult = await requireActor();
+  if (!actorResult.ok) return actorResult.response;
+
   const { id } = await params;
 
-  // Check if SQLite is configured
-  if (!isSQLiteConfigured()) {
-    return NextResponse.json(
-      { error: 'SQLite not configured', backend: 'localStorage' },
-      { status: 400 }
-    );
-  }
-
   try {
-    const { getSQLiteStorageProvider } = await import('@/lib/storage/sqlite-provider');
-    const provider = getSQLiteStorageProvider();
-    const canvas = await provider.getCanvas(id);
+    const canvas = await getCanvasByIdForWorkspaces(id, actorResult.actor.workspaceIds);
 
     if (!canvas) {
-      return NextResponse.json(
-        { error: 'Canvas not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Canvas not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ canvas, backend: 'sqlite' });
+    const workspaceId = await getCanvasWorkspaceIdForWorkspaces(id, actorResult.actor.workspaceIds);
+    const membership = actorResult.actor.memberships.find(
+      (item: { workspaceId: string; role: string }) => item.workspaceId === workspaceId
+    );
+
+    let workspaceType: string | undefined;
+    if (workspaceId) {
+      const db = await getDatabaseAsync();
+      const [workspace] = await db.select({ type: workspaces.type }).from(workspaces).where(eq(workspaces.id, workspaceId));
+      workspaceType = workspace?.type;
+    }
+
+    return NextResponse.json({
+      canvas: {
+        ...canvas,
+        workspaceId,
+        workspaceType: workspaceType || 'personal',
+        accessRole: membership?.role || 'viewer',
+      },
+      backend: 'sqlite',
+    });
   } catch (error) {
     console.error('Failed to get canvas:', error);
     return NextResponse.json(
@@ -47,43 +59,80 @@ export async function GET(
   }
 }
 
-export async function PUT(
-  request: NextRequest,
-  { params }: RouteParams
-) {
+export async function PUT(request: NextRequest, { params }: RouteParams) {
+  const actorResult = await requireActor();
+  if (!actorResult.ok) return actorResult.response;
+
   const { id } = await params;
 
-  // Check if SQLite is configured
-  if (!isSQLiteConfigured()) {
-    return NextResponse.json(
-      { error: 'SQLite not configured' },
-      { status: 400 }
-    );
-  }
-
   try {
+    const existing = await getCanvasByIdForWorkspaces(id, actorResult.actor.workspaceIds);
+
+    if (!existing) {
+      return NextResponse.json({ error: 'Canvas not found' }, { status: 404 });
+    }
+
     const body = await request.json();
-    const { name, nodes, edges, thumbnail, createdAt, updatedAt } = body;
+    const {
+      name,
+      nodes,
+      edges,
+      thumbnail,
+      thumbnailUrl,
+      thumbnailStatus,
+      thumbnailUpdatedAt,
+      thumbnailVersion,
+      thumbnailErrorCode,
+      createdAt,
+      updatedAt,
+      projectId,
+    } = body;
 
-    const { getSQLiteStorageProvider } = await import('@/lib/storage/sqlite-provider');
-    const provider = getSQLiteStorageProvider();
-
-    // Get existing canvas to preserve fields not being updated
-    const existing = await provider.getCanvas(id);
-
-    const canvas = {
+    const mergedCanvas = {
       id,
-      name: name ?? existing?.name ?? 'Untitled',
-      nodes: nodes ?? existing?.nodes ?? [],
-      edges: edges ?? existing?.edges ?? [],
-      thumbnail: thumbnail ?? existing?.thumbnail,
-      createdAt: createdAt ?? existing?.createdAt ?? Date.now(),
+      name: name ?? existing.name ?? 'Untitled',
+      nodes: nodes ?? existing.nodes ?? [],
+      edges: edges ?? existing.edges ?? [],
+      thumbnail: thumbnail ?? existing.thumbnail,
+      thumbnailUrl: thumbnailUrl ?? existing.thumbnailUrl,
+      thumbnailStatus: thumbnailStatus ?? existing.thumbnailStatus,
+      thumbnailUpdatedAt: thumbnailUpdatedAt ?? existing.thumbnailUpdatedAt,
+      thumbnailVersion: thumbnailVersion ?? existing.thumbnailVersion,
+      thumbnailErrorCode: thumbnailErrorCode ?? existing.thumbnailErrorCode,
+      createdAt: createdAt ?? existing.createdAt ?? Date.now(),
       updatedAt: updatedAt ?? Date.now(),
+      projectId: projectId ?? null,
     };
 
-    await provider.saveCanvas(canvas);
+    const workspaceId = await getCanvasWorkspaceIdForWorkspaces(id, actorResult.actor.workspaceIds);
 
-    return NextResponse.json({ success: true, canvas });
+    if (!workspaceId) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+
+    const membership = actorResult.actor.memberships.find(
+      (item: { workspaceId: string; role: string }) => item.workspaceId === workspaceId
+    );
+
+    if (!membership) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+
+    if (!can(membership.role as WorkspaceRole, 'edit')) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    await upsertWorkspaceCanvas(workspaceId, actorResult.actor.user.id, mergedCanvas);
+    await logAuditEvent({
+      workspaceId,
+      actorUserId: actorResult.actor.user.id,
+      action: 'canvas.update',
+      targetType: 'canvas',
+      targetId: id,
+      metadata: { projectId: projectId ?? null },
+    });
+
+    return NextResponse.json({ success: true, canvas: mergedCanvas });
   } catch (error) {
     console.error('Failed to update canvas:', error);
     return NextResponse.json(
@@ -93,25 +142,44 @@ export async function PUT(
   }
 }
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: RouteParams
-) {
+export async function DELETE(_request: NextRequest, { params }: RouteParams) {
+  const actorResult = await requireActor();
+  if (!actorResult.ok) return actorResult.response;
+
   const { id } = await params;
 
-  // Check if SQLite is configured
-  if (!isSQLiteConfigured()) {
-    return NextResponse.json(
-      { error: 'SQLite not configured' },
-      { status: 400 }
-    );
-  }
-
   try {
-    const { getSQLiteStorageProvider } = await import('@/lib/storage/sqlite-provider');
-    const provider = getSQLiteStorageProvider();
+    const canvas = await getCanvasByIdForWorkspaces(id, actorResult.actor.workspaceIds);
 
-    await provider.deleteCanvas(id);
+    if (!canvas) {
+      return NextResponse.json({ error: 'Canvas not found' }, { status: 404 });
+    }
+
+    const workspaceId = await getCanvasWorkspaceIdForWorkspaces(id, actorResult.actor.workspaceIds);
+    if (!workspaceId) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+
+    const membership = actorResult.actor.memberships.find(
+      (item: { workspaceId: string; role: string }) => item.workspaceId === workspaceId
+    );
+
+    if (!membership) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+
+    if (!can(membership.role as WorkspaceRole, 'delete')) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    await deleteCanvasByIdForWorkspace(id, workspaceId);
+    await logAuditEvent({
+      workspaceId,
+      actorUserId: actorResult.actor.user.id,
+      action: 'canvas.delete',
+      targetType: 'canvas',
+      targetId: id,
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

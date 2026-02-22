@@ -300,22 +300,27 @@ export function ChatInput({
 
         {/* Bottom bar */}
         <div className="flex items-center justify-between px-2 py-1 pb-2">
-          {/* Settings summary — click to open panel */}
-          <button
-            onClick={onOpenSettings}
-            className="flex items-center gap-1 px-1.5 py-1 rounded text-[10px] text-[var(--an-text-placeholder)] hover:text-[var(--an-text-muted)] transition-colors"
-            disabled={disabled}
-          >
-            <Settings className="w-3 h-3" />
-            <span>
-              {engine === 'remotion' ? 'Remotion' : 'Theatre'} · {aspectRatio} · {duration}s
-              {techniques.length > 0 ? ` · ${techniques.length} preset${techniques.length > 1 ? 's' : ''}` : ''}
-            </span>
-          </button>
+          {/* Settings summary — click to open panel (hidden when no callback) */}
+          {onOpenSettings ? (
+            <button
+              onClick={onOpenSettings}
+              className="flex items-center gap-1 px-1.5 py-1 rounded text-[10px] text-[var(--an-text-placeholder)] hover:text-[var(--an-text-muted)] transition-colors"
+              disabled={disabled}
+            >
+              <Settings className="w-3 h-3" />
+              <span>
+                {engine === 'remotion' ? 'Remotion' : 'Theatre'} · {aspectRatio} · {duration}s
+                {techniques.length > 0 ? ` · ${techniques.length} preset${techniques.length > 1 ? 's' : ''}` : ''}
+              </span>
+            </button>
+          ) : (
+            <div />
+          )}
 
           {/* Action buttons */}
           <div className="flex items-center gap-1.5">
-            {/* Paperclip / Attach */}
+            {/* Paperclip / Attach (hidden when no media callbacks) */}
+            {(onMediaUpload || onNodeReference) && (
             <DropdownMenu open={showAttachMenu} onOpenChange={setShowAttachMenu}>
               <DropdownMenuTrigger asChild>
                 <button
@@ -355,6 +360,7 @@ export function ChatInput({
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
+            )}
 
             {/* Stop button (when busy) */}
             {isBusy && (

@@ -8,6 +8,7 @@
 import { NextResponse } from 'next/server';
 import { motionAnalyzerAgent } from '@/mastra/agents/motion-analyzer-agent';
 import { RequestContext } from '@mastra/core/di';
+import { emitLaunchMetric } from '@/lib/observability/launch-metrics';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -48,6 +49,13 @@ export async function POST(request: Request) {
     } else if (prompt) {
       agentMessages = [{ role: 'user', content: prompt }];
     } else {
+      emitLaunchMetric({
+        metric: 'plugin_execution',
+        status: 'error',
+        source: 'api',
+        pluginId: 'motion-analyzer',
+        errorCode: 'missing_prompt_or_messages',
+      });
       return NextResponse.json(
         { error: 'Either prompt or messages is required' },
         { status: 400 }
@@ -262,6 +270,12 @@ Note: YouTube URL provided. Analyze the video content using the URL.`,
           if (!closed) {
             const text = await result.text;
             const usage = await result.usage;
+            emitLaunchMetric({
+              metric: 'plugin_execution',
+              status: 'success',
+              source: 'api',
+              pluginId: 'motion-analyzer',
+            });
             safeEnqueue(encoder.encode(`data: ${JSON.stringify({
               type: 'complete',
               text,
@@ -272,6 +286,14 @@ Note: YouTube URL provided. Analyze the video content using the URL.`,
           safeClose();
         } catch (error) {
           console.error('[Motion Analyzer API] Stream error:', error);
+          emitLaunchMetric({
+            metric: 'plugin_execution',
+            status: 'error',
+            source: 'api',
+            pluginId: 'motion-analyzer',
+            errorCode: 'stream_error',
+            metadata: { message: error instanceof Error ? error.message : String(error) },
+          });
           if (!closed) {
             const errMsg = error instanceof Error ? error.message : String(error);
             safeEnqueue(encoder.encode(`data: ${JSON.stringify({ type: 'error', error: errMsg })}\n\n`));
@@ -290,6 +312,14 @@ Note: YouTube URL provided. Analyze the video content using the URL.`,
     });
   } catch (error) {
     console.error('[Motion Analyzer API] Error:', error);
+    emitLaunchMetric({
+      metric: 'plugin_execution',
+      status: 'error',
+      source: 'api',
+      pluginId: 'motion-analyzer',
+      errorCode: 'execution_failed',
+      metadata: { message: error instanceof Error ? error.message : String(error) },
+    });
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 }
