@@ -31,10 +31,13 @@ export function SignUpForm() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [isAwaitingVerification, setIsAwaitingVerification] = useState(false);
+  const [verificationCode, setVerificationCode] = useState('');
   const [formError, setFormError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
-  const isBusy = isSubmitting || isGoogleSubmitting;
+  const isBusy = isSubmitting || isGoogleSubmitting || isVerifying;
   const canSubmit = isLoaded && !isBusy;
 
   const emailErrorId = useMemo(() => (fieldErrors.email ? 'sign-up-email-error' : undefined), [fieldErrors.email]);
@@ -109,13 +112,48 @@ export function SignUpForm() {
         return;
       }
 
-      setFormError('Check your email to verify your account and continue.');
+      await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
+      setIsAwaitingVerification(true);
+      setFormError('We sent a verification code to your email.');
     } catch (error) {
       const parsed = parseClerkError(error, 'Could not create your account. Please try again.');
       setFormError(parsed.formError);
       setFieldErrors((prev) => ({ ...prev, ...parsed.fieldErrors }));
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleVerify = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!signUp || !setActive || !isLoaded || isBusy) return;
+
+    if (!verificationCode.trim()) {
+      setFormError('Enter the verification code from your email.');
+      return;
+    }
+
+    setFormError('');
+    setIsVerifying(true);
+
+    try {
+      const result = await signUp.attemptEmailAddressVerification({
+        code: verificationCode.trim(),
+      });
+
+      if (result.status === 'complete') {
+        await setActive({ session: result.createdSessionId });
+        router.replace('/');
+        return;
+      }
+
+      setFormError('Verification is not complete yet. Please try again.');
+    } catch (error) {
+      const parsed = parseClerkError(error, 'Invalid code. Please try again.');
+      setFormError(parsed.formError);
+    } finally {
+      setIsVerifying(false);
     }
   };
 
@@ -127,149 +165,202 @@ export function SignUpForm() {
 
           <InlineFeedbackArea message={formError} />
 
-          <Button
-            type="button"
-            variant="outline"
-            className="h-11 w-full border-border bg-card text-foreground hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-[var(--focus-ring-strong)]"
-            onClick={handleGoogle}
-            disabled={!isLoaded || isBusy}
-          >
-            {isGoogleSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <GoogleIcon />}
-            Continue with Google
-          </Button>
+          {!isAwaitingVerification ? (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 w-full border-border bg-card text-foreground hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-[var(--focus-ring-strong)]"
+                onClick={handleGoogle}
+                disabled={!isLoaded || isBusy}
+              >
+                {isGoogleSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <GoogleIcon />}
+                Continue with Google
+              </Button>
 
-          <DividerWithLabel label="or continue with email" />
+              <DividerWithLabel label="or continue with email" />
 
-          <form className="space-y-3" onSubmit={handleSubmit} noValidate>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <form className="space-y-3" onSubmit={handleSubmit} noValidate>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <label htmlFor="sign-up-first-name" className="text-sm font-medium text-foreground">
+                      First name
+                    </label>
+                    <Input
+                      id="sign-up-first-name"
+                      autoComplete="given-name"
+                      className={inputBaseClass}
+                      value={firstName}
+                      onChange={(event) => setFirstName(event.target.value)}
+                      onBlur={validate}
+                      aria-invalid={Boolean(fieldErrors.firstName)}
+                      disabled={!canSubmit}
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label htmlFor="sign-up-last-name" className="text-sm font-medium text-foreground">
+                      Last name
+                    </label>
+                    <Input
+                      id="sign-up-last-name"
+                      autoComplete="family-name"
+                      className={inputBaseClass}
+                      value={lastName}
+                      onChange={(event) => setLastName(event.target.value)}
+                      onBlur={validate}
+                      aria-invalid={Boolean(fieldErrors.lastName)}
+                      disabled={!canSubmit}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label htmlFor="sign-up-email" className="text-sm font-medium text-foreground">
+                    Email
+                  </label>
+                  <Input
+                    id="sign-up-email"
+                    type="email"
+                    autoComplete="email"
+                    className={inputBaseClass}
+                    value={email}
+                    onChange={(event) => {
+                      setEmail(event.target.value);
+                      if (fieldErrors.email) setFieldErrors((prev) => ({ ...prev, email: undefined }));
+                    }}
+                    onBlur={validate}
+                    aria-invalid={Boolean(fieldErrors.email)}
+                    aria-describedby={emailErrorId}
+                    disabled={!canSubmit}
+                  />
+                  {fieldErrors.email ? (
+                    <p id={emailErrorId} className="text-sm text-[color:var(--danger)]">
+                      {fieldErrors.email}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="space-y-1.5">
+                  <label htmlFor="sign-up-password" className="text-sm font-medium text-foreground">
+                    Password
+                  </label>
+                  <Input
+                    id="sign-up-password"
+                    type="password"
+                    autoComplete="new-password"
+                    className={inputBaseClass}
+                    value={password}
+                    onChange={(event) => {
+                      setPassword(event.target.value);
+                      if (fieldErrors.password) setFieldErrors((prev) => ({ ...prev, password: undefined }));
+                    }}
+                    onBlur={validate}
+                    aria-invalid={Boolean(fieldErrors.password)}
+                    aria-describedby={passwordErrorId}
+                    disabled={!canSubmit}
+                  />
+                  {fieldErrors.password ? (
+                    <p id={passwordErrorId} className="text-sm text-[color:var(--danger)]">
+                      {fieldErrors.password}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="space-y-1.5">
+                  <label htmlFor="sign-up-confirm-password" className="text-sm font-medium text-foreground">
+                    Confirm password
+                  </label>
+                  <Input
+                    id="sign-up-confirm-password"
+                    type="password"
+                    autoComplete="new-password"
+                    className={inputBaseClass}
+                    value={confirmPassword}
+                    onChange={(event) => {
+                      setConfirmPassword(event.target.value);
+                      if (fieldErrors.confirmPassword) {
+                        setFieldErrors((prev) => ({ ...prev, confirmPassword: undefined }));
+                      }
+                    }}
+                    onBlur={validate}
+                    aria-invalid={Boolean(fieldErrors.confirmPassword)}
+                    aria-describedby={fieldErrors.confirmPassword ? 'sign-up-confirm-password-error' : undefined}
+                    disabled={!canSubmit}
+                  />
+                  {fieldErrors.confirmPassword ? (
+                    <p id="sign-up-confirm-password-error" className="text-sm text-[color:var(--danger)]">
+                      {fieldErrors.confirmPassword}
+                    </p>
+                  ) : null}
+                </div>
+
+                <Button
+                  type="submit"
+                  className="h-11 w-full bg-[var(--accent-primary)] text-[var(--accent-primary-fg)] hover:bg-[var(--accent-primary-hover)] active:bg-[var(--accent-primary-active)] focus-visible:ring-[3px] focus-visible:ring-[var(--focus-ring-strong)]"
+                  disabled={!canSubmit}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Creating account…
+                    </>
+                  ) : (
+                    'Create account'
+                  )}
+                </Button>
+              </form>
+            </>
+          ) : (
+            <form className="space-y-3" onSubmit={handleVerify} noValidate>
+              <p className="text-sm text-muted-foreground">
+                Enter the 6-digit code we sent to <span className="text-foreground">{email}</span>.
+              </p>
               <div className="space-y-1.5">
-                <label htmlFor="sign-up-first-name" className="text-sm font-medium text-foreground">
-                  First name
+                <label htmlFor="sign-up-verification-code" className="text-sm font-medium text-foreground">
+                  Verification code
                 </label>
                 <Input
-                  id="sign-up-first-name"
-                  autoComplete="given-name"
+                  id="sign-up-verification-code"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
                   className={inputBaseClass}
-                  value={firstName}
-                  onChange={(event) => setFirstName(event.target.value)}
-                  onBlur={validate}
-                  aria-invalid={Boolean(fieldErrors.firstName)}
+                  value={verificationCode}
+                  onChange={(event) => setVerificationCode(event.target.value.replace(/\s+/g, ''))}
                   disabled={!canSubmit}
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <label htmlFor="sign-up-last-name" className="text-sm font-medium text-foreground">
-                  Last name
-                </label>
-                <Input
-                  id="sign-up-last-name"
-                  autoComplete="family-name"
-                  className={inputBaseClass}
-                  value={lastName}
-                  onChange={(event) => setLastName(event.target.value)}
-                  onBlur={validate}
-                  aria-invalid={Boolean(fieldErrors.lastName)}
-                  disabled={!canSubmit}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label htmlFor="sign-up-email" className="text-sm font-medium text-foreground">
-                Email
-              </label>
-              <Input
-                id="sign-up-email"
-                type="email"
-                autoComplete="email"
-                className={inputBaseClass}
-                value={email}
-                onChange={(event) => {
-                  setEmail(event.target.value);
-                  if (fieldErrors.email) setFieldErrors((prev) => ({ ...prev, email: undefined }));
-                }}
-                onBlur={validate}
-                aria-invalid={Boolean(fieldErrors.email)}
-                aria-describedby={emailErrorId}
+              <Button
+                type="submit"
+                className="h-11 w-full bg-[var(--accent-primary)] text-[var(--accent-primary-fg)] hover:bg-[var(--accent-primary-hover)] active:bg-[var(--accent-primary-active)] focus-visible:ring-[3px] focus-visible:ring-[var(--focus-ring-strong)]"
                 disabled={!canSubmit}
-              />
-              {fieldErrors.email ? (
-                <p id={emailErrorId} className="text-sm text-[color:var(--danger)]">
-                  {fieldErrors.email}
-                </p>
-              ) : null}
-            </div>
+              >
+                {isVerifying ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Verifying…
+                  </>
+                ) : (
+                  'Verify email'
+                )}
+              </Button>
 
-            <div className="space-y-1.5">
-              <label htmlFor="sign-up-password" className="text-sm font-medium text-foreground">
-                Password
-              </label>
-              <Input
-                id="sign-up-password"
-                type="password"
-                autoComplete="new-password"
-                className={inputBaseClass}
-                value={password}
-                onChange={(event) => {
-                  setPassword(event.target.value);
-                  if (fieldErrors.password) setFieldErrors((prev) => ({ ...prev, password: undefined }));
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-11 w-full"
+                onClick={() => {
+                  setIsAwaitingVerification(false);
+                  setVerificationCode('');
+                  setFormError('');
                 }}
-                onBlur={validate}
-                aria-invalid={Boolean(fieldErrors.password)}
-                aria-describedby={passwordErrorId}
-                disabled={!canSubmit}
-              />
-              {fieldErrors.password ? (
-                <p id={passwordErrorId} className="text-sm text-[color:var(--danger)]">
-                  {fieldErrors.password}
-                </p>
-              ) : null}
-            </div>
-
-            <div className="space-y-1.5">
-              <label htmlFor="sign-up-confirm-password" className="text-sm font-medium text-foreground">
-                Confirm password
-              </label>
-              <Input
-                id="sign-up-confirm-password"
-                type="password"
-                autoComplete="new-password"
-                className={inputBaseClass}
-                value={confirmPassword}
-                onChange={(event) => {
-                  setConfirmPassword(event.target.value);
-                  if (fieldErrors.confirmPassword) {
-                    setFieldErrors((prev) => ({ ...prev, confirmPassword: undefined }));
-                  }
-                }}
-                onBlur={validate}
-                aria-invalid={Boolean(fieldErrors.confirmPassword)}
-                aria-describedby={fieldErrors.confirmPassword ? 'sign-up-confirm-password-error' : undefined}
-                disabled={!canSubmit}
-              />
-              {fieldErrors.confirmPassword ? (
-                <p id="sign-up-confirm-password-error" className="text-sm text-[color:var(--danger)]">
-                  {fieldErrors.confirmPassword}
-                </p>
-              ) : null}
-            </div>
-
-            <Button
-              type="submit"
-              className="h-11 w-full bg-[var(--accent-primary)] text-[var(--accent-primary-fg)] hover:bg-[var(--accent-primary-hover)] active:bg-[var(--accent-primary-active)] focus-visible:ring-[3px] focus-visible:ring-[var(--focus-ring-strong)]"
-              disabled={!canSubmit}
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Creating account…
-                </>
-              ) : (
-                'Create account'
-              )}
-            </Button>
-          </form>
+                disabled={isBusy}
+              >
+                Use a different email
+              </Button>
+            </form>
+          )}
 
           <AuthFooterLinks prompt="Already have an account?" href="/sign-in" label="Sign in" />
         </div>
