@@ -65,8 +65,63 @@ const SCHEMA_SQL_STATEMENTS = [
   `CREATE UNIQUE INDEX IF NOT EXISTS users_clerk_user_id_unique ON users(clerk_user_id)`,
   `CREATE INDEX IF NOT EXISTS idx_users_clerk_user_id ON users(clerk_user_id)`,
   `CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`,
+  `CREATE TABLE IF NOT EXISTS workspaces (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    slug TEXT,
+    type TEXT NOT NULL DEFAULT 'personal',
+    owner_user_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS workspaces_slug_unique ON workspaces(slug)`,
+  `CREATE INDEX IF NOT EXISTS idx_workspaces_owner ON workspaces(owner_user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_workspaces_type ON workspaces(type)`,
+  `CREATE TABLE IF NOT EXISTS workspace_members (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'viewer',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS workspace_members_workspace_user_unique ON workspace_members(workspace_id, user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_workspace_members_workspace_role ON workspace_members(workspace_id, role)`,
+  `CREATE INDEX IF NOT EXISTS idx_workspace_members_user ON workspace_members(user_id)`,
+  `CREATE TABLE IF NOT EXISTS workspace_invites (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    email TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'viewer',
+    status TEXT NOT NULL DEFAULT 'pending',
+    token TEXT NOT NULL,
+    invited_by_user_id TEXT NOT NULL,
+    expires_at INTEGER,
+    accepted_at INTEGER,
+    revoked_at INTEGER,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS workspace_invites_token_unique ON workspace_invites(token)`,
+  `CREATE INDEX IF NOT EXISTS idx_workspace_invites_workspace_email_status ON workspace_invites(workspace_id, email, status)`,
+  `CREATE INDEX IF NOT EXISTS idx_workspace_invites_workspace_status ON workspace_invites(workspace_id, status)`,
+  `CREATE INDEX IF NOT EXISTS idx_workspace_invites_email_status ON workspace_invites(email, status)`,
+  `CREATE TABLE IF NOT EXISTS projects (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    owner_user_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_projects_workspace ON projects(workspace_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_projects_owner ON projects(owner_user_id)`,
   `CREATE TABLE IF NOT EXISTS canvases (
     id TEXT PRIMARY KEY,
+    workspace_id TEXT,
+    owner_user_id TEXT,
+    project_id TEXT,
     name TEXT NOT NULL,
     nodes TEXT,
     edges TEXT,
@@ -79,6 +134,20 @@ const SCHEMA_SQL_STATEMENTS = [
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS audit_logs (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    actor_user_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    metadata TEXT,
+    created_at INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_audit_logs_workspace_created ON audit_logs(workspace_id, created_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_audit_logs_actor ON audit_logs(actor_user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_audit_logs_target ON audit_logs(target_type, target_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action)`,
   `CREATE INDEX IF NOT EXISTS idx_canvases_updated ON canvases(updated_at DESC)`,
   `CREATE TABLE IF NOT EXISTS animation_projects (
     id TEXT PRIMARY KEY,
@@ -105,11 +174,21 @@ const SCHEMA_SQL_STATEMENTS = [
 ];
 
 const CANVAS_COLUMN_MIGRATIONS = [
+  `ALTER TABLE canvases ADD COLUMN workspace_id TEXT`,
+  `ALTER TABLE canvases ADD COLUMN owner_user_id TEXT`,
+  `ALTER TABLE canvases ADD COLUMN project_id TEXT`,
   `ALTER TABLE canvases ADD COLUMN thumbnail_url TEXT`,
   `ALTER TABLE canvases ADD COLUMN thumbnail_status TEXT NOT NULL DEFAULT 'empty'`,
   `ALTER TABLE canvases ADD COLUMN thumbnail_updated_at INTEGER`,
   `ALTER TABLE canvases ADD COLUMN thumbnail_version TEXT`,
   `ALTER TABLE canvases ADD COLUMN thumbnail_error_code TEXT`,
+];
+
+const POST_COLUMN_INDEX_SQL = [
+  `CREATE INDEX IF NOT EXISTS idx_canvases_workspace ON canvases(workspace_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_canvases_workspace_updated ON canvases(workspace_id, updated_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_canvases_owner ON canvases(owner_user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_canvases_project ON canvases(project_id)`,
 ];
 
 const CANVAS_BACKFILL_SQL = [
@@ -151,6 +230,10 @@ async function migrateLocal(dbPath: string) {
       } catch {
         // Column already exists (safe to ignore)
       }
+    }
+
+    for (const sql of POST_COLUMN_INDEX_SQL) {
+      db.exec(sql);
     }
 
     for (const sql of CANVAS_BACKFILL_SQL) {
@@ -198,6 +281,10 @@ async function migrateTurso(url: string, authToken?: string) {
       } catch {
         // Column already exists (safe to ignore)
       }
+    }
+
+    for (const sql of POST_COLUMN_INDEX_SQL) {
+      await client.execute(sql);
     }
 
     for (const sql of CANVAS_BACKFILL_SQL) {
