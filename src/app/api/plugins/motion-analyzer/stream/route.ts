@@ -10,32 +10,68 @@ import { motionAnalyzerAgent } from '@/mastra/agents/motion-analyzer-agent';
 import { RequestContext } from '@mastra/core/di';
 import { emitLaunchMetric } from '@/lib/observability/launch-metrics';
 import { evaluatePluginLaunchById, emitPluginPolicyAuditEvent } from '@/lib/plugins/launch-policy';
+import { z } from 'zod';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
 export const bodySizeLimit = '50mb';
 
-interface StreamRequestBody {
-  prompt?: string;
-  messages?: Array<{ role: 'user' | 'assistant'; content: string }>;
-  context?: {
-    nodeId?: string;
-    phase?: string;
-    video?: {
-      id: string;
-      source: 'upload' | 'youtube';
-      name: string;
-      dataUrl: string; // data: URL, http(s) URL (from presigned upload), or blob URL
-      remoteUrl?: string; // R2/S3 URL from presigned upload
-      youtubeUrl?: string;
-      mimeType?: string;
-      duration?: number;
-      trimStart?: number;
-      trimEnd?: number;
-    };
-  };
-}
+const VideoContextSchema = z.object({
+  id: z.string().min(1),
+  source: z.enum(['upload', 'youtube']),
+  name: z.string().min(1).max(256),
+  dataUrl: z.string().min(1),
+  remoteUrl: z.string().url().optional(),
+  youtubeUrl: z.string().url().optional(),
+  mimeType: z.string().max(128).optional(),
+  duration: z.number().positive().max(60 * 60).optional(),
+  trimStart: z.number().min(0).max(60 * 60).optional(),
+  trimEnd: z.number().min(0).max(60 * 60).optional(),
+});
+
+const MotionStreamRequestSchema = z.object({
+  prompt: z.string().min(1).max(4000).optional(),
+  messages: z.array(z.object({
+    role: z.enum(['user', 'assistant']),
+    content: z.string().min(1).max(4000),
+  })).max(50).optional(),
+  context: z.object({
+    nodeId: z.string().max(128).optional(),
+    phase: z.string().max(64).optional(),
+    video: VideoContextSchema.optional(),
+  }).optional(),
+}).superRefine((value, ctx) => {
+  if ((!value.prompt || value.prompt.trim().length === 0) && (!value.messages || value.messages.length === 0)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Either prompt or messages is required',
+      path: ['prompt'],
+    });
+  }
+
+  const trimStart = value.context?.video?.trimStart;
+  const trimEnd = value.context?.video?.trimEnd;
+
+  if ((trimStart !== undefined || trimEnd !== undefined) && (trimStart === undefined || trimEnd === undefined)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'trimStart and trimEnd must be provided together',
+      path: ['context', 'video', 'trimStart'],
+    });
+  }
+
+  if (trimStart !== undefined && trimEnd !== undefined) {
+    const span = trimEnd - trimStart;
+    if (span < 1 || span > 20) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Trim range must be between 1 and 20 seconds',
+        path: ['context', 'video', 'trimEnd'],
+      });
+    }
+  }
+});
 
 export async function POST(request: Request) {
   try {
@@ -65,8 +101,19 @@ export async function POST(request: Request) {
       );
     }
 
-    const body: StreamRequestBody = await request.json();
-    const { prompt, messages, context } = body;
+    const rawBody = await request.json();
+    const parsedBody = MotionStreamRequestSchema.safeParse(rawBody);
+    if (!parsedBody.success) {
+      return NextResponse.json(
+        {
+          error: 'Invalid request payload',
+          issues: parsedBody.error.issues,
+        },
+        { status: 400 }
+      );
+    }
+
+    const { prompt, messages, context } = parsedBody.data;
 
     // Normalize input
     let agentMessages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
