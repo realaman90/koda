@@ -108,7 +108,7 @@ const SCHEMA_SQL_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_workspace_invites_email_status ON workspace_invites(email, status)`,
   `CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
-    workspace_id TEXT NOT NULL,
+    workspace_id TEXT,
     owner_user_id TEXT NOT NULL,
     name TEXT NOT NULL,
     description TEXT,

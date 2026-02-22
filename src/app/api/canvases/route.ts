@@ -1,42 +1,20 @@
-/**
- * Canvas API Routes
- * 
- * GET /api/canvases - List all canvases
- * POST /api/canvases - Create a new canvas
- */
 import 'server-only';
+
 import { NextRequest, NextResponse } from 'next/server';
-import { isSQLiteConfigured } from '@/lib/storage';
+import { requireActor, resolveDefaultWorkspaceId } from '@/lib/auth/actor';
+import { listCanvasesForWorkspaces, upsertWorkspaceCanvas } from '@/lib/db/canvas-queries';
 
 export async function GET() {
-  // Check if SQLite is configured
-  if (!isSQLiteConfigured()) {
-    return NextResponse.json({ canvases: [], backend: 'localStorage' });
-  }
+  const actorResult = await requireActor();
+  if (!actorResult.ok) return actorResult.response;
 
-  try {
-    const { getSQLiteStorageProvider } = await import('@/lib/storage/sqlite-provider');
-    const provider = getSQLiteStorageProvider();
-    const canvases = await provider.listCanvases();
-    
-    return NextResponse.json({ canvases, backend: 'sqlite' });
-  } catch (error) {
-    console.error('Failed to list canvases:', error);
-    return NextResponse.json(
-      { error: 'Failed to list canvases', details: String(error) },
-      { status: 500 }
-    );
-  }
+  const canvases = await listCanvasesForWorkspaces(actorResult.actor.workspaceIds);
+  return NextResponse.json({ canvases, backend: 'sqlite' });
 }
 
 export async function POST(request: NextRequest) {
-  // Check if SQLite is configured
-  if (!isSQLiteConfigured()) {
-    return NextResponse.json(
-      { error: 'SQLite not configured' },
-      { status: 400 }
-    );
-  }
+  const actorResult = await requireActor();
+  if (!actorResult.ok) return actorResult.response;
 
   try {
     const body = await request.json();
@@ -53,17 +31,24 @@ export async function POST(request: NextRequest) {
       thumbnailErrorCode,
       createdAt,
       updatedAt,
+      workspaceId,
+      projectId,
     } = body;
 
     if (!id || !name) {
-      return NextResponse.json(
-        { error: 'Missing required fields: id, name' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Missing required fields: id, name' }, { status: 400 });
     }
 
-    const { getSQLiteStorageProvider } = await import('@/lib/storage/sqlite-provider');
-    const provider = getSQLiteStorageProvider();
+    const targetWorkspaceId =
+      workspaceId || (await resolveDefaultWorkspaceId(actorResult.actor.user.id));
+
+    if (!targetWorkspaceId) {
+      return NextResponse.json({ error: 'No workspace available for actor' }, { status: 409 });
+    }
+
+    if (!actorResult.actor.workspaceIds.includes(targetWorkspaceId)) {
+      return NextResponse.json({ error: 'Forbidden workspace' }, { status: 403 });
+    }
 
     const canvas = {
       id,
@@ -78,11 +63,12 @@ export async function POST(request: NextRequest) {
       thumbnailErrorCode,
       createdAt: createdAt || Date.now(),
       updatedAt: updatedAt || Date.now(),
+      projectId: projectId || null,
     };
 
-    await provider.saveCanvas(canvas);
+    await upsertWorkspaceCanvas(targetWorkspaceId, actorResult.actor.user.id, canvas);
 
-    return NextResponse.json({ success: true, canvas });
+    return NextResponse.json({ success: true, canvas: { ...canvas, workspaceId: targetWorkspaceId } });
   } catch (error) {
     console.error('Failed to create canvas:', error);
     return NextResponse.json(

@@ -104,7 +104,7 @@ export const projects = sqliteTable(
   'projects',
   {
     id: text('id').primaryKey(),
-    workspaceId: text('workspace_id').notNull(),
+    workspaceId: text('workspace_id'),
     ownerUserId: text('owner_user_id').notNull(),
     name: text('name').notNull(),
     description: text('description'),
