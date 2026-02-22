@@ -16,9 +16,9 @@ import {
   Check,
   Loader2,
 } from 'lucide-react';
-import { UserButton } from '@clerk/nextjs';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { cn } from '@/lib/utils';
+import { AccountMenu } from './AccountMenu';
 
 interface TopBarProps {
   mode?: 'dashboard' | 'canvas';
@@ -97,7 +97,7 @@ export function TopBar({
     [handleNameSubmit, canvasName]
   );
 
-  const { user } = useCurrentUser();
+  const { user, isLoading } = useCurrentUser();
   const isClerkUiEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
 
   const displayName = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() || user?.email || 'User';
@@ -271,14 +271,7 @@ export function TopBar({
 
         {/* User Menu / Avatar */}
         {isClerkUiEnabled ? (
-          <UserButton
-            afterSignOutUrl="/sign-in"
-            appearance={{
-              elements: {
-                userButtonAvatarBox: 'h-8 w-8',
-              },
-            }}
-          />
+          <AccountMenu user={user} displayName={displayName} initials={initials} isLoading={isLoading} />
         ) : (
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-medium text-primary-foreground">
             {initials || 'U'}
