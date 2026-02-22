@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { resolveDistributionMode } from '@/lib/distribution/capabilities';
+
 export type LaunchMetricName =
   | 'signup_completion'
   | 'workspace_bootstrap'
@@ -18,17 +20,7 @@ export interface LaunchMetricEvent {
 }
 
 function resolveDeploymentMode(): 'oss' | 'hosted' {
-  const explicit = process.env.KODA_LAUNCH_ENV?.toLowerCase();
-  if (explicit === 'hosted' || explicit === 'oss') return explicit;
-
-  // Hosted baseline typically runs with E2B/Turso/R2 enabled.
-  const isHosted =
-    process.env.SANDBOX_PROVIDER === 'e2b' ||
-    !!process.env.TURSO_DATABASE_URL ||
-    process.env.ASSET_STORAGE === 'r2' ||
-    process.env.SNAPSHOT_STORAGE === 'r2';
-
-  return isHosted ? 'hosted' : 'oss';
+  return resolveDistributionMode().distribution;
 }
 
 /**

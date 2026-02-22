@@ -1,11 +1,13 @@
+import { isRuntimeFeatureEnabled } from '@/lib/distribution/capabilities';
+
 export function isAuthV1Enabled() {
-  return process.env.AUTH_V1 !== 'false';
+  return isRuntimeFeatureEnabled('authV1', 'AUTH_V1');
 }
 
 export function isWorkspacesV1Enabled() {
-  return process.env.WORKSPACES_V1 !== 'false';
+  return isRuntimeFeatureEnabled('workspacesV1', 'WORKSPACES_V1');
 }
 
 export function isCollabSharingV1Enabled() {
-  return process.env.COLLAB_SHARING_V1 !== 'false';
+  return isRuntimeFeatureEnabled('collabSharingV1', 'COLLAB_SHARING_V1');
 }
