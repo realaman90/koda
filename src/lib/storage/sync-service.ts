@@ -22,7 +22,7 @@ interface SyncState {
 }
 
 // Singleton state
-let syncState: SyncState = {
+const syncState: SyncState = {
   status: 'idle',
   lastSyncedAt: null,
   pendingChanges: new Set(),

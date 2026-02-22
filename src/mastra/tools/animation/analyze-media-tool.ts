@@ -363,7 +363,8 @@ Example:
   outputSchema: MediaAnalysisResultSchema,
 
   execute: async (input, context) => {
-    let { mediaUrl, mediaBase64, mimeType } = input;
+    const { mediaUrl } = input;
+    let { mediaBase64, mimeType } = input;
 
     // ── Resolve media data from RequestContext or sandbox ──
     const sandboxId = resolveSandboxId(undefined, context as ToolContext);
