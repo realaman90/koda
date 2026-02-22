@@ -7,6 +7,7 @@ import { Webhook } from 'svix';
 import { eq } from 'drizzle-orm';
 import { getDatabaseAsync } from '@/lib/db';
 import { users } from '@/lib/db/schema';
+import { emitLaunchMetric } from '@/lib/observability/launch-metrics';
 
 type ClerkWebhookEvent = {
   type: string;
@@ -38,6 +39,12 @@ export async function POST(req: Request) {
   const signingSecret = process.env.CLERK_WEBHOOK_SIGNING_SECRET;
 
   if (!signingSecret) {
+    emitLaunchMetric({
+      metric: 'signup_completion',
+      status: 'error',
+      source: 'webhook',
+      errorCode: 'missing_webhook_secret',
+    });
     return NextResponse.json(
       { error: 'Missing CLERK_WEBHOOK_SIGNING_SECRET' },
       { status: 500 }
@@ -52,6 +59,12 @@ export async function POST(req: Request) {
   const svixSignature = headerPayload.get('svix-signature');
 
   if (!svixId || !svixTimestamp || !svixSignature) {
+    emitLaunchMetric({
+      metric: 'signup_completion',
+      status: 'error',
+      source: 'webhook',
+      errorCode: 'missing_svix_headers',
+    });
     return NextResponse.json({ error: 'Missing svix headers' }, { status: 400 });
   }
 
@@ -66,6 +79,13 @@ export async function POST(req: Request) {
       'svix-signature': svixSignature,
     }) as ClerkWebhookEvent;
   } catch (error) {
+    emitLaunchMetric({
+      metric: 'signup_completion',
+      status: 'error',
+      source: 'webhook',
+      errorCode: 'invalid_webhook_signature',
+      metadata: { message: String(error) },
+    });
     return NextResponse.json(
       { error: 'Invalid webhook signature', details: String(error) },
       { status: 400 }
@@ -84,6 +104,13 @@ export async function POST(req: Request) {
     const email = getPrimaryEmail(evt.data);
 
     if (!email) {
+      emitLaunchMetric({
+        metric: 'signup_completion',
+        status: 'error',
+        source: 'webhook',
+        errorCode: 'missing_email',
+        metadata: { eventType: evt.type },
+      });
       return NextResponse.json(
         { error: 'User payload missing email' },
         { status: 400 }
@@ -112,6 +139,15 @@ export async function POST(req: Request) {
           updatedAt: now,
         },
       });
+
+    if (evt.type === 'user.created') {
+      emitLaunchMetric({
+        metric: 'signup_completion',
+        status: 'success',
+        source: 'webhook',
+        metadata: { userId: evt.data.id },
+      });
+    }
 
     return NextResponse.json({ ok: true, action: 'upserted' });
   }

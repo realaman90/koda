@@ -16,6 +16,7 @@ import {
   getRefinementSystemPrompt,
   buildRefinementPrompt,
 } from '@/lib/plugins/official/storyboard-generator/schema';
+import { emitLaunchMetric } from '@/lib/observability/launch-metrics';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -48,6 +49,13 @@ export async function POST(request: Request) {
       const parseResult = StoryboardInputSchema.safeParse(body);
       if (!parseResult.success) {
         console.log('[Storyboard] Validation failed:', parseResult.error.flatten().fieldErrors);
+        emitLaunchMetric({
+          metric: 'plugin_execution',
+          status: 'error',
+          source: 'api',
+          pluginId: 'storyboard-generator',
+          errorCode: 'invalid_input',
+        });
         return NextResponse.json(
           {
             success: false,
@@ -198,12 +206,25 @@ export async function POST(request: Request) {
 
             if (structuredObject) {
               console.log('[Storyboard] Generated result:', JSON.stringify(structuredObject, null, 2));
+              emitLaunchMetric({
+                metric: 'plugin_execution',
+                status: 'success',
+                source: 'api',
+                pluginId: 'storyboard-generator',
+              });
               safeEnqueue(encoder.encode(`data: ${JSON.stringify({
                 type: 'result',
                 success: true,
                 ...structuredObject,
               })}\n\n`));
             } else {
+              emitLaunchMetric({
+                metric: 'plugin_execution',
+                status: 'error',
+                source: 'api',
+                pluginId: 'storyboard-generator',
+                errorCode: 'missing_structured_output',
+              });
               safeEnqueue(encoder.encode(`data: ${JSON.stringify({
                 type: 'error',
                 error: 'AI service failed to generate structured output',
@@ -216,6 +237,14 @@ export async function POST(request: Request) {
         } catch (error) {
           if (!closed) {
             console.error('[Storyboard] Stream processing error:', error);
+            emitLaunchMetric({
+              metric: 'plugin_execution',
+              status: 'error',
+              source: 'api',
+              pluginId: 'storyboard-generator',
+              errorCode: 'stream_error',
+              metadata: { message: error instanceof Error ? error.message : String(error) },
+            });
             safeEnqueue(encoder.encode(`data: ${JSON.stringify({
               type: 'error',
               error: error instanceof Error ? error.message : 'Stream error',
@@ -239,6 +268,14 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error('Storyboard generation error:', error);
+    emitLaunchMetric({
+      metric: 'plugin_execution',
+      status: 'error',
+      source: 'api',
+      pluginId: 'storyboard-generator',
+      errorCode: 'execution_failed',
+      metadata: { message: error instanceof Error ? error.message : String(error) },
+    });
     return NextResponse.json(
       {
         success: false,

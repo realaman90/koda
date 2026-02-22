@@ -13,6 +13,7 @@ import {
   PRODUCT_SHOT_SYSTEM_PROMPT,
   buildProductShotPrompt,
 } from '@/lib/plugins/official/product-shot/schema';
+import { emitLaunchMetric } from '@/lib/observability/launch-metrics';
 
 export async function POST(request: Request) {
   try {
@@ -24,6 +25,13 @@ export async function POST(request: Request) {
     const parseResult = ProductShotInputSchema.safeParse(body);
     if (!parseResult.success) {
       console.log('[ProductShot] Validation failed:', parseResult.error.flatten().fieldErrors);
+      emitLaunchMetric({
+        metric: 'plugin_execution',
+        status: 'error',
+        source: 'api',
+        pluginId: 'product-shot',
+        errorCode: 'invalid_input',
+      });
       return NextResponse.json(
         {
           success: false,
@@ -60,12 +68,27 @@ export async function POST(request: Request) {
     console.log('[ProductShot] Generated result:', JSON.stringify(result, null, 2));
     console.log('========== PRODUCT SHOT GENERATION END ==========\n');
 
+    emitLaunchMetric({
+      metric: 'plugin_execution',
+      status: 'success',
+      source: 'api',
+      pluginId: 'product-shot',
+    });
+
     return NextResponse.json({
       success: true,
       ...result,
     });
   } catch (error) {
     console.error('Product shot generation error:', error);
+    emitLaunchMetric({
+      metric: 'plugin_execution',
+      status: 'error',
+      source: 'api',
+      pluginId: 'product-shot',
+      errorCode: 'execution_failed',
+      metadata: { message: error instanceof Error ? error.message : String(error) },
+    });
     return NextResponse.json(
       {
         success: false,
