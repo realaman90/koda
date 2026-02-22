@@ -8,6 +8,8 @@ import {
   getCanvasWorkspaceIdForWorkspaces,
   upsertWorkspaceCanvas,
 } from '@/lib/db/canvas-queries';
+import { can, type WorkspaceRole } from '@/lib/permissions/matrix';
+import { logAuditEvent } from '@/lib/audit/log';
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -82,10 +84,30 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     const workspaceId = await getCanvasWorkspaceIdForWorkspaces(id, actorResult.actor.workspaceIds);
 
     if (!workspaceId) {
-      return NextResponse.json({ error: 'No workspace access' }, { status: 403 });
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+
+    const membership = actorResult.actor.memberships.find(
+      (item: { workspaceId: string; role: string }) => item.workspaceId === workspaceId
+    );
+
+    if (!membership) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+
+    if (!can(membership.role as WorkspaceRole, 'edit')) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     await upsertWorkspaceCanvas(workspaceId, actorResult.actor.user.id, mergedCanvas);
+    await logAuditEvent({
+      workspaceId,
+      actorUserId: actorResult.actor.user.id,
+      action: 'canvas.update',
+      targetType: 'canvas',
+      targetId: id,
+      metadata: { projectId: projectId ?? null },
+    });
 
     return NextResponse.json({ success: true, canvas: mergedCanvas });
   } catch (error) {
@@ -112,10 +134,29 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
 
     const workspaceId = await getCanvasWorkspaceIdForWorkspaces(id, actorResult.actor.workspaceIds);
     if (!workspaceId) {
-      return NextResponse.json({ error: 'No workspace access' }, { status: 403 });
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+
+    const membership = actorResult.actor.memberships.find(
+      (item: { workspaceId: string; role: string }) => item.workspaceId === workspaceId
+    );
+
+    if (!membership) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+
+    if (!can(membership.role as WorkspaceRole, 'delete')) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     await deleteCanvasByIdForWorkspace(id, workspaceId);
+    await logAuditEvent({
+      workspaceId,
+      actorUserId: actorResult.actor.user.id,
+      action: 'canvas.delete',
+      targetType: 'canvas',
+      targetId: id,
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {
