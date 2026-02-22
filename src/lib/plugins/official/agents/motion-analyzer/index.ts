@@ -23,6 +23,11 @@ export const motionAnalyzerPlugin: AgentPlugin = {
     verified: true,
   },
   visibility: 'public',
+  policy: {
+    capabilityDeclarations: ['canvas:read'],
+    distributionVisibility: ['oss', 'hosted'],
+    trustTier: 'official',
+  },
 
   rendering: {
     mode: 'node',

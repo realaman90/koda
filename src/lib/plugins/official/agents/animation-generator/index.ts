@@ -30,6 +30,11 @@ export const animationGeneratorPlugin: AgentPlugin = {
     verified: true,
   },
   visibility: 'public',
+  policy: {
+    capabilityDeclarations: ['canvas:read', 'storage:upload', 'sandbox:persistent'],
+    distributionVisibility: ['oss', 'hosted'],
+    trustTier: 'official',
+  },
 
   // ─────────────────────────────────────────────────────────────
   // RENDERING: Node-based (renders directly on canvas)
