@@ -52,6 +52,19 @@ function getDatabaseConfig(): DatabaseConfig {
 }
 
 const SCHEMA_SQL_STATEMENTS = [
+  `CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    clerk_user_id TEXT NOT NULL,
+    email TEXT NOT NULL,
+    first_name TEXT,
+    last_name TEXT,
+    image_url TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS users_clerk_user_id_unique ON users(clerk_user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_users_clerk_user_id ON users(clerk_user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`,
   `CREATE TABLE IF NOT EXISTS canvases (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,

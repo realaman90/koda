@@ -218,6 +218,9 @@ Koda supports **mix-and-match deployment** — use local storage with cloud sand
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Yes | — | Clerk publishable key (client auth) |
+| `CLERK_SECRET_KEY` | Yes | — | Clerk secret key (server auth + middleware) |
+| `CLERK_WEBHOOK_SIGNING_SECRET` | Yes | — | Verify `/api/webhooks/clerk` signatures |
 | `ANTHROPIC_API_KEY` | Yes* | — | Anthropic API key (agent fallback) |
 | `FAL_KEY` | Yes* | — | Fal.ai key (image/video generation) |
 | `GOOGLE_GENERATIVE_AI_API_KEY` | Recommended | — | Google AI key (Gemini models) |
