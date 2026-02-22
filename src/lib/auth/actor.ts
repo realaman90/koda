@@ -1,10 +1,55 @@
 import 'server-only';
 
-import { auth } from '@clerk/nextjs/server';
+import { randomUUID } from 'crypto';
+import { auth, clerkClient } from '@clerk/nextjs/server';
 import { eq } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { getDatabaseAsync } from '@/lib/db';
 import { users, workspaceMembers, workspaces } from '@/lib/db/schema';
+
+async function provisionUserFromClerk(clerkUserId: string): Promise<boolean> {
+  try {
+    const client = await clerkClient();
+    const clerkUser = await client.users.getUser(clerkUserId);
+
+    const primaryEmail = clerkUser.primaryEmailAddressId
+      ? clerkUser.emailAddresses.find((email) => email.id === clerkUser.primaryEmailAddressId)?.emailAddress
+      : clerkUser.emailAddresses[0]?.emailAddress;
+
+    if (!primaryEmail) return false;
+
+    const db = await getDatabaseAsync();
+    const now = new Date();
+
+    await db
+      .insert(users)
+      .values({
+        id: randomUUID(),
+        clerkUserId,
+        email: primaryEmail,
+        firstName: clerkUser.firstName ?? null,
+        lastName: clerkUser.lastName ?? null,
+        imageUrl: clerkUser.imageUrl ?? null,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: users.clerkUserId,
+        set: {
+          email: primaryEmail,
+          firstName: clerkUser.firstName ?? null,
+          lastName: clerkUser.lastName ?? null,
+          imageUrl: clerkUser.imageUrl ?? null,
+          updatedAt: now,
+        },
+      });
+
+    return true;
+  } catch (error) {
+    console.error('Failed to provision user from Clerk:', error);
+    return false;
+  }
+}
 
 export async function requireActor() {
   const session = await auth();
@@ -17,14 +62,25 @@ export async function requireActor() {
   }
 
   const db = await getDatabaseAsync();
-  const [user] = await db.select().from(users).where(eq(users.clerkUserId, session.userId));
+  let [user] = await db.select().from(users).where(eq(users.clerkUserId, session.userId));
+
+  if (!user) {
+    const didProvision = await provisionUserFromClerk(session.userId);
+
+    if (didProvision) {
+      [user] = await db.select().from(users).where(eq(users.clerkUserId, session.userId));
+    }
+  }
 
   if (!user) {
     return {
       ok: false as const,
       response: NextResponse.json(
-        { error: 'User not provisioned yet. Retry after Clerk webhook sync.' },
-        { status: 409 }
+        {
+          error:
+            'User provisioning in progress. We could not sync your account yet—please retry in a few seconds.',
+        },
+        { status: 503 }
       ),
     };
   }
