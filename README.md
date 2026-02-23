@@ -221,6 +221,8 @@ Koda supports **mix-and-match deployment** — use local storage with cloud sand
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Yes | — | Clerk publishable key (client auth) |
 | `CLERK_SECRET_KEY` | Yes | — | Clerk secret key (server auth + middleware) |
 | `CLERK_WEBHOOK_SIGNING_SECRET` | Yes | — | Verify `/api/webhooks/clerk` signatures |
+| `DEV_AUTH_BYPASS` | Dev-only | `false` | Local auth bypass switch (only active when `NODE_ENV=development`) |
+| `DEV_AUTH_BYPASS_TOKEN` | Optional | — | Optional token required in header `x-dev-auth-bypass-token` for protected API calls when bypass is on |
 | `ANTHROPIC_API_KEY` | Yes* | — | Anthropic API key (agent fallback) |
 | `FAL_KEY` | Yes* | — | Fal.ai key (image/video generation) |
 | `GOOGLE_GENERATIVE_AI_API_KEY` | Recommended | — | Google AI key (Gemini models) |
@@ -231,6 +233,14 @@ Koda supports **mix-and-match deployment** — use local storage with cloud sand
 | `SNAPSHOT_STORAGE` | No | `local` | `local` or `r2` |
 
 *At minimum you need one AI provider key and `FAL_KEY` for image/video gen.
+
+⚠️ **Dev bypass safety:** `DEV_AUTH_BYPASS` is fail-closed outside development. In production/hosted (`NODE_ENV` not `development`) the bypass is ignored and normal Clerk auth remains required.
+
+When `DEV_AUTH_BYPASS_TOKEN` is set, protected API requests must include:
+
+```http
+x-dev-auth-bypass-token: <your-token>
+```
 
 See [`.env.example`](.env.example) for the full list with comments.
 

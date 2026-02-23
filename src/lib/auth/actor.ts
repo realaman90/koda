@@ -4,6 +4,10 @@ import { randomUUID } from 'crypto';
 import { auth, clerkClient } from '@clerk/nextjs/server';
 import { eq } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
+import {
+  isServerDevBypassAllowed,
+  warnDevAuthBypassEnabled,
+} from '@/lib/auth/dev-bypass';
 import { getDatabaseAsync } from '@/lib/db';
 import { users, workspaceMembers, workspaces } from '@/lib/db/schema';
 import { emitLaunchMetric } from '@/lib/observability/launch-metrics';
@@ -21,6 +25,46 @@ type ProvisionUserResult =
 
 const FALLBACK_PROVISION_MAX_ATTEMPTS = 2;
 const FALLBACK_PROVISION_RETRY_DELAY_MS = 120;
+const DEV_BYPASS_CLERK_USER_ID = '__dev_bypass_user__';
+
+async function resolveDevBypassClerkUserId() {
+  const allowed = await isServerDevBypassAllowed();
+
+  if (!allowed) {
+    return null;
+  }
+
+  warnDevAuthBypassEnabled('server-auth');
+  return DEV_BYPASS_CLERK_USER_ID;
+}
+
+async function ensureDevBypassUser(clerkUserId: string) {
+  const db = await getDatabaseAsync();
+  const now = new Date();
+
+  await db
+    .insert(users)
+    .values({
+      id: randomUUID(),
+      clerkUserId,
+      email: 'dev-bypass@local.dev',
+      firstName: 'Dev',
+      lastName: 'Bypass',
+      imageUrl: null,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: users.clerkUserId,
+      set: {
+        email: 'dev-bypass@local.dev',
+        firstName: 'Dev',
+        lastName: 'Bypass',
+        imageUrl: null,
+        updatedAt: now,
+      },
+    });
+}
 
 function emitActorProvisioningEvent(event: {
   status: 'success' | 'error';
@@ -117,34 +161,40 @@ async function provisionUserFromClerk(clerkUserId: string): Promise<ProvisionUse
 
 export async function requireActor() {
   const session = await auth();
+  const bypassClerkUserId = session.userId ? null : await resolveDevBypassClerkUserId();
+  const effectiveClerkUserId = session.userId ?? bypassClerkUserId;
 
-  if (!session.userId) {
+  if (!effectiveClerkUserId) {
     return {
       ok: false as const,
       response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
     };
   }
 
-  const db = await getDatabaseAsync();
-  let [user] = await db.select().from(users).where(eq(users.clerkUserId, session.userId));
+  if (bypassClerkUserId) {
+    await ensureDevBypassUser(bypassClerkUserId);
+  }
 
-  if (!user) {
+  const db = await getDatabaseAsync();
+  let [user] = await db.select().from(users).where(eq(users.clerkUserId, effectiveClerkUserId));
+
+  if (!user && !bypassClerkUserId) {
     emitActorProvisioningEvent({
       status: 'success',
       event: 'fallback_started',
-      clerkUserId: session.userId,
+      clerkUserId: effectiveClerkUserId,
     });
 
     for (let attempt = 1; attempt <= FALLBACK_PROVISION_MAX_ATTEMPTS; attempt += 1) {
-      const provisionResult = await provisionUserFromClerk(session.userId);
+      const provisionResult = await provisionUserFromClerk(effectiveClerkUserId);
 
       if (provisionResult.ok) {
-        [user] = await db.select().from(users).where(eq(users.clerkUserId, session.userId));
+        [user] = await db.select().from(users).where(eq(users.clerkUserId, effectiveClerkUserId));
 
         emitActorProvisioningEvent({
           status: user ? 'success' : 'error',
           event: user ? 'fallback_succeeded' : 'fallback_upserted_but_missing_row',
-          clerkUserId: session.userId,
+          clerkUserId: effectiveClerkUserId,
           attempt,
           ...(user
             ? {}
@@ -160,7 +210,7 @@ export async function requireActor() {
             status: 'success',
             source: 'api',
             metadata: {
-              clerkUserId: session.userId,
+              clerkUserId: effectiveClerkUserId,
               fallbackProvisioning: true,
               attempt,
             },
@@ -171,7 +221,7 @@ export async function requireActor() {
         emitActorProvisioningEvent({
           status: 'error',
           event: 'fallback_attempt_failed',
-          clerkUserId: session.userId,
+          clerkUserId: effectiveClerkUserId,
           attempt,
           reason: provisionResult.reason,
           message: provisionResult.message,
@@ -194,7 +244,7 @@ export async function requireActor() {
       status: 'error',
       source: 'api',
       errorCode: 'fallback_actor_provisioning_failed',
-      metadata: { clerkUserId: session.userId },
+      metadata: { clerkUserId: effectiveClerkUserId },
     });
 
     return {
@@ -217,7 +267,7 @@ export async function requireActor() {
   return {
     ok: true as const,
     actor: {
-      clerkUserId: session.userId,
+      clerkUserId: effectiveClerkUserId,
       user,
       memberships,
       workspaceIds: memberships.map((membership: { workspaceId: string }) => membership.workspaceId),

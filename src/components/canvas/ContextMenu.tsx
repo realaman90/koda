@@ -26,6 +26,7 @@ import {
   Mic,
   Film,
   Clapperboard,
+  PenTool,
 } from 'lucide-react';
 import { pluginRegistry } from '@/lib/plugins/registry';
 import { uploadAsset } from '@/lib/assets/upload';
@@ -34,6 +35,7 @@ import '@/lib/plugins/official/storyboard-generator';
 import '@/lib/plugins/official/product-shot';
 import '@/lib/plugins/official/agents/animation-generator';
 import '@/lib/plugins/official/agents/motion-analyzer';
+import '@/lib/plugins/official/agents/svg-studio';
 
 interface MenuItem {
   id: string;
@@ -74,6 +76,7 @@ export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [utilitiesExpanded, setUtilitiesExpanded] = useState(false);
   const [pluginsExpanded, setPluginsExpanded] = useState(false);
+  const svgPluginEnabled = process.env.NEXT_PUBLIC_SVG_PLUGIN_V1 === 'true';
 
   // Clamp menu position so it doesn't overflow the viewport
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
@@ -243,6 +246,18 @@ export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
           ),
           keywords: ['animation', 'animate', 'motion', 'theatre', 'theater'],
         },
+        ...(svgPluginEnabled
+          ? [{
+              id: 'svgStudio',
+              icon: <PenTool className="h-4 w-4 text-emerald-400" />,
+              label: 'SVG Studio',
+              action: () => handleAddNode(
+                (pos, name) => createPluginNode(pos, 'svg-studio', name),
+                'SVG Studio'
+              ),
+              keywords: ['svg', 'vector', 'icon', 'logo'],
+            }]
+          : []),
       ],
     },
     {
@@ -327,7 +342,7 @@ export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
         keywords: [plugin.name.toLowerCase(), plugin.category, 'plugin'],
       })),
     },
-  ], [addNode, hideContextMenu, handleUpload, nodes, onPluginLaunch]);
+  ], [addNode, hideContextMenu, handleUpload, nodes, onPluginLaunch, svgPluginEnabled]);
 
   // Filter sections based on search query
   const filteredSections = useMemo(() => {

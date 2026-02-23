@@ -5,24 +5,33 @@
  * Update these to swap models in one place.
  */
 
+const DEFAULT_GEMINI_31_PRO_PREVIEW = 'google/gemini-3.1-pro-preview';
+
+const readModelOverride = (key: string, fallback: string): string => {
+  const value = process.env[key]?.trim();
+  return value && value.length > 0 ? value : fallback;
+};
+
 // -- Animation Plugin Models --
 
 /** Orchestrator agent — coordinates planning, tool calls, and subagents */
-export const ORCHESTRATOR_MODEL = 'google/gemini-3-flash-preview';
-// export const ORCHESTRATOR_MODEL = 'anthropic/claude-opus-4-6';
-// export const ORCHESTRATOR_MODEL = 'ollama-cloud/kimi-k2-thinking';
-// export const ORCHESTRATOR_MODEL = 'ollama-cloud/kimi-k2.5';
-
+export const ORCHESTRATOR_MODEL = readModelOverride(
+  'KODA_MODEL_ORCHESTRATOR',
+  DEFAULT_GEMINI_31_PRO_PREVIEW
+);
 
 /** Remotion (2D) code generator subagent */
-export const REMOTION_CODE_GEN_MODEL = 'google/gemini-3-flash-preview';
-// export const REMOTION_CODE_GEN_MODEL = 'anthropic/claude-opus-4-6';
-// export const REMOTION_CODE_GEN_MODEL = 'ollama-cloud/kimi-k2.5';
+export const REMOTION_CODE_GEN_MODEL = readModelOverride(
+  'KODA_MODEL_CODEGEN_REMOTION',
+  DEFAULT_GEMINI_31_PRO_PREVIEW
+);
 
 /** Theatre.js (3D) code generator subagent */
-export const THEATRE_CODE_GEN_MODEL = 'google/gemini-3-flash-preview';
-// export const THEATRE_CODE_GEN_MODEL = 'anthropic/claude-opus-4-6';
-// export const THEATRE_CODE_GEN_MODEL = 'ollama-cloud/kimi-k2.5';
+export const THEATRE_CODE_GEN_MODEL = readModelOverride(
+  'KODA_MODEL_CODEGEN_THEATRE',
+  DEFAULT_GEMINI_31_PRO_PREVIEW
+);
+
 /** Image analysis (vision) */
 export const IMAGE_ANALYZER_MODEL = 'google/gemini-3-flash-preview';
 

@@ -58,13 +58,20 @@ export async function GET(
     const ext = path.extname(normalized).toLowerCase();
     const contentType = MIME_TYPES[ext] || 'application/octet-stream';
 
+    const headers: Record<string, string> = {
+      'Content-Type': contentType,
+      'Content-Length': String(buffer.length),
+      'Cache-Control': 'no-cache',
+    };
+
+    if (ext === '.svg') {
+      headers['X-Content-Type-Options'] = 'nosniff';
+      headers['Content-Security-Policy'] = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox";
+    }
+
     return new NextResponse(new Uint8Array(buffer), {
       status: 200,
-      headers: {
-        'Content-Type': contentType,
-        'Content-Length': String(buffer.length),
-        'Cache-Control': 'no-cache',
-      },
+      headers,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to read file';

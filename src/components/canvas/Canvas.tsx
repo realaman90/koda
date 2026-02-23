@@ -27,6 +27,7 @@ import { ZoomControls } from './ZoomControls';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useAgentSandbox } from '@/hooks/useAgentSandbox';
 import { AgentSandbox } from '@/components/plugins/AgentSandbox';
+import '@/lib/plugins/official/agents/svg-studio';
 
 export function Canvas() {
   const nodes = useCanvasStore((state) => state.nodes);
@@ -51,6 +52,7 @@ export function Canvas() {
   // Get addNode and reactFlowInstance for creating nodes
   const addNode = useCanvasStore((state) => state.addNode);
   const reactFlowInstance = useCanvasStore((state) => state.reactFlowInstance);
+  const svgPluginEnabled = process.env.NEXT_PUBLIC_SVG_PLUGIN_V1 === 'true';
 
   // Handle plugin launch - create node for node-based plugins, open sandbox for others
   const handlePluginLaunch = useCallback(
@@ -79,13 +81,16 @@ export function Canvas() {
       } else if (pluginId === 'motion-analyzer') {
         const node = createPluginNode(position, pluginId, 'Motion Analyzer');
         addNode(node);
+      } else if (pluginId === 'svg-studio' && svgPluginEnabled) {
+        const node = createPluginNode(position, pluginId, 'SVG Studio');
+        addNode(node);
       } else {
         // Other plugins still open as modals. Maybe not needed anymore. We'll see.
         // Other plugins open as modals
         openSandbox(pluginId);
       }
     },
-    [addNode, openSandbox, reactFlowInstance]
+    [addNode, openSandbox, reactFlowInstance, svgPluginEnabled]
   );
 
   // Enable keyboard shortcuts
@@ -154,8 +159,14 @@ export function Canvas() {
       const targetNode = nodes.find((n) => n.id === connection.target) as AppNode | undefined;
       if (!sourceNode || !targetNode) return false;
 
-      // Check if source provides images (media nodes or imageGenerator output)
-      const isImageSource = sourceNode.type === 'media' || sourceNode.type === 'imageGenerator';
+      // Check if source provides images (media nodes, image generators, svg-studio plugin output)
+      const sourcePluginData = sourceNode.type === 'pluginNode'
+        ? (sourceNode.data as Record<string, unknown>)
+        : null;
+      const isSvgStudioSource = sourceNode.type === 'pluginNode'
+        && sourcePluginData?.pluginId === 'svg-studio'
+        && typeof sourcePluginData?.outputUrl === 'string';
+      const isImageSource = sourceNode.type === 'media' || sourceNode.type === 'imageGenerator' || isSvgStudioSource;
 
       // Image input handles - reference, firstFrame, lastFrame, ref2-ref8 (for multi-ref models)
       const targetHandle = connection.targetHandle || '';

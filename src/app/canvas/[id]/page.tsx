@@ -133,7 +133,7 @@ export default function CanvasPage({ params }: CanvasPageProps) {
             Read-only access: you can view this canvas but cannot edit it.
           </div>
         )}
-        <div className={accessRole === 'viewer' ? 'pointer-events-none opacity-80' : ''}>
+        <div className={accessRole === 'viewer' ? 'h-full pointer-events-none opacity-80' : 'h-full'}>
           <Canvas />
         </div>
       </AppShell>

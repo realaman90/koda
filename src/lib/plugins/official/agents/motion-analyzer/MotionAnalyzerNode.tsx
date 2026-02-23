@@ -26,6 +26,7 @@ import {
   RotateCcw,
   Scissors,
   Terminal,
+  Square,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -326,7 +327,19 @@ function TrimRangePicker({
   onChange: (start: number, end: number) => void;
 }) {
   const selectedDuration = trimEnd - trimStart;
-  const isValid = selectedDuration > 0 && selectedDuration <= MAX_ANALYSIS_DURATION;
+  const isValid = selectedDuration >= 1 && selectedDuration <= MAX_ANALYSIS_DURATION;
+
+  const clampRange = (start: number, end: number) => {
+    const clampedStart = Math.max(0, Math.min(start, Math.max(0, duration - 1)));
+    const clampedEnd = Math.min(duration, Math.max(end, clampedStart + 1));
+    const span = clampedEnd - clampedStart;
+
+    if (span > MAX_ANALYSIS_DURATION) {
+      return [clampedStart, Math.min(duration, clampedStart + MAX_ANALYSIS_DURATION)] as const;
+    }
+
+    return [clampedStart, clampedEnd] as const;
+  };
 
   const formatTime = (s: number) => {
     const mins = Math.floor(s / 60);
@@ -334,25 +347,25 @@ function TrimRangePicker({
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const percentStart = (trimStart / duration) * 100;
+  const percentEnd = (trimEnd / duration) * 100;
+
   return (
     <div className="mx-3.5 mb-2 rounded-md bg-[var(--an-bg-elevated)] border border-[var(--an-border-input)] p-2.5">
       <div className="flex items-center gap-1.5 mb-2">
         <Scissors className="w-3 h-3 text-[#FBBF24]" />
         <span className="text-[10px] font-medium text-[var(--an-text-muted)]">
-          Video is {formatTime(duration)} — select a {MAX_ANALYSIS_DURATION}s segment
+          Video is {formatTime(duration)} — select a 1s to {MAX_ANALYSIS_DURATION}s segment
         </span>
       </div>
 
-      {/* Range slider track */}
-      <div className="relative h-5 mb-2">
+      <div className="relative h-6 mb-2">
         <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-1 rounded-full bg-[var(--an-bg-card)]" />
         <div
           className={`absolute top-1/2 -translate-y-1/2 h-1 rounded-full ${isValid ? 'bg-[var(--an-accent)]/60' : 'bg-[#EF4444]/60'}`}
-          style={{
-            left: `${(trimStart / duration) * 100}%`,
-            width: `${((trimEnd - trimStart) / duration) * 100}%`,
-          }}
+          style={{ left: `${percentStart}%`, width: `${Math.max(0, percentEnd - percentStart)}%` }}
         />
+
         <input
           type="range"
           min={0}
@@ -360,46 +373,61 @@ function TrimRangePicker({
           step={0.5}
           value={trimStart}
           onChange={(e) => {
-            const v = parseFloat(e.target.value);
-            const newEnd = Math.min(v + MAX_ANALYSIS_DURATION, duration);
-            onChange(v, Math.max(newEnd, v + 1));
+            const [start, end] = clampRange(parseFloat(e.target.value), trimEnd);
+            onChange(start, end);
+          }}
+          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+          style={{ zIndex: 3 }}
+          aria-label="Trim start"
+        />
+
+        <input
+          type="range"
+          min={0}
+          max={duration}
+          step={0.5}
+          value={trimEnd}
+          onChange={(e) => {
+            const [start, end] = clampRange(trimStart, parseFloat(e.target.value));
+            onChange(start, end);
           }}
           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
           style={{ zIndex: 2 }}
+          aria-label="Trim end"
         />
       </div>
 
-      {/* Time inputs */}
       <div className="flex items-center gap-2 text-[10px]">
         <div className="flex items-center gap-1">
-          <label className="text-[var(--an-text-placeholder)]">Start:</label>
+          <label className="text-[var(--an-text-placeholder)]" htmlFor="trim-start">Start:</label>
           <input
+            id="trim-start"
             type="number"
             min={0}
             max={Math.max(0, duration - 1)}
             step={0.5}
             value={trimStart}
             onChange={(e) => {
-              const v = Math.max(0, parseFloat(e.target.value) || 0);
-              const newEnd = Math.min(v + MAX_ANALYSIS_DURATION, duration);
-              onChange(v, Math.max(newEnd, v + 1));
+              const [start, end] = clampRange(parseFloat(e.target.value) || 0, trimEnd);
+              onChange(start, end);
             }}
-            className="w-12 px-1 py-0.5 rounded bg-[var(--an-bg-input)] border border-[var(--an-border-input)] text-[var(--an-text)] text-center"
+            className="w-14 px-1 py-0.5 rounded bg-[var(--an-bg-input)] border border-[var(--an-border-input)] text-[var(--an-text)] text-center"
           />
         </div>
         <div className="flex items-center gap-1">
-          <label className="text-[var(--an-text-placeholder)]">End:</label>
+          <label className="text-[var(--an-text-placeholder)]" htmlFor="trim-end">End:</label>
           <input
+            id="trim-end"
             type="number"
             min={trimStart + 1}
-            max={Math.min(trimStart + MAX_ANALYSIS_DURATION, duration)}
+            max={Math.min(duration, trimStart + MAX_ANALYSIS_DURATION)}
             step={0.5}
             value={trimEnd}
             onChange={(e) => {
-              const v = Math.min(duration, parseFloat(e.target.value) || trimEnd);
-              onChange(trimStart, Math.max(v, trimStart + 1));
+              const [start, end] = clampRange(trimStart, parseFloat(e.target.value) || trimEnd);
+              onChange(start, end);
             }}
-            className="w-12 px-1 py-0.5 rounded bg-[var(--an-bg-input)] border border-[var(--an-border-input)] text-[var(--an-text)] text-center"
+            className="w-14 px-1 py-0.5 rounded bg-[var(--an-bg-input)] border border-[var(--an-border-input)] text-[var(--an-text)] text-center"
           />
         </div>
         <span className={`ml-auto ${isValid ? 'text-[var(--an-accent)]' : 'text-[#EF4444]'}`}>
@@ -434,10 +462,13 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
   const streamingTextRef = useRef('');
   const reasoningTextRef = useRef('');
   const textFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const blobPreviewUrlRef = useRef<string | null>(null);
 
   // Local state
   const [inputValue, setInputValue] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
+  const [streamStartedAt, setStreamStartedAt] = useState<number | null>(null);
+  const [streamElapsed, setStreamElapsed] = useState(0);
 
   // Stream hook
   const { stream: streamToAgent, abort: abortStream } = useMotionAnalyzerStream();
@@ -480,6 +511,22 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
     }
   }, [inputValue]);
 
+  useEffect(() => {
+    if (!isStreaming || !streamStartedAt) return;
+    setStreamElapsed(Math.max(0, Math.round((Date.now() - streamStartedAt) / 1000)));
+    const timer = setInterval(() => {
+      setStreamElapsed(Math.max(0, Math.round((Date.now() - streamStartedAt) / 1000)));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [isStreaming, streamStartedAt]);
+
+  useEffect(() => () => {
+    if (blobPreviewUrlRef.current) {
+      URL.revokeObjectURL(blobPreviewUrlRef.current);
+      blobPreviewUrlRef.current = null;
+    }
+  }, []);
+
   // ── Flush streaming text ──────────────────
 
   const flushStreamingText = useCallback(() => {
@@ -521,7 +568,12 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
     }
 
     // Create a blob URL for instant local preview (doesn't bloat memory like data URL)
+    if (blobPreviewUrlRef.current) {
+      URL.revokeObjectURL(blobPreviewUrlRef.current);
+      blobPreviewUrlRef.current = null;
+    }
     const blobUrl = URL.createObjectURL(file);
+    blobPreviewUrlRef.current = blobUrl;
 
     // Get video metadata
     const duration = await new Promise<number | undefined>((resolve) => {
@@ -548,6 +600,7 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
       ...(needsTrim ? { trimStart: 0, trimEnd: MAX_ANALYSIS_DURATION } : {}),
     };
     updateNodeData(id, { video });
+    setTimeout(() => textareaRef.current?.focus(), 0);
 
     // Attempt presigned upload to R2 in background (non-blocking)
     setIsUploading(true);
@@ -573,6 +626,10 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
   }, [id, updateNodeData, updateState]);
 
   const handleRemoveVideo = useCallback(() => {
+    if (blobPreviewUrlRef.current) {
+      URL.revokeObjectURL(blobPreviewUrlRef.current);
+      blobPreviewUrlRef.current = null;
+    }
     updateNodeData(id, { video: undefined });
   }, [id, updateNodeData]);
 
@@ -597,6 +654,8 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
 
     setInputValue('');
     setIsStreaming(true);
+    setStreamStartedAt(Date.now());
+    setStreamElapsed(0);
     abortRef.current = false;
     streamingTextRef.current = '';
     reasoningTextRef.current = '';
@@ -760,6 +819,7 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
           streamingTextRef.current = '';
           reasoningTextRef.current = '';
           setIsStreaming(false);
+          setStreamStartedAt(null);
         },
 
         onError: (error) => {
@@ -774,21 +834,45 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
             },
           });
           setIsStreaming(false);
+          setStreamStartedAt(null);
         },
       });
     } catch (err) {
       console.error('[MotionAnalyzerNode] handleSend error:', err);
       setIsStreaming(false);
+      setStreamStartedAt(null);
     }
   }, [id, inputValue, isStreaming, nodeData.video, getLatestState, updateNodeData, streamToAgent, nextSeq, scheduleFlush, flushStreamingText]);
+
+  const handleStopStream = useCallback(() => {
+    flushStreamingText();
+    abortRef.current = true;
+    abortStream();
+    setIsStreaming(false);
+    setStreamStartedAt(null);
+
+    const ls = getLatestState();
+    updateNodeData(id, {
+      state: {
+        ...ls,
+        phase: ls.phase === 'analyzing' ? 'chatting' : ls.phase,
+        updatedAt: new Date().toISOString(),
+      },
+    });
+  }, [abortStream, flushStreamingText, getLatestState, id, updateNodeData]);
 
   // ── Reset ─────────────────────────────────
 
   const handleReset = useCallback(() => {
     abortStream();
     setIsStreaming(false);
+    setStreamStartedAt(null);
     streamingTextRef.current = '';
     reasoningTextRef.current = '';
+    if (blobPreviewUrlRef.current) {
+      URL.revokeObjectURL(blobPreviewUrlRef.current);
+      blobPreviewUrlRef.current = null;
+    }
     updateNodeData(id, {
       state: createDefaultState(id),
       video: undefined,
@@ -829,7 +913,14 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
   const hasVideo = !!nodeData.video?.dataUrl;
   const isIdle = state.phase === 'idle';
   const hasTimelineContent = timeline.length > 0 || isStreaming;
-  const canSend = inputValue.trim().length > 0 && !isStreaming;
+  const canSend = inputValue.trim().length > 0 && !isStreaming && (hasVideo || state.phase !== 'idle');
+  const liveStatus = isStreaming
+    ? `Analyzing in progress. Elapsed ${streamElapsed} seconds.`
+    : state.error
+      ? `Analysis error: ${state.error.message}`
+      : hasVideo
+        ? 'Video ready. You can analyze or ask follow-up questions.'
+        : 'Upload a video to begin analysis.';
 
   // ── Container class ───────────────────────
   const base = 'animation-node w-[400px] rounded-xl overflow-hidden flex flex-col';
@@ -857,6 +948,7 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
         {(state.phase !== 'idle' || hasVideo) && (
           <button
             onClick={handleReset}
+            aria-label="Reset analysis"
             className="w-6 h-6 rounded-md flex items-center justify-center text-[var(--an-text-dim)] hover:text-[var(--an-text-muted)] hover:bg-[var(--an-bg-hover)] transition-colors"
             title="Reset"
           >
@@ -873,6 +965,7 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
             type="file"
             accept="video/mp4,video/webm,video/quicktime,video/mov"
             className="hidden"
+            aria-label="Upload video for motion analysis"
             onChange={(e) => {
               const file = e.target.files?.[0];
               if (file) handleVideoUpload(file);
@@ -881,6 +974,7 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
           />
           <button
             onClick={() => fileInputRef.current?.click()}
+            aria-label="Upload video"
             className="w-full h-28 rounded-lg border-2 border-dashed border-[var(--an-border-input)] hover:border-[var(--an-accent)]/50 bg-[var(--an-bg-elevated)] hover:bg-[var(--an-accent-bg)]/30 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group"
             onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
             onDrop={(e) => {
@@ -914,6 +1008,7 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
             />
             <button
               onClick={handleRemoveVideo}
+              aria-label="Remove uploaded video"
               className="absolute top-1.5 right-1.5 p-1 rounded-full bg-black/60 hover:bg-black/80 text-zinc-400 hover:text-white transition-colors"
             >
               <X className="w-3 h-3" />
@@ -937,6 +1032,16 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
           trimEnd={nodeData.video!.trimEnd ?? MAX_ANALYSIS_DURATION}
           onChange={handleTrimChange}
         />
+      )}
+
+      {hasVideo && isIdle && !hasTimelineContent && (
+        <div className="px-3.5 pb-2">
+          <div className="rounded-md border border-[var(--an-border-input)] bg-[var(--an-bg-elevated)] p-2.5">
+            <p className="text-[11px] text-[var(--an-text-muted)]">
+              Ready to analyze. Describe what to inspect, then click <strong>Analyze video</strong>.
+            </p>
+          </div>
+        </div>
       )}
 
       {/* ── Chat Timeline ── */}
@@ -1004,6 +1109,7 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
             <textarea
               ref={textareaRef}
               value={inputValue}
+              aria-label="Motion analyzer prompt"
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
@@ -1015,7 +1121,7 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
                 !hasVideo
                   ? 'Upload a video first...'
                   : state.phase === 'idle'
-                  ? 'Describe what you want to analyze...'
+                  ? 'Analyze video (e.g. break down camera motion and transitions)...'
                   : 'Ask about effects, or request a prompt...'
               }
               rows={1}
@@ -1023,23 +1129,41 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
               style={{ minHeight: '20px', maxHeight: '100px', backgroundColor: 'transparent' }}
             />
           </div>
-          <div className="flex items-center justify-end px-2 py-1 pb-2">
-            <button
-              onClick={handleSend}
-              disabled={!canSend}
-              className={`flex items-center justify-center w-7 h-7 rounded-full transition-colors ${
-                canSend
-                  ? 'bg-[var(--an-accent)] hover:bg-[var(--an-accent-hover)]'
-                  : 'bg-[var(--an-accent)] opacity-40 cursor-not-allowed'
-              }`}
-            >
-              {isStreaming ? (
-                <Loader2 className="w-3.5 h-3.5 text-white animate-spin" />
-              ) : (
-                <ArrowUp className="w-3.5 h-3.5 text-white" />
+          <div className="flex items-center justify-between px-2 py-1 pb-2 gap-2">
+            <div className="text-[10px] text-[var(--an-text-placeholder)]" role="status" aria-live="polite">
+              {isStreaming ? `Analyzing… ${streamElapsed}s` : hasVideo ? 'Video ready' : 'No video uploaded'}
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              {isStreaming && (
+                <button
+                  onClick={handleStopStream}
+                  aria-label="Stop analysis"
+                  className="h-7 px-2 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-100 text-[10px] inline-flex items-center gap-1"
+                >
+                  <Square className="w-3 h-3" /> Stop
+                </button>
               )}
-            </button>
+              <button
+                onClick={handleSend}
+                disabled={!canSend}
+                aria-label={isStreaming ? 'Analyzing video' : state.phase === 'idle' ? 'Analyze video' : 'Send follow-up prompt'}
+                className={`flex items-center justify-center w-7 h-7 rounded-full transition-colors ${
+                  canSend
+                    ? 'bg-[var(--an-accent)] hover:bg-[var(--an-accent-hover)]'
+                    : 'bg-[var(--an-accent)] opacity-40 cursor-not-allowed'
+                }`}
+                title={state.phase === 'idle' ? 'Analyze video' : 'Send'}
+              >
+                {isStreaming ? (
+                  <Loader2 className="w-3.5 h-3.5 text-white animate-spin" />
+                ) : (
+                  <ArrowUp className="w-3.5 h-3.5 text-white" />
+                )}
+              </button>
+            </div>
           </div>
+          <div className="sr-only" aria-live="polite">{liveStatus}</div>
         </div>
       </div>
 

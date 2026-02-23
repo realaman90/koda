@@ -63,19 +63,22 @@ export function useMotionAnalyzerStream(): UseMotionAnalyzerStreamReturn {
   const [error, setError] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const completeFiredRef = useRef(false);
+  const abortedRef = useRef(false);
 
   const abort = useCallback(() => {
+    abortedRef.current = true;
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
-      setIsStreaming(false);
     }
+    setIsStreaming(false);
   }, []);
 
   const stream = useCallback(
     async (input: StreamInput, context?: StreamContext, callbacks?: MotionAnalyzerStreamCallbacks): Promise<string> => {
       abort();
       abortControllerRef.current = new AbortController();
+      abortedRef.current = false;
       setIsStreaming(true);
       setStreamedText('');
       setError(null);
@@ -200,7 +203,9 @@ export function useMotionAnalyzerStream(): UseMotionAnalyzerStreamReturn {
                   fullText = data.text || fullText;
                   setStreamedText(fullText);
                   completeFiredRef.current = true;
-                  callbacks?.onComplete?.(fullText);
+                  if (!abortedRef.current) {
+                    callbacks?.onComplete?.(fullText);
+                  }
                   break;
 
                 case 'error':
@@ -217,19 +222,25 @@ export function useMotionAnalyzerStream(): UseMotionAnalyzerStreamReturn {
           }
         }
 
-        if (!completeFiredRef.current) {
+        if (!completeFiredRef.current && !abortedRef.current) {
           completeFiredRef.current = true;
           callbacks?.onComplete?.(fullText);
         }
 
+        abortControllerRef.current = null;
         setIsStreaming(false);
         return fullText;
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') {
+          abortControllerRef.current = null;
           setIsStreaming(false);
           return fullText;
         }
         const errorMessage = err instanceof Error ? err.message : 'Stream failed';
+        if (abortedRef.current) {
+          setIsStreaming(false);
+          return fullText;
+        }
         console.error('[useMotionAnalyzerStream] Stream error:', errorMessage);
         setError(errorMessage);
         setIsStreaming(false);

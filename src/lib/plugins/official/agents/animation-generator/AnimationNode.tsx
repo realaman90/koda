@@ -300,6 +300,10 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         mediaUrl = d.outputUrl as string;
         mediaType = 'video';
         mediaDescription = (d.prompt as string) || (d.name as string) || undefined;
+      } else if (sourceNode.type === 'pluginNode' && d.pluginId === 'svg-studio') {
+        mediaUrl = (d.outputUrl as string) || ((d.state as Record<string, unknown> | undefined)?.asset as { url?: string } | undefined)?.url;
+        mediaType = 'image';
+        mediaDescription = (d.name as string) || 'SVG asset';
       }
 
       // Skip video media for Theatre.js (no video ref support in Puppeteer rendering)
@@ -311,7 +315,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         const baseName = ((d.name as string) || sourceNode.type || 'media')
           .replace(/[^a-zA-Z0-9_-]/g, '_')
           .toLowerCase();
-        const urlExt = mediaUrl.split('?')[0].match(/\.(png|jpg|jpeg|gif|webp|mp4|webm|mov)$/i)?.[1]?.toLowerCase();
+        const urlExt = mediaUrl.split('?')[0].match(/\.(png|jpg|jpeg|gif|webp|svg|mp4|webm|mov)$/i)?.[1]?.toLowerCase();
         const ext = urlExt || (mediaType === 'video' ? 'mp4' : 'png');
         const mediaName = `${baseName}_${edge.source.slice(-8)}.${ext}`;
 
@@ -1765,8 +1769,9 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     const ls = getLatestState();
     if (!ls.plan) return;
 
+    const setupLabel = engine === 'remotion' ? 'Set up Remotion project' : 'Set up Theatre.js project';
     const todos = [
-      { id: 'setup', label: 'Set up Theatre.js project', status: 'pending' as const },
+      { id: 'setup', label: setupLabel, status: 'pending' as const },
       ...ls.plan.scenes.map((s) => ({
         id: `scene-${s.number}`,
         label: `Create Scene ${s.number} (${s.title})`,

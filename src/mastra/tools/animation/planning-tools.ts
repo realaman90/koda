@@ -99,9 +99,13 @@ The frontend uses this structured output to show the right UI (question phase vs
 /**
  * Helper: Generate todos from plan
  */
-export function generateTodosFromPlan(plan: z.infer<typeof PlanSchema>): z.infer<typeof TodoSchema>[] {
+export function generateTodosFromPlan(
+  plan: z.infer<typeof PlanSchema>,
+  engine: 'remotion' | 'theatre' = 'remotion'
+): z.infer<typeof TodoSchema>[] {
+  const setupLabel = engine === 'remotion' ? 'Set up Remotion project' : 'Set up Theatre.js project';
   const todos: z.infer<typeof TodoSchema>[] = [
-    { id: 'setup', label: 'Set up Theatre.js project', status: 'pending' },
+    { id: 'setup', label: setupLabel, status: 'pending' },
   ];
 
   plan.scenes.forEach((scene) => {
@@ -180,6 +184,8 @@ This tool validates your plan and generates the todo list for execution.`,
       designSpec: inputData.designSpec,
     };
 
-    return { plan, todos: generateTodosFromPlan(plan) };
+    const engine = ((rc?.get('engine') as string | undefined) === 'theatre' ? 'theatre' : 'remotion') as 'remotion' | 'theatre';
+
+    return { plan, todos: generateTodosFromPlan(plan, engine) };
   },
 });

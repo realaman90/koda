@@ -319,10 +319,20 @@ This injects recipe patterns (tested code snippets) directly into the code gener
           fixedContent = fixedContent.replace(fullMatch, replacement);
           fixCount++;
         }
-        if (fixCount > 0) {
-          console.warn(`[generate_remotion_code] ⚠️ Auto-fixed ${fixCount} localhost URL(s) → staticFile() in ${file.path}`);
+        // Normalize media paths for Remotion static assets.
+        // Some generations still emit /public/media/* paths or localhost URLs.
+        const normalized = fixedContent
+          .replace(/https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?\/public\/media\//g, '/media/')
+          .replace(/staticFile\((['"])\/public\/media\//g, 'staticFile($1media/')
+          .replace(/staticFile\((['"])public\/media\//g, 'staticFile($1media/')
+          .replace(/(['"`])\/public\/media\//g, '$1/media/');
+
+        if (normalized !== file.content) {
+          fixedContent = normalized;
+          const totalFixes = fixCount > 0 ? ` (${fixCount} localhost URL replacement(s))` : '';
+          console.warn(`[generate_remotion_code] ⚠️ Normalized Remotion media paths${totalFixes} in ${file.path}`);
           // Also ensure staticFile is imported if not already
-          if (!fixedContent.includes('staticFile') || !fixedContent.match(/import\s*{[^}]*staticFile[^}]*}\s*from\s*['"]remotion['"]/)) {
+          if (fixedContent.includes('staticFile') && !fixedContent.match(/import\s*{[^}]*staticFile[^}]*}\s*from\s*['"]remotion['"]/)) {
             // Try to add staticFile to existing remotion import
             const remotionImportRegex = /import\s*{([^}]*)}\s*from\s*['"]remotion['"]/;
             const importMatch = fixedContent.match(remotionImportRegex);
