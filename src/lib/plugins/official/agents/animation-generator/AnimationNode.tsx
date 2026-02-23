@@ -1769,8 +1769,9 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     const ls = getLatestState();
     if (!ls.plan) return;
 
+    const setupLabel = engine === 'remotion' ? 'Set up Remotion project' : 'Set up Theatre.js project';
     const todos = [
-      { id: 'setup', label: 'Set up Theatre.js project', status: 'pending' as const },
+      { id: 'setup', label: setupLabel, status: 'pending' as const },
       ...ls.plan.scenes.map((s) => ({
         id: `scene-${s.number}`,
         label: `Create Scene ${s.number} (${s.title})`,
