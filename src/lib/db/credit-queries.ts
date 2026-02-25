@@ -16,7 +16,7 @@ import {
   creditTransactions,
   type CreditBalance,
 } from './schema';
-import { getPlanCredits, FREE_TIER_CREDITS } from '@/lib/credits/costs';
+import { getPlanCredits, getInitialFreeCredits, FREE_TIER_CREDITS } from '@/lib/credits/costs';
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -124,12 +124,14 @@ export async function getOrCreateBalance(
   }
 
   // First access — create with plan credits
+  // For free users, apply early-user bonus if EARLY_USER_FREE_CREDITS is set
   const monthlyCredits = getPlanCredits(planKey);
+  const initialCredits = planKey === 'free_user' ? getInitialFreeCredits() : monthlyCredits;
   const now = new Date();
   const newBalance: CreditBalance = {
     id: randomUUID(),
     userId,
-    balance: monthlyCredits,
+    balance: initialCredits,
     planKey,
     creditsPerMonth: monthlyCredits,
     periodStart: currentPeriodStart(),
