@@ -259,13 +259,24 @@ function MusicGeneratorNodeComponent({ id, data, selected }: NodeProps<MusicGene
         <div className="relative">
           {/* Loading State */}
           {data.isGenerating ? (
-            <div className="p-4 min-h-[160px] flex flex-col items-center justify-center gap-4">
-              <div className="relative">
-                <div className="w-16 h-16 rounded-full border-4 border-border border-t-muted-foreground animate-spin" />
-                <Loader2 className="absolute inset-0 m-auto h-6 w-6 text-muted-foreground animate-pulse" />
-              </div>
+            <div className="p-4 min-h-[200px] flex flex-col items-center justify-center gap-4">
+              {data.prompt && (
+                <p className="text-muted-foreground text-xs text-center line-clamp-2 max-w-[90%]">
+                  {data.prompt}
+                </p>
+              )}
               <div className="text-center">
-                <p className="text-foreground text-sm font-medium">Generating music...</p>
+                <p
+                  className="text-base font-semibold bg-clip-text text-transparent"
+                  style={{
+                    backgroundImage:
+                      'linear-gradient(90deg, hsl(var(--muted-foreground)/0.45) 0%, hsl(var(--foreground)/0.95) 45%, hsl(var(--muted-foreground)/0.45) 100%)',
+                    backgroundSize: '200% 100%',
+                    animation: 'shimmer-text 2s ease-in-out infinite',
+                  }}
+                >
+                  Generating music...
+                </p>
                 <p className="text-muted-foreground text-xs mt-1">This may take a minute</p>
               </div>
             </div>

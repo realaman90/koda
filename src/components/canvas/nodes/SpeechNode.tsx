@@ -263,13 +263,24 @@ function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) 
         <div className="relative">
           {/* Loading State */}
           {data.isGenerating ? (
-            <div className="p-4 min-h-[160px] flex flex-col items-center justify-center gap-4">
-              <div className="relative">
-                <div className="w-16 h-16 rounded-full border-4 border-border border-t-cyan-500 animate-spin" />
-                <Loader2 className="absolute inset-0 m-auto h-6 w-6 text-cyan-500 animate-pulse" />
-              </div>
+            <div className="p-4 min-h-[200px] flex flex-col items-center justify-center gap-4">
+              {data.text && (
+                <p className="text-muted-foreground text-xs text-center line-clamp-2 max-w-[90%]">
+                  {data.text}
+                </p>
+              )}
               <div className="text-center">
-                <p className="text-foreground text-sm font-medium">Generating speech...</p>
+                <p
+                  className="text-base font-semibold bg-clip-text text-transparent"
+                  style={{
+                    backgroundImage:
+                      'linear-gradient(90deg, hsl(var(--muted-foreground)/0.45) 0%, hsl(var(--foreground)/0.95) 45%, hsl(var(--muted-foreground)/0.45) 100%)',
+                    backgroundSize: '200% 100%',
+                    animation: 'shimmer-text 2s ease-in-out infinite',
+                  }}
+                >
+                  Generating speech...
+                </p>
                 <p className="text-muted-foreground text-xs mt-1">This may take a moment</p>
               </div>
             </div>

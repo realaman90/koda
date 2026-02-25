@@ -828,7 +828,6 @@ select {
 /* Generating state - subtle muted border (replaces purple/teal neon) */
 .generating-border-subtle {
   border: 2px solid var(--muted-foreground);
-  opacity: 0.8;
   background-color: var(--node-card-bg);
 }
 
