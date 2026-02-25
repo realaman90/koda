@@ -16,8 +16,6 @@ import { evaluatePluginLaunchById, emitPluginPolicyAuditEvent } from '@/lib/plug
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const SVG_PLUGIN_ENABLED = process.env.NEXT_PUBLIC_SVG_PLUGIN_V1 === 'true';
-
 async function getProvider(): Promise<AssetStorageProvider> {
   const storageType = getAssetStorageType();
 
@@ -32,15 +30,6 @@ async function getProvider(): Promise<AssetStorageProvider> {
 
 export async function POST(request: Request) {
   try {
-    if (!SVG_PLUGIN_ENABLED) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'svg-studio is disabled. Set NEXT_PUBLIC_SVG_PLUGIN_V1=true to enable.',
-        },
-        { status: 404 }
-      );
-    }
 
     const policyDecision = evaluatePluginLaunchById('svg-studio');
     emitPluginPolicyAuditEvent({

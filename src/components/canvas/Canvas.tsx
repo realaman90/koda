@@ -54,7 +54,6 @@ export function Canvas() {
   // Get addNode and reactFlowInstance for creating nodes
   const addNode = useCanvasStore((state) => state.addNode);
   const reactFlowInstance = useCanvasStore((state) => state.reactFlowInstance);
-  const svgPluginEnabled = process.env.NEXT_PUBLIC_SVG_PLUGIN_V1 === 'true';
 
   // Handle plugin launch - create node for node-based plugins, open sandbox for others
   const handlePluginLaunch = useCallback(
@@ -83,7 +82,7 @@ export function Canvas() {
       } else if (pluginId === 'motion-analyzer') {
         const node = createPluginNode(position, pluginId, 'Motion Analyzer');
         addNode(node);
-      } else if (pluginId === 'svg-studio' && svgPluginEnabled) {
+      } else if (pluginId === 'svg-studio') {
         const node = createPluginNode(position, pluginId, 'SVG Studio');
         addNode(node);
       } else {
@@ -92,7 +91,7 @@ export function Canvas() {
         openSandbox(pluginId);
       }
     },
-    [addNode, openSandbox, reactFlowInstance, svgPluginEnabled]
+    [addNode, openSandbox, reactFlowInstance]
   );
 
   // Enable keyboard shortcuts

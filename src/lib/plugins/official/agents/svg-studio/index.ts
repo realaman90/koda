@@ -2,8 +2,6 @@ import { PenTool } from 'lucide-react';
 import { pluginRegistry } from '@/lib/plugins/registry';
 import type { AgentPlugin } from '@/lib/plugins/types';
 
-const SVG_PLUGIN_ENABLED = process.env.NEXT_PUBLIC_SVG_PLUGIN_V1 === 'true';
-
 export const svgStudioPlugin: AgentPlugin = {
   id: 'svg-studio',
   name: 'SVG Studio',
@@ -42,9 +40,7 @@ export const svgStudioPlugin: AgentPlugin = {
   },
 };
 
-if (SVG_PLUGIN_ENABLED) {
-  pluginRegistry.register(svgStudioPlugin);
-}
+pluginRegistry.register(svgStudioPlugin);
 
 export * from './types';
 export { SvgStudioNode } from './SvgStudioNode';

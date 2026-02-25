@@ -76,7 +76,6 @@ export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [utilitiesExpanded, setUtilitiesExpanded] = useState(false);
   const [pluginsExpanded, setPluginsExpanded] = useState(false);
-  const svgPluginEnabled = process.env.NEXT_PUBLIC_SVG_PLUGIN_V1 === 'true';
 
   // Clamp menu position so it doesn't overflow the viewport
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
@@ -246,18 +245,16 @@ export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
           ),
           keywords: ['animation', 'animate', 'motion', 'theatre', 'theater'],
         },
-        ...(svgPluginEnabled
-          ? [{
-              id: 'svgStudio',
-              icon: <PenTool className="h-4 w-4 text-emerald-400" />,
-              label: 'SVG Studio',
-              action: () => handleAddNode(
-                (pos, name) => createPluginNode(pos, 'svg-studio', name),
-                'SVG Studio'
-              ),
-              keywords: ['svg', 'vector', 'icon', 'logo'],
-            }]
-          : []),
+        {
+          id: 'svgStudio',
+          icon: <PenTool className="h-4 w-4 text-emerald-400" />,
+          label: 'SVG Studio',
+          action: () => handleAddNode(
+            (pos, name) => createPluginNode(pos, 'svg-studio', name),
+            'SVG Studio'
+          ),
+          keywords: ['svg', 'vector', 'icon', 'logo'],
+        },
       ],
     },
     {
@@ -342,7 +339,7 @@ export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
         keywords: [plugin.name.toLowerCase(), plugin.category, 'plugin'],
       })),
     },
-  ], [addNode, hideContextMenu, handleUpload, nodes, onPluginLaunch, svgPluginEnabled]);
+  ], [addNode, hideContextMenu, handleUpload, nodes, onPluginLaunch]);
 
   // Filter sections based on search query
   const filteredSections = useMemo(() => {
