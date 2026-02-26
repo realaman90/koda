@@ -111,12 +111,19 @@ export async function POST(request: Request) {
     }
     await getOrCreateBalance(animUserId!, animPlanKey);
 
-    animCreditCost = getCreditCost('animation', { model: 'remotion' });
+    // Peek at duration from body for per-second credit scaling
+    let peekDuration: number | undefined;
+    try {
+      const peek = await request.clone().json();
+      peekDuration = peek?.context?.duration;
+    } catch { /* body parse failure — handler will deal with it */ }
+
+    animCreditCost = getCreditCost('animation', { model: 'remotion', duration: peekDuration });
     const deductResult = await deductCredits(
       animUserId!,
       animCreditCost,
       'animation:remotion',
-      { model: 'remotion' }
+      { model: 'remotion', duration: peekDuration }
     );
     if (!deductResult.success) {
       return NextResponse.json(

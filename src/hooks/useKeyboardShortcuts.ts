@@ -55,15 +55,19 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions = {}) 
         return;
       }
 
-      // Copy: Cmd/Ctrl + C
+      // Copy: Cmd/Ctrl + C — let browser handle if user has text selected
       if (cmdOrCtrl && event.key === 'c') {
+        const sel = window.getSelection();
+        if (sel && sel.toString().length > 0) return; // native text copy
         event.preventDefault();
         copySelected();
         return;
       }
 
-      // Cut: Cmd/Ctrl + X
+      // Cut: Cmd/Ctrl + X — let browser handle if user has text selected
       if (cmdOrCtrl && event.key === 'x') {
+        const sel = window.getSelection();
+        if (sel && sel.toString().length > 0) return; // native text cut
         event.preventDefault();
         cutSelected();
         return;

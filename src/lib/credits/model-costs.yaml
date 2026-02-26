@@ -188,5 +188,6 @@ svg:
 
 animation:
   remotion:
-    fal_cost: 0.20
+    fal_cost_per_sec: 0.04
+    base_duration: 5
     credits: 5

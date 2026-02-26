@@ -29,7 +29,9 @@ interface AudioModelConfig {
 }
 
 interface AnimationModelConfig {
-  fal_cost: number;
+  fal_cost?: number;
+  fal_cost_per_sec?: number;
+  base_duration?: number;
   credits: number;
 }
 
@@ -123,6 +125,11 @@ export function getCreditCost(
   if (type === 'animation') {
     const modelConfig = config.animation[model];
     if (!modelConfig) return 5;
+    // Per-second scaling: 1 credit/sec (5 credits base for 5s)
+    if (modelConfig.fal_cost_per_sec && modelConfig.base_duration && duration) {
+      const scale = duration / modelConfig.base_duration;
+      return Math.max(modelConfig.credits, Math.ceil(modelConfig.credits * scale));
+    }
     return modelConfig.credits;
   }
 
