@@ -60,6 +60,7 @@ export const promptStudioPlugin: AgentPlugin = {
   handles: {
     inputs: [
       { id: 'text', name: 'Brief', type: 'text', optional: true },
+      { id: 'reference', name: 'Image Reference', type: 'image', optional: true },
     ],
     outputs: [
       { id: 'prompt-output', name: 'Prompt', type: 'text' },
