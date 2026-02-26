@@ -5,7 +5,7 @@ import type { Node, NodeProps } from '@xyflow/react';
 import { Handle, Position, useUpdateNodeInternals } from '@xyflow/react';
 import type { PluginNodeData } from '@/lib/types';
 import { useCanvasStore } from '@/stores/canvas-store';
-import { PenTool, RefreshCw, Type, ImageIcon, Code, Download, Copy, Check, Eye, CodeIcon } from 'lucide-react';
+import { PenTool, Play, RefreshCw, Type, ImageIcon, Code, Download, Copy, Check, Eye, CodeIcon } from 'lucide-react';
 import { createDefaultSvgStudioState, type SvgStudioNodeData, type SvgStudioState } from './types';
 
 function SvgStudioNodeComponent({ id, data, selected }: NodeProps<Node<PluginNodeData, 'pluginNode'>>) {
@@ -218,65 +218,69 @@ function SvgStudioNodeComponent({ id, data, selected }: NodeProps<Node<PluginNod
             </div>
           </div>
         ) : (
-        <div className="p-3 space-y-2">
-        <div className="flex gap-1">
+        <div>
+        <div className="p-3">
+          <div className="node-content-area p-3 min-h-[120px]">
+            <textarea
+              value={state.prompt}
+              onChange={(e) => updateState({ prompt: e.target.value })}
+              placeholder="Describe the SVG you want to create..."
+              className="w-full h-[90px] bg-transparent border-none text-sm resize-none focus:outline-none"
+              style={{ color: 'var(--text-secondary)' }}
+              aria-label="SVG prompt"
+            />
+          </div>
+        </div>
+
+        {state.mode === 'edit' && (
+          <div className="px-3 pb-2">
+            <div className="node-content-area p-2">
+              <textarea
+                value={state.sourceSvg || ''}
+                onChange={(e) => updateState({ sourceSvg: e.target.value })}
+                placeholder="Paste existing SVG to edit"
+                className="w-full min-h-[90px] text-[10px] bg-transparent border-none text-muted-foreground resize-none font-mono focus:outline-none"
+                aria-label="Source SVG"
+              />
+            </div>
+          </div>
+        )}
+
+        {state.error && <div className="text-xs text-red-400 px-4 pb-2">{state.error}</div>}
+
+        {/* Bottom Toolbar */}
+        <div className="flex items-center gap-1.5 px-3 py-2.5 node-bottom-toolbar">
           <button
             onClick={() => updateState({ mode: 'generate' })}
-            className={`px-2 py-1 text-xs rounded ${state.mode === 'generate' ? 'bg-muted text-foreground' : 'bg-muted/40 text-muted-foreground'}`}
+            className={`h-7 px-2 text-xs rounded-md transition-colors ${state.mode === 'generate' ? 'bg-muted/80 text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'}`}
           >
             Generate
           </button>
           <button
             onClick={() => updateState({ mode: 'edit' })}
-            className={`px-2 py-1 text-xs rounded ${state.mode === 'edit' ? 'bg-muted text-foreground' : 'bg-muted/40 text-muted-foreground'}`}
+            className={`h-7 px-2 text-xs rounded-md transition-colors ${state.mode === 'edit' ? 'bg-muted/80 text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'}`}
           >
             Edit
           </button>
-        </div>
-
-        <div className="node-content-area p-2">
-          <textarea
-            value={state.prompt}
-            onChange={(e) => updateState({ prompt: e.target.value })}
-            placeholder="Describe the SVG you want to create..."
-            className="w-full min-h-[74px] text-xs bg-transparent border-none text-foreground resize-none focus:outline-none"
-            aria-label="SVG prompt"
-          />
-        </div>
-
-        {state.mode === 'edit' && (
-          <div className="node-content-area p-2">
-            <textarea
-              value={state.sourceSvg || ''}
-              onChange={(e) => updateState({ sourceSvg: e.target.value })}
-              placeholder="Paste existing SVG to edit"
-              className="w-full min-h-[90px] text-[10px] bg-transparent border-none text-muted-foreground resize-none font-mono focus:outline-none"
-              aria-label="Source SVG"
-            />
-          </div>
-        )}
-
-        <div className="flex items-center justify-between">
-          <button
-            onClick={submit}
-            disabled={isSubmitting || !state.prompt.trim()}
-            className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-xs text-white"
-            aria-label="Generate SVG"
-          >
-            Run
-          </button>
-
           {state.phase === 'ready' && (
             <button
               onClick={() => updateState({ svg: undefined, metadata: undefined, asset: undefined, phase: 'idle' })}
-              className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+              className="h-7 w-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+              title="Reset"
             >
-              <RefreshCw className="w-3 h-3" /> Reset
+              <RefreshCw className="h-3.5 w-3.5" />
             </button>
           )}
+          <div className="flex-1" />
+          <button
+            onClick={submit}
+            disabled={isSubmitting || !state.prompt.trim()}
+            className="h-8 w-8 min-w-8 flex items-center justify-center bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg disabled:opacity-40 shrink-0 transition-all duration-200 hover:scale-105"
+            aria-label="Generate SVG"
+          >
+            <Play className="h-4 w-4" />
+          </button>
         </div>
-
-        {state.error && <div className="text-xs text-red-400">{state.error}</div>}
 
         {state.svg && (
           <div className="rounded border border-border bg-muted/50 p-2 space-y-1.5">
