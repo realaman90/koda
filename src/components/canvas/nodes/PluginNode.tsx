@@ -17,12 +17,14 @@ import { pluginRegistry } from '@/lib/plugins/registry';
 import { AnimationNode } from '@/lib/plugins/official/agents/animation-generator';
 import { MotionAnalyzerNode } from '@/lib/plugins/official/agents/motion-analyzer';
 import { SvgStudioNode } from '@/lib/plugins/official/agents/svg-studio';
+import { PromptStudioNode } from '@/lib/plugins/official/agents/prompt-studio';
 
 // Component registry - maps pluginId to component
 const PLUGIN_COMPONENTS: Record<string, React.ComponentType<NodeProps<Node<PluginNodeData, 'pluginNode'>>>> = {
   'animation-generator': AnimationNode as unknown as React.ComponentType<NodeProps<Node<PluginNodeData, 'pluginNode'>>>,
   'motion-analyzer': MotionAnalyzerNode as unknown as React.ComponentType<NodeProps<Node<PluginNodeData, 'pluginNode'>>>,
   'svg-studio': SvgStudioNode as unknown as React.ComponentType<NodeProps<Node<PluginNodeData, 'pluginNode'>>>,
+  'prompt-studio': PromptStudioNode as unknown as React.ComponentType<NodeProps<Node<PluginNodeData, 'pluginNode'>>>,
 
 };
 

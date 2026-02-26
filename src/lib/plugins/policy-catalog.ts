@@ -26,6 +26,11 @@ const OFFICIAL_PLUGIN_POLICY_CATALOG: Record<string, PluginPolicy> = {
     distributionVisibility: ['oss', 'hosted'],
     trustTier: 'official',
   },
+  'prompt-studio': {
+    capabilityDeclarations: ['canvas:read'],
+    distributionVisibility: ['oss', 'hosted'],
+    trustTier: 'official',
+  },
 };
 
 export function getPluginPolicyFromCatalog(pluginId: string): PluginPolicy | undefined {

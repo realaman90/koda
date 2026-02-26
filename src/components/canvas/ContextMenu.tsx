@@ -36,6 +36,7 @@ import '@/lib/plugins/official/product-shot';
 import '@/lib/plugins/official/agents/animation-generator';
 import '@/lib/plugins/official/agents/motion-analyzer';
 import '@/lib/plugins/official/agents/svg-studio';
+import '@/lib/plugins/official/agents/prompt-studio';
 
 interface MenuItem {
   id: string;

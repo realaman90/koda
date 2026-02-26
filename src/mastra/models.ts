@@ -46,6 +46,12 @@ export const ANIMATION_PROMPT_ENHANCER_MODEL = 'google/gemini-3-pro-preview';
 /** Image generation prompt enhancer */
 export const PROMPT_ENHANCER_MODEL = 'google/gemini-3-pro-preview';
 
+/** Prompt Studio creative director */
+export const PROMPT_STUDIO_MODEL = readModelOverride(
+  'KODA_MODEL_PROMPT_STUDIO',
+  'google/gemini-3-pro-preview'
+);
+
 // -- Anthropic Claude Models --
 
 export const CLAUDE_SONNET = 'claude-sonnet-4-6';
