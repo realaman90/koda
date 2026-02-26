@@ -4,7 +4,7 @@ import { persist } from 'zustand/middleware';
 // Generation history item
 export interface GenerationHistoryItem {
   id: string;
-  type: 'image' | 'video';
+  type: 'image' | 'video' | 'svg';
   prompt: string;
   model: string;
   timestamp: number;

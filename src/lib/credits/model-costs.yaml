@@ -181,6 +181,11 @@ audio:
     fal_cost: 0.01
     credits: 1
 
+svg:
+  gemini-3.1-pro-preview:
+    fal_cost: 0.02
+    credits: 2
+
 animation:
   remotion:
     fal_cost: 0.20

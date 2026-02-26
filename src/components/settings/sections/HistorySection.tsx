@@ -162,7 +162,7 @@ export function HistorySection() {
   const removeFromHistory = useSettingsStore((state) => state.removeFromHistory);
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterType, setFilterType] = useState<'all' | 'image' | 'video'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'image' | 'video' | 'svg'>('all');
 
   const filteredHistory = history.filter((item) => {
     const matchesSearch = item.prompt.toLowerCase().includes(searchQuery.toLowerCase());
@@ -197,7 +197,7 @@ export function HistorySection() {
           />
         </div>
         <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
-          {(['all', 'image', 'video'] as const).map((type) => (
+          {(['all', 'image', 'video', 'svg'] as const).map((type) => (
             <button
               key={type}
               onClick={() => setFilterType(type)}

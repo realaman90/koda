@@ -33,16 +33,22 @@ interface AnimationModelConfig {
   credits: number;
 }
 
+interface SvgModelConfig {
+  fal_cost: number;
+  credits: number;
+}
+
 interface CostConfig {
   markup_multiplier: number;
   plans: Record<string, PlanConfig>;
   image: Record<string, ImageModelConfig>;
   video: Record<string, VideoModelConfig>;
   audio: Record<string, AudioModelConfig>;
+  svg: Record<string, SvgModelConfig>;
   animation: Record<string, AnimationModelConfig>;
 }
 
-export type GenerationType = 'image' | 'video' | 'audio' | 'animation';
+export type GenerationType = 'image' | 'video' | 'audio' | 'svg' | 'animation';
 
 export interface CreditCostParams {
   model: string;
@@ -105,6 +111,12 @@ export function getCreditCost(
   if (type === 'audio') {
     const modelConfig = config.audio[model];
     if (!modelConfig) return 1;
+    return modelConfig.credits;
+  }
+
+  if (type === 'svg') {
+    const modelConfig = config.svg[model];
+    if (!modelConfig) return 2;
     return modelConfig.credits;
   }
 

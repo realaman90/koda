@@ -12,9 +12,12 @@ import {
 } from '@/lib/plugins/official/agents/svg-studio/schema';
 import { emitLaunchMetric } from '@/lib/observability/launch-metrics';
 import { evaluatePluginLaunchById, emitPluginPolicyAuditEvent } from '@/lib/plugins/launch-policy';
+import { withCredits } from '@/lib/credits/with-credits';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+const SVG_MODEL = 'gemini-3.1-pro-preview';
 
 async function getProvider(): Promise<AssetStorageProvider> {
   const storageType = getAssetStorageType();
@@ -28,131 +31,136 @@ async function getProvider(): Promise<AssetStorageProvider> {
   return getLocalAssetProvider();
 }
 
-export async function POST(request: Request) {
-  try {
-
-    const policyDecision = evaluatePluginLaunchById('svg-studio');
-    emitPluginPolicyAuditEvent({
-      source: 'api',
-      decision: policyDecision,
-      metadata: { method: 'POST', path: '/api/plugins/svg-studio' },
-    });
-
-    if (!policyDecision.allowed) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Plugin launch blocked by policy.',
-          code: policyDecision.code,
-          reason: policyDecision.reason,
-        },
-        { status: policyDecision.code === 'PLUGIN_NOT_FOUND' ? 404 : 403 }
-      );
-    }
-
-    const body = await request.json();
-    const parsed = SvgStudioRequestSchema.safeParse(body);
-
-    if (!parsed.success) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Invalid request payload',
-          issues: parsed.error.issues,
-        },
-        { status: 400 }
-      );
-    }
-
-    const input = parsed.data;
-
-    if (input.svg && input.svg.length > SVG_STUDIO_MAX_RAW_SIZE) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `SVG exceeds ${SVG_STUDIO_MAX_RAW_SIZE} bytes`,
-        },
-        { status: 413 }
-      );
-    }
-
-    const aiService = new AIService();
-    const prompt = buildSvgStudioPrompt(input);
-
-    const result = await aiService.generateStructured(prompt, SvgStudioAgentOutputSchema, {
-      systemPrompt: SVG_STUDIO_SYSTEM_PROMPT,
-      model: 'anthropic/claude-sonnet-4-6',
-      temperature: 0.2,
-    });
-
-    const sanitized = sanitizeSvg(result.svg, input.constraints?.maxPaths ?? 300);
-
-    let asset: { id: string; url: string; mimeType: 'image/svg+xml'; sizeBytes: number } | undefined;
-
-    if (input.persistAsset) {
-      const provider = await getProvider();
-      const svgBuffer = Buffer.from(sanitized.svg, 'utf-8');
-      const stored = await provider.saveFromBuffer(svgBuffer, {
-        type: 'image',
-        extension: 'svg',
-        metadata: {
-          mimeType: 'image/svg+xml',
-          sizeBytes: svgBuffer.length,
-          nodeId: input.nodeId,
-          canvasId: input.canvasId,
-          prompt: input.prompt,
-          model: 'anthropic/claude-sonnet-4-6',
-        },
+export const POST = withCredits(
+  {
+    type: 'svg',
+    getCostParams: () => ({ model: SVG_MODEL }),
+  },
+  async (request) => {
+    try {
+      const policyDecision = evaluatePluginLaunchById('svg-studio');
+      emitPluginPolicyAuditEvent({
+        source: 'api',
+        decision: policyDecision,
+        metadata: { method: 'POST', path: '/api/plugins/svg-studio' },
       });
 
-      asset = {
-        id: stored.id,
-        url: stored.url,
-        mimeType: 'image/svg+xml',
-        sizeBytes: svgBuffer.length,
-      };
-    }
+      if (!policyDecision.allowed) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Plugin launch blocked by policy.',
+            code: policyDecision.code,
+            reason: policyDecision.reason,
+          },
+          { status: policyDecision.code === 'PLUGIN_NOT_FOUND' ? 404 : 403 }
+        );
+      }
 
-    emitLaunchMetric({
-      metric: 'plugin_execution',
-      status: 'success',
-      source: 'api',
-      pluginId: 'svg-studio',
-    });
+      const body = await request.json();
+      const parsed = SvgStudioRequestSchema.safeParse(body);
 
-    return NextResponse.json({
-      success: true,
-      svg: sanitized.svg,
-      metadata: {
-        ...sanitized.metadata,
-        warnings: [...sanitized.metadata.warnings, ...(result.warnings || [])],
-      },
-      asset,
-    });
-  } catch (error) {
-    if (error instanceof SvgSanitizationError) {
+      if (!parsed.success) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Invalid request payload',
+            issues: parsed.error.issues,
+          },
+          { status: 400 }
+        );
+      }
+
+      const input = parsed.data;
+
+      if (input.svg && input.svg.length > SVG_STUDIO_MAX_RAW_SIZE) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `SVG exceeds ${SVG_STUDIO_MAX_RAW_SIZE} bytes`,
+          },
+          { status: 413 }
+        );
+      }
+
+      const aiService = new AIService();
+      const prompt = buildSvgStudioPrompt(input);
+
+      const result = await aiService.generateStructured(prompt, SvgStudioAgentOutputSchema, {
+        systemPrompt: SVG_STUDIO_SYSTEM_PROMPT,
+        model: `google/${SVG_MODEL}`,
+        temperature: 0.2,
+      });
+
+      const sanitized = sanitizeSvg(result.svg, input.constraints?.maxPaths ?? 300);
+
+      let asset: { id: string; url: string; mimeType: 'image/svg+xml'; sizeBytes: number } | undefined;
+
+      if (input.persistAsset) {
+        const provider = await getProvider();
+        const svgBuffer = Buffer.from(sanitized.svg, 'utf-8');
+        const stored = await provider.saveFromBuffer(svgBuffer, {
+          type: 'image',
+          extension: 'svg',
+          metadata: {
+            mimeType: 'image/svg+xml',
+            sizeBytes: svgBuffer.length,
+            nodeId: input.nodeId,
+            canvasId: input.canvasId,
+            prompt: input.prompt,
+            model: `google/${SVG_MODEL}`,
+          },
+        });
+
+        asset = {
+          id: stored.id,
+          url: stored.url,
+          mimeType: 'image/svg+xml',
+          sizeBytes: svgBuffer.length,
+        };
+      }
+
+      emitLaunchMetric({
+        metric: 'plugin_execution',
+        status: 'success',
+        source: 'api',
+        pluginId: 'svg-studio',
+      });
+
+      return NextResponse.json({
+        success: true,
+        svg: sanitized.svg,
+        metadata: {
+          ...sanitized.metadata,
+          warnings: [...sanitized.metadata.warnings, ...(result.warnings || [])],
+        },
+        asset,
+      });
+    } catch (error) {
+      if (error instanceof SvgSanitizationError) {
+        return NextResponse.json(
+          { success: false, error: error.message },
+          { status: error.status }
+        );
+      }
+
+      console.error('[svg-studio] Error:', error);
+      emitLaunchMetric({
+        metric: 'plugin_execution',
+        status: 'error',
+        source: 'api',
+        pluginId: 'svg-studio',
+        errorCode: 'execution_failed',
+        metadata: { message: error instanceof Error ? error.message : String(error) },
+      });
+
       return NextResponse.json(
-        { success: false, error: error.message },
-        { status: error.status }
+        {
+          success: false,
+          error: error instanceof Error ? error.message : 'Internal server error',
+        },
+        { status: 500 }
       );
     }
-
-    console.error('[svg-studio] Error:', error);
-    emitLaunchMetric({
-      metric: 'plugin_execution',
-      status: 'error',
-      source: 'api',
-      pluginId: 'svg-studio',
-      errorCode: 'execution_failed',
-      metadata: { message: error instanceof Error ? error.message : String(error) },
-    });
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Internal server error',
-      },
-      { status: 500 }
-    );
   }
-}
+);

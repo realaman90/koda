@@ -6,6 +6,7 @@ import { Handle, Position, useUpdateNodeInternals } from '@xyflow/react';
 import type { PluginNodeData } from '@/lib/types';
 import { useCanvasStore } from '@/stores/canvas-store';
 import { PenTool, Play, RefreshCw, Type, ImageIcon, Code, Download, Copy, Check, Eye, CodeIcon } from 'lucide-react';
+import { useSettingsStore } from '@/stores/settings-store';
 import { createDefaultSvgStudioState, type SvgStudioNodeData, type SvgStudioState } from './types';
 
 function SvgStudioNodeComponent({ id, data, selected }: NodeProps<Node<PluginNodeData, 'pluginNode'>>) {
@@ -13,6 +14,7 @@ function SvgStudioNodeComponent({ id, data, selected }: NodeProps<Node<PluginNod
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const updateNodeInternals = useUpdateNodeInternals();
   const isReadOnly = useCanvasStore((s) => s.isReadOnly);
+  const addToHistory = useSettingsStore((s) => s.addToHistory);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
   const [showCode, setShowCode] = useState(false);
@@ -146,10 +148,27 @@ function SvgStudioNodeComponent({ id, data, selected }: NodeProps<Node<PluginNod
         asset: payload.asset,
         error: undefined,
       });
+
+      addToHistory({
+        type: 'svg',
+        prompt: state.prompt.trim(),
+        model: 'gemini-3.1-pro-preview',
+        status: 'completed',
+        result: { urls: payload.asset?.url ? [payload.asset.url] : [] },
+      });
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'SVG generation failed';
       updateState({
         phase: 'error',
-        error: err instanceof Error ? err.message : 'SVG generation failed',
+        error: errorMessage,
+      });
+
+      addToHistory({
+        type: 'svg',
+        prompt: state.prompt.trim() || '(no prompt)',
+        model: 'gemini-3.1-pro-preview',
+        status: 'failed',
+        error: errorMessage,
       });
     } finally {
       setIsSubmitting(false);
