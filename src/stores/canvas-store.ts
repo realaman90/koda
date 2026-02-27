@@ -57,7 +57,7 @@ interface CanvasState {
   // Node actions
   addNode: (node: AppNode) => void;
   addNodes: (nodes: AppNode[]) => void;
-  updateNodeData: (nodeId: string, data: Record<string, unknown>) => void;
+  updateNodeData: (nodeId: string, data: Record<string, unknown>, skipHistory?: boolean) => void;
   deleteNode: (nodeId: string) => void;
 
   // React Flow handlers
@@ -159,7 +159,7 @@ export const createImageGeneratorNode = (position: { x: number; y: number }, nam
   position,
   data: {
     prompt: '',
-    model: 'nanobanana-pro',
+    model: 'auto',
     aspectRatio: '1:1',
     isGenerating: false,
     name,
@@ -390,7 +390,7 @@ export const useCanvasStore = create<CanvasState>()(
         _pushHistory();
       },
 
-      updateNodeData: (nodeId, data) => {
+      updateNodeData: (nodeId, data, skipHistory) => {
         const { _pushHistory } = get() as CanvasState & { _pushHistory: () => void };
         set((state) => ({
           nodes: state.nodes.map((node) =>
@@ -399,7 +399,7 @@ export const useCanvasStore = create<CanvasState>()(
               : node
           ) as AppNode[],
         }));
-        _pushHistory();
+        if (!skipHistory) _pushHistory();
       },
 
       deleteNode: (nodeId) => {

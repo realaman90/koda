@@ -8,7 +8,6 @@ import { Breadcrumbs, BreadcrumbItem } from './Breadcrumbs';
 import {
   Search,
   ArrowLeft,
-  Share2,
   Download,
   FileJson,
   Image as ImageIcon,
@@ -258,14 +257,7 @@ export function TopBar({
               )}
             </div>
 
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 bg-muted border-border text-muted-foreground hover:bg-accent hover:text-foreground gap-2"
-            >
-              <Share2 className="h-3.5 w-3.5" />
-              Share
-            </Button>
+{/* TODO: Share button hidden until sharing is implemented */}
           </>
         )}
 

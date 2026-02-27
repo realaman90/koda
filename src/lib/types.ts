@@ -366,6 +366,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
     maxImages: 4,
     inputType: 'text-and-image',
     supportsReferences: true,
+    maxReferences: 14,
     aspectRatios: ['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9', '5:4', '4:5'],
     resolutions: ['1K', '2K', '4K'],
     description: '4x faster, low cost',
