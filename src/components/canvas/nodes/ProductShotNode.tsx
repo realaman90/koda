@@ -216,6 +216,20 @@ function ProductShotNodeComponent({ id, data, selected }: NodeProps<ProductShotN
         }
       }
 
+      // Wrap everything in a group: source node + product shot node + created nodes
+      const groupNodeIds = [id, ...createdNodeIds];
+      if (sourceMediaNodeId) groupNodeIds.unshift(sourceMediaNodeId);
+
+      await canvas.wrapInGroup({
+        nodeIds: groupNodeIds,
+        name: `${data.productName || 'Product'} Shots`,
+        color: '#d97706',
+        stickyNote: {
+          content: `${enabledShots.length} shots | ${data.background} | ${data.lighting} lighting`,
+          color: 'orange',
+        },
+      });
+
       // Fit view to show all nodes
       canvas.fitView();
 

@@ -724,6 +724,23 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
           }
         }
 
+        // Wrap everything in a group: storyboard + refs + scenes + videos
+        const allSingleShotNodeIds = [id, ...preStepNodeIds, ...nodeIds];
+        if (productEdge?.source && !allSingleShotNodeIds.includes(productEdge.source))
+          allSingleShotNodeIds.push(productEdge.source);
+        if (characterEdge?.source && !allSingleShotNodeIds.includes(characterEdge.source))
+          allSingleShotNodeIds.push(characterEdge.source);
+
+        await canvas.wrapInGroup({
+          nodeIds: allSingleShotNodeIds,
+          name: data.concept || 'Storyboard',
+          color: '#8b5cf6',
+          stickyNote: {
+            content: `${activeDraft.scenes.length} scenes | ${data.style} | single-shot mode`,
+            color: 'purple',
+          },
+        });
+
         canvas.fitView();
         const preStepMsg = preStepNodeIds.length > 0
           ? ` (+ ${preStepNodeIds.length} reference node${preStepNodeIds.length > 1 ? 's' : ''})`
@@ -821,6 +838,23 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
             await canvas.createEdge(characterRefNodeId, 'output', imageNodeId, characterHandle);
           }
         }
+
+        // Wrap everything in a group: storyboard + refs + scenes + videos
+        const allTransitionNodeIds = [id, ...preStepNodeIds, ...nodeIds];
+        if (productEdge?.source && !allTransitionNodeIds.includes(productEdge.source))
+          allTransitionNodeIds.push(productEdge.source);
+        if (characterEdge?.source && !allTransitionNodeIds.includes(characterEdge.source))
+          allTransitionNodeIds.push(characterEdge.source);
+
+        await canvas.wrapInGroup({
+          nodeIds: allTransitionNodeIds,
+          name: data.concept || 'Storyboard',
+          color: '#8b5cf6',
+          stickyNote: {
+            content: `${activeDraft.scenes.length} scenes | ${data.style} | transition mode`,
+            color: 'purple',
+          },
+        });
 
         canvas.fitView();
         const preStepMsg = preStepNodeIds.length > 0

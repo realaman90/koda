@@ -56,6 +56,7 @@ interface CanvasState {
 
   // Node actions
   addNode: (node: AppNode) => void;
+  addNodes: (nodes: AppNode[]) => void;
   updateNodeData: (nodeId: string, data: Record<string, unknown>) => void;
   deleteNode: (nodeId: string) => void;
 
@@ -379,6 +380,15 @@ export const useCanvasStore = create<CanvasState>()(
         _pushHistory();
       },
 
+      addNodes: (nodes) => {
+        if (nodes.length === 0) return;
+        const { _pushHistory } = get() as CanvasState & { _pushHistory: () => void };
+        set((state) => ({
+          nodes: [...state.nodes, ...nodes],
+        }));
+        _pushHistory();
+      },
+
       updateNodeData: (nodeId, data) => {
         const { _pushHistory } = get() as CanvasState & { _pushHistory: () => void };
         set((state) => ({
@@ -454,23 +464,44 @@ export const useCanvasStore = create<CanvasState>()(
         let updatedNodes = applyNodeChanges(changes, nodes) as AppNode[];
 
         // Move child nodes that are inside any moving group
+        // Groups with explicit childNodeIds (from wrapInGroup) use membership lists.
+        // Groups without (manual groupSelected) fall back to spatial containment,
+        // but only if no explicit group already claims the node.
         if (groupDeltas.length > 0) {
           const movedNodeIds = new Set(changes.filter((c) => c.type === 'position').map((c) => c.id));
 
+          // Build explicit membership lookup: nodeId → groupId
+          const explicitOwner = new Map<string, string>();
+          for (const group of nodes) {
+            if (group.type !== 'group') continue;
+            const childIds = (group.data as GroupNodeData).childNodeIds;
+            if (childIds) {
+              for (const cid of childIds) explicitOwner.set(cid, group.id);
+            }
+          }
+
           updatedNodes = updatedNodes.map((node) => {
-            // Skip if this node is already being moved by the user
             if (movedNodeIds.has(node.id)) return node;
 
-            // Check each moving group
+            // 1. Check explicit membership first
+            const explicitGroupId = explicitOwner.get(node.id);
+            if (explicitGroupId) {
+              const delta = groupDeltas.find((d) => d.groupId === explicitGroupId);
+              if (!delta) return node;
+              return {
+                ...node,
+                position: { x: node.position.x + delta.deltaX, y: node.position.y + delta.deltaY },
+              };
+            }
+
+            // 2. Fallback: spatial containment for manual groups (no childNodeIds)
+            //    Skip if node is explicitly owned by another (non-moving) group
             for (const { groupId, deltaX, deltaY, group } of groupDeltas) {
-              // Check if node was inside the group BEFORE it moved
+              if ((group.data as GroupNodeData).childNodeIds) continue; // explicit groups handled above
               if (isNodeInsideGroup(node, group)) {
                 return {
                   ...node,
-                  position: {
-                    x: node.position.x + deltaX,
-                    y: node.position.y + deltaY,
-                  },
+                  position: { x: node.position.x + deltaX, y: node.position.y + deltaY },
                 };
               }
             }

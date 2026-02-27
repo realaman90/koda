@@ -185,6 +185,7 @@ export interface GroupNodeData extends Record<string, unknown> {
   width: number;
   height: number;
   notes?: string;
+  childNodeIds?: string[];  // Explicit membership set by wrapInGroup — prevents cross-group adoption
 }
 
 export type GroupNode = Node<GroupNodeData, 'group'>;

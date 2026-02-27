@@ -223,7 +223,7 @@ export interface AgentPlugin extends PluginBase {
 /**
  * Node type identifiers for creation
  */
-export type CreateNodeType = 'text' | 'media' | 'imageGenerator' | 'videoGenerator';
+export type CreateNodeType = 'text' | 'media' | 'imageGenerator' | 'videoGenerator' | 'group' | 'stickyNote';
 
 /**
  * Input for creating a new node
@@ -267,6 +267,15 @@ export interface CanvasAPI {
   // View controls
   focusNode(nodeId: string): void;
   fitView(nodeIds?: string[]): void;
+
+  // Grouping
+  wrapInGroup(options: {
+    nodeIds: string[];
+    name: string;
+    color?: string;
+    stickyNote?: { content: string; color?: string };
+    padding?: number;
+  }): Promise<{ groupId: string; stickyNoteId?: string }>;
 }
 
 // ============================================

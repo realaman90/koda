@@ -13,9 +13,11 @@ import {
   createTextNode,
   createMediaNode,
   createVideoGeneratorNode,
+  createGroupNode,
+  createStickyNoteNode,
 } from '@/stores/canvas-store';
 import type { CanvasAPI, CreateNodeInput, CreateNodeType } from './types';
-import type { AppNode, ImageGeneratorNodeData, VideoGeneratorNodeData, TextNodeData, MediaNodeData } from '@/lib/types';
+import type { AppNode, ImageGeneratorNodeData, VideoGeneratorNodeData, TextNodeData, MediaNodeData, GroupNodeData, StickyNoteNodeData } from '@/lib/types';
 
 // Default layout constants
 const DEFAULT_COLUMNS = 3;
@@ -38,6 +40,7 @@ export function useCanvasAPI(): CanvasAPI {
   const edges = useCanvasStore((state) => state.edges);
   const selectedNodeIds = useCanvasStore((state) => state.selectedNodeIds);
   const addNode = useCanvasStore((state) => state.addNode);
+  const addNodes = useCanvasStore((state) => state.addNodes);
   const onConnect = useCanvasStore((state) => state.onConnect);
 
   // Read operations
@@ -95,6 +98,20 @@ export function useCanvasAPI(): CanvasAPI {
           return node;
         }
 
+        case 'group': {
+          const node = createGroupNode(position, input.name);
+          const data = node.data as GroupNodeData;
+          Object.assign(data, input.data);
+          return node;
+        }
+
+        case 'stickyNote': {
+          const node = createStickyNoteNode(position);
+          const data = node.data as StickyNoteNodeData;
+          Object.assign(data, input.data);
+          return node;
+        }
+
         default:
           throw new Error(`Unknown node type: ${input.type}`);
       }
@@ -112,18 +129,17 @@ export function useCanvasAPI(): CanvasAPI {
     [createNodeByType, addNode]
   );
 
-  // Create multiple nodes
+  // Create multiple nodes (single history entry)
   const createNodes = useCallback(
     async (inputs: CreateNodeInput[]): Promise<string[]> => {
-      const ids: string[] = [];
+      const builtNodes: AppNode[] = [];
       for (const input of inputs) {
-        const node = createNodeByType(input);
-        addNode(node);
-        ids.push(node.id);
+        builtNodes.push(createNodeByType(input));
       }
-      return ids;
+      addNodes(builtNodes);
+      return builtNodes.map((n) => n.id);
     },
-    [createNodeByType, addNode]
+    [createNodeByType, addNodes]
   );
 
   // Create an edge between nodes
@@ -200,6 +216,70 @@ export function useCanvasAPI(): CanvasAPI {
     [nodes, reactFlow]
   );
 
+  // Wrap existing nodes in a group with optional sticky note label
+  const wrapInGroup = useCallback(
+    async (options: {
+      nodeIds: string[];
+      name: string;
+      color?: string;
+      stickyNote?: { content: string; color?: string };
+      padding?: number;
+    }): Promise<{ groupId: string; stickyNoteId?: string }> => {
+      const store = useCanvasStore.getState();
+      const targetNodes = store.nodes.filter((n) => options.nodeIds.includes(n.id));
+      if (targetNodes.length === 0) return { groupId: '' };
+
+      const padding = options.padding ?? 40;
+      const stickyTopPadding = options.stickyNote ? 80 : 0;
+
+      // Calculate bounding box of target nodes
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const node of targetNodes) {
+        const w = node.measured?.width || 280;
+        const h = node.measured?.height || 150;
+        minX = Math.min(minX, node.position.x);
+        minY = Math.min(minY, node.position.y);
+        maxX = Math.max(maxX, node.position.x + w);
+        maxY = Math.max(maxY, node.position.y + h);
+      }
+
+      // Create group node
+      const groupNode = createGroupNode(
+        { x: minX - padding, y: minY - padding - stickyTopPadding },
+        options.name
+      );
+      const groupData = groupNode.data as GroupNodeData;
+      groupData.width = maxX - minX + padding * 2;
+      groupData.height = maxY - minY + padding * 2 + stickyTopPadding;
+      if (options.color) groupData.color = options.color;
+      groupData.childNodeIds = [...options.nodeIds];
+
+      const newNodes: AppNode[] = [groupNode];
+      let stickyNoteId: string | undefined;
+
+      // Create sticky note positioned at top-left inside group
+      if (options.stickyNote) {
+        const stickyNode = createStickyNoteNode({
+          x: minX - padding + 16,
+          y: minY - padding - stickyTopPadding + 12,
+        });
+        const stickyData = stickyNode.data as StickyNoteNodeData;
+        stickyData.content = options.stickyNote.content;
+        if (options.stickyNote.color) stickyData.color = options.stickyNote.color as StickyNoteNodeData['color'];
+        stickyNoteId = stickyNode.id;
+        newNodes.push(stickyNode);
+        groupData.childNodeIds!.push(stickyNoteId);
+      }
+
+      // Use the store's addNodes to properly go through set() + _pushHistory()
+      // Group has zIndex: -1 so it renders behind other nodes regardless of array order
+      store.addNodes(newNodes);
+
+      return { groupId: groupNode.id, stickyNoteId };
+    },
+    []
+  );
+
   // Fit view to show nodes
   const fitView = useCallback(
     (nodeIds?: string[]): void => {
@@ -229,6 +309,7 @@ export function useCanvasAPI(): CanvasAPI {
       getGridPosition,
       focusNode,
       fitView,
+      wrapInGroup,
     }),
     [
       getNodes,
@@ -241,6 +322,7 @@ export function useCanvasAPI(): CanvasAPI {
       getGridPosition,
       focusNode,
       fitView,
+      wrapInGroup,
     ]
   );
 
