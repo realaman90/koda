@@ -396,16 +396,14 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
     if (!data.outputUrl) return;
 
     try {
-      const response = await fetch(data.outputUrl);
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
+      const filename = `video-${Date.now()}.mp4`;
+      const proxyUrl = `/api/download?url=${encodeURIComponent(data.outputUrl)}&filename=${encodeURIComponent(filename)}`;
       const a = document.createElement('a');
-      a.href = url;
-      a.download = `video-${Date.now()}.mp4`;
+      a.href = proxyUrl;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(url);
       toast.success('Video downloaded');
     } catch (error) {
       console.error('Download failed:', error);

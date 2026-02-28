@@ -67,6 +67,13 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<GroupNodeType>) {
     deleteNode(id);
   }, [id, deleteNode]);
 
+  const handleResize = useCallback(
+    (_: unknown, params: { width: number; height: number }) => {
+      updateNodeData(id, { width: params.width, height: params.height }, true);
+    },
+    [id, updateNodeData]
+  );
+
   const handleResizeEnd = useCallback(
     (_: unknown, params: { width: number; height: number }) => {
       updateNodeData(id, { width: params.width, height: params.height });
@@ -86,6 +93,7 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<GroupNodeType>) {
         isVisible={selected}
         lineClassName="!border-transparent"
         handleClassName="!opacity-0 !w-4 !h-4"
+        onResize={handleResize}
         onResizeEnd={handleResizeEnd}
       />
 

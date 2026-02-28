@@ -6,7 +6,6 @@ import { DashboardHeader } from './DashboardHeader';
 import { DashboardTabs } from './DashboardTabs';
 import { ProjectsGrid } from './ProjectsGrid';
 import { TemplatesSection } from './TemplatesSection';
-import { SharedSection } from './SharedSection';
 import { PageTransition } from '@/components/common/PageTransition';
 
 export function DashboardPage() {
@@ -23,7 +22,6 @@ export function DashboardPage() {
     filteredCanvases,
     personalCanvases,
     teamCanvases,
-    sharedCanvases,
     invites,
     memberships,
     filteredTemplates,
@@ -121,7 +119,7 @@ export function DashboardPage() {
           </>
         )}
 
-        {activeTab === 'shared' && <SharedSection canvases={sharedCanvases} onRename={handleRename} onDuplicate={handleDuplicate} onDelete={handleDelete} onCreateCanvas={handleCreateCanvas} />}
+{/* TODO: Shared tab hidden until sharing is implemented */}
         {activeTab === 'templates' && (
           <TemplatesSection
             templates={filteredTemplates}

@@ -232,7 +232,7 @@ function PromptCard({
   );
 }
 
-// ─── QnA Card Component ─────────────────────────────────────────────────
+// ─── QnA Card Component (Carousel) ──────────────────────────────────────
 function QnACard({
   qna,
   onAnswer,
@@ -243,13 +243,23 @@ function QnACard({
   disabled: boolean;
 }) {
   const [selections, setSelections] = useState<Record<string, string>>({});
+  const [customInputs, setCustomInputs] = useState<Record<string, string>>({});
+  const [activeIdx, setActiveIdx] = useState(0);
+  const total = qna.questions.length;
 
   const handleChipClick = (questionId: string, value: string) => {
     if (qna.answered || disabled) return;
+    setCustomInputs(prev => ({ ...prev, [questionId]: '' }));
     setSelections(prev => ({
       ...prev,
       [questionId]: prev[questionId] === value ? '' : value,
     }));
+  };
+
+  const handleCustomInput = (questionId: string, value: string) => {
+    if (qna.answered || disabled) return;
+    setCustomInputs(prev => ({ ...prev, [questionId]: value }));
+    setSelections(prev => ({ ...prev, [questionId]: value }));
   };
 
   const handleSubmit = () => {
@@ -259,6 +269,7 @@ function QnACard({
   };
 
   const hasSelection = Object.values(selections).some(v => v);
+  const answeredCount = Object.values(selections).filter(v => v).length;
 
   if (qna.answered) {
     return (
@@ -271,41 +282,100 @@ function QnACard({
     );
   }
 
+  const currentQ = qna.questions[activeIdx];
+  if (!currentQ) return null;
+
+  const isChipSelected = (s: string) => selections[currentQ.id] === s && !customInputs[currentQ.id];
+  const hasCustom = !!customInputs[currentQ.id];
+
   return (
     <div className="rounded-lg border border-[var(--an-accent)]/30 bg-[var(--an-accent-bg)]/20 overflow-hidden">
-      <div className="px-3 py-2.5 space-y-3">
-        {qna.questions.map((q) => (
-          <div key={q.id}>
-            <p className="text-[11px] font-medium text-[var(--an-text-secondary)] mb-1.5">{q.question}</p>
-            <div className="flex flex-wrap gap-1.5">
-              {q.suggestions.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => handleChipClick(q.id, s)}
-                  disabled={disabled}
-                  className={`px-2.5 py-1 rounded-full text-[10px] font-medium transition-all ${
-                    selections[q.id] === s
-                      ? 'bg-[var(--an-accent)] text-white'
-                      : 'bg-[var(--an-bg-elevated)] text-[var(--an-text-muted)] hover:bg-[var(--an-bg-hover)] hover:text-[var(--an-text-secondary)]'
-                  }`}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
+      {/* Carousel dots + counter */}
+      {total > 1 && (
+        <div className="flex items-center justify-between px-3 pt-2">
+          <div className="flex gap-1">
+            {qna.questions.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => setActiveIdx(i)}
+                className={`w-1.5 h-1.5 rounded-full transition-all ${
+                  i === activeIdx
+                    ? 'bg-[var(--an-accent)] w-3'
+                    : selections[qna.questions[i].id]
+                      ? 'bg-[var(--an-accent)]/50'
+                      : 'bg-[var(--an-text-dim)]/30'
+                }`}
+              />
+            ))}
           </div>
-        ))}
+          <span className="text-[9px] text-[var(--an-text-dim)]">
+            {answeredCount}/{total}
+          </span>
+        </div>
+      )}
+
+      {/* Current question */}
+      <div className="px-3 py-2.5">
+        <p className="text-[11px] font-medium text-[var(--an-text-secondary)] mb-2">{currentQ.question}</p>
+        <div className="flex flex-wrap gap-1.5">
+          {currentQ.suggestions.map((s) => (
+            <button
+              key={s}
+              onClick={() => handleChipClick(currentQ.id, s)}
+              disabled={disabled}
+              className={`px-2.5 py-1 rounded-full text-[10px] font-medium transition-all ${
+                isChipSelected(s)
+                  ? 'bg-[var(--an-accent)] text-white'
+                  : 'bg-[var(--an-bg-elevated)] text-[var(--an-text-muted)] hover:bg-[var(--an-bg-hover)] hover:text-[var(--an-text-secondary)]'
+              }`}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+        {/* Free text input */}
+        <input
+          type="text"
+          placeholder="Or type your own..."
+          value={customInputs[currentQ.id] || ''}
+          onChange={(e) => handleCustomInput(currentQ.id, e.target.value)}
+          disabled={disabled}
+          className="mt-2 w-full px-2.5 py-1.5 rounded-lg bg-[var(--an-bg-elevated)] border border-[var(--an-border)] text-[10px] text-[var(--an-text-primary)] placeholder-[var(--an-text-dim)] outline-none focus:border-[var(--an-accent)]/50 transition-colors"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && customInputs[currentQ.id]) {
+              if (activeIdx < total - 1) setActiveIdx(activeIdx + 1);
+              else handleSubmit();
+            }
+          }}
+        />
       </div>
-      {hasSelection && !disabled && (
-        <div className="px-3 pb-2.5">
+
+      {/* Navigation + Submit */}
+      <div className="px-3 pb-2.5 flex gap-2">
+        {total > 1 && activeIdx > 0 && (
+          <button
+            onClick={() => setActiveIdx(activeIdx - 1)}
+            className="px-3 py-1.5 rounded-lg bg-[var(--an-bg-elevated)] text-[var(--an-text-muted)] text-[10px] font-medium hover:bg-[var(--an-bg-hover)] transition-colors"
+          >
+            Back
+          </button>
+        )}
+        {activeIdx < total - 1 ? (
+          <button
+            onClick={() => setActiveIdx(activeIdx + 1)}
+            className="flex-1 py-1.5 rounded-lg bg-[var(--an-accent)]/20 text-[var(--an-accent)] text-[10px] font-medium hover:bg-[var(--an-accent)]/30 transition-colors"
+          >
+            Next
+          </button>
+        ) : hasSelection && !disabled ? (
           <button
             onClick={handleSubmit}
-            className="w-full py-1.5 rounded-lg bg-[var(--an-accent)] hover:bg-[var(--an-accent-hover)] text-white text-[11px] font-medium transition-colors"
+            className="flex-1 py-1.5 rounded-lg bg-[var(--an-accent)] hover:bg-[var(--an-accent-hover)] text-white text-[11px] font-medium transition-colors"
           >
             Send answers
           </button>
-        </div>
-      )}
+        ) : null}
+      </div>
     </div>
   );
 }

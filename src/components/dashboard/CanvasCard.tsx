@@ -87,11 +87,7 @@ export function CanvasCard({ canvas, onRename, onDuplicate, onDelete }: CanvasCa
   };
 
   const isReadOnly = canvas.accessRole === 'viewer';
-  const surfaceBadge = canvas.isShared
-    ? 'Shared'
-    : canvas.workspaceType === 'team'
-      ? 'Team'
-      : 'Personal';
+  const surfaceBadge = canvas.workspaceType === 'team' ? 'Team' : 'Personal';
 
   const handleMenuAction = (action: 'rename' | 'duplicate' | 'delete') => {
     setShowMenu(false);

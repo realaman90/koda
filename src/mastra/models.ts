@@ -49,7 +49,7 @@ export const PROMPT_ENHANCER_MODEL = 'google/gemini-3-pro-preview';
 /** Prompt Studio creative director */
 export const PROMPT_STUDIO_MODEL = readModelOverride(
   'KODA_MODEL_PROMPT_STUDIO',
-  'google/gemini-3-pro-preview'
+  'claude-sonnet-4-6'
 );
 
 // -- Anthropic Claude Models --
