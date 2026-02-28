@@ -63,7 +63,8 @@ export function SettingsPanel() {
         return;
       }
       // Don't close if clicking inside a Radix UI Select dropdown (portaled to body)
-      const radixSelect = (target as Element).closest?.('[data-radix-popper-content-wrapper]');
+      // Check both popper mode wrapper and item-aligned mode content (data-slot set in our Select component)
+      const radixSelect = (target as Element).closest?.('[data-radix-popper-content-wrapper], [data-slot="select-content"]');
       if (radixSelect) {
         return;
       }
