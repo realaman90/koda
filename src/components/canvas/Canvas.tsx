@@ -46,6 +46,7 @@ export function Canvas() {
   const setActiveTool = useCanvasStore((state) => state.setActiveTool);
   const deleteSelectedEdges = useCanvasStore((state) => state.deleteSelectedEdges);
   const selectedEdgeIds = useCanvasStore((state) => state.selectedEdgeIds);
+  const isReadOnly = useCanvasStore((state) => state.isReadOnly);
   const setReactFlowInstance = useCanvasStore((state) => state.setReactFlowInstance);
 
   // Plugin sandbox state
@@ -238,29 +239,33 @@ export function Canvas() {
 
   return (
     <div ref={containerRef} className="w-full h-full relative" style={{ backgroundColor: 'var(--canvas-bg)' }} onMouseMove={handleMouseMove}>
-      <NodeToolbar onPluginLaunch={handlePluginLaunch} />
-      <WelcomeOverlay onPluginLaunch={handlePluginLaunch} />
-      <SettingsPanel />
-      <VideoSettingsPanel />
-      <ContextMenu onPluginLaunch={handlePluginLaunch} />
-      <KeyboardShortcuts />
+      {!isReadOnly && (
+        <>
+          <NodeToolbar onPluginLaunch={handlePluginLaunch} />
+          <WelcomeOverlay onPluginLaunch={handlePluginLaunch} />
+          <SettingsPanel />
+          <VideoSettingsPanel />
+          <ContextMenu onPluginLaunch={handlePluginLaunch} />
+          <KeyboardShortcuts />
+        </>
+      )}
       {activePlugin && (
         <AgentSandbox plugin={activePlugin} onClose={closeSandbox} />
       )}
       <ReactFlow
         nodes={nodes}
         edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        onSelectionChange={onSelectionChange}
-        onSelectionEnd={onSelectionEnd}
+        onNodesChange={isReadOnly ? undefined : onNodesChange}
+        onEdgesChange={isReadOnly ? undefined : onEdgesChange}
+        onConnect={isReadOnly ? undefined : onConnect}
+        onSelectionChange={isReadOnly ? undefined : onSelectionChange}
+        onSelectionEnd={isReadOnly ? undefined : onSelectionEnd}
         onPaneClick={handlePaneClick}
-        onContextMenu={handleContextMenu}
+        onContextMenu={isReadOnly ? undefined : handleContextMenu}
         onInit={setReactFlowInstance}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
-        isValidConnection={isValidConnection}
+        isValidConnection={isReadOnly ? undefined : isValidConnection}
         fitView
         className={`tool-${activeTool}`}
         style={{ backgroundColor: 'var(--canvas-bg)' }}
@@ -273,16 +278,18 @@ export function Canvas() {
         proOptions={{ hideAttribution: true }}
         snapToGrid={useSettingsStore.getState().canvasPreferences.gridSnap}
         snapGrid={[20, 20]}
-        panOnDrag={activeTool === 'pan'}
+        panOnDrag={isReadOnly ? true : activeTool === 'pan'}
         panOnScroll={false}
         zoomOnScroll
         minZoom={0.25}
-        selectionOnDrag={activeTool === 'select' || activeTool === 'scissors'}
+        nodesDraggable={!isReadOnly}
+        nodesConnectable={!isReadOnly}
+        edgesReconnectable={!isReadOnly}
+        selectionOnDrag={isReadOnly ? false : activeTool === 'select' || activeTool === 'scissors'}
         selectionMode={SelectionMode.Partial}
-        edgesReconnectable
-        deleteKeyCode={['Backspace', 'Delete']}
+        deleteKeyCode={isReadOnly ? [] : ['Backspace', 'Delete']}
         connectionRadius={30}
-        selectNodesOnDrag={activeTool === 'select'}
+        selectNodesOnDrag={isReadOnly ? false : activeTool === 'select'}
       >
         <Background
           variant={BackgroundVariant.Dots}
