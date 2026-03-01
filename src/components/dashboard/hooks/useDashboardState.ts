@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { useAppStore } from '@/stores/app-store';
-import { getTemplate, getShowcaseTemplateMetadata, getShowcaseTemplate } from '@/lib/templates';
+import { getShowcaseTemplateMetadata } from '@/lib/templates';
 import type { TemplateMetadata } from '@/lib/templates/types';
 
 export type TabType = 'my-spaces' | 'shared' | 'templates';
@@ -72,7 +72,6 @@ export function useDashboardState(): DashboardState {
   const isLoadingList = useAppStore((state) => state.isLoadingList);
   const loadCanvasList = useAppStore((state) => state.loadCanvasList);
   const createCanvas = useAppStore((state) => state.createCanvas);
-  const createCanvasFromTemplate = useAppStore((state) => state.createCanvasFromTemplate);
   const renameCanvas = useAppStore((state) => state.renameCanvas);
   const duplicateCanvas = useAppStore((state) => state.duplicateCanvas);
   const deleteCanvas = useAppStore((state) => state.deleteCanvas);
@@ -228,31 +227,20 @@ export function useDashboardState(): DashboardState {
   }, [createCanvas, router]);
 
   const handleSelectTemplate = useCallback(async (templateId: string) => {
-    setIsCreating(true);
-    try {
-      // Check built-in templates first, then showcase templates
-      let template = getTemplate(templateId);
-      if (!template) {
-        template = await getShowcaseTemplate(templateId);
-      }
-      if (!template) {
-        toast.error('Template not found');
-        setIsCreating(false);
-        return;
-      }
-
-      if (templateId === 'blank') {
+    if (templateId === 'blank') {
+      setIsCreating(true);
+      try {
         const id = await createCanvas('Untitled Canvas');
         router.push(`/canvas/${id}`);
-      } else {
-        const id = await createCanvasFromTemplate(template);
-        router.push(`/canvas/${id}`);
+      } catch {
+        toast.error('Failed to create canvas');
+        setIsCreating(false);
       }
-    } catch {
-      toast.error('Failed to create canvas from template');
-      setIsCreating(false);
+    } else {
+      // Non-blank templates open in read-only preview mode
+      router.push(`/template/${templateId}`);
     }
-  }, [createCanvas, createCanvasFromTemplate, router]);
+  }, [createCanvas, router]);
 
   const handleRename = useCallback(async (id: string, name: string) => {
     try {
