@@ -756,31 +756,35 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
                     style={{ color: 'var(--text-secondary)' }}
                   />
                 )}
-                {/* Improve & Translate buttons */}
-                {!isReadOnly && data.prompt?.trim() && (selected || isHovered) && (
+                {/* Improve & Translate buttons — gated by model's promptTools config */}
+                {!isReadOnly && data.prompt?.trim() && (selected || isHovered) && modelCapabilities.promptTools?.length && (
                   <div className="absolute bottom-2 right-2 flex gap-1.5 nodrag">
-                    <button
-                      onClick={() => handlePromptAction('improve')}
-                      disabled={isImproving || isTranslating}
-                      className={`text-[10px] font-medium px-2 py-1 rounded-md transition-colors nodrag ${
-                        isImproving || isTranslating
-                          ? 'opacity-60 cursor-not-allowed'
-                          : 'hover:bg-primary/30'
-                      } bg-primary/20 text-primary`}
-                    >
-                      {isImproving ? 'Improving...' : '✦ Improve'}
-                    </button>
-                    <button
-                      onClick={() => handlePromptAction('translate')}
-                      disabled={isImproving || isTranslating}
-                      className={`text-[10px] font-medium px-2 py-1 rounded-md transition-colors nodrag ${
-                        isImproving || isTranslating
-                          ? 'opacity-60 cursor-not-allowed'
-                          : 'hover:bg-zinc-600/50'
-                      } bg-zinc-700/50 text-zinc-300`}
-                    >
-                      {isTranslating ? 'Translating...' : '中 Translate'}
-                    </button>
+                    {modelCapabilities.promptTools.includes('improve') && (
+                      <button
+                        onClick={() => handlePromptAction('improve')}
+                        disabled={isImproving || isTranslating}
+                        className={`text-[10px] font-medium px-2 py-1 rounded-md transition-colors nodrag ${
+                          isImproving || isTranslating
+                            ? 'opacity-60 cursor-not-allowed'
+                            : 'hover:bg-primary/30'
+                        } bg-primary/20 text-primary`}
+                      >
+                        {isImproving ? 'Improving...' : '✦ Improve'}
+                      </button>
+                    )}
+                    {modelCapabilities.promptTools.includes('translate') && (
+                      <button
+                        onClick={() => handlePromptAction('translate')}
+                        disabled={isImproving || isTranslating}
+                        className={`text-[10px] font-medium px-2 py-1 rounded-md transition-colors nodrag ${
+                          isImproving || isTranslating
+                            ? 'opacity-60 cursor-not-allowed'
+                            : 'hover:bg-zinc-600/50'
+                        } bg-zinc-700/50 text-zinc-300`}
+                      >
+                        {isTranslating ? 'Translating...' : '中 Translate'}
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
