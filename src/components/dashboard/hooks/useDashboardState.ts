@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { useAppStore } from '@/stores/app-store';
-import { getShowcaseTemplateMetadata } from '@/lib/templates';
+import { getShowcaseTemplateMetadata, getShowcaseTemplate, getTemplate } from '@/lib/templates';
 import type { TemplateMetadata } from '@/lib/templates/types';
 
 export type TabType = 'my-spaces' | 'shared' | 'templates';
@@ -13,6 +13,7 @@ export type TemplateFilter = 'all';
 const validTabs: TabType[] = ['my-spaces', 'shared', 'templates'];
 
 type DashboardLoadFailureStage = 'bootstrap' | 'canvases' | null;
+let dashboardInitializationInFlight: Promise<void> | null = null;
 
 export interface DashboardState {
   // State
@@ -38,6 +39,7 @@ export interface DashboardState {
   retryLoadCanvases: () => Promise<void>;
   handleCreateCanvas: () => Promise<void>;
   handleSelectTemplate: (templateId: string) => Promise<void>;
+  handleRemixTemplate: (templateId: string) => Promise<void>;
   handleRename: (id: string, name: string) => Promise<void>;
   handleDuplicate: (id: string) => Promise<void>;
   handleDelete: (id: string) => Promise<void>;
@@ -72,6 +74,7 @@ export function useDashboardState(): DashboardState {
   const isLoadingList = useAppStore((state) => state.isLoadingList);
   const loadCanvasList = useAppStore((state) => state.loadCanvasList);
   const createCanvas = useAppStore((state) => state.createCanvas);
+  const createCanvasFromTemplate = useAppStore((state) => state.createCanvasFromTemplate);
   const renameCanvas = useAppStore((state) => state.renameCanvas);
   const duplicateCanvas = useAppStore((state) => state.duplicateCanvas);
   const deleteCanvas = useAppStore((state) => state.deleteCanvas);
@@ -208,7 +211,20 @@ export function useDashboardState(): DashboardState {
   }, [clearLoadError, initializeDashboard, loadCanvasesWithHandling, loadFailureStage]);
 
   useEffect(() => {
-    initializeDashboard();
+    queueMicrotask(() => {
+      if (!dashboardInitializationInFlight) {
+        dashboardInitializationInFlight = Promise.resolve()
+          .then(() => initializeDashboard())
+          .finally(() => {
+            dashboardInitializationInFlight = null;
+          });
+        return;
+      }
+
+      dashboardInitializationInFlight.catch(() => {
+        // Errors are already handled inside initializeDashboard
+      });
+    });
   }, [initializeDashboard]);
 
   const retryActionLabel = loadFailureStage === 'bootstrap'
@@ -241,6 +257,33 @@ export function useDashboardState(): DashboardState {
       router.push(`/template/${templateId}`);
     }
   }, [createCanvas, router]);
+
+  const handleRemixTemplate = useCallback(async (templateId: string) => {
+    setIsCreating(true);
+    try {
+      if (templateId === 'blank') {
+        const id = await createCanvas('Untitled Canvas');
+        router.push(`/canvas/${id}`);
+        return;
+      }
+
+      let template = getTemplate(templateId);
+      if (!template) {
+        template = await getShowcaseTemplate(templateId);
+      }
+      if (!template) {
+        toast.error('Template not found');
+        setIsCreating(false);
+        return;
+      }
+
+      const canvasId = await createCanvasFromTemplate(template);
+      router.push(`/canvas/${canvasId}`);
+    } catch {
+      toast.error('Failed to remix template');
+      setIsCreating(false);
+    }
+  }, [createCanvas, createCanvasFromTemplate, router]);
 
   const handleRename = useCallback(async (id: string, name: string) => {
     try {
@@ -292,6 +335,7 @@ export function useDashboardState(): DashboardState {
     retryLoadCanvases,
     handleCreateCanvas,
     handleSelectTemplate,
+    handleRemixTemplate,
     handleRename,
     handleDuplicate,
     handleDelete,

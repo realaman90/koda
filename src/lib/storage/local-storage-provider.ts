@@ -114,6 +114,12 @@ export class LocalStorageProvider implements StorageProvider {
       const parsed = JSON.parse(legacyData);
       const state = parsed.state;
 
+      // Ignore read-only showcase/template preview payloads.
+      // These should never become real user projects.
+      if (state?.isReadOnly) {
+        return null;
+      }
+
       if (!state || (!state.nodes?.length && !state.edges?.length)) {
         // No meaningful data to migrate
         return null;

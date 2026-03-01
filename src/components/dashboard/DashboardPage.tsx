@@ -19,7 +19,6 @@ export function DashboardPage() {
     loadError,
     loadErrorTitle,
     retryActionLabel,
-    filteredCanvases,
     personalCanvases,
     teamCanvases,
     invites,
@@ -27,6 +26,7 @@ export function DashboardPage() {
     filteredTemplates,
     handleCreateCanvas,
     handleSelectTemplate,
+    handleRemixTemplate,
     handleRename,
     handleDuplicate,
     handleDelete,
@@ -45,7 +45,7 @@ export function DashboardPage() {
 
   return (
     <PageTransition>
-      <div className="max-w-[1600px] mx-auto px-6 py-8">
+      <div className="mx-auto w-full max-w-[1680px] px-5 py-6 md:px-7 md:py-8">
         <DashboardHeader onCreateCanvas={handleCreateCanvas} memberships={memberships} />
 
         <DashboardTabs activeTab={activeTab} onChange={setActiveTab} />
@@ -55,8 +55,8 @@ export function DashboardPage() {
           <>
             <section className="mb-12 space-y-10">
               <div>
-                <h2 className="font-serif text-2xl font-normal text-foreground mb-2">Personal</h2>
-                <p className="text-sm text-muted-foreground mb-4">Your private workspace projects.</p>
+                <h2 className="mb-1 text-2xl font-semibold tracking-tight text-foreground">Personal</h2>
+                <p className="mb-5 text-sm text-muted-foreground">Your private workspace projects.</p>
                 <ProjectsGrid
                   canvases={personalCanvases}
                   isLoading={isLoadingList}
@@ -76,8 +76,8 @@ export function DashboardPage() {
 
               {teamCanvases.length > 0 && (
                 <div>
-                  <h2 className="font-serif text-2xl font-normal text-foreground mb-2">Team</h2>
-                  <p className="text-sm text-muted-foreground mb-4">Collaborative team workspaces.</p>
+                  <h2 className="mb-1 text-2xl font-semibold tracking-tight text-foreground">Team</h2>
+                  <p className="mb-5 text-sm text-muted-foreground">Collaborative team workspaces.</p>
                   <ProjectsGrid
                     canvases={teamCanvases}
                     isLoading={isLoadingList}
@@ -96,11 +96,11 @@ export function DashboardPage() {
             </section>
 
             {invites.length > 0 && (
-              <section className="mb-12 rounded-xl border border-border bg-card/50 p-4">
+              <section className="mb-12 rounded-2xl border border-border/70 bg-card/60 p-4 md:p-5">
                 <h3 className="text-sm font-semibold text-foreground mb-3">Invite status</h3>
                 <div className="space-y-2 text-sm">
                   {invites.map((invite) => (
-                    <div key={invite.id} className="flex items-center justify-between rounded-lg bg-background/70 px-3 py-2">
+                    <div key={invite.id} className="flex items-center justify-between rounded-xl border border-border/60 bg-background/70 px-3 py-2">
                       <span className="text-muted-foreground">{invite.email}</span>
                       <span className="text-foreground capitalize">{invite.status}</span>
                     </div>
@@ -113,6 +113,7 @@ export function DashboardPage() {
             <TemplatesSection
               templates={filteredTemplates}
               onSelectTemplate={handleSelectTemplate}
+              onRemixTemplate={handleRemixTemplate}
               showViewAll
               onViewAll={() => setActiveTab('templates')}
             />
@@ -124,6 +125,7 @@ export function DashboardPage() {
           <TemplatesSection
             templates={filteredTemplates}
             onSelectTemplate={handleSelectTemplate}
+            onRemixTemplate={handleRemixTemplate}
           />
         )}
       </div>

@@ -98,6 +98,7 @@ export function TopBar({
 
   const { user, isLoading } = useCurrentUser();
   const isClerkUiEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
+  const canRenameCanvas = mode === 'canvas' && Boolean(onCanvasNameChange);
 
   const displayName = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() || user?.email || 'User';
   const initials = displayName
@@ -135,7 +136,8 @@ export function TopBar({
   return (
     <header
       className={cn(
-        'h-12 bg-background border-b border-border flex items-center justify-between px-4',
+        'h-14 border-b border-border/70 bg-background/85 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/70',
+        'flex items-center justify-between',
         className
       )}
     >
@@ -145,14 +147,14 @@ export function TopBar({
         {mode === 'canvas' && (
           <Link
             href="/"
-            className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <ArrowLeft className="h-4 w-4" />
           </Link>
         )}
 
         {/* Logo/Brand */}
-        <Link href="/" className="flex items-center">
+        <Link href="/" className="flex items-center rounded-lg px-1 py-0.5 transition-colors hover:bg-muted/60">
           <KodaLogo variant="full" size="md" />
         </Link>
 
@@ -161,7 +163,7 @@ export function TopBar({
           <>
             <span className="text-border">/</span>
             <div className="flex items-center gap-2">
-              {isEditingName ? (
+              {isEditingName && canRenameCanvas ? (
                 <input
                   ref={inputRef}
                   type="text"
@@ -172,15 +174,21 @@ export function TopBar({
                   className="bg-muted border border-border rounded px-2 py-0.5 text-foreground text-sm outline-none focus:border-primary min-w-[120px]"
                 />
               ) : (
-                <button
-                  onClick={() => {
-                    setEditValue(canvasName || '');
-                    setIsEditingName(true);
-                  }}
-                  className="text-foreground hover:text-foreground/80 transition-colors cursor-text text-sm font-medium"
-                >
-                  {canvasName}
-                </button>
+                canRenameCanvas ? (
+                  <button
+                    onClick={() => {
+                      setEditValue(canvasName || '');
+                      setIsEditingName(true);
+                    }}
+                    className="text-foreground hover:text-foreground/80 transition-colors cursor-text text-sm font-medium"
+                  >
+                    {canvasName}
+                  </button>
+                ) : (
+                  <span className="text-sm font-medium text-foreground/90">
+                    {canvasName}
+                  </span>
+                )
               )}
               <span className="text-xs">{formatSaveStatus()}</span>
             </div>
@@ -188,7 +196,7 @@ export function TopBar({
         ) : (
           breadcrumbs.length > 0 && (
             <>
-              <span className="text-border">/</span>
+              <span className="text-border/80">/</span>
               <Breadcrumbs items={breadcrumbs} />
             </>
           )
@@ -196,18 +204,21 @@ export function TopBar({
       </div>
 
       {/* Right side */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2.5">
         {/* Search (dashboard mode only) */}
         {mode === 'dashboard' && onSearchChange && (
-          <div className="relative">
+          <div className="relative hidden sm:block">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <input
               type="text"
-              placeholder="Search..."
+              placeholder="Search projects..."
               value={searchQuery || ''}
               onChange={(e) => onSearchChange(e.target.value)}
-              className="w-48 h-8 pl-9 pr-4 bg-muted border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground outline-none focus:border-ring"
+              className="h-9 w-56 rounded-xl border border-border/70 bg-muted/50 pl-9 pr-14 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-primary/50"
             />
+            <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md border border-border/70 bg-background/80 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+              ⌘K
+            </span>
           </div>
         )}
 
@@ -220,7 +231,7 @@ export function TopBar({
                 variant="outline"
                 size="sm"
                 onClick={() => setShowExportMenu(!showExportMenu)}
-                className="h-8 bg-muted border-border text-muted-foreground hover:bg-accent hover:text-foreground gap-1.5"
+                className="h-9 rounded-xl border-border/70 bg-muted/40 text-muted-foreground hover:bg-accent hover:text-foreground gap-1.5"
               >
                 <Download className="h-3.5 w-3.5" />
                 Export
@@ -232,13 +243,13 @@ export function TopBar({
               </Button>
 
               {showExportMenu && (
-                <div className="absolute right-0 top-full mt-1 bg-popover border border-border rounded-lg shadow-xl py-1 min-w-[160px] z-50">
+                <div className="absolute right-0 top-full z-50 mt-1 min-w-[180px] rounded-xl border border-border bg-popover py-1 shadow-xl">
                   <button
                     onClick={() => {
                       onExportJSON?.();
                       setShowExportMenu(false);
                     }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-popover-foreground hover:bg-muted transition-colors"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-popover-foreground transition-colors hover:bg-muted"
                   >
                     <FileJson className="h-4 w-4" />
                     Export as JSON
@@ -248,7 +259,7 @@ export function TopBar({
                       onExportPNG?.();
                       setShowExportMenu(false);
                     }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-popover-foreground hover:bg-muted transition-colors"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-popover-foreground transition-colors hover:bg-muted"
                   >
                     <ImageIcon className="h-4 w-4" />
                     Export as PNG
@@ -265,7 +276,7 @@ export function TopBar({
         {isClerkUiEnabled ? (
           <AccountMenu user={user} displayName={displayName} initials={initials} isLoading={isLoading} />
         ) : (
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-medium text-primary-foreground">
+          <div className="flex h-9 w-9 items-center justify-center rounded-full border border-border/70 bg-primary text-xs font-medium text-primary-foreground">
             {initials || 'U'}
           </div>
         )}

@@ -45,7 +45,7 @@ export function AppShell({
   className,
 }: AppShellProps) {
   return (
-    <div className={cn('flex flex-col h-screen bg-background', className)}>
+    <div className={cn('flex h-screen flex-col bg-background', className)}>
       {/* Top Bar */}
       <TopBar
         mode={mode}
@@ -62,11 +62,11 @@ export function AppShell({
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex flex-1 overflow-hidden">
         {/* Sidebar - Navigation or Custom Content */}
         {showSidebar && (
           sidebarContent ? (
-            <aside className="bg-background border-r border-border">
+            <aside className="border-r border-border/70 bg-background/90 backdrop-blur">
               {sidebarContent}
             </aside>
           ) : (
@@ -75,7 +75,7 @@ export function AppShell({
         )}
 
         {/* Page Content */}
-        <main className="flex-1 overflow-auto">
+        <main className="flex-1 overflow-auto bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.08),transparent_45%)]">
           {children}
         </main>
       </div>

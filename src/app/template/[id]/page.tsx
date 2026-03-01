@@ -28,6 +28,7 @@ export default function TemplatePage({ params }: TemplatePageProps) {
 
   const loadAsReadOnly = useCanvasStore((state) => state.loadAsReadOnly);
   const loadCanvasData = useCanvasStore((state) => state.loadCanvasData);
+  const clearCurrentCanvas = useAppStore((state) => state.clearCurrentCanvas);
   const createCanvasFromTemplate = useAppStore((state) => state.createCanvasFromTemplate);
 
   // Load template and set canvas to read-only
@@ -47,6 +48,8 @@ export default function TemplatePage({ params }: TemplatePageProps) {
         }
 
         setTemplate(tmpl);
+        // Ensure preview mode never mutates or auto-saves into a project
+        clearCurrentCanvas();
         loadAsReadOnly(tmpl.nodes, tmpl.edges);
       } catch (err) {
         console.error('Failed to load template:', err);
@@ -57,7 +60,7 @@ export default function TemplatePage({ params }: TemplatePageProps) {
     }
 
     load();
-  }, [id, loadAsReadOnly]);
+  }, [id, clearCurrentCanvas, loadAsReadOnly]);
 
   // Cleanup on unmount: clear read-only state
   useEffect(() => {

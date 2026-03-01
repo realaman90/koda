@@ -1249,6 +1249,7 @@ export const useCanvasStore = create<CanvasState>()(
           return node;
         }),
         edges: state.edges,
+        isReadOnly: state.isReadOnly,
       }),
     }
   )

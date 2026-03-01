@@ -51,6 +51,7 @@ interface AppState {
   duplicateCanvas: (id: string) => Promise<string | null>;
   deleteCanvas: (id: string) => Promise<void>;
   saveCurrentCanvas: () => Promise<void>;
+  clearCurrentCanvas: () => void;
   setCurrentCanvasName: (name: string) => void;
   markUnsavedChanges: () => void;
   updateCanvasThumbnail: (id: string, patch: Pick<StoredCanvas, 'thumbnail' | 'thumbnailUrl' | 'thumbnailStatus' | 'thumbnailUpdatedAt' | 'thumbnailVersion' | 'thumbnailErrorCode'>) => Promise<void>;
@@ -68,6 +69,7 @@ let saveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 const SAVE_DEBOUNCE_MS = 1000;
 const PREVIEW_DEBOUNCE_MS = 2000;
 const PREVIEW_SYSTEM_ENABLED = process.env.NEXT_PUBLIC_UX_PREVIEW_SYSTEM_V1 !== 'false';
+let syncStatusUnsubscribe: (() => void) | null = null;
 
 function buildGraphSignature(canvas: Pick<StoredCanvas, 'nodes' | 'edges'>): string {
   return JSON.stringify({ nodes: canvas.nodes, edges: canvas.edges });
@@ -216,9 +218,11 @@ export const useAppStore = create<AppState>()((set, get) => ({
     });
 
     // Subscribe to sync status changes
-    subscribeSyncStatus((state) => {
-      set({ syncStatus: state.status, syncError: state.error });
-    });
+    if (!syncStatusUnsubscribe) {
+      syncStatusUnsubscribe = subscribeSyncStatus((state) => {
+        set({ syncStatus: state.status, syncError: state.error });
+      });
+    }
 
     // Perform initial sync
     const localProvider = getLocalStorageProvider();
@@ -240,8 +244,6 @@ export const useAppStore = create<AppState>()((set, get) => ({
       }
     );
 
-    // Reload canvas list after sync
-    await get().loadCanvasList();
   },
 
   loadCanvasList: async () => {
@@ -285,6 +287,21 @@ export const useAppStore = create<AppState>()((set, get) => ({
       console.error('Failed to load canvas:', error);
       return false;
     }
+  },
+
+  clearCurrentCanvas: () => {
+    if (saveDebounceTimer) {
+      clearTimeout(saveDebounceTimer);
+      saveDebounceTimer = null;
+    }
+
+    set({
+      currentCanvasId: null,
+      currentCanvasName: 'Untitled Canvas',
+      hasUnsavedChanges: false,
+      lastSavedAt: null,
+      isSaving: false,
+    });
   },
 
   createCanvas: async (name?: string) => {

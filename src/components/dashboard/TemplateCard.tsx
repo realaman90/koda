@@ -2,24 +2,35 @@
 
 import Image from 'next/image';
 import { Play } from 'lucide-react';
+import { RemixIcon } from '@/components/common/RemixIcon';
 import type { TemplateMetadata } from '@/lib/templates';
 
 interface TemplateCardProps {
   template: TemplateMetadata;
   onSelect: (templateId: string) => void;
+  onRemix?: (templateId: string) => void;
 }
 
 // Template metadata for video indicators
 const videoTemplates = new Set(['video-production', 'storyboard']);
 
-export function TemplateCard({ template, onSelect }: TemplateCardProps) {
+export function TemplateCard({ template, onSelect, onRemix }: TemplateCardProps) {
   const hasVideo = videoTemplates.has(template.id);
   const isImageThumbnail = template.thumbnail.startsWith('/');
+  const canRemix = template.readOnly !== false;
 
   return (
-    <button
+    <article
+      role="button"
+      tabIndex={0}
       onClick={() => onSelect(template.id)}
-      className="group text-left rounded-xl overflow-hidden hover:ring-2 hover:ring-primary/50 transition-all cursor-pointer"
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect(template.id);
+        }
+      }}
+      className="group relative text-left rounded-xl overflow-hidden hover:ring-2 hover:ring-primary/50 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
     >
       {/* Thumbnail */}
       <div className="aspect-[4/3] bg-muted relative overflow-hidden">
@@ -47,7 +58,23 @@ export function TemplateCard({ template, onSelect }: TemplateCardProps) {
         )}
 
         {/* Hover overlay */}
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors" />
+
+        {/* Remix CTA on hover */}
+        {canRemix && onRemix && (
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onRemix(template.id);
+            }}
+            className="absolute right-3 bottom-3 inline-flex items-center gap-1.5 rounded-md border border-white/20 bg-black/60 px-2.5 py-1.5 text-xs font-medium text-white opacity-0 backdrop-blur-sm transition-all group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-black/75"
+            aria-label={`Remix ${template.name}`}
+          >
+            <RemixIcon className="h-3.5 w-3.5" />
+            Remix
+          </button>
+        )}
       </div>
 
       {/* Title */}
@@ -59,6 +86,6 @@ export function TemplateCard({ template, onSelect }: TemplateCardProps) {
           {template.description}
         </p>
       </div>
-    </button>
+    </article>
   );
 }
