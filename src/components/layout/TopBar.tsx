@@ -155,7 +155,8 @@ export function TopBar({
 
         {/* Logo/Brand */}
         <Link href="/" className="flex items-center rounded-lg px-1 py-0.5 transition-colors hover:bg-muted/60">
-          <KodaLogo variant="full" size="md" />
+          <KodaLogo variant="icon" size="md" className="sm:hidden" priority />
+          <KodaLogo variant="full" size="md" className="hidden sm:block" priority />
         </Link>
 
         {/* Breadcrumbs or Canvas Name */}

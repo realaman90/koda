@@ -1,8 +1,8 @@
 'use client';
 
-import Image from 'next/image';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
+import { KodaLogo } from '@/components/ui/KodaLogo';
 
 export function AuthPageShell({ children }: { children: React.ReactNode }) {
   return (
@@ -24,14 +24,7 @@ export function AuthHeader({ title, subtitle }: { title: string; subtitle: strin
   return (
     <header className="space-y-3 text-center">
       <div className="flex justify-center">
-        <Image
-          src="/logos/koda_main.png"
-          alt="Koda"
-          width={86}
-          height={20}
-          className="h-5 w-auto dark:invert-0 invert"
-          priority
-        />
+        <KodaLogo variant="full" size="sm" priority />
       </div>
       <h1 className="text-2xl font-semibold text-foreground">{title}</h1>
       <p className="text-sm text-muted-foreground">{subtitle}</p>
