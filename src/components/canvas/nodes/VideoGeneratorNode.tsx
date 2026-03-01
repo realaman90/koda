@@ -33,6 +33,7 @@ import {
   VolumeX,
   RefreshCw,
   Music,
+  ChevronRight,
 } from 'lucide-react';
 
 /** Small elapsed-time display that ticks every second */
@@ -70,6 +71,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
   const [nodeName, setNodeName] = useState(data.name || 'Video Generator');
   const [isImproving, setIsImproving] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
+  const [isPromptExpanded, setIsPromptExpanded] = useState(false);
   const originalPromptRef = useRef<string>('');
   const [isHovered, setIsHovered] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -618,7 +620,8 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
               )}
             </div>
           ) : data.outputUrl ? (
-            /* Video Preview - with hover controls */
+            /* Video Preview - with hover controls + collapsible prompt bar */
+            <>
             <div className="group/video relative overflow-hidden rounded-2xl">
               <video
                 ref={videoRef}
@@ -650,12 +653,6 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
               </Button>
               {/* Gradient overlay for better visibility - visible on hover */}
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover/video:opacity-100 transition-opacity duration-300 pointer-events-none" />
-              {/* Prompt overlay - visible on hover */}
-              <div className="absolute bottom-16 left-3 right-3 opacity-0 group-hover/video:opacity-100 transition-all duration-200 translate-y-2 group-hover/video:translate-y-0 pointer-events-none">
-                <p className="text-white/80 text-sm font-medium drop-shadow-lg line-clamp-2">
-                  {connectedInputs.textContent ? 'Prompt (connected)' : data.prompt ? data.prompt.slice(0, 60) + (data.prompt.length > 60 ? '...' : '') : ''}
-                </p>
-              </div>
               {/* Floating Toolbar - visible on hover with smooth animation */}
               {!isReadOnly && (
                 <div className="absolute bottom-3 left-3 right-3 flex items-center gap-1.5 px-2.5 py-2 bg-black/50 backdrop-blur-xl rounded-xl border border-white/10 opacity-0 group-hover/video:opacity-100 transition-all duration-300 ease-out translate-y-2 group-hover/video:translate-y-0 shadow-xl">
@@ -734,6 +731,76 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
                 </div>
               )}
             </div>
+            {/* Collapsible Prompt Bar */}
+            <div className="border-t border-border/50">
+              <div
+                className="flex items-center gap-2 px-3 py-2 cursor-pointer nodrag"
+                onClick={() => setIsPromptExpanded(!isPromptExpanded)}
+              >
+                <ChevronRight className={`h-3 w-3 text-muted-foreground shrink-0 transition-transform duration-200 ${isPromptExpanded ? 'rotate-90' : ''}`} />
+                {!isPromptExpanded && (
+                  <p className="text-xs text-muted-foreground truncate flex-1">
+                    {data.prompt || 'No prompt'}
+                  </p>
+                )}
+              </div>
+              {isPromptExpanded && (
+                <div className="px-3 pb-3 nodrag nopan" onPointerDown={(e) => e.stopPropagation()}>
+                  <div className="node-content-area p-2 min-h-[100px] relative">
+                    {supportsVideoRef ? (
+                      <MentionEditor
+                        content={data.prompt}
+                        onChange={handlePromptChange}
+                        items={mentionItems}
+                        placeholder="Type @ to reference connected images/videos..."
+                        disabled={isReadOnly || isImproving || isTranslating}
+                      />
+                    ) : (
+                      <textarea
+                        value={data.prompt}
+                        onChange={(e) => handlePromptChange(e.target.value)}
+                        placeholder={isReadOnly ? '' : 'Edit your prompt...'}
+                        disabled={isReadOnly || isImproving || isTranslating}
+                        className={`w-full h-[80px] bg-transparent border-none text-sm resize-none focus:outline-none ${isReadOnly ? 'cursor-default' : ''}`}
+                        style={{ color: 'var(--text-secondary)' }}
+                      />
+                    )}
+                    {/* Prompt tools in expanded bar */}
+                    {!isReadOnly && data.prompt?.trim() && modelCapabilities.promptTools?.length && (
+                      <div className="absolute bottom-2 right-2 flex gap-1.5 nodrag">
+                        {modelCapabilities.promptTools.includes('improve') && (
+                          <button
+                            onClick={() => handlePromptAction('improve')}
+                            disabled={isImproving || isTranslating}
+                            className={`text-[10px] font-medium px-2 py-1 rounded-md transition-colors nodrag ${
+                              isImproving || isTranslating
+                                ? 'opacity-60 cursor-not-allowed'
+                                : 'hover:bg-primary/30'
+                            } bg-primary/20 text-primary`}
+                          >
+                            {isImproving ? 'Improving...' : '✦ Improve'}
+                          </button>
+                        )}
+                        {modelCapabilities.promptTools.includes('translate') && (
+                          <button
+                            onClick={() => handlePromptAction('translate')}
+                            disabled={isImproving || isTranslating}
+                            className={`text-[10px] font-medium px-2 py-1 rounded-md transition-colors nodrag ${
+                              isImproving || isTranslating
+                                ? 'opacity-60 cursor-not-allowed'
+                                : 'hover:bg-zinc-600/50'
+                            } bg-zinc-700/50 text-zinc-300`}
+                          >
+                            {isTranslating ? 'Translating...' : '中 Translate'}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+            </>
           ) : (
             /* Prompt Input - Freepik style with inner content area */
             <div className="p-3">

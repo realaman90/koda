@@ -28,6 +28,7 @@ import {
   Download,
   Wand2,
   Sparkle,
+  ChevronRight,
 } from 'lucide-react';
 
 function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, positionAbsoluteY }: NodeProps<ImageGeneratorNodeType>) {
@@ -45,6 +46,7 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
   const [isEditingName, setIsEditingName] = useState(false);
   const [nodeName, setNodeName] = useState(data.name || 'Image Generator');
   const [isHovered, setIsHovered] = useState(false);
+  const [isPromptExpanded, setIsPromptExpanded] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
 
   // Check if this node has any connections
@@ -460,7 +462,8 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
               </div>
             </div>
           ) : data.outputUrl ? (
-            /* Generated Image - Freepik Style with hover toolbar */
+            /* Generated Image - Freepik Style with hover toolbar + collapsible prompt bar */
+            <>
             <div
               className={`group/image relative rounded-2xl overflow-hidden ${selected ? 'node-card-selected' : ''}`}
               style={{
@@ -499,12 +502,6 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
               )}
               {/* Gradient overlay for better text visibility - visible on hover */}
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover/image:opacity-100 transition-opacity duration-300 pointer-events-none" />
-              {/* Prompt text overlay - visible on hover */}
-              <div className="absolute bottom-16 left-3 right-3 opacity-0 group-hover/image:opacity-100 transition-all duration-200 translate-y-2 group-hover/image:translate-y-0">
-                <p className="text-white/80 text-sm font-medium drop-shadow-lg">
-                  {connectedInputs.textContent ? 'Prompt (connected)' : data.prompt ? data.prompt.slice(0, 60) + (data.prompt.length > 60 ? '...' : '') : ''}
-                </p>
-              </div>
               {/* Floating Toolbar - visible on hover with smooth animation */}
               {!isReadOnly && (
                 <div className="absolute bottom-3 left-3 right-3 flex items-center gap-1.5 px-2.5 py-2 bg-black/50 backdrop-blur-xl rounded-xl border border-white/10 opacity-0 group-hover/image:opacity-100 transition-all duration-300 ease-out translate-y-2 group-hover/image:translate-y-0 shadow-xl">
@@ -572,6 +569,35 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
                 </div>
               )}
             </div>
+            {/* Collapsible Prompt Bar */}
+            <div className="border-t border-border/50" style={{ backgroundColor: 'var(--node-card-bg)' }}>
+              <div
+                className="flex items-center gap-2 px-3 py-2 cursor-pointer nodrag"
+                onClick={() => setIsPromptExpanded(!isPromptExpanded)}
+              >
+                <ChevronRight className={`h-3 w-3 text-muted-foreground shrink-0 transition-transform duration-200 ${isPromptExpanded ? 'rotate-90' : ''}`} />
+                {!isPromptExpanded && (
+                  <p className="text-xs text-muted-foreground truncate flex-1">
+                    {data.prompt || 'No prompt'}
+                  </p>
+                )}
+              </div>
+              {isPromptExpanded && (
+                <div className="px-3 pb-3 nodrag nopan" onPointerDown={(e) => e.stopPropagation()}>
+                  <div className="node-content-area p-2 min-h-[100px]">
+                    <textarea
+                      value={data.prompt}
+                      onChange={handlePromptChange}
+                      placeholder={isReadOnly ? '' : 'Edit your prompt...'}
+                      disabled={isReadOnly}
+                      className={`w-full h-[80px] bg-transparent border-none text-sm resize-none focus:outline-none ${isReadOnly ? 'cursor-default' : ''}`}
+                      style={{ color: 'var(--text-secondary)' }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+            </>
           ) : (
             /* Prompt Input - Freepik style with inner content area */
             <>
