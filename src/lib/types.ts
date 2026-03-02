@@ -1280,10 +1280,16 @@ export type MusicGeneratorNode = Node<MusicGeneratorNodeData, 'musicGenerator'>;
 // Speech Node Data
 export interface SpeechNodeData extends Record<string, unknown> {
   name?: string;
+  mode?: 'single' | 'dialogue';
   text: string;
   voice: ElevenLabsVoice;
   speed: number; // 0.7-1.2
   stability: number; // 0-1
+  dialogueLines?: Array<{
+    id: string;
+    text: string;
+    voice: ElevenLabsVoice;
+  }>;
   // Output
   outputUrl?: string;
   isGenerating?: boolean;
@@ -1334,8 +1340,8 @@ export const AUDIO_MODEL_CAPABILITIES: Record<AudioModelType, AudioModelCapabili
 
 // Fal model IDs for audio
 export const FAL_AUDIO_MODELS: Record<AudioModelType, string> = {
-  'ace-step': 'fal-ai/ace-step',
-  'elevenlabs-tts': 'fal-ai/elevenlabs/tts/turbo-v2.5',
+  'ace-step': 'fal-ai/ace-step/prompt-to-audio',
+  'elevenlabs-tts': 'fal-ai/elevenlabs/tts/eleven-v3',
   'mmaudio-v2': 'fal-ai/mmaudio/v2',
 } as const;
 
