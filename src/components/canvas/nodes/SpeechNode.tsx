@@ -1,17 +1,11 @@
 'use client';
 
-import { memo, useCallback, useState, useRef, useEffect } from 'react';
+import { memo, useCallback, useState, useRef, useEffect, useMemo } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useCanvasStore } from '@/stores/canvas-store';
 import type { SpeechNode as SpeechNodeType, ElevenLabsVoice } from '@/lib/types';
 import { ELEVENLABS_VOICE_LABELS } from '@/lib/types';
@@ -26,9 +20,60 @@ import {
   RefreshCw,
   Settings,
   Volume2,
+  Plus,
 } from 'lucide-react';
 
-const VOICE_OPTIONS = Object.entries(ELEVENLABS_VOICE_LABELS) as [ElevenLabsVoice, string][];
+type VoiceOption = {
+  value: string;
+  label: string;
+  description?: string;
+  group?: string;
+};
+
+const DEFAULT_VOICE_OPTIONS: VoiceOption[] = Object.entries(ELEVENLABS_VOICE_LABELS).map(
+  ([value, label]) => ({
+    value,
+    label,
+    group: 'Built-in',
+  })
+);
+
+type SpeechMode = 'single' | 'dialogue';
+type DialogueLine = { id: string; text: string; voice: ElevenLabsVoice };
+
+function makeLineId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function normalizeSpeechMode(mode: unknown): SpeechMode {
+  return mode === 'dialogue' ? 'dialogue' : 'single';
+}
+
+function normalizeDialogueLines(value: unknown, fallbackVoice: string): DialogueLine[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((line) => {
+      if (!line || typeof line !== 'object') return null;
+      const entry = line as Partial<DialogueLine>;
+      const voice = typeof entry.voice === 'string' && entry.voice.trim() ? entry.voice : fallbackVoice;
+      return {
+        id: typeof entry.id === 'string' && entry.id.trim() ? entry.id : makeLineId(),
+        text: typeof entry.text === 'string' ? entry.text : '',
+        voice,
+      } as DialogueLine;
+    })
+    .filter((line): line is DialogueLine => !!line);
+}
+
+function createDefaultDialogueLines(): DialogueLine[] {
+  return [
+    { id: makeLineId(), voice: 'rachel', text: '' },
+    { id: makeLineId(), voice: 'drew', text: '' },
+  ];
+}
 
 function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) {
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
@@ -38,8 +83,88 @@ function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) 
   const [nodeName, setNodeName] = useState(data.name || 'Speech');
   const nameInputRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const previewAudioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [voiceOptions, setVoiceOptions] = useState<VoiceOption[]>(DEFAULT_VOICE_OPTIONS);
+  const [isLoadingVoices, setIsLoadingVoices] = useState(false);
+  const [previewAudioUrl, setPreviewAudioUrl] = useState<string>('');
+  const [previewingKey, setPreviewingKey] = useState<string | null>(null);
+  const selectedVoice = typeof data.voice === 'string' && data.voice.trim() ? data.voice : 'rachel';
+  const mode = normalizeSpeechMode(data.mode);
+  const dialogueLines = normalizeDialogueLines(data.dialogueLines, selectedVoice);
+  const hydratedDialogueLines = dialogueLines.length > 0 ? dialogueLines : createDefaultDialogueLines();
+  const voiceLabelMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const option of voiceOptions) {
+      map.set(option.value, option.label);
+    }
+    for (const [key, label] of Object.entries(ELEVENLABS_VOICE_LABELS)) {
+      if (!map.has(key)) map.set(key, label);
+    }
+    return map;
+  }, [voiceOptions]);
+
+  const getVoiceLabel = useCallback(
+    (voice: string) => voiceLabelMap.get(voice) || voice,
+    [voiceLabelMap]
+  );
+
+  const getVoiceShortLabel = useCallback(
+    (voice: string) => getVoiceLabel(voice).split(' ')[0] || voice,
+    [getVoiceLabel]
+  );
+
+  useEffect(() => {
+    let isCancelled = false;
+    const controller = new AbortController();
+
+    const loadVoices = async () => {
+      setIsLoadingVoices(true);
+      try {
+        const response = await fetch('/api/speech/voices', { signal: controller.signal });
+        if (!response.ok) {
+          throw new Error('Failed to load voices');
+        }
+
+        const result = await response.json();
+        if (isCancelled) return;
+
+        const loaded: unknown[] = Array.isArray(result?.voices) ? result.voices : [];
+        const normalized: VoiceOption[] = loaded
+          .map((entry: unknown) => {
+            if (!entry || typeof entry !== 'object') return null;
+            const candidate = entry as Partial<VoiceOption>;
+            if (typeof candidate.value !== 'string' || !candidate.value.trim()) return null;
+            if (typeof candidate.label !== 'string' || !candidate.label.trim()) return null;
+            return {
+              value: candidate.value,
+              label: candidate.label,
+              description: typeof candidate.description === 'string' ? candidate.description : undefined,
+              group: typeof candidate.group === 'string' ? candidate.group : undefined,
+            } as VoiceOption;
+          })
+          .filter((entry: VoiceOption | null): entry is VoiceOption => !!entry);
+
+        if (normalized.length > 0) {
+          setVoiceOptions(normalized);
+        }
+      } catch (error) {
+        if ((error as Error).name !== 'AbortError' && !isCancelled) {
+          console.warn('Speech voice list fallback to defaults:', error);
+        }
+      } finally {
+        if (!isCancelled) setIsLoadingVoices(false);
+      }
+    };
+
+    void loadVoices();
+
+    return () => {
+      isCancelled = true;
+      controller.abort();
+    };
+  }, []);
 
   useEffect(() => {
     if (isEditingName && nameInputRef.current) {
@@ -58,6 +183,19 @@ function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) 
       updateNodeData(id, { text: e.target.value });
     },
     [id, updateNodeData]
+  );
+
+  const handleModeChange = useCallback(
+    (nextMode: SpeechMode) => {
+      if (nextMode === mode) return;
+      updateNodeData(id, {
+        mode: nextMode,
+        error: undefined,
+        outputUrl: undefined,
+        dialogueLines: nextMode === 'dialogue' ? hydratedDialogueLines : data.dialogueLines,
+      });
+    },
+    [id, mode, updateNodeData, hydratedDialogueLines, data.dialogueLines]
   );
 
   const handleVoiceChange = useCallback(
@@ -81,17 +219,110 @@ function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) 
     [id, updateNodeData]
   );
 
+  const updateDialogueLine = useCallback(
+    (lineId: string, patch: Partial<DialogueLine>) => {
+      const updated = hydratedDialogueLines.map((line) =>
+        line.id === lineId ? { ...line, ...patch } : line
+      );
+      updateNodeData(id, { dialogueLines: updated });
+    },
+    [id, updateNodeData, hydratedDialogueLines]
+  );
+
+  const handleAddDialogueLine = useCallback(() => {
+    const updated = [...hydratedDialogueLines, { id: makeLineId(), text: '', voice: selectedVoice }];
+    updateNodeData(id, { dialogueLines: updated });
+  }, [id, updateNodeData, hydratedDialogueLines, selectedVoice]);
+
+  const handleRemoveDialogueLine = useCallback(
+    (lineId: string) => {
+      if (hydratedDialogueLines.length <= 2) {
+        toast.error('Dialogue needs at least 2 lines');
+        return;
+      }
+      const updated = hydratedDialogueLines.filter((line) => line.id !== lineId);
+      updateNodeData(id, { dialogueLines: updated });
+    },
+    [id, updateNodeData, hydratedDialogueLines]
+  );
+
+  const handlePreviewVoice = useCallback(async (voice: string, sampleText?: string, key = voice) => {
+    setPreviewingKey(key);
+    try {
+      const response = await fetch('/api/speech/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          voice,
+          text: sampleText,
+          speed: data.speed,
+          stability: data.stability,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Voice preview failed');
+      }
+
+      const result = await response.json();
+      const url = typeof result.audioUrl === 'string' ? result.audioUrl : '';
+      if (!url) {
+        throw new Error('No preview audio returned');
+      }
+
+      setPreviewAudioUrl(url);
+      const audio = previewAudioRef.current;
+      if (audio) {
+        audio.src = url;
+        await audio.play();
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Voice preview failed';
+      toast.error(errorMessage);
+    } finally {
+      setPreviewingKey((current) => (current === key ? null : current));
+    }
+  }, [data.speed, data.stability]);
+
   const handleGenerate = useCallback(async () => {
     const connectedInputs = getConnectedInputs(id);
+    let payload: Record<string, unknown>;
 
-    let finalText = data.text || '';
-    if (connectedInputs.textContent) {
-      finalText = connectedInputs.textContent + (data.text ? `\n${data.text}` : '');
-    }
-
-    if (!finalText) {
-      toast.error('Please enter text or connect a text node');
-      return;
+    if (mode === 'single') {
+      let finalText = data.text || '';
+      if (connectedInputs.textContent) {
+        finalText = connectedInputs.textContent + (data.text ? `\n${data.text}` : '');
+      }
+      if (!finalText.trim()) {
+        toast.error('Please enter text or connect a text node');
+        return;
+      }
+      payload = {
+        mode: 'single',
+        text: finalText.trim(),
+        voice: selectedVoice,
+        speed: data.speed,
+        stability: data.stability,
+      };
+    } else {
+      const lines = hydratedDialogueLines.map((line) => ({ ...line, text: line.text.trim() }));
+      const connectedText = connectedInputs.textContent?.trim();
+      if (connectedText) {
+        const first = lines[0] || { id: makeLineId(), text: '', voice: selectedVoice };
+        first.text = first.text ? `${connectedText}\n${first.text}` : connectedText;
+        if (lines.length === 0) lines.push(first);
+      }
+      const filledLines = lines.filter((line) => line.text.length > 0);
+      if (filledLines.length < 2) {
+        toast.error('Add at least 2 dialogue lines');
+        return;
+      }
+      payload = {
+        mode: 'dialogue',
+        stability: data.stability,
+        dialogueLines: filledLines.map((line) => ({ text: line.text, voice: line.voice })),
+      };
     }
 
     updateNodeData(id, { isGenerating: true, error: undefined });
@@ -100,12 +331,7 @@ function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) 
       const response = await fetch('/api/generate-speech', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: finalText,
-          voice: data.voice,
-          speed: data.speed,
-          stability: data.stability,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -129,7 +355,17 @@ function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) 
       });
       toast.error(`Generation failed: ${errorMessage}`);
     }
-  }, [id, data.text, data.voice, data.speed, data.stability, updateNodeData, getConnectedInputs]);
+  }, [
+    id,
+    data.text,
+    data.speed,
+    data.stability,
+    mode,
+    selectedVoice,
+    hydratedDialogueLines,
+    updateNodeData,
+    getConnectedInputs,
+  ]);
 
   const handleDelete = useCallback(() => {
     deleteNode(id);
@@ -178,7 +414,19 @@ function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) 
   }, []);
 
   const connectedInputs = getConnectedInputs(id);
-  const hasValidInput = !!(data.text || connectedInputs.textContent);
+  const connectedHasText = !!connectedInputs.textContent?.trim();
+  const filledDialogueLines = hydratedDialogueLines.filter((line) => line.text.trim().length > 0);
+  const hasValidInput = mode === 'single'
+    ? !!(data.text || connectedInputs.textContent)
+    : connectedHasText
+      ? filledDialogueLines.length >= 1
+      : filledDialogueLines.length >= 2;
+  const previewText = mode === 'single'
+    ? data.text
+    : filledDialogueLines
+        .slice(0, 2)
+        .map((line) => `${getVoiceShortLabel(line.voice)}: ${line.text}`)
+        .join(' / ');
 
   return (
     <div className="relative">
@@ -261,12 +509,13 @@ function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) 
       >
         {/* Content Area */}
         <div className="relative">
+          <audio ref={previewAudioRef} src={previewAudioUrl} className="hidden" />
           {/* Loading State */}
           {data.isGenerating ? (
             <div className="p-4 min-h-[200px] flex flex-col items-center justify-center gap-4">
-              {data.text && (
+              {previewText && (
                 <p className="text-muted-foreground text-xs text-center line-clamp-2 max-w-[90%]">
-                  {data.text}
+                  {previewText}
                 </p>
               )}
               <div className="text-center">
@@ -300,16 +549,24 @@ function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) 
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <Volume2 className="h-4 w-4 text-cyan-400" />
-                    <span className="text-sm text-foreground font-medium">{ELEVENLABS_VOICE_LABELS[data.voice]}</span>
+                    <span className="text-sm text-foreground font-medium">
+                      {mode === 'dialogue'
+                        ? `Dialogue mix (${filledDialogueLines.length} lines)`
+                        : getVoiceLabel(selectedVoice)}
+                    </span>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">Speed: {data.speed}x</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {mode === 'dialogue' ? `Stability: ${data.stability.toFixed(1)}` : `Speed: ${data.speed}x`}
+                  </p>
                 </div>
               </div>
               {/* Show text below player */}
-              <p className="text-xs text-muted-foreground line-clamp-2">{data.text}</p>
+              {previewText ? (
+                <p className="text-xs text-muted-foreground line-clamp-2">{previewText}</p>
+              ) : null}
             </div>
-          ) : (
-            /* Text Input */
+          ) : mode === 'single' ? (
+            /* Single Text Input */
             <div className="p-4 min-h-[140px]">
               <textarea
                 value={data.text}
@@ -318,6 +575,69 @@ function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) 
                 className="w-full h-[100px] bg-transparent border-none text-sm resize-none focus:outline-none node-input"
                 style={{ color: 'var(--text-secondary)' }}
               />
+            </div>
+          ) : (
+            /* Dialogue Input */
+            <div className="p-4 min-h-[180px] space-y-2.5">
+              {hydratedDialogueLines.map((line, index) => {
+                const linePreviewKey = `line:${line.id}`;
+                const isPreviewingLine = previewingKey === linePreviewKey;
+                return (
+                  <div key={line.id} className="rounded-xl border border-border/60 bg-muted/30 p-2.5 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-muted-foreground w-10 shrink-0">Line {index + 1}</span>
+                      <SearchableSelect
+                        value={line.voice}
+                        onValueChange={(value) => updateDialogueLine(line.id, { voice: value as ElevenLabsVoice })}
+                        options={voiceOptions}
+                        placeholder={isLoadingVoices ? 'Loading voices...' : 'Select voice'}
+                        searchPlaceholder="Search voices..."
+                        className="flex-1"
+                        triggerClassName="w-full max-w-none"
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => handlePreviewVoice(line.voice, line.text, linePreviewKey)}
+                        className="h-7 w-7 text-muted-foreground hover:text-cyan-300 hover:bg-muted/50"
+                        disabled={!!previewingKey}
+                        title="Preview this voice"
+                      >
+                        {isPreviewingLine ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Play className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => handleRemoveDialogueLine(line.id)}
+                        className="h-7 w-7 text-muted-foreground hover:text-red-400 hover:bg-muted/50"
+                        disabled={hydratedDialogueLines.length <= 2}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                    <textarea
+                      value={line.text}
+                      onChange={(e) => updateDialogueLine(line.id, { text: e.target.value })}
+                      placeholder="Speaker line..."
+                      className="w-full h-[64px] bg-transparent border-none text-sm resize-none focus:outline-none node-input"
+                      style={{ color: 'var(--text-secondary)' }}
+                    />
+                  </div>
+                );
+              })}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleAddDialogueLine}
+                className="h-7 px-2 text-xs text-cyan-300 hover:text-cyan-200 hover:bg-cyan-500/10"
+              >
+                <Plus className="h-3.5 w-3.5 mr-1" />
+                Add line
+              </Button>
             </div>
           )}
 
@@ -330,25 +650,30 @@ function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) 
         {/* Settings Panel */}
         {showSettings && (
           <div className="px-4 py-3 border-t border-border space-y-3">
+            {mode === 'single' && (
+              <div className="space-y-2">
+                <label className="text-xs text-muted-foreground">Speed: {data.speed.toFixed(1)}x</label>
+                <Slider
+                  value={[data.speed]}
+                  onValueChange={handleSpeedChange}
+                  min={0.7}
+                  max={1.2}
+                  step={0.1}
+                  className="w-full"
+                />
+              </div>
+            )}
             <div className="space-y-2">
-              <label className="text-xs text-muted-foreground">Speed: {data.speed.toFixed(1)}x</label>
-              <Slider
-                value={[data.speed]}
-                onValueChange={handleSpeedChange}
-                min={0.7}
-                max={1.2}
-                step={0.1}
-                className="w-full"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs text-muted-foreground">Stability: {data.stability.toFixed(1)}</label>
+              <label className="text-xs text-muted-foreground">
+                Stability: {data.stability.toFixed(1)}
+                {mode === 'dialogue' ? ' (0.0 / 0.5 / 1.0)' : ''}
+              </label>
               <Slider
                 value={[data.stability]}
                 onValueChange={handleStabilityChange}
                 min={0}
                 max={1}
-                step={0.1}
+                step={mode === 'dialogue' ? 0.5 : 0.1}
                 className="w-full"
               />
             </div>
@@ -357,19 +682,53 @@ function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) 
 
         {/* Bottom Toolbar */}
         <div className="flex items-center flex-wrap gap-1.5 px-3 py-2.5 node-bottom-toolbar">
-          {/* Voice Selector */}
-          <Select value={data.voice} onValueChange={handleVoiceChange}>
-            <SelectTrigger className="h-7 max-w-[130px] bg-muted/80 border-0 text-xs text-foreground gap-1 px-2 rounded-md hover:bg-muted">
-              <SelectValue>
-                {ELEVENLABS_VOICE_LABELS[data.voice]?.split(' ')[0] || data.voice}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent className="bg-popover border-border max-h-[250px]">
-              {VOICE_OPTIONS.map(([key, label]) => (
-                <SelectItem key={key} value={key} className="text-xs">{label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {/* Mode Toggle */}
+          <div className="inline-flex items-center rounded-md bg-muted/80 p-0.5">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => handleModeChange('single')}
+              className={`h-6 px-2 text-xs ${mode === 'single' ? 'bg-cyan-500/20 text-cyan-300' : 'text-muted-foreground'}`}
+            >
+              Single
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => handleModeChange('dialogue')}
+              className={`h-6 px-2 text-xs ${mode === 'dialogue' ? 'bg-cyan-500/20 text-cyan-300' : 'text-muted-foreground'}`}
+            >
+              Dialogue
+            </Button>
+          </div>
+
+          {/* Voice Selector (single mode only) */}
+          {mode === 'single' && (
+            <>
+              <SearchableSelect
+                value={selectedVoice}
+                onValueChange={handleVoiceChange}
+                options={voiceOptions}
+                placeholder={isLoadingVoices ? 'Loading voices...' : 'Select voice'}
+                searchPlaceholder="Search voices..."
+                triggerClassName="max-w-[150px]"
+              />
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => handlePreviewVoice(selectedVoice, data.text, 'single')}
+                className="h-7 w-7 shrink-0 text-muted-foreground hover:text-cyan-300 hover:bg-muted/50"
+                disabled={!!previewingKey}
+                title="Preview selected voice"
+              >
+                {previewingKey === 'single' ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Play className="h-3.5 w-3.5" />
+                )}
+              </Button>
+            </>
+          )}
 
           {/* Settings Toggle */}
           <Button
