@@ -63,7 +63,11 @@ function touchActivity(sandboxId: string): void {
 }
 
 function toExactArrayBuffer(data: Buffer): ArrayBuffer {
-  return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+  // Buffer#buffer can be ArrayBuffer or SharedArrayBuffer.
+  // Allocate an exact standalone ArrayBuffer to satisfy strict typing and avoid aliasing.
+  const exact = new ArrayBuffer(data.byteLength);
+  new Uint8Array(exact).set(data);
+  return exact;
 }
 
 function shellEscape(value: string): string {

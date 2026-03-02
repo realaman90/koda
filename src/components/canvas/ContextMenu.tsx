@@ -86,6 +86,10 @@ export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
     () => (selectedNodeIds.length === 1 ? nodes.find((node) => node.id === selectedNodeIds[0]) : undefined),
     [nodes, selectedNodeIds]
   );
+  const selectedNonGroupNodeCount = useMemo(
+    () => nodes.filter((node) => selectedNodeIds.includes(node.id) && node.type !== 'group').length,
+    [nodes, selectedNodeIds]
+  );
 
   // Clamp menu position so it doesn't overflow the viewport
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
@@ -200,7 +204,7 @@ export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
     { id: 'copy', icon: <Copy className="h-4 w-4" />, label: 'Copy', shortcut: '⌘C', action: copySelected, disabled: selectedNodeIds.length === 0 },
     { id: 'cut', icon: <Scissors className="h-4 w-4" />, label: 'Cut', shortcut: '⌘X', action: cutSelected, disabled: selectedNodeIds.length === 0 },
     { id: 'duplicate', icon: <Duplicate className="h-4 w-4" />, label: 'Duplicate', shortcut: '⌘D', action: duplicateSelected, disabled: selectedNodeIds.length === 0 },
-    { id: 'group', icon: <Group className="h-4 w-4" />, label: 'Group Selected', shortcut: '⌘G', action: () => { groupSelected(); hideContextMenu(); }, disabled: selectedNodeIds.length < 2 },
+    { id: 'group', icon: <Group className="h-4 w-4" />, label: 'Group Selected', shortcut: '⌘G', action: () => { groupSelected(); hideContextMenu(); }, disabled: selectedNonGroupNodeCount < 2 },
     { id: 'divider1', divider: true },
     {
       id: 'settings',
@@ -223,7 +227,7 @@ export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
     },
     { id: 'divider2', divider: true },
     { id: 'delete', icon: <Trash2 className="h-4 w-4" />, label: 'Delete', shortcut: '⌫', action: deleteSelected, disabled: selectedNodeIds.length === 0, danger: true },
-  ] : [], [contextMenu, copySelected, cutSelected, duplicateSelected, groupSelected, deleteSelected, hideContextMenu, openSettingsPanel, openVideoSettingsPanel, selectedNodeIds, selectedNode]);
+  ] : [], [contextMenu, copySelected, cutSelected, duplicateSelected, groupSelected, deleteSelected, hideContextMenu, openSettingsPanel, openVideoSettingsPanel, selectedNodeIds, selectedNode, selectedNonGroupNodeCount]);
 
   // Canvas menu sections
   const canvasMenuSections: MenuSection[] = useMemo(() => [

@@ -1246,29 +1246,8 @@ export type AudioModelType = 'ace-step' | 'elevenlabs-tts' | 'mmaudio-v2';
 export type MusicDuration = 5 | 15 | 30 | 60 | 120 | 180 | 240;
 
 // ElevenLabs voice options
-export type ElevenLabsVoice =
-  | 'alloy'
-  | 'echo'
-  | 'fable'
-  | 'onyx'
-  | 'nova'
-  | 'shimmer'
-  | 'rachel'
-  | 'drew'
-  | 'clyde'
-  | 'paul'
-  | 'domi'
-  | 'dave'
-  | 'fin'
-  | 'sarah'
-  | 'antoni'
-  | 'thomas'
-  | 'charlie'
-  | 'george'
-  | 'emily'
-  | 'elli';
-
-export const ELEVENLABS_VOICE_LABELS: Record<ElevenLabsVoice, string> = {
+// Keep legacy defaults for backwards compatibility, but allow any runtime voice id/name from Fal list-voices.
+export const DEFAULT_ELEVENLABS_VOICE_LABELS = {
   'alloy': 'Alloy (Neutral)',
   'echo': 'Echo (Male)',
   'fable': 'Fable (British)',
@@ -1291,6 +1270,13 @@ export const ELEVENLABS_VOICE_LABELS: Record<ElevenLabsVoice, string> = {
   'elli': 'Elli (Young Female)',
 } as const;
 
+export type DefaultElevenLabsVoice = keyof typeof DEFAULT_ELEVENLABS_VOICE_LABELS;
+export type ElevenLabsVoice = DefaultElevenLabsVoice | (string & {});
+
+export const ELEVENLABS_VOICE_LABELS: Record<string, string> = {
+  ...DEFAULT_ELEVENLABS_VOICE_LABELS,
+};
+
 // Music Generator Node Data
 export interface MusicGeneratorNodeData extends Record<string, unknown> {
   name?: string;
@@ -1309,10 +1295,16 @@ export type MusicGeneratorNode = Node<MusicGeneratorNodeData, 'musicGenerator'>;
 // Speech Node Data
 export interface SpeechNodeData extends Record<string, unknown> {
   name?: string;
+  mode?: 'single' | 'dialogue';
   text: string;
   voice: ElevenLabsVoice;
   speed: number; // 0.7-1.2
   stability: number; // 0-1
+  dialogueLines?: Array<{
+    id: string;
+    text: string;
+    voice: ElevenLabsVoice;
+  }>;
   // Output
   outputUrl?: string;
   isGenerating?: boolean;
@@ -1363,8 +1355,8 @@ export const AUDIO_MODEL_CAPABILITIES: Record<AudioModelType, AudioModelCapabili
 
 // Fal model IDs for audio
 export const FAL_AUDIO_MODELS: Record<AudioModelType, string> = {
-  'ace-step': 'fal-ai/ace-step',
-  'elevenlabs-tts': 'fal-ai/elevenlabs/tts/turbo-v2.5',
+  'ace-step': 'fal-ai/ace-step/prompt-to-audio',
+  'elevenlabs-tts': 'fal-ai/elevenlabs/tts/eleven-v3',
   'mmaudio-v2': 'fal-ai/mmaudio/v2',
 } as const;
 

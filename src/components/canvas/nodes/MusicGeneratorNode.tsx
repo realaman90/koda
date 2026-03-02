@@ -357,15 +357,15 @@ function MusicGeneratorNodeComponent({ id, data, selected }: NodeProps<MusicGene
           {/* Instrumental Toggle */}
           <Button
             variant="ghost"
-            size="icon-sm"
+            size="sm"
             onClick={handleInstrumentalToggle}
-            className={`h-7 px-2 text-xs ${
+            className={`h-7 px-2.5 text-xs shrink-0 whitespace-nowrap ${
               data.instrumental
                 ? 'text-primary/80 bg-primary/20 hover:bg-primary/30'
                 : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
             }`}
           >
-            {data.instrumental ? 'Instrumental' : 'With Vocals'}
+            {data.instrumental ? 'Instrumental' : 'Vocals'}
           </Button>
 
           {/* Settings Toggle */}
