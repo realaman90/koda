@@ -11,6 +11,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { requireActor } from '@/lib/auth/actor';
+import { isDevAuthBypassEnabled } from '@/lib/auth/dev-bypass';
 import { getOrCreateBalance, deductCredits, refundCredits } from '@/lib/db/credit-queries';
 import { getCreditCost, PLAN_KEYS, type GenerationType, type CreditCostParams } from './costs';
 
@@ -81,6 +82,11 @@ export function withCredits(options: WithCreditsOptions, handler: RouteHandler) 
       : { model: (body.model as string) || 'unknown' };
 
     const creditCost = getCreditCost(options.type, costParams);
+
+    // Dev bypass: skip credit deduction entirely in development
+    if (isDevAuthBypassEnabled()) {
+      return handler(request, { userId, planKey, creditCost: 0 });
+    }
 
     // 5. Atomic deduction
     const deductResult = await deductCredits(

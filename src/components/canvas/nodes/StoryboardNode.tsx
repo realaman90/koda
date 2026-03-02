@@ -7,8 +7,8 @@
  * Flow: Form → Generate → Chat timeline with thinking + draft cards → Refine via chat.
  */
 
-import { memo, useCallback, useState, useRef, useEffect, useMemo } from 'react';
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import { memo, useCallback, useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
+import { Handle, Position, useUpdateNodeInternals, type NodeProps } from '@xyflow/react';
 import { Button } from '@/components/ui/button';
 import { useCanvasStore } from '@/stores/canvas-store';
 import { useCanvasAPI } from '@/lib/plugins/canvas-api';
@@ -22,13 +22,16 @@ import type {
   StoryboardChatMessage,
   StoryboardThinkingBlock,
   StoryboardDraft,
+  StoryboardReference,
+  StoryboardReferenceRole,
+  StoryboardReferenceIdentity,
   VideoModelType,
   VideoAspectRatio,
   VideoDuration,
 } from '@/lib/types';
 import { VIDEO_MODEL_CAPABILITIES } from '@/lib/types';
 import type { CreateNodeInput } from '@/lib/plugins/types';
-import { Clapperboard, Trash2, Sparkles, Grid3X3, ChevronRight, Image as ImageIcon, User, ArrowLeftRight, LayoutGrid, ArrowLeft, Info, Wand2, Loader2 } from 'lucide-react';
+import { Clapperboard, Trash2, Sparkles, Grid3X3, ChevronRight, Image as ImageIcon, User, ArrowLeftRight, LayoutGrid, ArrowLeft, Info, Wand2, Loader2, Plus, X, Box, Mountain } from 'lucide-react';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import { ThinkingBlock, UserBubble } from '@/lib/plugins/official/agents/animation-generator/components/ChatMessages';
@@ -146,6 +149,76 @@ function useLocalField(
   return { value: local, onChange: handleChange, onFocus: handleFocus, onBlur: handleBlur };
 }
 
+function ReferenceCard({
+  ref: refData,
+  index,
+  isReadOnly,
+  referenceImageUrls,
+  updateReference,
+  removeReference,
+  refCardRefs,
+  refsLength,
+}: {
+  ref: StoryboardReference;
+  index: number;
+  isReadOnly: boolean;
+  referenceImageUrls: Record<string, string>;
+  updateReference: (refId: string, field: keyof StoryboardReference, value: string) => void;
+  removeReference: (refId: string) => void;
+  refCardRefs: React.MutableRefObject<(HTMLDivElement | null)[]>;
+  refsLength: number;
+}) {
+  const labelField = useLocalField(refData.label, (v) => updateReference(refData.id, 'label', v));
+  const descField = useLocalField(refData.description, (v) => updateReference(refData.id, 'description', v));
+
+  return (
+    <div ref={(el) => { refCardRefs.current[index] = el; }} className="p-2 bg-muted/50 border border-border rounded-lg space-y-1.5">
+      <div className="flex items-center gap-1.5">
+        {/* Role dropdown */}
+        <select
+          value={refData.role}
+          onChange={(e) => updateReference(refData.id, 'role', e.target.value)}
+          disabled={isReadOnly}
+          className="px-1.5 py-1 bg-muted border border-border rounded text-[10px] text-foreground focus:outline-none nodrag"
+        >
+          <option value="subject">Subject</option>
+          <option value="character">Character</option>
+          <option value="prop">Prop</option>
+          <option value="environment">Environment</option>
+        </select>
+        {/* Label input */}
+        <input
+          {...labelField}
+          placeholder={isReadOnly ? '' : 'Name...'}
+          disabled={isReadOnly}
+          className="flex-1 px-2 py-1 bg-muted border border-border rounded text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-blue-500 nodrag"
+        />
+        {/* Connected image indicator */}
+        {referenceImageUrls[refData.handleId] && (
+          <div className="w-2 h-2 rounded-full bg-green-500 shrink-0" title="Image connected" />
+        )}
+        {/* Remove button */}
+        {!isReadOnly && refsLength > 1 && (
+          <button
+            onClick={() => removeReference(refData.id)}
+            className="p-0.5 text-muted-foreground hover:text-red-400 transition-colors nodrag"
+          >
+            <X className="w-3 h-3" />
+          </button>
+        )}
+      </div>
+      {/* Description textarea */}
+      <textarea
+        {...descField}
+        placeholder={isReadOnly ? '' : refData.role === 'character' ? 'Physical appearance...' : 'Description...'}
+        disabled={isReadOnly}
+        className={`w-full px-2 py-1 bg-muted border border-border rounded text-xs text-foreground placeholder:text-muted-foreground resize-y focus:outline-none focus:ring-1 focus:ring-blue-500 nodrag ${isReadOnly ? 'cursor-default' : ''}`}
+        rows={2}
+      />
+    </div>
+  );
+}
+
 function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNodeType>) {
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
   const deleteNode = useCanvasStore((state) => state.deleteNode);
@@ -153,15 +226,19 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
   const isReadOnly = useCanvasStore((state) => state.isReadOnly);
   const canvas = useCanvasAPI();
 
-  // Check for connected images
+  // Check for connected images (N-ref + legacy)
   const connectedInputs = getConnectedInputs(id);
   const hasProductImage = !!connectedInputs.productImageUrl;
   const hasCharacterImage = !!connectedInputs.characterImageUrl;
+  const referenceImageUrls: Record<string, string> = connectedInputs.referenceImageUrls || {};
 
   const [isEditingName, setIsEditingName] = useState(false);
   const [nodeName, setNodeName] = useState(data.name || 'Storyboard');
   const nameInputRef = useRef<HTMLInputElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
+  const rootNodeRef = useRef<HTMLDivElement>(null);
+  const refCardRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const [handleTops, setHandleTops] = useState<(number | null)[]>([]);
 
   // Sequence counter for ordering timeline items
   const seqRef = useRef(0);
@@ -218,6 +295,67 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Backward compatibility: migrate legacy product/character → references array
+  useEffect(() => {
+    if (!data.references && (data.product !== undefined || data.character !== undefined)) {
+      const refs: StoryboardReference[] = [];
+      if (data.product) {
+        refs.push({ id: 'ref_legacy_product', role: 'subject', label: data.product, description: data.product, handleId: 'refImage_0' });
+      }
+      if (data.character) {
+        refs.push({ id: 'ref_legacy_character', role: 'character', label: data.character, description: data.character, handleId: refs.length === 0 ? 'refImage_0' : 'refImage_1' });
+      }
+      if (refs.length === 0) {
+        refs.push({ id: `ref_${Date.now()}`, role: 'subject', label: '', description: '', handleId: 'refImage_0' });
+      }
+      updateNodeData(id, { references: refs });
+
+      // Migrate connected edges from legacy handles to new refImage handles
+      const storeState = useCanvasStore.getState();
+      const edgeUpdates: Array<{ oldEdgeId: string; source: string; sourceHandle: string; newTargetHandle: string }> = [];
+      for (const edge of storeState.edges) {
+        if (edge.target !== id) continue;
+        if (edge.targetHandle === 'productImage') {
+          edgeUpdates.push({ oldEdgeId: edge.id, source: edge.source, sourceHandle: edge.sourceHandle || 'output', newTargetHandle: 'refImage_0' });
+        } else if (edge.targetHandle === 'characterImage') {
+          edgeUpdates.push({ oldEdgeId: edge.id, source: edge.source, sourceHandle: edge.sourceHandle || 'output', newTargetHandle: refs.length > 1 ? 'refImage_1' : 'refImage_0' });
+        }
+      }
+      if (edgeUpdates.length > 0) {
+        const removals = edgeUpdates.map(u => ({ type: 'remove' as const, id: u.oldEdgeId }));
+        storeState.onEdgesChange(removals);
+        for (const u of edgeUpdates) {
+          storeState.onConnect({
+            source: u.source,
+            sourceHandle: u.sourceHandle,
+            target: id,
+            targetHandle: u.newTargetHandle,
+          });
+        }
+      }
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Backward compatibility: migrate drafts with legacy identities to referenceIdentities
+  useEffect(() => {
+    if (!data.drafts?.length) return;
+    const updatedDrafts = data.drafts.map(draft => {
+      if (draft.referenceIdentities?.length || (!draft.productIdentity && !draft.characterIdentity)) return draft;
+      const refIdentities: StoryboardReferenceIdentity[] = [];
+      if (draft.productIdentity) {
+        refIdentities.push({ refId: 'ref_legacy_product', label: data.references?.[0]?.label || 'Product', role: 'subject', identity: draft.productIdentity });
+      }
+      if (draft.characterIdentity) {
+        const charRef = data.references?.find(r => r.role === 'character');
+        refIdentities.push({ refId: charRef?.id || 'ref_legacy_character', label: charRef?.label || 'Character', role: 'character', identity: draft.characterIdentity });
+      }
+      return { ...draft, referenceIdentities: refIdentities };
+    });
+    if (updatedDrafts.some((d, i) => d !== data.drafts![i])) {
+      updateNodeData(id, { drafts: updatedDrafts });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Auto-scroll chat to bottom only when NEW content appears (not on every re-render)
   const prevItemCountRef = useRef(0);
   useEffect(() => {
@@ -248,33 +386,100 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
   );
 
   // Local field state to prevent cursor-jump in textareas
-  const productField = useLocalField(data.product || '', (v) => updateField('product', v));
-  const characterField = useLocalField(data.character || '', (v) => updateField('character', v));
   const conceptField = useLocalField(data.concept || '', (v) => updateField('concept', v));
 
-  // Validation
-  const isValid = (data.product?.trim().length ?? 0) > 0 && (data.concept?.trim().length ?? 0) > 0;
+  // References helpers
+  const refs = data.references || [];
+  const MAX_REFS = 8;
+
+  // Force React Flow to recalculate handle positions when references change
+  const updateNodeInternals = useUpdateNodeInternals();
+  useEffect(() => {
+    updateNodeInternals(id);
+  }, [id, refs.length, updateNodeInternals]);
+
+  useLayoutEffect(() => {
+    const rootEl = rootNodeRef.current;
+    if (!rootEl) return;
+    refCardRefs.current.length = refs.length;
+
+    const measure = () => {
+      const tops = refs.map((_, i) => {
+        const card = refCardRefs.current[i];
+        if (!card) return null;
+        let offset = 0;
+        let el: HTMLElement | null = card;
+        while (el && el !== rootEl) {
+          offset += el.offsetTop;
+          el = el.offsetParent as HTMLElement | null;
+        }
+        return offset + card.offsetHeight / 2;
+      });
+      setHandleTops(tops);
+    };
+
+    measure();
+
+    const observer = new ResizeObserver(() => measure());
+    refCardRefs.current.forEach((card) => { if (card) observer.observe(card); });
+    return () => observer.disconnect();
+  }, [refs.length]);
+
+  const addReference = useCallback(() => {
+    if (refs.length >= MAX_REFS) return;
+    const newRef: StoryboardReference = {
+      id: `ref_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      role: 'subject',
+      label: '',
+      description: '',
+      handleId: `refImage_${refs.length}`,
+    };
+    updateNodeData(id, { references: [...refs, newRef] });
+  }, [id, refs, updateNodeData]);
+
+  const removeReference = useCallback((refId: string) => {
+    const filtered = refs.filter(r => r.id !== refId);
+    // Re-assign handleIds to keep them sequential
+    const reindexed = filtered.map((r, i) => ({ ...r, handleId: `refImage_${i}` }));
+    updateNodeData(id, { references: reindexed.length > 0 ? reindexed : [{ id: `ref_${Date.now()}`, role: 'subject' as const, label: '', description: '', handleId: 'refImage_0' }] });
+  }, [id, refs, updateNodeData]);
+
+  const updateReference = useCallback((refId: string, field: keyof StoryboardReference, value: string) => {
+    const updated = refs.map(r => r.id === refId ? { ...r, [field]: value } : r);
+    updateNodeData(id, { references: updated });
+  }, [id, refs, updateNodeData]);
+
+  // Validation: at least one reference with a label + concept filled
+  const isValid = refs.some(r => r.label.trim().length > 0) && (data.concept?.trim().length ?? 0) > 0;
 
   // Concept auto-generation
   const [isGeneratingConcept, setIsGeneratingConcept] = useState(false);
   const handleGenerateConcept = useCallback(async () => {
-    if (!data.product?.trim()) {
-      toast.error('Enter a product/subject first');
+    const hasAnyLabel = refs.some(r => r.label.trim());
+    if (!hasAnyLabel) {
+      toast.error('Enter at least one reference label first');
       return;
     }
     setIsGeneratingConcept(true);
     try {
       const connectedInputs = getConnectedInputs(id);
       const connectedParts: string[] = [];
-      if (connectedInputs.productImageUrl) connectedParts.push('Product reference image connected');
-      if (connectedInputs.characterImageUrl) connectedParts.push('Character reference image connected');
+      // Note legacy fields for concept API compatibility
+      for (const ref of refs) {
+        if (referenceImageUrls[ref.handleId]) {
+          connectedParts.push(`${ref.role} reference image connected for "${ref.label}"`);
+        }
+      }
 
+      // Build product/character from refs for concept API backward compat
+      const subjectRef = refs.find(r => r.role === 'subject' || r.role === 'prop');
+      const characterRef = refs.find(r => r.role === 'character');
       const res = await fetch('/api/plugins/storyboard/concept', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          product: data.product?.trim(),
-          character: data.character?.trim() || undefined,
+          product: subjectRef?.label?.trim() || refs[0]?.label?.trim(),
+          character: characterRef?.label?.trim() || undefined,
           style: data.style,
           targetVideoModel: data.targetVideoModel || 'veo',
           connectedNodes: connectedParts.join(', ') || undefined,
@@ -291,7 +496,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
     } finally {
       setIsGeneratingConcept(false);
     }
-  }, [id, data.product, data.character, data.style, data.targetVideoModel, getConnectedInputs, updateField]);
+  }, [id, refs, data.style, data.targetVideoModel, getConnectedInputs, updateField, referenceImageUrls]);
 
   // Helper to flush batched reasoning to store
   const flushReasoning = useCallback(() => {
@@ -375,7 +580,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
           const jsonStr = line.slice(6).trim();
           if (!jsonStr) continue;
 
-          let event: { type: string; text?: string; error?: string; success?: boolean; scenes?: unknown[]; summary?: string; productIdentity?: string; characterIdentity?: string };
+          let event: { type: string; text?: string; error?: string; success?: boolean; scenes?: unknown[]; summary?: string; productIdentity?: string; characterIdentity?: string; referenceIdentities?: unknown[] };
           try {
             event = JSON.parse(jsonStr);
           } catch {
@@ -400,6 +605,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
                 const summary = event.summary || '';
                 const productIdentity = event.productIdentity as string | undefined;
                 const characterIdentity = event.characterIdentity as string | undefined;
+                const referenceIdentities = event.referenceIdentities as StoryboardReferenceIdentity[] | undefined;
                 const draftId = `draft_${Date.now()}`;
                 const endedAt = new Date().toISOString();
 
@@ -422,6 +628,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
                   summary,
                   productIdentity,
                   characterIdentity,
+                  referenceIdentities,
                   createdAt: endedAt,
                   seq: nextSeq(),
                 };
@@ -496,8 +703,8 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
     const mode = data.mode || 'transition';
 
     // Synthesize user message from form fields
-    const characterLine = data.character?.trim() ? ` with character: ${data.character.trim()}` : '';
-    const userContent = `Generate a ${data.sceneCount}-scene ${data.style} storyboard for: ${data.product.trim()}${characterLine}. Concept: ${data.concept.trim()}`;
+    const refSummary = refs.filter(r => r.label.trim()).map(r => `${r.role}: ${r.label.trim()}`).join(', ');
+    const userContent = `Generate a ${data.sceneCount}-scene ${data.style} storyboard with references: ${refSummary}. Concept: ${data.concept.trim()}`;
     const userMsg: StoryboardChatMessage = {
       id: `msg_${Date.now()}`,
       role: 'user',
@@ -513,24 +720,39 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
       error: undefined,
     });
 
-    // Include connected image URLs so the LLM can SEE the actual product/character
+    // Include connected image URLs so the LLM can SEE the actual references
     const connectedImages = getConnectedInputs(id);
+    const refImageUrls = connectedImages.referenceImageUrls || {};
+
+    // Build references array with resolved image URLs
+    const refsInput = refs.filter(r => r.label.trim()).map(r => ({
+      id: r.id,
+      role: r.role,
+      label: r.label.trim(),
+      description: r.description.trim(),
+      imageUrl: refImageUrls[r.handleId] || undefined,
+    }));
+
+    // Legacy fields for backward compat
+    const firstSubject = refs.find(r => r.role === 'subject' || r.role === 'prop');
+    const firstCharacter = refs.find(r => r.role === 'character');
 
     const input = {
-      product: data.product.trim(),
-      character: data.character?.trim() || undefined,
+      references: refsInput,
+      product: firstSubject?.label?.trim() || refs[0]?.label?.trim() || '',
+      character: firstCharacter?.label?.trim() || undefined,
       concept: data.concept.trim(),
       sceneCount: data.sceneCount,
       style: data.style,
       mode,
       targetVideoModel: data.targetVideoModel || 'veo',
       videoRecipes: data.videoRecipes?.length ? data.videoRecipes : undefined,
-      productImageUrl: connectedImages.productImageUrl || undefined,
-      characterImageUrl: connectedImages.characterImageUrl || undefined,
+      productImageUrl: connectedImages.productImageUrl || refImageUrls['refImage_0'] || undefined,
+      characterImageUrl: connectedImages.characterImageUrl || refImageUrls['refImage_1'] || undefined,
     };
 
     await streamGeneration(input, 'Generating storyboard');
-  }, [id, data, isValid, updateNodeData, streamGeneration]);
+  }, [id, data, refs, isValid, updateNodeData, streamGeneration, getConnectedInputs, referenceImageUrls]);
 
   // Refinement from chat input
   const handleRefinement = useCallback(async (feedback: string) => {
@@ -557,8 +779,22 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
     });
 
     // Build refinement request — include full scene data for faithful preservation (#70)
-    // Include connected image URLs so the LLM can SEE the actual product/character during refinement
+    // Include connected image URLs so the LLM can SEE the actual references during refinement
     const connectedImages = getConnectedInputs(id);
+    const refImageUrls = connectedImages.referenceImageUrls || {};
+
+    // Build references array with resolved image URLs
+    const currentRefs = latestData?.references || refs;
+    const refsInput = currentRefs.filter(r => r.label.trim()).map(r => ({
+      id: r.id,
+      role: r.role,
+      label: r.label.trim(),
+      description: r.description.trim(),
+      imageUrl: refImageUrls[r.handleId] || undefined,
+    }));
+
+    const firstSubject = currentRefs.find(r => r.role === 'subject' || r.role === 'prop');
+    const firstCharacter = currentRefs.find(r => r.role === 'character');
 
     const body = {
       previousDraft: {
@@ -566,21 +802,23 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
         summary: latestDraft.summary,
         productIdentity: latestDraft.productIdentity,
         characterIdentity: latestDraft.characterIdentity,
+        referenceIdentities: latestDraft.referenceIdentities,
       },
       feedback,
       mode,
       targetVideoModel: data.targetVideoModel || 'veo',
-      product: data.product.trim(),
-      character: data.character?.trim() || undefined,
+      references: refsInput,
+      product: firstSubject?.label?.trim() || currentRefs[0]?.label?.trim() || '',
+      character: firstCharacter?.label?.trim() || undefined,
       concept: data.concept.trim(),
       sceneCount: data.sceneCount,
       style: data.style,
-      productImageUrl: connectedImages.productImageUrl || undefined,
-      characterImageUrl: connectedImages.characterImageUrl || undefined,
+      productImageUrl: connectedImages.productImageUrl || refImageUrls['refImage_0'] || undefined,
+      characterImageUrl: connectedImages.characterImageUrl || refImageUrls['refImage_1'] || undefined,
     };
 
     await streamGeneration(body, 'Refining storyboard');
-  }, [id, data, updateNodeData, streamGeneration]);
+  }, [id, data, refs, updateNodeData, streamGeneration, getConnectedInputs, referenceImageUrls]);
 
   // Stop streaming
   const handleStop = useCallback(() => {
@@ -614,13 +852,28 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
     const mode = data.mode || 'transition';
 
     try {
-      // --- Step 1: Find connected source node IDs via edges ---
+      // --- Step 1: Find connected source node IDs via edges (N-ref) ---
       const storeState = useCanvasStore.getState();
       const allEdges = storeState.edges;
-      const productEdge = allEdges.find(e => e.target === id && e.targetHandle === 'productImage');
-      const characterEdge = allEdges.find(e => e.target === id && e.targetHandle === 'characterImage');
-      let productRefNodeId: string | null = productEdge?.source ?? null;
-      let characterRefNodeId: string | null = characterEdge?.source ?? null;
+
+      // Build map of refId → source node ID from edges connected to ref handles
+      const refSourceMap = new Map<string, string>(); // refId → sourceNodeId
+      const connectedRefEdges: Array<{ refId: string; handleId: string; source: string }> = [];
+      for (const ref of refs) {
+        // Check new-style refImage_N handles
+        let edge = allEdges.find(e => e.target === id && e.targetHandle === ref.handleId);
+        // Legacy fallback: productImage → refImage_0, characterImage → refImage_1
+        if (!edge && ref.handleId === 'refImage_0') {
+          edge = allEdges.find(e => e.target === id && e.targetHandle === 'productImage');
+        }
+        if (!edge && ref.handleId === 'refImage_1') {
+          edge = allEdges.find(e => e.target === id && e.targetHandle === 'characterImage');
+        }
+        if (edge) {
+          refSourceMap.set(ref.id, edge.source);
+          connectedRefEdges.push({ refId: ref.id, handleId: ref.handleId, source: edge.source });
+        }
+      }
 
       const viewportCenter = canvas.getViewportCenter();
       const nodeInputs: CreateNodeInput[] = [];
@@ -641,59 +894,61 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
       // Scene startX is always the same — pre-step nodes go above, not to the left
       const sceneStartX = storyboardRight;
 
-      // --- Step 2: Create pre-step nodes when no images are connected ---
-      // We need to know the scene layout to center them, so compute center of scene row first
+      // --- Step 2: Create pre-step nodes for refs without connected images ---
       const sceneSpacing = mode === 'single-shot' ? 450 : 380;
       const sceneCount = activeDraft.scenes.length;
       const sceneCenterX = sceneStartX + ((sceneCount - 1) * sceneSpacing) / 2;
 
       const preStepNodeInputs: CreateNodeInput[] = [];
-      let preStepProductIndex = -1;
-      let preStepCharacterIndex = -1;
+      const preStepRefIndexMap = new Map<string, number>(); // refId → index in preStepNodeInputs
       const styleLabel = data.style || 'cinematic';
-      const needsProduct = !productRefNodeId && !!data.product?.trim();
-      // Auto-detect character from AI output: if the AI generated a characterIdentity
-      // (even when user didn't fill in Character field), create a reference image
-      const needsCharacter = !characterRefNodeId &&
-        (!!data.character?.trim() || !!activeDraft.characterIdentity?.trim());
 
-      // Total ref count includes both already-connected and to-be-created refs
-      // so positioning is consistent regardless of source
-      const totalRefCount = (productRefNodeId || needsProduct ? 1 : 0)
-                          + (characterRefNodeId || needsCharacter ? 1 : 0);
-
-      // Position ref nodes centered above the scene row
-      const preStepY = storyboardY - PRE_STEP_Y_OFFSET;
-      const preStepGroupWidth = totalRefCount > 1 ? PRE_STEP_H_SPACING : 0;
-      const preStepStartX = sceneCenterX - preStepGroupWidth / 2;
-
-      if (needsProduct) {
-        preStepProductIndex = preStepNodeInputs.length;
-        preStepNodeInputs.push({
-          type: 'imageGenerator',
-          position: { x: preStepStartX, y: preStepY },
-          name: 'Product Reference',
-          data: {
-            prompt: `Product photo of ${data.product!.trim()}, ${styleLabel} style, clean background, centered composition, studio lighting, high detail`,
-            model: 'nanobanana-pro',
-          },
-        });
+      // Determine which refs need pre-step nodes (have text identity but no connected image)
+      const refsNeedingPreStep: StoryboardReference[] = [];
+      for (const ref of refs) {
+        if (refSourceMap.has(ref.id)) continue; // already connected
+        // Check if ref has content (label/description) OR AI generated an identity for it
+        const hasContent = ref.label.trim().length > 0;
+        const aiIdentity = activeDraft.referenceIdentities?.find(ri => ri.refId === ref.id);
+        // Also check legacy identities
+        const isLegacyProduct = ref.id === 'ref_legacy_product' && !!activeDraft.productIdentity;
+        const isLegacyChar = ref.id === 'ref_legacy_character' && !!activeDraft.characterIdentity;
+        if (hasContent || aiIdentity || isLegacyProduct || isLegacyChar) {
+          refsNeedingPreStep.push(ref);
+        }
       }
 
-      if (needsCharacter) {
-        // Prefer the AI-generated characterIdentity (detailed physical description)
-        // over the user's raw input (which may be vague or personality-focused)
-        const charDescription = activeDraft.characterIdentity?.trim() || data.character!.trim();
-        preStepCharacterIndex = preStepNodeInputs.length;
+      // Total ref nodes = connected + needing pre-step
+      const totalRefCount = connectedRefEdges.length + refsNeedingPreStep.length;
+      const preStepY = storyboardY - PRE_STEP_Y_OFFSET;
+      const preStepGroupWidth = totalRefCount > 1 ? PRE_STEP_H_SPACING * (totalRefCount - 1) : 0;
+      // Tighter spacing if many refs
+      const effectiveSpacing = totalRefCount > 3 ? Math.min(PRE_STEP_H_SPACING, 280) : PRE_STEP_H_SPACING;
+      const effectiveGroupWidth = totalRefCount > 1 ? effectiveSpacing * (totalRefCount - 1) : 0;
+      const preStepStartX = sceneCenterX - effectiveGroupWidth / 2;
+
+      for (const ref of refsNeedingPreStep) {
+        const slotIndex = connectedRefEdges.length + preStepNodeInputs.length;
+        // Get AI-generated identity if available
+        const aiIdentity = activeDraft.referenceIdentities?.find(ri => ri.refId === ref.id);
+        let description = aiIdentity?.identity || ref.description.trim() || ref.label.trim();
+        // Legacy fallback
+        if (ref.id === 'ref_legacy_product' && !aiIdentity) description = activeDraft.productIdentity || description;
+        if (ref.id === 'ref_legacy_character' && !aiIdentity) description = activeDraft.characterIdentity || description;
+
+        const isCharacter = ref.role === 'character';
+        const promptPrefix = isCharacter ? 'Portrait of' : ref.role === 'environment' ? 'Scene of' : 'Product photo of';
+        const promptSuffix = isCharacter
+          ? `${styleLabel} style, neutral background, detailed features, professional photography`
+          : `${styleLabel} style, clean background, centered composition, studio lighting, high detail`;
+
+        preStepRefIndexMap.set(ref.id, preStepNodeInputs.length);
         preStepNodeInputs.push({
           type: 'imageGenerator',
-          position: {
-            x: needsProduct ? preStepStartX + PRE_STEP_H_SPACING : preStepStartX,
-            y: preStepY,
-          },
-          name: 'Character Reference',
+          position: { x: preStepStartX + slotIndex * effectiveSpacing, y: preStepY },
+          name: `${ref.label.trim() || ref.role} Reference`,
           data: {
-            prompt: `Portrait of ${charDescription}, ${styleLabel} style, neutral background, detailed features, professional photography`,
+            prompt: `${promptPrefix} ${description}, ${promptSuffix}`,
             model: 'nanobanana-pro',
           },
         });
@@ -703,72 +958,64 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
       let preStepNodeIds: string[] = [];
       if (preStepNodeInputs.length > 0) {
         preStepNodeIds = await canvas.createNodes(preStepNodeInputs);
-        if (preStepProductIndex >= 0) {
-          productRefNodeId = preStepNodeIds[preStepProductIndex];
-        }
-        if (preStepCharacterIndex >= 0) {
-          characterRefNodeId = preStepNodeIds[preStepCharacterIndex];
+        for (const [refId, idx] of preStepRefIndexMap.entries()) {
+          refSourceMap.set(refId, preStepNodeIds[idx]);
         }
       }
 
       // Reposition already-connected ref nodes above scene row
       {
         const positionChanges: { type: 'position'; id: string; position: { x: number; y: number } }[] = [];
-        let slotIndex = 0;
-
-        if (productEdge && productEdge.source) {
+        connectedRefEdges.forEach((entry, slotIndex) => {
           positionChanges.push({
             type: 'position' as const,
-            id: productEdge.source,
-            position: { x: preStepStartX + slotIndex * PRE_STEP_H_SPACING, y: preStepY },
+            id: entry.source,
+            position: { x: preStepStartX + slotIndex * effectiveSpacing, y: preStepY },
           });
-          slotIndex++;
-        }
-
-        if (characterEdge && characterEdge.source) {
-          // If product was auto-created (not via edge), character still takes slot after product
-          const charSlot = productRefNodeId && !productEdge ? 1 : slotIndex;
-          positionChanges.push({
-            type: 'position' as const,
-            id: characterEdge.source,
-            position: { x: preStepStartX + charSlot * PRE_STEP_H_SPACING, y: preStepY },
-          });
-        }
-
+        });
         if (positionChanges.length > 0) {
           useCanvasStore.getState().onNodesChange(positionChanges);
         }
       }
 
       // --- Step 3: Determine refHandleCount for scene nodes ---
-      const hasProduct = !!productRefNodeId;
-      const hasCharacter = !!characterRefNodeId;
-      const refCount = (hasProduct ? 1 : 0) + (hasCharacter ? 1 : 0);
+      const activeRefIds = [...refSourceMap.keys()]; // all refs that have a source node
 
-      // Helper: get handle assignments for a scene
-      // Returns { productHandle, characterHandle, refHandleCount } for a given scene index
+      // Helper: get handle assignments for a scene (N-ref version)
+      // Returns { handleMap, refHandleCount } for a given scene index
       const getHandleAssignments = (sceneIndex: number) => {
-        // In transition mode, scene 1+ gets continuity chain on 'reference' (idx 0)
-        const hasContinuity = mode === 'transition' && sceneIndex > 0;
+        const scene = activeDraft.scenes[sceneIndex];
+        // Which refs appear in this scene? Use AI-assigned referenceIds, or all refs as fallback
+        const sceneRefIds = scene.referenceIds?.length
+          ? scene.referenceIds.filter(rid => refSourceMap.has(rid))
+          : activeRefIds;
 
-        let productHandle: string | null = null;
-        let characterHandle: string | null = null;
-        let handleCount: number;
+        const hasContinuity = mode === 'transition' && sceneIndex > 0;
+        const handleMap = new Map<string, string>(); // refId → handle name
 
         if (hasContinuity) {
-          // continuity chain takes 'reference' (idx 0)
-          // product gets 'ref2' (idx 1), character gets 'ref3' (idx 2)
-          if (hasProduct) productHandle = 'ref2';
-          if (hasCharacter) characterHandle = hasProduct ? 'ref3' : 'ref2';
-          handleCount = 1 + refCount; // 1 for continuity + product/character
+          // continuity chain takes 'reference' (idx 0), refs go to ref2, ref3, ...
+          let handleIdx = 2; // start at ref2
+          for (const refId of sceneRefIds) {
+            handleMap.set(refId, `ref${handleIdx}`);
+            handleIdx++;
+          }
+          return { handleMap, refHandleCount: Math.max(1 + sceneRefIds.length, 1) };
         } else {
-          // scene 0 or single-shot: product gets 'reference' (idx 0), character gets 'ref2' (idx 1)
-          if (hasProduct) productHandle = 'reference';
-          if (hasCharacter) characterHandle = hasProduct ? 'ref2' : 'reference';
-          handleCount = refCount;
+          // scene 0 or single-shot: first ref gets 'reference', rest get ref2, ref3, ...
+          let first = true;
+          let handleIdx = 2;
+          for (const refId of sceneRefIds) {
+            if (first) {
+              handleMap.set(refId, 'reference');
+              first = false;
+            } else {
+              handleMap.set(refId, `ref${handleIdx}`);
+              handleIdx++;
+            }
+          }
+          return { handleMap, refHandleCount: Math.max(sceneRefIds.length, 1) };
         }
-
-        return { productHandle, characterHandle, refHandleCount: Math.max(handleCount, 1) };
       };
 
       if (mode === 'single-shot') {
@@ -816,7 +1063,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
           let motionPrompt = scene.motion || generateFallbackMotion(scene);
 
           // Seedance R2V: prepend @image1 reference tag for image-to-video mode
-          if (videoModelFamily === 'seedance' && hasProduct) {
+          if (videoModelFamily === 'seedance' && activeRefIds.length > 0) {
             motionPrompt = `@image1 ${motionPrompt}`;
           }
 
@@ -846,24 +1093,23 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
           await canvas.createEdge(imageNodeId, 'output', videoNodeId, videoTargetHandle);
         }
 
-        // --- Step 5: Product/Character → ALL scene image generators ---
+        // --- Step 5: Reference → ALL scene image generators (N-ref) ---
         for (let i = 0; i < activeDraft.scenes.length; i++) {
           const imageNodeId = nodeIds[imageNodeStartIndex + i];
-          const { productHandle, characterHandle } = getHandleAssignments(i);
-          if (productRefNodeId && productHandle) {
-            await canvas.createEdge(productRefNodeId, 'output', imageNodeId, productHandle);
-          }
-          if (characterRefNodeId && characterHandle) {
-            await canvas.createEdge(characterRefNodeId, 'output', imageNodeId, characterHandle);
+          const { handleMap } = getHandleAssignments(i);
+          for (const [refId, handleName] of handleMap.entries()) {
+            const sourceNodeId = refSourceMap.get(refId);
+            if (sourceNodeId) {
+              await canvas.createEdge(sourceNodeId, 'output', imageNodeId, handleName);
+            }
           }
         }
 
         // Wrap everything in a group: storyboard + refs + scenes + videos
         const allSingleShotNodeIds = [id, ...preStepNodeIds, ...nodeIds];
-        if (productEdge?.source && !allSingleShotNodeIds.includes(productEdge.source))
-          allSingleShotNodeIds.push(productEdge.source);
-        if (characterEdge?.source && !allSingleShotNodeIds.includes(characterEdge.source))
-          allSingleShotNodeIds.push(characterEdge.source);
+        for (const entry of connectedRefEdges) {
+          if (!allSingleShotNodeIds.includes(entry.source)) allSingleShotNodeIds.push(entry.source);
+        }
 
         await canvas.wrapInGroup({
           nodeIds: allSingleShotNodeIds,
@@ -931,7 +1177,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
           let transitionPrompt = currentScene.transition || generateFallbackTransition(currentScene, nextScene);
 
           // Seedance R2V: prepend @image1 reference tag
-          if (videoModelFamily === 'seedance' && hasProduct) {
+          if (videoModelFamily === 'seedance' && activeRefIds.length > 0) {
             transitionPrompt = `@image1 ${transitionPrompt}`;
           }
 
@@ -978,24 +1224,23 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
           }
         }
 
-        // --- Step 5: Product/Character → ALL scene image generators ---
+        // --- Step 5: Reference → ALL scene image generators (N-ref) ---
         for (let i = 0; i < activeDraft.scenes.length; i++) {
           const imageNodeId = nodeIds[imageNodeStartIndex + i];
-          const { productHandle, characterHandle } = getHandleAssignments(i);
-          if (productRefNodeId && productHandle) {
-            await canvas.createEdge(productRefNodeId, 'output', imageNodeId, productHandle);
-          }
-          if (characterRefNodeId && characterHandle) {
-            await canvas.createEdge(characterRefNodeId, 'output', imageNodeId, characterHandle);
+          const { handleMap } = getHandleAssignments(i);
+          for (const [refId, handleName] of handleMap.entries()) {
+            const sourceNodeId = refSourceMap.get(refId);
+            if (sourceNodeId) {
+              await canvas.createEdge(sourceNodeId, 'output', imageNodeId, handleName);
+            }
           }
         }
 
         // Wrap everything in a group: storyboard + refs + scenes + videos
         const allTransitionNodeIds = [id, ...preStepNodeIds, ...nodeIds];
-        if (productEdge?.source && !allTransitionNodeIds.includes(productEdge.source))
-          allTransitionNodeIds.push(productEdge.source);
-        if (characterEdge?.source && !allTransitionNodeIds.includes(characterEdge.source))
-          allTransitionNodeIds.push(characterEdge.source);
+        for (const entry of connectedRefEdges) {
+          if (!allTransitionNodeIds.includes(entry.source)) allTransitionNodeIds.push(entry.source);
+        }
 
         await canvas.wrapInGroup({
           nodeIds: allTransitionNodeIds,
@@ -1018,7 +1263,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create nodes');
     }
-  }, [activeDraft, data.mode, data.product, data.character, data.style, data.targetVideoModel, canvas, id, generateFallbackTransition, generateFallbackMotion]);
+  }, [activeDraft, data.mode, refs, data.style, data.targetVideoModel, canvas, id, generateFallbackTransition, generateFallbackMotion]);
 
   // Build sorted timeline from chat messages, completed thinking blocks, and drafts
   const timelineItems = useMemo((): TimelineItem[] => {
@@ -1055,32 +1300,37 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
   // Render form view
   const renderForm = () => (
     <div className="p-4 space-y-3">
-      {/* Product/Subject */}
-      <div className="space-y-1">
-        <label className="text-xs font-medium text-muted-foreground">
-          Product / Subject {!isReadOnly && <span className="text-red-400">*</span>}
-        </label>
-        <textarea
-          {...productField}
-          placeholder={isReadOnly ? '' : 'e.g., Premium coffee mug, Fitness app...'}
-          disabled={isReadOnly}
-          className={`w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 nodrag ${isReadOnly ? 'cursor-default' : ''}`}
-          rows={2}
-        />
-      </div>
-
-      {/* Character (optional) */}
-      <div className="space-y-1">
-        <label className="text-xs font-medium text-muted-foreground">
-          Character {!isReadOnly && <span className="text-muted-foreground/70">(optional)</span>}
-        </label>
-        <textarea
-          {...characterField}
-          placeholder={isReadOnly ? '' : 'e.g., Young professional woman in her 30s...'}
-          disabled={isReadOnly}
-          className={`w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 nodrag ${isReadOnly ? 'cursor-default' : ''}`}
-          rows={2}
-        />
+      {/* References (N-ref dynamic list) */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-medium text-muted-foreground">
+            References {!isReadOnly && <span className="text-red-400">*</span>}
+          </label>
+          {!isReadOnly && refs.length < MAX_REFS && (
+            <button
+              onClick={addReference}
+              className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground hover:text-foreground bg-muted hover:bg-muted/80 rounded transition-colors nodrag"
+            >
+              <Plus className="w-3 h-3" />
+              Add
+            </button>
+          )}
+        </div>
+        <div className="space-y-2">
+          {refs.map((ref, index) => (
+            <ReferenceCard
+              key={ref.id}
+              ref={ref}
+              index={index}
+              isReadOnly={isReadOnly}
+              referenceImageUrls={referenceImageUrls}
+              updateReference={updateReference}
+              removeReference={removeReference}
+              refCardRefs={refCardRefs}
+              refsLength={refs.length}
+            />
+          ))}
+        </div>
       </div>
 
       {/* Concept/Story */}
@@ -1095,7 +1345,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
                 <TooltipTrigger asChild>
                   <button
                     onClick={handleGenerateConcept}
-                    disabled={isGeneratingConcept || !data.product?.trim()}
+                    disabled={isGeneratingConcept || !refs.some(r => r.label.trim())}
                     className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground hover:text-foreground bg-muted hover:bg-muted/80 rounded transition-colors disabled:opacity-40 nodrag"
                   >
                     {isGeneratingConcept ? (
@@ -1357,7 +1607,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
   );
 
   return (
-    <div className="relative">
+    <div ref={rootNodeRef} className="relative">
       {/* Floating Toolbar - hidden in read-only mode */}
       {selected && !isReadOnly && (
         <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1 backdrop-blur rounded-lg px-2 py-1.5 border node-toolbar-floating shadow-xl z-10">
@@ -1482,37 +1732,31 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
       {/* Input Handles - Left side (shown in form and chat views) */}
       {(data.viewState === 'form' || data.viewState === 'chat') && (
         <>
-          {/* Product Image Handle */}
-          <div className="absolute -left-3 group" style={{ top: '95px' }}>
-            <div className="relative">
-              <Handle
-                type="target"
-                position={Position.Left}
-                id="productImage"
-                className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
-              />
-              <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none" />
-            </div>
-            <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
-              {hasProductImage ? 'Product Image (connected)' : 'Product Image'}
-            </span>
-          </div>
-
-          {/* Character Image Handle */}
-          <div className="absolute -left-3 group" style={{ top: '175px' }}>
-            <div className="relative">
-              <Handle
-                type="target"
-                position={Position.Left}
-                id="characterImage"
-                className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
-              />
-              <User className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none" />
-            </div>
-            <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
-              {hasCharacterImage ? 'Character Image (connected)' : 'Character Image'}
-            </span>
-          </div>
+          {/* Dynamic reference image handles */}
+          {refs.map((ref, index) => {
+            const RoleIcon = ref.role === 'character' ? User
+              : ref.role === 'prop' ? Box
+              : ref.role === 'environment' ? Mountain
+              : ImageIcon;
+            const isConnected = !!referenceImageUrls[ref.handleId];
+            const label = ref.label?.trim() || `${ref.role} ${index + 1}`;
+            return (
+              <div key={ref.handleId} className="absolute -left-3 group" style={{ top: `${handleTops[index] ?? (95 + index * 50)}px` }}>
+                <div className="relative">
+                  <Handle
+                    type="target"
+                    position={Position.Left}
+                    id={ref.handleId}
+                    className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-zinc-400 !border-zinc-900 hover:!border-zinc-700"
+                  />
+                  <RoleIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+                </div>
+                <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
+                  {isConnected ? `${label} (connected)` : label}
+                </span>
+              </div>
+            );
+          })}
         </>
       )}
     </div>

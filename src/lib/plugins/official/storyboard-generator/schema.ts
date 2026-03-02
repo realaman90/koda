@@ -21,10 +21,21 @@ export type VideoModelFamily = (typeof VIDEO_MODEL_FAMILIES)[number];
 /**
  * Input validation schema for storyboard generation
  */
+/** Single reference entry in the N-ref input */
+const StoryboardReferenceInputSchema = z.object({
+  id: z.string(),
+  role: z.enum(['subject', 'character', 'prop', 'environment']),
+  label: z.string(),
+  description: z.string(),
+  imageUrl: z.string().optional(),
+});
+
 export const StoryboardInputSchema = z.object({
-  /** Product or subject for the storyboard */
-  product: z.string().min(1, 'Product/subject is required'),
-  /** Optional character description */
+  /** Dynamic references list (N-ref support) */
+  references: z.array(StoryboardReferenceInputSchema).optional(),
+  /** @deprecated Use references instead */
+  product: z.string().optional(),
+  /** @deprecated Use references instead */
   character: z.string().optional(),
   /** Story concept or brief */
   concept: z.string().min(1, 'Concept is required'),
@@ -44,9 +55,9 @@ export const StoryboardInputSchema = z.object({
   targetVideoModel: z.enum(VIDEO_MODEL_FAMILIES).default('veo'),
   /** Optional video recipe IDs for style guidance */
   videoRecipes: z.array(z.string()).optional(),
-  /** URL of the connected product reference image (resolved from canvas edge) */
+  /** @deprecated Use references[].imageUrl instead */
   productImageUrl: z.string().optional(),
-  /** URL of the connected character reference image (resolved from canvas edge) */
+  /** @deprecated Use references[].imageUrl instead */
   characterImageUrl: z.string().optional(),
 });
 
@@ -83,7 +94,9 @@ export const StoryboardSceneSchema = z.object({
   /** Video aspect ratio chosen by agent based on content and model */
   videoAspectRatio: z.enum(['16:9', '9:16', '1:1', '4:3', '3:4', '21:9']).optional(),
   /** Video duration in seconds chosen by agent based on action complexity and model limits */
-  videoDuration: z.number().optional(),
+  videoDuration: z.coerce.number().optional(),
+  /** Which reference IDs appear in this scene (AI-decided, N-ref support) */
+  referenceIds: z.array(z.string()).optional(),
 });
 
 export type StoryboardScene = z.infer<typeof StoryboardSceneSchema>;
@@ -91,15 +104,25 @@ export type StoryboardScene = z.infer<typeof StoryboardSceneSchema>;
 /**
  * Complete storyboard output from AI
  */
+/** AI-generated identity for a single reference */
+const StoryboardReferenceIdentitySchema = z.object({
+  refId: z.string(),
+  label: z.string(),
+  role: z.enum(['subject', 'character', 'prop', 'environment']),
+  identity: z.string(),
+});
+
 export const StoryboardOutputSchema = z.object({
   /** Array of scenes */
   scenes: z.array(StoryboardSceneSchema),
   /** Brief summary of the storyboard */
   summary: z.string(),
-  /** Consistent identity description for the product/subject — repeat verbatim in every scene prompt */
+  /** @deprecated Use referenceIdentities instead */
   productIdentity: z.string().optional(),
-  /** Consistent identity description for the character — repeat verbatim in every scene prompt */
+  /** @deprecated Use referenceIdentities instead */
   characterIdentity: z.string().optional(),
+  /** AI-generated identities for each reference (N-ref support) */
+  referenceIdentities: z.array(StoryboardReferenceIdentitySchema).optional(),
 });
 
 export type StoryboardOutput = z.infer<typeof StoryboardOutputSchema>;
@@ -272,21 +295,35 @@ Your task is to break down a concept into a series of scenes optimized for AI im
 CRITICAL: These images will be used as VIDEO KEYFRAMES. Ensure subjects are in poses that can naturally transition to motion. Prefer compositions with clear foreground/background separation. Avoid extreme close-ups that leave no room for camera movement.
 
 IDENTITY CONSISTENCY (MANDATORY):
-The product and character are the STARS of every scene. They must be prominently featured, visually dominant, and NEVER lose focus.
+References are the STARS of every scene. They must be prominently featured, visually dominant, and NEVER lose focus.
 
-PRODUCT IDENTITY:
-Generate a "productIdentity" field with EXACT physical attributes: color, material, shape, size, brand markings, texture, finish. Example: "matte black ceramic mug with thin gold rim, 12oz, cylindrical, smooth finish". NEVER change these attributes across scenes — if the mug is matte black, it stays matte black in every scene. Do NOT swap colors, materials, or proportions. Every scene's "prompt" field MUST include this productIdentity text VERBATIM. The product must be visually prominent in every scene — not hidden in the background or partially occluded.
+REFERENCE IDENTITIES (MANDATORY):
+For EACH reference provided in the input, generate a "referenceIdentities" array entry with:
+- refId: echo the reference's id EXACTLY as given
+- label: echo from input
+- role: echo from input
+- identity: a detailed visual identity description
+
+For SUBJECT/PROP references: exact physical attributes (color, material, shape, size, texture, finish, brand markings). Example: "matte black ceramic mug with thin gold rim, 12oz, cylindrical, smooth finish". NEVER change these attributes across scenes.
+For CHARACTER references: physical appearance ONLY (age, gender, ethnicity, hair color/length/style, facial features, body type, clothing, accessories). Do NOT describe personality or emotions — only what a camera would see. Example: "woman, early 30s, East Asian, black chin-length bob, slim build, cream turtleneck sweater, small gold hoop earrings".
+For ENVIRONMENT references: visual signature (architecture, palette, lighting, notable features).
+
+If ANY human character appears in the scenes — whether explicitly listed as a reference OR implied by the concept — you MUST ensure a character reference identity exists. Without it, each scene generates a different-looking person.
 
 REFERENCE IMAGES:
-When reference images are attached to the message, you MUST study them carefully and derive productIdentity and characterIdentity from what you SEE in the image — not from text descriptions alone. The image is the SOURCE OF TRUTH. If the product image shows a sage green windbreaker, do NOT write "slate-grey jacket". Describe the EXACT colors, materials, textures, patterns, and proportions visible in the image. If both an image and text description are provided, the IMAGE takes priority for all visual attributes.
+When reference images are attached to the message, you MUST study them carefully and derive identity descriptions from what you SEE in the image — not from text descriptions alone. The image is the SOURCE OF TRUTH. If the image shows a sage green windbreaker, do NOT write "slate-grey jacket". Describe the EXACT visual details. If both an image and text description are provided, the IMAGE takes priority.
 
-CHARACTER IDENTITY:
-If ANY human character appears in the scenes — whether explicitly specified in the Character field OR implied by the concept — you MUST generate a "characterIdentity" field. Without it, each scene generates a different-looking person (AI slop). The characterIdentity MUST describe PHYSICAL APPEARANCE ONLY: age, gender, ethnicity, hair (color, length, style), facial features, body type, clothing, accessories. Do NOT describe personality, emotions, or behavior — only what a camera would see. Example: "woman, early 30s, East Asian, black chin-length bob, slim build, cream turtleneck sweater, small gold hoop earrings".
-Every scene's "prompt" field MUST START with this characterIdentity text VERBATIM.
+Also generate legacy fields for backward compatibility:
+- "productIdentity": copy the identity of the first subject/prop reference (if any)
+- "characterIdentity": copy the identity of the first character reference (if any)
+
+PER-SCENE REFERENCE ASSIGNMENT:
+Each scene MUST include a "referenceIds" array listing which reference IDs appear in that scene.
+Only include identities VERBATIM in a scene's prompt for references that appear in that scene.
 
 PLACEMENT ORDER in every scene prompt:
-1. characterIdentity (verbatim) — if present
-2. productIdentity (verbatim) — always
+1. CHARACTER identities (verbatim) — for characters in this scene
+2. SUBJECT/PROP identities (verbatim) — for objects in this scene
 3. Scene-specific action, setting, camera, lighting
 
 For each scene, provide:
@@ -449,10 +486,6 @@ export const STORYBOARD_SYSTEM_PROMPT = STORYBOARD_TRANSITION_PROMPT;
  * Build the user prompt from input data
  */
 export function buildStoryboardPrompt(input: StoryboardInput): string {
-  const characterLine = input.character
-    ? `\nCharacter: ${input.character}`
-    : '';
-
   const targetModel = input.targetVideoModel || 'veo';
   const profile = VIDEO_PROMPT_PROFILES[targetModel];
 
@@ -460,16 +493,32 @@ export function buildStoryboardPrompt(input: StoryboardInput): string {
     ? `\n\nMODE: Single-Shot — Generate a "motion" field for EVERY scene describing action within that scene (${profile.maxWords} words max each). Do NOT generate "transition" fields.`
     : `\n\nMODE: Transition — Generate a "transition" field for ALL scenes EXCEPT the last one, describing motion to the next scene (${profile.maxWords} words max each). Do NOT generate "motion" fields.`;
 
+  // Build references block (N-ref) or fall back to legacy product/character
+  let referencesBlock: string;
+  if (input.references && input.references.length > 0) {
+    const refLines = input.references.map((ref, i) => {
+      const imgNote = ref.imageUrl ? ' [reference image attached]' : '';
+      return `  ${i + 1}. [${ref.role.toUpperCase()}] "${ref.label}" (id: ${ref.id})${imgNote}\n     ${ref.description}`;
+    }).join('\n');
+    referencesBlock = `References:\n${refLines}`;
+  } else {
+    // Legacy fallback
+    const characterLine = input.character ? `\nCharacter: ${input.character}` : '';
+    referencesBlock = `Product/Subject: ${input.product || ''}${characterLine}`;
+  }
+
+  const hasCharacterRef = input.references?.some(r => r.role === 'character') || !!input.character;
+
   return `Create a ${input.sceneCount}-scene storyboard for:
 
-Product/Subject: ${input.product}${characterLine}
+${referencesBlock}
 Concept: ${input.concept}
 Style: ${input.style}
 Target Video Model: ${targetModel.toUpperCase()}${modeInstruction}
 
 Generate exactly ${input.sceneCount} scenes that tell a compelling visual story.
-For EVERY scene, include: prompt (80+ chars), camera, mood, negativePrompt, audioDirection, videoAspectRatio, videoDuration.
-${input.character ? 'Generate characterIdentity and productIdentity fields and repeat them verbatim in each scene prompt.' : 'If any human character appears in the scenes (even if not explicitly specified), generate a characterIdentity field with physical appearance details. Generate a productIdentity field. Repeat both verbatim in each scene prompt.'}`;
+For EVERY scene, include: prompt (80+ chars), camera, mood, negativePrompt, audioDirection, videoAspectRatio, videoDuration, referenceIds (array of reference IDs that appear in that scene).
+Generate a "referenceIdentities" array with an identity entry for EACH reference. ${hasCharacterRef ? '' : 'If any human character appears in the scenes (even if not listed as a reference), add a character entry to referenceIdentities with physical appearance details. '}Also generate legacy productIdentity and characterIdentity fields. Repeat all relevant identities verbatim in each scene prompt.`;
 }
 
 // ============================================
@@ -493,7 +542,8 @@ You are refining an existing storyboard based on user feedback. Follow these rul
 3. Maintain narrative continuity and visual consistency across scenes.
 4. Output ALL scenes in the storyboard, not just the changed ones.
 5. Keep the same number of scenes unless the user explicitly requests adding or removing scenes.
-6. Preserve productIdentity and characterIdentity unless the user asks to change them.`;
+6. Preserve referenceIdentities, productIdentity, and characterIdentity unless the user asks to change them.
+7. Preserve per-scene referenceIds arrays unless the scene composition changes.`;
 }
 
 /**
@@ -515,10 +565,12 @@ export function buildRefinementPrompt(
       audioDirection?: string;
       videoAspectRatio?: string;
       videoDuration?: number;
+      referenceIds?: string[];
     }>;
     summary: string;
     productIdentity?: string;
     characterIdentity?: string;
+    referenceIdentities?: Array<{ refId: string; label: string; role: string; identity: string }>;
   },
   feedback: string,
   mode: 'transition' | 'single-shot',
@@ -534,13 +586,24 @@ export function buildRefinementPrompt(
     if (s.audioDirection) detail += `\n    Audio: ${s.audioDirection}`;
     if (s.videoAspectRatio) detail += `\n    Aspect Ratio: ${s.videoAspectRatio}`;
     if (s.videoDuration) detail += `\n    Duration: ${s.videoDuration}s`;
+    if (s.referenceIds?.length) detail += `\n    References in scene: ${s.referenceIds.join(', ')}`;
     return detail;
   }).join('\n\n');
 
-  const identitySection = [
-    previousDraft.productIdentity && `Product Identity: ${previousDraft.productIdentity}`,
-    previousDraft.characterIdentity && `Character Identity: ${previousDraft.characterIdentity}`,
-  ].filter(Boolean).join('\n');
+  // Build identity section — prefer referenceIdentities, fall back to legacy
+  let identitySection = '';
+  if (previousDraft.referenceIdentities && previousDraft.referenceIdentities.length > 0) {
+    const refLines = previousDraft.referenceIdentities.map(
+      (ri) => `  [${ri.role.toUpperCase()}] "${ri.label}" (id: ${ri.refId}): ${ri.identity}`
+    ).join('\n');
+    identitySection = `Reference Identities:\n${refLines}`;
+  } else {
+    const legacyLines = [
+      previousDraft.productIdentity && `Product Identity: ${previousDraft.productIdentity}`,
+      previousDraft.characterIdentity && `Character Identity: ${previousDraft.characterIdentity}`,
+    ].filter(Boolean).join('\n');
+    identitySection = legacyLines;
+  }
 
   return `Here is the current storyboard (${previousDraft.scenes.length} scenes):
 
@@ -552,5 +615,5 @@ ${sceneDetails}
 USER FEEDBACK:
 ${feedback}
 
-Please update the storyboard based on the feedback above. Output ALL ${previousDraft.scenes.length} scenes${mode === 'transition' ? ' with transitions' : ' with motion prompts'}. Preserve unchanged scenes VERBATIM — do not rewrite prompts that the user did not ask to change.`;
+Please update the storyboard based on the feedback above. Output ALL ${previousDraft.scenes.length} scenes${mode === 'transition' ? ' with transitions' : ' with motion prompts'}. Preserve unchanged scenes VERBATIM — do not rewrite prompts that the user did not ask to change. Preserve referenceIdentities and per-scene referenceIds unless the user asks to change them.`;
 }

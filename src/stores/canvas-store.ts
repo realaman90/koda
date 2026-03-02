@@ -127,6 +127,7 @@ interface CanvasState {
     referenceUrls?: string[];
     productImageUrl?: string;
     characterImageUrl?: string;
+    referenceImageUrls?: Record<string, string>;
     videoUrl?: string;
     audioUrl?: string;
   };
@@ -242,8 +243,7 @@ export const createStoryboardNode = (position: { x: number; y: number }, name?: 
   position,
   data: {
     name: name || 'Storyboard',
-    product: '',
-    character: '',
+    references: [{ id: `ref_${Date.now()}`, role: 'subject', label: '', description: '', handleId: 'refImage_0' }],
     concept: '',
     sceneCount: 4,
     style: 'cinematic',
@@ -1045,7 +1045,30 @@ export const useCanvasStore = create<CanvasState>()(
         const videoEdge = incomingEdges.find((e) => e.targetHandle === 'video');
         const audioEdge = incomingEdges.find((e) => e.targetHandle === 'audio');
 
-        // Multi-reference handles (ref1-ref8 for ImageGenerator, ref1-ref3 for VideoGenerator)
+        // Dynamic reference image handles (refImage_0 through refImage_7) for storyboard N-ref
+        const referenceImageUrls: Record<string, string> = {};
+        for (let ri = 0; ri <= 7; ri++) {
+          const handleId = `refImage_${ri}`;
+          const edge = incomingEdges.find((e) => e.targetHandle === handleId);
+          if (edge) {
+            const node = nodes.find((n) => n.id === edge.source);
+            const url = getImageUrl(node);
+            if (url) referenceImageUrls[handleId] = url;
+          }
+        }
+        // Legacy handle mapping: productImage → refImage_0, characterImage → refImage_1
+        if (productImageEdge && !referenceImageUrls['refImage_0']) {
+          const node = nodes.find((n) => n.id === productImageEdge.source);
+          const url = getImageUrl(node);
+          if (url) referenceImageUrls['refImage_0'] = url;
+        }
+        if (characterImageEdge && !referenceImageUrls['refImage_1']) {
+          const node = nodes.find((n) => n.id === characterImageEdge.source);
+          const url = getImageUrl(node);
+          if (url) referenceImageUrls['refImage_1'] = url;
+        }
+
+        // Multi-reference handles (ref2-ref8 for ImageGenerator, ref1-ref3 for VideoGenerator)
         const refEdges = ['ref1', 'ref2', 'ref3', 'ref4', 'ref5', 'ref6', 'ref7', 'ref8']
           .map((handle) => incomingEdges.find((e) => e.targetHandle === handle))
           .filter(Boolean);
@@ -1097,9 +1120,10 @@ export const useCanvasStore = create<CanvasState>()(
           firstFrameUrl: getImageUrl(firstFrameNode, firstFrameEdge?.sourceHandle),
           lastFrameUrl: getImageUrl(lastFrameNode, lastFrameEdge?.sourceHandle),
           referenceUrls: referenceUrls.length > 0 ? referenceUrls : undefined,
-          productImageUrl: getImageUrl(productImageNode, productImageEdge?.sourceHandle),
-          characterImageUrl: getImageUrl(characterImageNode, characterImageEdge?.sourceHandle),
-          videoUrl: getVideoUrl(videoNode, videoEdge?.sourceHandle),
+          productImageUrl: getImageUrl(productImageNode),
+          characterImageUrl: getImageUrl(characterImageNode),
+          referenceImageUrls: Object.keys(referenceImageUrls).length > 0 ? referenceImageUrls : undefined,
+          videoUrl: getVideoUrl(videoNode),
           audioUrl: getAudioUrl(audioNode),
         };
       },

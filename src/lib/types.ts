@@ -1060,6 +1060,26 @@ export const XSKILL_VIDEO_MODELS: Partial<Record<VideoModelType, string>> = {
 // STORYBOARD NODE TYPES
 // ============================================
 
+// Storyboard reference roles
+export type StoryboardReferenceRole = 'subject' | 'character' | 'prop' | 'environment';
+
+// Storyboard reference (N-ref support)
+export interface StoryboardReference {
+  id: string;                      // Stable unique ID (e.g., 'ref_abc123')
+  role: StoryboardReferenceRole;
+  label: string;                   // Short name (e.g., "Charmander")
+  description: string;             // Detailed description
+  handleId: string;                // Input handle ID on the node (e.g., 'refImage_0')
+}
+
+// AI-generated identity for a reference
+export interface StoryboardReferenceIdentity {
+  refId: string;                   // Links to StoryboardReference.id
+  label: string;
+  role: StoryboardReferenceRole;
+  identity: string;                // AI-generated visual identity description
+}
+
 // Storyboard mode
 export type StoryboardMode = 'transition' | 'single-shot';
 
@@ -1099,8 +1119,12 @@ export interface StoryboardDraft {
   id: string;
   scenes: StoryboardSceneData[];
   summary: string;
+  /** @deprecated Use referenceIdentities instead */
   productIdentity?: string;
+  /** @deprecated Use referenceIdentities instead */
   characterIdentity?: string;
+  /** AI-generated identities for each reference (N-ref support) */
+  referenceIdentities?: StoryboardReferenceIdentity[];
   createdAt: string;
   seq: number;
 }
@@ -1119,6 +1143,8 @@ export interface StoryboardSceneData {
   audioDirection?: string;  // Sound design cues (SFX, ambient, dialogue)
   videoAspectRatio?: string;  // Per-scene video aspect ratio chosen by AI (e.g. '16:9', '9:16')
   videoDuration?: number;     // Per-scene video duration in seconds chosen by AI
+  /** Which reference IDs appear in this scene (AI-decided, N-ref support) */
+  referenceIds?: string[];
 }
 
 // Storyboard draft identity fields
@@ -1130,9 +1156,12 @@ export interface StoryboardDraftIdentity {
 // Storyboard Node Data
 export interface StoryboardNodeData extends Record<string, unknown> {
   name?: string;
-  // Form fields
-  product: string;
-  character: string;
+  // Form fields — N-ref support
+  references: StoryboardReference[];
+  /** @deprecated Use references instead — kept for backward compat migration */
+  product?: string;
+  /** @deprecated Use references instead — kept for backward compat migration */
+  character?: string;
   concept: string;
   sceneCount: number;
   style: StoryboardStyle;

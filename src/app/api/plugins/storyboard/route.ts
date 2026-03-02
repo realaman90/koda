@@ -99,9 +99,33 @@ export async function POST(request: Request) {
     let prompt: string;
     let systemPrompt: string;
 
-    // Extract image URLs (available in both initial and refinement requests)
-    const productImageUrl: string | undefined = body.productImageUrl;
-    const characterImageUrl: string | undefined = body.characterImageUrl;
+    // --- Backward compat: synthesize references from legacy product/character ---
+    if (!body.references && (body.product || body.character)) {
+      const syntheticRefs: Array<{ id: string; role: string; label: string; description: string; imageUrl?: string }> = [];
+      if (body.product) {
+        syntheticRefs.push({
+          id: 'ref_legacy_product',
+          role: 'subject',
+          label: body.product,
+          description: body.product,
+          imageUrl: body.productImageUrl,
+        });
+      }
+      if (body.character) {
+        syntheticRefs.push({
+          id: 'ref_legacy_character',
+          role: 'character',
+          label: body.character,
+          description: body.character,
+          imageUrl: body.characterImageUrl,
+        });
+      }
+      body.references = syntheticRefs;
+    }
+
+    // Collect reference image URLs from references array
+    const references: Array<{ id: string; role: string; label: string; description: string; imageUrl?: string }> =
+      body.references || [];
 
     if (isRefinement) {
       // Refinement turn: use previous draft + feedback
@@ -149,41 +173,37 @@ export async function POST(request: Request) {
       }
     }
 
-    // Fetch connected reference images in parallel (non-blocking)
-    const [productImage, characterImage] = await Promise.all([
-      productImageUrl ? fetchImageAsBase64(productImageUrl) : null,
-      characterImageUrl ? fetchImageAsBase64(characterImageUrl) : null,
-    ]);
+    // Fetch all reference images in parallel (non-blocking)
+    const refsWithImages = references.filter(r => r.imageUrl);
+    const fetchedImages = await Promise.all(
+      refsWithImages.map(async (ref) => ({
+        ref,
+        image: await fetchImageAsBase64(ref.imageUrl!),
+      }))
+    );
 
     // Build multimodal message if we have reference images
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const contentParts: Array<Record<string, any>> = [];
     const imageLabels: string[] = [];
 
-    if (productImage) {
-      contentParts.push({
-        type: 'file',
-        data: productImage.base64,
-        mediaType: productImage.mediaType,
-      });
-      imageLabels.push('PRODUCT REFERENCE IMAGE');
-      console.log('[Storyboard] Attached product image:', productImageUrl);
-    }
-
-    if (characterImage) {
-      contentParts.push({
-        type: 'file',
-        data: characterImage.base64,
-        mediaType: characterImage.mediaType,
-      });
-      imageLabels.push('CHARACTER REFERENCE IMAGE');
-      console.log('[Storyboard] Attached character image:', characterImageUrl);
+    for (const { ref, image } of fetchedImages) {
+      if (image) {
+        contentParts.push({
+          type: 'file',
+          data: image.base64,
+          mediaType: image.mediaType,
+        });
+        const roleLabel = ref.role.toUpperCase();
+        imageLabels.push(`REFERENCE IMAGE [${roleLabel}]: "${ref.label}"`);
+        console.log(`[Storyboard] Attached ${roleLabel} image for "${ref.label}":`, ref.imageUrl);
+      }
     }
 
     // Augment prompt with image context instructions
     if (imageLabels.length > 0) {
       const imageInstructions = `\n\nREFERENCE IMAGES ATTACHED: ${imageLabels.join(', ')}
-Study the attached image(s) carefully. Your productIdentity and characterIdentity descriptions must match the EXACT visual details you see — colors, materials, textures, shapes, clothing, accessories. Do NOT invent or change any visual attribute. Every scene prompt must reproduce these exact visual details.`;
+Study the attached image(s) carefully. Your referenceIdentities descriptions must match the EXACT visual details you see — colors, materials, textures, shapes, clothing, accessories. Do NOT invent or change any visual attribute. Every scene prompt must reproduce these exact visual details for the referenced items.`;
       prompt = prompt + imageInstructions;
     }
 
