@@ -7,7 +7,7 @@
  * Flow: Form → Generate → Chat timeline with thinking + draft cards → Refine via chat.
  */
 
-import { memo, useCallback, useState, useRef, useEffect, useMemo } from 'react';
+import { memo, useCallback, useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import { Handle, Position, useUpdateNodeInternals, type NodeProps } from '@xyflow/react';
 import { Button } from '@/components/ui/button';
 import { useCanvasStore } from '@/stores/canvas-store';
@@ -149,6 +149,76 @@ function useLocalField(
   return { value: local, onChange: handleChange, onFocus: handleFocus, onBlur: handleBlur };
 }
 
+function ReferenceCard({
+  ref: refData,
+  index,
+  isReadOnly,
+  referenceImageUrls,
+  updateReference,
+  removeReference,
+  refCardRefs,
+  refsLength,
+}: {
+  ref: StoryboardReference;
+  index: number;
+  isReadOnly: boolean;
+  referenceImageUrls: Record<string, string>;
+  updateReference: (refId: string, field: keyof StoryboardReference, value: string) => void;
+  removeReference: (refId: string) => void;
+  refCardRefs: React.MutableRefObject<(HTMLDivElement | null)[]>;
+  refsLength: number;
+}) {
+  const labelField = useLocalField(refData.label, (v) => updateReference(refData.id, 'label', v));
+  const descField = useLocalField(refData.description, (v) => updateReference(refData.id, 'description', v));
+
+  return (
+    <div ref={(el) => { refCardRefs.current[index] = el; }} className="p-2 bg-muted/50 border border-border rounded-lg space-y-1.5">
+      <div className="flex items-center gap-1.5">
+        {/* Role dropdown */}
+        <select
+          value={refData.role}
+          onChange={(e) => updateReference(refData.id, 'role', e.target.value)}
+          disabled={isReadOnly}
+          className="px-1.5 py-1 bg-muted border border-border rounded text-[10px] text-foreground focus:outline-none nodrag"
+        >
+          <option value="subject">Subject</option>
+          <option value="character">Character</option>
+          <option value="prop">Prop</option>
+          <option value="environment">Environment</option>
+        </select>
+        {/* Label input */}
+        <input
+          {...labelField}
+          placeholder={isReadOnly ? '' : 'Name...'}
+          disabled={isReadOnly}
+          className="flex-1 px-2 py-1 bg-muted border border-border rounded text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-blue-500 nodrag"
+        />
+        {/* Connected image indicator */}
+        {referenceImageUrls[refData.handleId] && (
+          <div className="w-2 h-2 rounded-full bg-green-500 shrink-0" title="Image connected" />
+        )}
+        {/* Remove button */}
+        {!isReadOnly && refsLength > 1 && (
+          <button
+            onClick={() => removeReference(refData.id)}
+            className="p-0.5 text-muted-foreground hover:text-red-400 transition-colors nodrag"
+          >
+            <X className="w-3 h-3" />
+          </button>
+        )}
+      </div>
+      {/* Description textarea */}
+      <textarea
+        {...descField}
+        placeholder={isReadOnly ? '' : refData.role === 'character' ? 'Physical appearance...' : 'Description...'}
+        disabled={isReadOnly}
+        className={`w-full px-2 py-1 bg-muted border border-border rounded text-xs text-foreground placeholder:text-muted-foreground resize-y focus:outline-none focus:ring-1 focus:ring-blue-500 nodrag ${isReadOnly ? 'cursor-default' : ''}`}
+        rows={2}
+      />
+    </div>
+  );
+}
+
 function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNodeType>) {
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
   const deleteNode = useCanvasStore((state) => state.deleteNode);
@@ -166,6 +236,9 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
   const [nodeName, setNodeName] = useState(data.name || 'Storyboard');
   const nameInputRef = useRef<HTMLInputElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
+  const rootNodeRef = useRef<HTMLDivElement>(null);
+  const refCardRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const [handleTops, setHandleTops] = useState<(number | null)[]>([]);
 
   // Sequence counter for ordering timeline items
   const seqRef = useRef(0);
@@ -324,6 +397,33 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
   useEffect(() => {
     updateNodeInternals(id);
   }, [id, refs.length, updateNodeInternals]);
+
+  useLayoutEffect(() => {
+    const rootEl = rootNodeRef.current;
+    if (!rootEl) return;
+    refCardRefs.current.length = refs.length;
+
+    const measure = () => {
+      const tops = refs.map((_, i) => {
+        const card = refCardRefs.current[i];
+        if (!card) return null;
+        let offset = 0;
+        let el: HTMLElement | null = card;
+        while (el && el !== rootEl) {
+          offset += el.offsetTop;
+          el = el.offsetParent as HTMLElement | null;
+        }
+        return offset + card.offsetHeight / 2;
+      });
+      setHandleTops(tops);
+    };
+
+    measure();
+
+    const observer = new ResizeObserver(() => measure());
+    refCardRefs.current.forEach((card) => { if (card) observer.observe(card); });
+    return () => observer.disconnect();
+  }, [refs.length]);
 
   const addReference = useCallback(() => {
     if (refs.length >= MAX_REFS) return;
@@ -1218,52 +1318,17 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
         </div>
         <div className="space-y-2">
           {refs.map((ref, index) => (
-            <div key={ref.id} className="p-2 bg-muted/50 border border-border rounded-lg space-y-1.5">
-              <div className="flex items-center gap-1.5">
-                {/* Role dropdown */}
-                <select
-                  value={ref.role}
-                  onChange={(e) => updateReference(ref.id, 'role', e.target.value)}
-                  disabled={isReadOnly}
-                  className="px-1.5 py-1 bg-muted border border-border rounded text-[10px] text-foreground focus:outline-none nodrag"
-                >
-                  <option value="subject">Subject</option>
-                  <option value="character">Character</option>
-                  <option value="prop">Prop</option>
-                  <option value="environment">Environment</option>
-                </select>
-                {/* Label input */}
-                <input
-                  value={ref.label}
-                  onChange={(e) => updateReference(ref.id, 'label', e.target.value)}
-                  placeholder={isReadOnly ? '' : 'Name...'}
-                  disabled={isReadOnly}
-                  className="flex-1 px-2 py-1 bg-muted border border-border rounded text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-blue-500 nodrag"
-                />
-                {/* Connected image indicator */}
-                {referenceImageUrls[ref.handleId] && (
-                  <div className="w-2 h-2 rounded-full bg-green-500 shrink-0" title="Image connected" />
-                )}
-                {/* Remove button */}
-                {!isReadOnly && refs.length > 1 && (
-                  <button
-                    onClick={() => removeReference(ref.id)}
-                    className="p-0.5 text-muted-foreground hover:text-red-400 transition-colors nodrag"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                )}
-              </div>
-              {/* Description textarea */}
-              <textarea
-                value={ref.description}
-                onChange={(e) => updateReference(ref.id, 'description', e.target.value)}
-                placeholder={isReadOnly ? '' : ref.role === 'character' ? 'Physical appearance...' : 'Description...'}
-                disabled={isReadOnly}
-                className={`w-full px-2 py-1 bg-muted border border-border rounded text-xs text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-1 focus:ring-blue-500 nodrag ${isReadOnly ? 'cursor-default' : ''}`}
-                rows={1}
-              />
-            </div>
+            <ReferenceCard
+              key={ref.id}
+              ref={ref}
+              index={index}
+              isReadOnly={isReadOnly}
+              referenceImageUrls={referenceImageUrls}
+              updateReference={updateReference}
+              removeReference={removeReference}
+              refCardRefs={refCardRefs}
+              refsLength={refs.length}
+            />
           ))}
         </div>
       </div>
@@ -1542,7 +1607,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
   );
 
   return (
-    <div className="relative">
+    <div ref={rootNodeRef} className="relative">
       {/* Floating Toolbar - hidden in read-only mode */}
       {selected && !isReadOnly && (
         <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1 backdrop-blur rounded-lg px-2 py-1.5 border node-toolbar-floating shadow-xl z-10">
@@ -1676,7 +1741,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
             const isConnected = !!referenceImageUrls[ref.handleId];
             const label = ref.label?.trim() || `${ref.role} ${index + 1}`;
             return (
-              <div key={ref.handleId} className="absolute -left-3 group" style={{ top: `${95 + index * 50}px` }}>
+              <div key={ref.handleId} className="absolute -left-3 group" style={{ top: `${handleTops[index] ?? (95 + index * 50)}px` }}>
                 <div className="relative">
                   <Handle
                     type="target"
