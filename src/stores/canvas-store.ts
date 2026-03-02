@@ -10,6 +10,7 @@ import {
   type ReactFlowInstance,
 } from '@xyflow/react';
 import type { AppNode, AppEdge, ImageGeneratorNodeData, VideoGeneratorNodeData, TextNodeData, MediaNodeData, StickyNoteNodeData, StickerNodeData, GroupNodeData, StoryboardNodeData,ProductShotNodeData, MusicGeneratorNodeData, SpeechNodeData, VideoAudioNodeData, PluginNodeData } from '@/lib/types';
+import { remapChildNodeIds, resolveInheritedGroupDelta } from './grouping-utils';
 
 // History snapshot type
 interface HistorySnapshot {
@@ -290,10 +291,15 @@ export const createSpeechNode = (position: { x: number; y: number }, name?: stri
   position,
   data: {
     name: name || 'Speech',
+    mode: 'single',
     text: '',
     voice: 'rachel',
     speed: 1.0,
     stability: 0.5,
+    dialogueLines: [
+      { id: generateId(), voice: 'rachel', text: '' },
+      { id: generateId(), voice: 'drew', text: '' },
+    ],
     isGenerating: false,
   } as SpeechNodeData,
 });
@@ -424,7 +430,7 @@ export const useCanvasStore = create<CanvasState>()(
 
         // Check if any group nodes are being dragged
         const groupPositionChanges = changes.filter(
-          (c) => c.type === 'position' && c.position
+          (c) => c.type === 'position' && c.position && typeof c.dragging === 'boolean'
         );
 
         // Track group movements to move child nodes
@@ -466,10 +472,9 @@ export const useCanvasStore = create<CanvasState>()(
         // Apply original changes
         let updatedNodes = applyNodeChanges(changes, nodes) as AppNode[];
 
-        // Move child nodes that are inside any moving group
-        // Groups with explicit childNodeIds (from wrapInGroup) use membership lists.
-        // Groups without (manual groupSelected) fall back to spatial containment,
-        // but only if no explicit group already claims the node.
+        // Move child nodes that are inside any moving group.
+        // Explicit groups use childNodeIds membership (including nested group ancestry).
+        // Legacy groups without memberships fall back to spatial containment.
         if (groupDeltas.length > 0) {
           const movedNodeIds = new Set(changes.filter((c) => c.type === 'position').map((c) => c.id));
 
@@ -482,24 +487,34 @@ export const useCanvasStore = create<CanvasState>()(
               for (const cid of childIds) explicitOwner.set(cid, group.id);
             }
           }
+          const groupDeltaById = new Map(
+            groupDeltas.map((delta) => [delta.groupId, { x: delta.deltaX, y: delta.deltaY }])
+          );
+          const inheritedDeltaCache = new Map<string, { x: number; y: number } | null>();
 
           updatedNodes = updatedNodes.map((node) => {
             if (movedNodeIds.has(node.id)) return node;
 
-            // 1. Check explicit membership first
-            const explicitGroupId = explicitOwner.get(node.id);
-            if (explicitGroupId) {
-              const delta = groupDeltas.find((d) => d.groupId === explicitGroupId);
-              if (!delta) return node;
+            // 1. Explicit membership first (including nested owner chains)
+            const inheritedDelta = resolveInheritedGroupDelta(
+              node.id,
+              explicitOwner,
+              groupDeltaById,
+              inheritedDeltaCache
+            );
+            if (inheritedDelta) {
               return {
                 ...node,
-                position: { x: node.position.x + delta.deltaX, y: node.position.y + delta.deltaY },
+                position: {
+                  x: node.position.x + inheritedDelta.x,
+                  y: node.position.y + inheritedDelta.y,
+                },
               };
             }
+            if (explicitOwner.has(node.id)) return node;
 
-            // 2. Fallback: spatial containment for manual groups (no childNodeIds)
-            //    Skip if node is explicitly owned by another (non-moving) group
-            for (const { groupId, deltaX, deltaY, group } of groupDeltas) {
+            // 2. Fallback: spatial containment for legacy groups (no childNodeIds)
+            for (const { deltaX, deltaY, group } of groupDeltas) {
               if ((group.data as GroupNodeData).childNodeIds) continue; // explicit groups handled above
               if (isNodeInsideGroup(node, group)) {
                 return {
@@ -600,7 +615,7 @@ export const useCanvasStore = create<CanvasState>()(
       },
 
       paste: (position) => {
-        const { clipboard, nodes, _pushHistory } = get() as CanvasState & { _pushHistory: () => void };
+        const { clipboard, _pushHistory } = get() as CanvasState & { _pushHistory: () => void };
         if (!clipboard || clipboard.nodes.length === 0) return;
 
         // Generate new IDs and calculate offset
@@ -609,7 +624,8 @@ export const useCanvasStore = create<CanvasState>()(
         const offsetY = position ? position.y - clipboard.nodes[0].position.y : 50;
 
         // Clone nodes with new IDs
-        const newNodes = clipboard.nodes.map((node) => {
+        const clonedNodes = clipboard.nodes.map((node) => JSON.parse(JSON.stringify(node)) as AppNode);
+        const newNodes = clonedNodes.map((node) => {
           const newId = generateId();
           idMap.set(node.id, newId);
           return {
@@ -622,6 +638,17 @@ export const useCanvasStore = create<CanvasState>()(
             selected: true,
           };
         });
+        const remappedNodes = newNodes.map((node) => {
+          if (node.type !== 'group') return node;
+          const groupData = node.data as GroupNodeData;
+          return {
+            ...node,
+            data: {
+              ...groupData,
+              childNodeIds: remapChildNodeIds(groupData.childNodeIds, idMap),
+            },
+          };
+        });
 
         // Clone edges with remapped IDs
         const newEdges = clipboard.edges.map((edge) => ({
@@ -632,9 +659,9 @@ export const useCanvasStore = create<CanvasState>()(
         }));
 
         set((state) => ({
-          nodes: [...state.nodes, ...newNodes] as AppNode[],
+          nodes: [...state.nodes, ...remappedNodes] as AppNode[],
           edges: [...state.edges, ...newEdges],
-          selectedNodeIds: newNodes.map((n) => n.id),
+          selectedNodeIds: remappedNodes.map((n) => n.id),
         }));
 
         _pushHistory();
@@ -696,6 +723,7 @@ export const useCanvasStore = create<CanvasState>()(
         );
         (groupNode.data as GroupNodeData).width = maxX - minX + padding * 2;
         (groupNode.data as GroupNodeData).height = maxY - minY + padding * 2;
+        (groupNode.data as GroupNodeData).childNodeIds = selectedNodes.map((node) => node.id);
 
         // Insert at beginning so it renders behind other nodes
         set((state) => ({
@@ -1146,6 +1174,17 @@ export const useCanvasStore = create<CanvasState>()(
             id: newId,
           };
         });
+        const remappedNodes = newNodes.map((node) => {
+          if (node.type !== 'group') return node;
+          const groupData = node.data as GroupNodeData;
+          return {
+            ...node,
+            data: {
+              ...groupData,
+              childNodeIds: remapChildNodeIds(groupData.childNodeIds, idMap),
+            },
+          };
+        });
 
         // Update edge references
         const newEdges = edges.map((edge) => ({
@@ -1156,7 +1195,7 @@ export const useCanvasStore = create<CanvasState>()(
         }));
 
         set({
-          nodes: newNodes as AppNode[],
+          nodes: remappedNodes as AppNode[],
           edges: newEdges,
           isReadOnly: false,
           selectedNodeIds: [],

@@ -147,7 +147,13 @@ export function Canvas() {
   // Sync React Flow selection with store
   const onSelectionChange: OnSelectionChangeFunc = useCallback(
     ({ nodes: selectedNodes, edges: selectedEdges }) => {
-      setSelectedNodes(selectedNodes.map((n) => n.id));
+      // If a concrete node is selected, drop background groups from active selection
+      // so grouped canvases don't block node-level interactions.
+      const hasNonGroupSelection = selectedNodes.some((node) => node.type !== 'group');
+      const effectiveSelection = hasNonGroupSelection
+        ? selectedNodes.filter((node) => node.type !== 'group')
+        : selectedNodes;
+      setSelectedNodes(effectiveSelection.map((n) => n.id));
       setSelectedEdges(selectedEdges.map((e) => e.id));
     },
     [setSelectedNodes, setSelectedEdges]
@@ -304,9 +310,9 @@ export function Canvas() {
     [nodes]
   );
 
-  // UX: In select mode, allow dragging empty canvas to pan.
-  // Hold Shift + drag for marquee selection.
-  const panEnabled = isReadOnly || activeTool === 'pan' || activeTool === 'select';
+  // Keep Select mode focused on selecting nodes; pan via Pan tool or Space key.
+  // Hold Shift + drag for marquee selection in scissors mode.
+  const panEnabled = isReadOnly || activeTool === 'pan';
   const selectionOnDragEnabled = !isReadOnly && activeTool === 'scissors';
 
   return (
@@ -358,6 +364,7 @@ export function Canvas() {
         nodesDraggable={!isReadOnly}
         nodesConnectable={!isReadOnly}
         edgesReconnectable={!isReadOnly}
+        elevateNodesOnSelect={false}
         selectionOnDrag={selectionOnDragEnabled}
         selectionKeyCode={['Shift']}
         selectionMode={SelectionMode.Partial}
