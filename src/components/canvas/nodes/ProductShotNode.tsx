@@ -493,12 +493,11 @@ function ProductShotNodeComponent({ id, data, selected }: NodeProps<ProductShotN
               type="target"
               position={Position.Left}
               id="productImage"
-              className={`!relative !transform-none !w-6 !h-6 !rounded-md !border-2 node-handle hover:!border-zinc-500 ${hasProductImage ? '!border-zinc-400' : ''
-                }`}
+              className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
             />
             <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none" style={{ color: hasProductImage ? '#a1a1aa' : 'var(--text-muted)' }} />
           </div>
-          <span className="absolute left-8 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
+          <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
             {hasProductImage ? 'Product Image (connected)' : 'Product Image'}
           </span>
         </div>

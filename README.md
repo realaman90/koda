@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="public/logos/koda_main.png" alt="Koda" width="280">
+<img src="public/logos/koda_main_dark.png" alt="Koda" width="280">
 
 **A node-based visual workflow editor for AI-powered image, video, and animation generation.**
 

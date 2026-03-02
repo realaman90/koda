@@ -8,6 +8,7 @@
 
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
+import { runAnimationSkill } from '@/mastra/skills/animation';
 
 // Schemas
 export const StyleOptionSchema = z.object({
@@ -36,6 +37,25 @@ export const PlanSchema = z.object({
   style: z.string(),
   fps: z.number().default(30),
   designSpec: z.string().optional().describe('Full design specification with exact colors, typography, spring configs, and effects'),
+  motionSpec: z.object({
+    chips: z.object({
+      energy: z.enum(['calm', 'medium', 'energetic']),
+      feel: z.enum(['smooth', 'snappy', 'bouncy']),
+      camera: z.enum(['static', 'subtle', 'dynamic']),
+      transitions: z.enum(['minimal', 'cinematic']),
+    }),
+    sliders: z.object({
+      speed: z.number(),
+      intensity: z.number(),
+      smoothness: z.number(),
+      cameraActivity: z.number(),
+      transitionAggressiveness: z.number(),
+    }),
+    variant: z.enum(['safe', 'balanced', 'dramatic']),
+    source: z.string().optional(),
+    followUp: z.string().optional(),
+    holdFinalFrameSeconds: z.number().optional(),
+  }).optional().describe('Structured motion profile from guided chips/variants/sliders'),
 });
 
 export const TodoSchema = z.object({
@@ -81,17 +101,23 @@ The frontend uses this structured output to show the right UI (question phase vs
     inferredStyle: z.string().optional(),
   }),
   execute: async (inputData) => {
-    // Pass through the agent's analysis — the agent does the reasoning,
-    // this tool just structures it for the frontend.
+    const skillResult = await runAnimationSkill('intent', {
+      action: 'analyze_prompt',
+      payload: inputData as unknown as Record<string, unknown>,
+    });
+
+    const updates = skillResult.updates || {};
     return {
-      needsClarification: inputData.needsClarification,
-      reason: inputData.reason,
-      question: inputData.needsClarification ? (inputData.question || {
-        text: DEFAULT_STYLE_QUESTION.text,
-        options: DEFAULT_STYLE_QUESTION.options,
-        customInput: true,
-      }) : undefined,
-      inferredStyle: inputData.inferredStyle,
+      needsClarification: Boolean(updates.needsClarification ?? inputData.needsClarification),
+      reason: String(updates.reason ?? inputData.reason),
+      question: (updates.needsClarification ?? inputData.needsClarification)
+        ? ((updates.question as z.infer<typeof QuestionSchema> | undefined) || inputData.question || {
+          text: DEFAULT_STYLE_QUESTION.text,
+          options: DEFAULT_STYLE_QUESTION.options,
+          customInput: true,
+        })
+        : undefined,
+      inferredStyle: (updates.inferredStyle as string | undefined) ?? inputData.inferredStyle,
     };
   },
 });
@@ -153,39 +179,43 @@ This tool validates your plan and generates the todo list for execution.`,
     style: z.string().describe('Animation style (e.g. playful, smooth, cinematic)'),
     fps: z.number().optional().describe('Frames per second (default 30)'),
     designSpec: z.string().optional().describe('Complete design specification with colors, typography, motion design, and effects'),
+    motionSpec: PlanSchema.shape.motionSpec.optional(),
   }),
   outputSchema: z.object({
     plan: PlanSchema,
     todos: z.array(TodoSchema),
   }),
   execute: async (inputData, context) => {
-    const rc = (context as { requestContext?: { get: (key: string) => unknown } })?.requestContext;
-    const ctxFps = rc?.get('fps') as number | undefined;
-    const ctxDuration = rc?.get('duration') as number | undefined;
+    const rc = (context as { requestContext?: { get: (key: string) => unknown; set: (key: string, value: unknown) => void } })?.requestContext;
+    const engine = ((rc?.get('engine') as string | undefined) === 'theatre' ? 'theatre' : 'remotion') as 'remotion' | 'theatre';
+    const phase = (rc?.get('phase') as 'idle' | 'question' | 'plan' | 'executing' | 'preview' | 'complete' | 'error' | undefined) || 'plan';
+    const planAccepted = (rc?.get('planAccepted') as boolean | undefined);
 
-    // Enforce user's duration from RequestContext — LLM often ignores the instruction
-    let totalDuration = inputData.totalDuration;
-    if (ctxDuration && ctxDuration !== totalDuration) {
-      console.log(`[generate_plan] Overriding LLM duration ${totalDuration}s → user's ${ctxDuration}s`);
-      // Scale scene durations proportionally to match user's target
-      const scale = ctxDuration / totalDuration;
-      inputData.scenes = inputData.scenes.map((s) => ({
-        ...s,
-        duration: Math.max(1.5, Math.round(s.duration * scale * 10) / 10),
-      }));
-      totalDuration = ctxDuration;
+    const skillResult = await runAnimationSkill('plan', {
+      action: 'generate_plan',
+      engine,
+      phase,
+      planAccepted,
+      duration: inputData.totalDuration,
+      fps: inputData.fps,
+      requestContext: rc,
+      payload: inputData as unknown as Record<string, unknown>,
+    });
+
+    if (!skillResult.ok || !skillResult.updates?.plan) {
+      const fallbackPlan = {
+        scenes: inputData.scenes,
+        totalDuration: inputData.totalDuration,
+        style: inputData.style,
+        fps: inputData.fps || ((rc?.get('fps') as number | undefined) || 30),
+        designSpec: inputData.designSpec,
+        motionSpec: inputData.motionSpec,
+      };
+      return { plan: fallbackPlan, todos: generateTodosFromPlan(fallbackPlan, engine) };
     }
 
-    const plan = {
-      scenes: inputData.scenes,
-      totalDuration,
-      style: inputData.style,
-      fps: inputData.fps || ctxFps || 30,
-      designSpec: inputData.designSpec,
-    };
-
-    const engine = ((rc?.get('engine') as string | undefined) === 'theatre' ? 'theatre' : 'remotion') as 'remotion' | 'theatre';
-
-    return { plan, todos: generateTodosFromPlan(plan, engine) };
+    const skillPlan = skillResult.updates.plan as z.infer<typeof PlanSchema>;
+    const skillTodos = skillResult.updates.todos as z.infer<typeof TodoSchema>[] | undefined;
+    return { plan: skillPlan, todos: skillTodos || generateTodosFromPlan(skillPlan, engine) };
   },
 });

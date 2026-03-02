@@ -37,7 +37,9 @@ const shortcuts = [
     { keys: ['Scroll'], description: 'Zoom in/out' },
   ]},
   { category: 'Canvas', items: [
-    { keys: ['Drag'], description: 'Select: box select / Pan: move canvas' },
+    { keys: ['Drag'], description: 'Pan canvas (Select mode)' },
+    { keys: ['Shift', 'Drag'], description: 'Box select nodes' },
+    { keys: ['Space', 'Drag'], description: 'Temporarily pan while using other tools' },
     { keys: ['Drag handle'], description: 'Create connection (Select mode)' },
   ]},
 ];
@@ -68,19 +70,19 @@ export function KeyboardShortcuts() {
   if (!showShortcuts) return null;
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm">
+      <div className="bg-popover border border-border rounded-xl shadow-2xl max-w-xl w-full mx-4 overflow-hidden text-popover-foreground">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-700">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-2">
-            <Keyboard className="h-5 w-5 text-zinc-400" />
-            <h2 className="text-lg font-semibold text-white">Keyboard Shortcuts</h2>
+            <Keyboard className="h-5 w-5 text-muted-foreground" />
+            <h2 className="text-lg font-semibold text-foreground">Keyboard Shortcuts</h2>
           </div>
           <Button
             variant="ghost"
             size="icon-sm"
             onClick={() => setShowShortcuts(false)}
-            className="text-zinc-400 hover:text-white"
+            className="text-muted-foreground hover:text-foreground hover:bg-muted"
           >
             <X className="h-4 w-4" />
           </Button>
@@ -90,18 +92,18 @@ export function KeyboardShortcuts() {
         <div className="p-5 max-h-[60vh] overflow-y-auto space-y-5">
           {shortcuts.map((section) => (
             <div key={section.category}>
-              <h3 className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-3">
+              <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
                 {section.category}
               </h3>
               <div className="space-y-2">
                 {section.items.map((shortcut, idx) => (
-                  <div key={idx} className="flex items-center justify-between">
-                    <span className="text-sm text-zinc-300">{shortcut.description}</span>
+                  <div key={idx} className="flex items-center justify-between gap-4 rounded-md px-2 py-1.5 hover:bg-muted/60 transition-colors">
+                    <span className="text-sm text-foreground/90">{shortcut.description}</span>
                     <div className="flex items-center gap-1">
                       {shortcut.keys.map((key, keyIdx) => (
                         <kbd
                           key={keyIdx}
-                          className="px-2 py-1 text-xs font-medium text-zinc-300 bg-zinc-800 border border-zinc-700 rounded"
+                          className="px-2 py-1 text-xs font-medium text-foreground bg-muted border border-border rounded shadow-sm"
                         >
                           {key}
                         </kbd>
@@ -115,9 +117,9 @@ export function KeyboardShortcuts() {
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3 border-t border-zinc-700 bg-zinc-800/50">
-          <p className="text-xs text-zinc-500 text-center">
-            Press <kbd className="px-1.5 py-0.5 text-xs bg-zinc-700 rounded">?</kbd> to toggle this panel
+        <div className="px-5 py-3 border-t border-border bg-muted/40">
+          <p className="text-xs text-muted-foreground text-center">
+            Press <kbd className="px-1.5 py-0.5 text-xs bg-muted border border-border rounded text-foreground">?</kbd> to toggle this panel
           </p>
         </div>
       </div>

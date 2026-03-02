@@ -13,9 +13,97 @@ import { getSandboxProvider } from '@/lib/sandbox/sandbox-factory';
 import { IMAGE_ANALYZER_MODEL, VIDEO_ANALYZER_MODEL } from '../../models';
 
 type ToolContext = { requestContext?: { get: (key: string) => any; set: (key: string, value: any) => void } };
+type MediaBufferEntry = { buffer: Buffer; mimeType: string };
 
 function resolveSandboxId(input: string | undefined, context?: ToolContext): string | undefined {
   return input || context?.requestContext?.get('sandboxId') || undefined;
+}
+
+const REMOTE_MEDIA_FETCH_TIMEOUT_MS = 15_000;
+const MAX_REMOTE_MEDIA_FETCH_BYTES = 100 * 1024 * 1024;
+
+function getLookupCandidates(mediaUrl: string): string[] {
+  const candidates = new Set<string>();
+  const add = (value?: string) => {
+    if (!value) return;
+    const trimmed = value.trim();
+    if (trimmed.length > 0) candidates.add(trimmed);
+  };
+
+  add(mediaUrl);
+  const withoutHash = mediaUrl.split('#')[0];
+  add(withoutHash);
+  const withoutQuery = withoutHash.split('?')[0];
+  add(withoutQuery);
+  add(withoutQuery.split('/').pop());
+
+  if (withoutQuery.startsWith('/media/')) {
+    add(`public${withoutQuery}`);
+    add(`/app/public${withoutQuery}`);
+  }
+  if (withoutQuery.startsWith('public/')) {
+    add(`/${withoutQuery.replace(/^public\//, '')}`);
+    add(`/app/${withoutQuery}`);
+  }
+  if (withoutQuery.startsWith('/app/public/')) {
+    const publicPath = withoutQuery.replace(/^\/app\//, '');
+    add(publicPath);
+    add(`/${publicPath.replace(/^public\//, '')}`);
+  }
+
+  try {
+    const parsed = new URL(mediaUrl);
+    add(parsed.href);
+    add(`${parsed.origin}${parsed.pathname}`);
+    add(parsed.pathname);
+    add(parsed.pathname.split('/').pop());
+  } catch {
+    // Not a URL, ignore
+  }
+
+  return [...candidates];
+}
+
+function resolveFromMediaBuffers(mediaUrl: string, mediaBuffers: Map<string, MediaBufferEntry>): { key: string; entry: MediaBufferEntry } | undefined {
+  for (const key of getLookupCandidates(mediaUrl)) {
+    const match = mediaBuffers.get(key);
+    if (match) {
+      return { key, entry: match };
+    }
+  }
+  return undefined;
+}
+
+async function fetchRemoteMediaAsBase64(mediaUrl: string): Promise<{ base64: string; mimeType?: string }> {
+  const response = await fetch(mediaUrl, {
+    signal: AbortSignal.timeout(REMOTE_MEDIA_FETCH_TIMEOUT_MS),
+    redirect: 'follow',
+  });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  const contentLength = response.headers.get('content-length');
+  if (contentLength) {
+    const parsedLength = Number(contentLength);
+    if (Number.isFinite(parsedLength) && parsedLength > MAX_REMOTE_MEDIA_FETCH_BYTES) {
+      throw new Error(`Remote file too large (${Math.round(parsedLength / 1024 / 1024)}MB > ${Math.round(MAX_REMOTE_MEDIA_FETCH_BYTES / 1024 / 1024)}MB limit)`);
+    }
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.length === 0) {
+    throw new Error('Remote file is empty');
+  }
+  if (buffer.length > MAX_REMOTE_MEDIA_FETCH_BYTES) {
+    throw new Error(`Remote file too large after download (${Math.round(buffer.length / 1024 / 1024)}MB > ${Math.round(MAX_REMOTE_MEDIA_FETCH_BYTES / 1024 / 1024)}MB limit)`);
+  }
+
+  const contentType = response.headers.get('content-type')?.split(';')[0]?.trim();
+  return {
+    base64: buffer.toString('base64'),
+    mimeType: contentType,
+  };
 }
 
 // Schema for scene analysis
@@ -381,52 +469,93 @@ Example:
       }
     }
 
-    // If no base64 provided and mediaUrl looks like a sandbox path (not a real URL),
-    // resolve the actual image data from requestContext or sandbox.
-    if (!mediaBase64 && mediaUrl && !mediaUrl.startsWith('http') && !mediaUrl.startsWith('data:')) {
-      // Strategy 1: Check requestContext mediaBuffers (set by route.ts from decoded base64)
+    // Strategy 1: Check requestContext mediaBuffers first for ALL non-data URLs.
+    // This avoids external provider fetches for already-uploaded assets.
+    if (!mediaBase64 && mediaUrl && !mediaUrl.startsWith('data:')) {
       const mediaBuffers = (context as ToolContext)?.requestContext?.get('mediaBuffers') as Map<string, { buffer: Buffer; mimeType: string }> | undefined;
       if (mediaBuffers) {
-        // Match by filename — mediaUrl might be "public/media/photo.jpg" or "/media/photo.jpg"
-        const fileName = mediaUrl.split('/').pop() || '';
-        const match = mediaBuffers.get(fileName);
+        const match = resolveFromMediaBuffers(mediaUrl, mediaBuffers);
         if (match) {
-          mediaBase64 = match.buffer.toString('base64');
-          if (!mimeType) mimeType = match.mimeType;
-          console.log(`[analyze_media] Resolved from mediaBuffers: ${fileName} (${Math.round(match.buffer.length / 1024)}KB)`);
+          mediaBase64 = match.entry.buffer.toString('base64');
+          if (!mimeType) mimeType = match.entry.mimeType;
+          console.log(`[analyze_media] Resolved from mediaBuffers: key="${match.key}" (${Math.round(match.entry.buffer.length / 1024)}KB)`);
         }
       }
+    }
 
-      // Strategy 2: Check requestContext pendingMedia (pre-sandbox uploads)
-      if (!mediaBase64) {
-        const pendingMedia = (context as ToolContext)?.requestContext?.get('pendingMedia') as Array<{ name: string; data: Buffer; type: string }> | undefined;
-        if (pendingMedia) {
-          const match = pendingMedia.find(m => mediaUrl!.includes(m.name));
-          if (match) {
-            mediaBase64 = match.data.toString('base64');
-            if (!mimeType) mimeType = match.type === 'video' ? 'video/mp4' : 'image/png';
-            console.log(`[analyze_media] Resolved from pendingMedia: ${match.name}`);
-          }
+    // Strategy 2: Check requestContext pendingMedia.
+    if (!mediaBase64 && mediaUrl) {
+      const pendingMedia = (context as ToolContext)?.requestContext?.get('pendingMedia') as Array<{ name: string; data: Buffer; type: string; destPath?: string }> | undefined;
+      if (pendingMedia) {
+        const candidates = getLookupCandidates(mediaUrl);
+        const match = pendingMedia.find((m) =>
+          candidates.some((candidate) =>
+            candidate === m.name ||
+            (!!m.destPath && (candidate === m.destPath || candidate.endsWith(`/${m.destPath}`))) ||
+            candidate.endsWith(`/${m.name}`)
+          )
+        );
+        if (match) {
+          mediaBase64 = match.data.toString('base64');
+          if (!mimeType) mimeType = match.type === 'video' ? 'video/mp4' : 'image/png';
+          console.log(`[analyze_media] Resolved from pendingMedia: ${match.name}`);
         }
       }
+    }
 
-      // Strategy 3: Read from sandbox via base64-encoded cat
-      if (!mediaBase64 && sandboxId) {
-        try {
-          const sandboxPath = mediaUrl.startsWith('/') ? mediaUrl : `/app/${mediaUrl}`;
-          const result = await getSandboxProvider().runCommand(sandboxId, `base64 -w0 ${sandboxPath}`, { timeout: 10_000 });
-          if (result.stdout && result.stdout.length > 0) {
-            mediaBase64 = result.stdout.trim();
-            if (!mimeType) {
-              const ext = mediaUrl.split('.').pop()?.toLowerCase();
-              const mimeMap: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime' };
-              mimeType = mimeMap[ext || ''] || 'image/png';
-            }
-            console.log(`[analyze_media] Read from sandbox: ${sandboxPath} (${Math.round(mediaBase64.length * 0.75 / 1024)}KB)`);
+    // Strategy 3: Read from sandbox via base64-encoded cat for sandbox paths.
+    if (!mediaBase64 && mediaUrl && !mediaUrl.startsWith('http') && !mediaUrl.startsWith('data:') && sandboxId) {
+      try {
+        const sandboxPath = mediaUrl.startsWith('/') ? mediaUrl : `/app/${mediaUrl}`;
+        const result = await getSandboxProvider().runCommand(sandboxId, `base64 -w0 ${sandboxPath}`, { timeout: 10_000 });
+        if (result.stdout && result.stdout.length > 0) {
+          mediaBase64 = result.stdout.trim();
+          if (!mimeType) {
+            const ext = mediaUrl.split('.').pop()?.toLowerCase();
+            const mimeMap: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime' };
+            mimeType = mimeMap[ext || ''] || 'image/png';
           }
-        } catch (err) {
-          console.warn(`[analyze_media] Could not read from sandbox: ${mediaUrl}`, err);
+          console.log(`[analyze_media] Read from sandbox: ${sandboxPath} (${Math.round(mediaBase64.length * 0.75 / 1024)}KB)`);
         }
+      } catch (err) {
+        console.warn(`[analyze_media] Could not read from sandbox: ${mediaUrl}`, err);
+      }
+    }
+
+    // Strategy 4: Decode inline data URL if provided as mediaUrl.
+    if (!mediaBase64 && mediaUrl.startsWith('data:')) {
+      const commaIndex = mediaUrl.indexOf(',');
+      if (commaIndex > 0) {
+        const header = mediaUrl.slice(0, commaIndex);
+        const data = mediaUrl.slice(commaIndex + 1);
+        const headerMime = header.match(/^data:([^;]+);base64$/)?.[1];
+        if (data) {
+          mediaBase64 = data;
+          if (!mimeType && headerMime) mimeType = headerMime;
+          console.log(`[analyze_media] Decoded inline data URL (${Math.round(data.length * 0.75 / 1024)}KB)`);
+        }
+      }
+    }
+
+    // Strategy 5: For remote URLs, fetch server-side so provider SDK never has to download it directly.
+    if (!mediaBase64 && mediaUrl.startsWith('http')) {
+      try {
+        const fetched = await fetchRemoteMediaAsBase64(mediaUrl);
+        mediaBase64 = fetched.base64;
+        if (!mimeType && fetched.mimeType) mimeType = fetched.mimeType;
+        console.log(`[analyze_media] Downloaded remote media (${Math.round(fetched.base64.length * 0.75 / 1024)}KB)`);
+      } catch (err) {
+        const detectedType = input.mediaType || detectMediaType(mediaUrl, mimeType);
+        const reason = err instanceof Error ? err.message : String(err);
+        console.warn(`[analyze_media] Failed to download remote media: ${mediaUrl}`, err);
+        return {
+          success: false,
+          mediaType: detectedType,
+          scenes: [],
+          overallDescription: '',
+          suggestedAnimations: [],
+          error: `Cannot download media URL "${mediaUrl}". ${reason}. Re-upload this file or provide a direct, publicly reachable image/video URL.`,
+        };
       }
     }
 

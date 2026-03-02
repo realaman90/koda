@@ -26,7 +26,7 @@ export function SyncStatusIndicator() {
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-muted/40 px-2.5 py-1 text-xs text-muted-foreground">
               <HardDrive className="h-3.5 w-3.5" />
               <span>{label}</span>
             </div>
@@ -85,7 +85,7 @@ export function SyncStatusIndicator() {
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <div className={`flex items-center gap-1.5 text-xs ${config.className}`}>
+          <div className={`inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-muted/40 px-2.5 py-1 text-xs ${config.className}`}>
             {config.icon}
             <span>{config.text}</span>
           </div>

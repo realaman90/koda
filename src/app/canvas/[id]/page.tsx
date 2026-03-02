@@ -30,6 +30,12 @@ export default function CanvasPage({ params }: CanvasPageProps) {
 
   const nodes = useCanvasStore((state) => state.nodes);
   const edges = useCanvasStore((state) => state.edges);
+  const setReadOnly = useCanvasStore((state) => state.setReadOnly);
+
+  useEffect(() => {
+    setReadOnly(accessRole === 'viewer');
+    return () => setReadOnly(false);
+  }, [accessRole, setReadOnly]);
 
   useEffect(() => {
     async function load() {
@@ -133,7 +139,7 @@ export default function CanvasPage({ params }: CanvasPageProps) {
             Read-only access: you can view this canvas but cannot edit it.
           </div>
         )}
-        <div className={accessRole === 'viewer' ? 'h-full pointer-events-none opacity-80' : 'h-full'}>
+        <div className={accessRole === 'viewer' ? 'h-full opacity-90' : 'h-full'}>
           <Canvas />
         </div>
       </AppShell>

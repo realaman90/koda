@@ -45,6 +45,13 @@ function getIoHint(plugin: AgentPlugin): string | null {
   return `In: ${inputTypes} · Out: ${outputTypes}`;
 }
 
+function getReadableUnavailableReason(code: string, reason: string): string {
+  if (code === 'PLUGIN_DISTRIBUTION_BLOCKED') return 'Not available in this Koda distribution';
+  if (code === 'PLUGIN_TRUST_TIER_BLOCKED') return 'Blocked by trust-tier policy';
+  if (code === 'PLUGIN_NOT_FOUND') return 'Plugin policy metadata is missing';
+  return reason;
+}
+
 export function PluginLauncher({
   onLaunch,
   isOpen,
@@ -173,8 +180,18 @@ export function PluginLauncher({
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-medium text-foreground">{plugin.name}</div>
                   <div className="truncate text-xs text-muted-foreground">{plugin.description}</div>
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                    <span className="rounded border border-border bg-muted/60 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                      {mode}
+                    </span>
+                    {ioHint && (
+                      <span className="truncate text-[10px] text-muted-foreground">{ioHint}</span>
+                    )}
+                  </div>
                   {!decision.allowed && (
-                    <div className="truncate text-[11px] text-amber-500">Unavailable: {decision.code}</div>
+                    <div className="truncate text-[11px] text-amber-500">
+                      Unavailable: {getReadableUnavailableReason(decision.code, decision.reason)}
+                    </div>
                   )}
                 </div>
                 <ChevronRight className="mt-1 h-4 w-4 text-muted-foreground" />

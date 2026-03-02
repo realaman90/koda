@@ -108,7 +108,7 @@ export function evaluatePluginLaunchById(pluginId: string): PluginLaunchDecision
 }
 
 export function emitPluginPolicyAuditEvent(params: {
-  source: 'launcher' | 'api';
+  source: 'launcher' | 'api' | 'toolbar' | 'context-menu' | 'canvas';
   decision: PluginLaunchDecision;
   metadata?: Record<string, unknown>;
 }) {

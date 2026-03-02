@@ -7,6 +7,11 @@
 
 const DEFAULT_GEMINI_31_PRO_PREVIEW = 'google/gemini-3.1-pro-preview';
 
+// -- Anthropic Claude Models --
+
+export const CLAUDE_SONNET_4_6 = 'anthropic/claude-sonnet-4-6';
+export const CLAUDE_OPUS_4_6 = 'anthropic/claude-opus-4-6';
+
 const readModelOverride = (key: string, fallback: string): string => {
   const value = process.env[key]?.trim();
   return value && value.length > 0 ? value : fallback;
@@ -17,19 +22,19 @@ const readModelOverride = (key: string, fallback: string): string => {
 /** Orchestrator agent — coordinates planning, tool calls, and subagents */
 export const ORCHESTRATOR_MODEL = readModelOverride(
   'KODA_MODEL_ORCHESTRATOR',
-  DEFAULT_GEMINI_31_PRO_PREVIEW
+  CLAUDE_SONNET_4_6
 );
 
 /** Remotion (2D) code generator subagent */
 export const REMOTION_CODE_GEN_MODEL = readModelOverride(
   'KODA_MODEL_CODEGEN_REMOTION',
-  DEFAULT_GEMINI_31_PRO_PREVIEW
+  CLAUDE_SONNET_4_6
 );
 
 /** Theatre.js (3D) code generator subagent */
 export const THEATRE_CODE_GEN_MODEL = readModelOverride(
   'KODA_MODEL_CODEGEN_THEATRE',
-  DEFAULT_GEMINI_31_PRO_PREVIEW
+  CLAUDE_SONNET_4_6
 );
 
 /** Image analysis (vision) */
@@ -52,7 +57,3 @@ export const PROMPT_STUDIO_MODEL = readModelOverride(
   'claude-sonnet-4-6'
 );
 
-// -- Anthropic Claude Models --
-
-export const CLAUDE_SONNET = 'claude-sonnet-4-6';
-export const CLAUDE_OPUS = 'claude-opus-4-6';

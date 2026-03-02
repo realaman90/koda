@@ -177,8 +177,12 @@ export async function POST(request: Request) {
           content: `[VIDEO UPLOADED: "${context.video.name}" (${mimeType}${context.video.duration ? `, ${context.video.duration}s total` : ''})]
 The video data is available. Use the analyze_video_motion tool with the video data to perform motion analysis.${trimInfo}`,
         });
-      } else if (dataUrl.startsWith('http')) {
-        requestContext.set('videoUrl' as never, dataUrl as never);
+      } else if (dataUrl.startsWith('http') || dataUrl.startsWith('/')) {
+        const resolvedUrl = dataUrl.startsWith('/')
+          ? new URL(dataUrl, request.url).toString()
+          : dataUrl;
+
+        requestContext.set('videoUrl' as never, resolvedUrl as never);
         requestContext.set('videoMimeType' as never, (context.video.mimeType || 'video/mp4') as never);
         requestContext.set('videoName' as never, context.video.name as never);
 
@@ -194,7 +198,7 @@ The video data is available. Use the analyze_video_motion tool with the video da
           ? `\nIMPORTANT: The user selected a trim range of ${context.video.trimStart}s to ${context.video.trimEnd}s (${(context.video.trimEnd! - context.video.trimStart!).toFixed(1)}s segment). Focus your analysis ONLY on this time window.`
           : '';
 
-        console.log(`[Motion Analyzer API] Video URL: ${context.video.name} → ${dataUrl.slice(0, 80)}${hasTrim ? ` [trim: ${context.video.trimStart}s-${context.video.trimEnd}s]` : ''}`);
+        console.log(`[Motion Analyzer API] Video URL: ${context.video.name} → ${resolvedUrl.slice(0, 80)}${hasTrim ? ` [trim: ${context.video.trimStart}s-${context.video.trimEnd}s]` : ''}`);
 
         agentMessages.unshift({
           role: 'system',

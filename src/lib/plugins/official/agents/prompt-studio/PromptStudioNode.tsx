@@ -1086,7 +1086,7 @@ function PromptStudioNodeComponent({ id, data, selected }: NodeProps<PromptStudi
         <div className="absolute -left-3 group" style={{ top: '25%', transform: 'translateY(-50%)' }}>
           <div className="relative">
             <Handle type="target" position={Position.Left} id="text"
-              className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-yellow-500 !border-zinc-900 hover:!border-zinc-700" />
+              className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle" />
             <Type className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
           </div>
           <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">Text input</span>
@@ -1096,7 +1096,7 @@ function PromptStudioNodeComponent({ id, data, selected }: NodeProps<PromptStudi
         <div className="absolute -left-3 group" style={{ top: '55%', transform: 'translateY(-50%)' }}>
           <div className="relative">
             <Handle type="target" position={Position.Left} id="reference"
-              className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-red-400 !border-zinc-900 hover:!border-zinc-700" />
+              className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle" />
             <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
           </div>
           <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">Image reference</span>
@@ -1106,7 +1106,7 @@ function PromptStudioNodeComponent({ id, data, selected }: NodeProps<PromptStudi
         <div className="absolute -right-3 group" style={{ top: '40%', transform: 'translateY(-50%)' }}>
           <div className="relative">
             <Handle type="source" position={Position.Right} id="prompt-output"
-              className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-teal-500 !border-zinc-900 hover:!border-zinc-700" />
+              className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle" />
             <Type className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
           </div>
           <span className="absolute right-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">Prompt output</span>

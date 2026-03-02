@@ -28,7 +28,7 @@ async function getProvider(): Promise<AssetStorageProvider> {
   return getLocalAssetProvider();
 }
 
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
 
 export async function POST(request: NextRequest) {
   try {
@@ -78,6 +78,17 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('[assets/upload] Error:', error);
-    return NextResponse.json({ error: 'Upload failed' }, { status: 500 });
+    const message = error instanceof Error ? error.message : String(error);
+    const timeoutLike = /timeout|timed out|etimedout|fetch failed|socket/i.test(message.toLowerCase());
+
+    return NextResponse.json(
+      {
+        error: timeoutLike
+          ? 'Asset storage timeout. Please retry upload.'
+          : 'Upload failed',
+        details: message,
+      },
+      { status: timeoutLike ? 503 : 500 }
+    );
   }
 }

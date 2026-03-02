@@ -114,6 +114,7 @@ export interface MotionAnalyzerNodeState {
 
   // Analysis results
   analysis?: MotionAnalysis;
+  analysisSeq?: number;
 
   // Generated prompts (can accumulate through conversation)
   generatedPrompts: GeneratedPrompt[];

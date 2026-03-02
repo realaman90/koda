@@ -9,6 +9,7 @@ import { useState, useCallback, useRef } from 'react';
 import type { VideoInput } from '../types';
 import type { MotionAnalyzerStreamEvent, MotionAnalyzerAppEvent } from '../events';
 import { toolCallToAppEvent, toolResultToAppEvent } from '../events';
+import { getCached, loadFromDB } from '../../animation-generator/media-cache';
 
 // ============================================
 // Types
@@ -97,6 +98,19 @@ export function useMotionAnalyzerStream(): UseMotionAnalyzerStreamReturn {
             processedContext = {
               ...context,
               video: { ...context.video, dataUrl: context.video.remoteUrl },
+            };
+          } else if (context.video.dataUrl?.startsWith('cached:')) {
+            // Resolve IndexedDB-cached payload (survives refresh in local mode)
+            let cached = getCached(context.video.id);
+            if (!cached) {
+              cached = await loadFromDB(context.video.id);
+            }
+            if (!cached) {
+              throw new Error('Uploaded video data is unavailable after refresh. Please re-upload.');
+            }
+            processedContext = {
+              ...context,
+              video: { ...context.video, dataUrl: cached },
             };
           } else if (context.video.dataUrl?.startsWith('blob:')) {
             // No remote URL — convert blob to data URL (local dev fallback)

@@ -1291,7 +1291,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
                     Auto
                   </button>
                 </TooltipTrigger>
-                <TooltipContent side="top" className="bg-zinc-800 border-zinc-700 text-zinc-200 max-w-[200px]">
+                <TooltipContent side="top" className="bg-popover border-border text-popover-foreground max-w-[200px]">
                   <p className="text-xs">Generate a creative concept from your product and character inputs</p>
                 </TooltipContent>
               </Tooltip>
@@ -1362,7 +1362,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
                   <TooltipTrigger asChild>
                     <Info className="w-3 h-3 text-muted-foreground/60 hover:text-muted-foreground cursor-help shrink-0" />
                   </TooltipTrigger>
-                  <TooltipContent side="top" className="bg-zinc-800 border-zinc-700 text-zinc-200 max-w-[200px]">
+                  <TooltipContent side="top" className="bg-popover border-border text-popover-foreground max-w-[200px]">
                     <p className="text-xs">Creates smooth video transitions between consecutive scenes, blending the end of one scene into the start of the next.</p>
                   </TooltipContent>
                 </Tooltip>
@@ -1383,7 +1383,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
                   <TooltipTrigger asChild>
                     <Info className="w-3 h-3 text-muted-foreground/60 hover:text-muted-foreground cursor-help shrink-0" />
                   </TooltipTrigger>
-                  <TooltipContent side="top" className="bg-zinc-800 border-zinc-700 text-zinc-200 max-w-[200px]">
+                  <TooltipContent side="top" className="bg-popover border-border text-popover-foreground max-w-[200px]">
                     <p className="text-xs">Each scene generates an independent video clip. Best for distinct, self-contained scenes.</p>
                   </TooltipContent>
                 </Tooltip>
@@ -1419,7 +1419,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
                       {opt.label}
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent side="top" className="bg-zinc-800 border-zinc-700 text-zinc-200 max-w-[200px]">
+                  <TooltipContent side="top" className="bg-popover border-border text-popover-foreground max-w-[200px]">
                     <p className="text-xs">{opt.hint}</p>
                   </TooltipContent>
                 </Tooltip>
@@ -1434,7 +1434,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
 
       {/* Error message */}
       {data.error && (
-        <div className="p-2 bg-red-900/30 border border-red-700 rounded-lg text-red-200 text-xs">
+        <div className="p-2 bg-destructive/10 border border-destructive/30 rounded-lg text-destructive text-xs">
           {data.error}
         </div>
       )}
@@ -1444,7 +1444,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
         <button
           onClick={handleGenerate}
           disabled={!isValid}
-          className="w-full py-2 px-4 bg-primary hover:bg-[var(--accent-primary-hover)] disabled:bg-muted disabled:text-muted-foreground text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2 nodrag"
+          className="w-full py-2 px-4 bg-primary hover:bg-[var(--accent-primary-hover)] disabled:bg-muted disabled:text-muted-foreground text-primary-foreground text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2 nodrag"
         >
           <Sparkles className="w-4 h-4" />
           Generate Storyboard
@@ -1518,7 +1518,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
 
         {/* Error in chat */}
         {data.chatPhase === 'error' && data.error && (
-          <div className="p-2 bg-red-900/30 border border-red-700 rounded-lg text-red-200 text-xs">
+          <div className="p-2 bg-destructive/10 border border-destructive/30 rounded-lg text-destructive text-xs">
             {data.error}
           </div>
         )}

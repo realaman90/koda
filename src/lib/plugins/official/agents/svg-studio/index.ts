@@ -28,14 +28,20 @@ export const svgStudioPlugin: AgentPlugin = {
     resizable: true,
     collapsible: true,
   },
+  launcherHints: {
+    input: 'Text + image reference',
+    output: 'SVG image + SVG code',
+  },
   capabilities: ['canvas:read', 'storage:upload'],
   services: ['ai', 'storage'],
   handles: {
     inputs: [
-      { id: 'svg-input', name: 'SVG', type: 'image', optional: true },
+      { id: 'text', name: 'Text Input', type: 'text', optional: true },
+      { id: 'reference', name: 'Image Reference', type: 'image', optional: true },
     ],
     outputs: [
-      { id: 'svg-output', name: 'SVG Output', type: 'image' },
+      { id: 'image-output', name: 'SVG Image Output', type: 'image' },
+      { id: 'code-output', name: 'SVG Code Output', type: 'text' },
     ],
   },
 };

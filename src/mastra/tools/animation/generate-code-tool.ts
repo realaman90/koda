@@ -13,8 +13,34 @@ import { z } from 'zod';
 import { codeGeneratorAgent } from '../../agents/code-generator-agent';
 import { getSandboxProvider } from '@/lib/sandbox/sandbox-factory';
 import { loadRecipes } from '../../recipes';
+import {
+  CODEGEN_ATTEMPT_TIMEOUT_MS,
+  CODEGEN_MAX_GENERATE_ATTEMPTS,
+  buildTransportErrorSummary,
+  isUpstreamTransportError,
+  runAnimationSkill,
+  withUpstreamRetry,
+} from '@/mastra/skills/animation';
+import {
+  buildMultiFileContext,
+  compressModifyContentForPrompt,
+  getPromptBudgetResult,
+  pickTargetFiles,
+  summarizeFileForChange,
+  truncateMiddle,
+} from './codegen-context';
 
 type ToolContext = { requestContext?: { get: (key: string) => any; set: (key: string, value: any) => void } };
+const CODEGEN_MOCK_MODE = process.env.KODA_ANIMATION_CODEGEN_MOCK === '1';
+const MAX_AUTO_CONTEXT_FILES = 4;
+const MAX_DIRECT_FILE_CONTEXT_CHARS = 20_000;
+const THEATRE_PREFERRED_FILES = [
+  'src/App.tsx',
+  'src/MainScene.tsx',
+  'src/project.ts',
+  'src/useCurrentFrame.ts',
+  'src/main.tsx',
+];
 
 /** Resolve sandboxId: prefer requestContext (server-set, correct), fallback to input (may be hallucinated by LLM).
  *  If requestContext has no sandboxId and input looks hallucinated (not matching koda-sandbox-* pattern),
@@ -46,6 +72,35 @@ async function resolveSandboxId(input: string | undefined, context?: ToolContext
   }
 
   return input || undefined;
+}
+
+async function generateWithRetry(
+  prompt: string,
+  ctx: ToolContext | undefined,
+): Promise<Awaited<ReturnType<typeof codeGeneratorAgent.generate>>> {
+  const abortSignal = ctx?.requestContext?.get('streamAbortSignal') as AbortSignal | undefined;
+  return withUpstreamRetry(
+    ctx?.requestContext,
+    async () => codeGeneratorAgent.generate(
+      [{ role: 'user', content: prompt }],
+      {
+        abortSignal,
+        providerOptions: {
+          google: { thinkingConfig: { thinkingBudget: 24576, includeThoughts: true } },
+          anthropic: { thinking: { type: 'enabled', budgetTokens: 10000 } },
+        },
+      }
+    ),
+    (attempt, maxAttempts, backoffMs, errorMsg) => {
+      console.warn(
+        `[generate_code] Upstream model transport error (attempt ${attempt}/${maxAttempts}): ${errorMsg}. Retrying in ${backoffMs}ms...`
+      );
+    },
+    {
+      maxAttempts: CODEGEN_MAX_GENERATE_ATTEMPTS,
+      attemptTimeoutMs: CODEGEN_ATTEMPT_TIMEOUT_MS,
+    },
+  );
 }
 
 const GenerateCodeInputSchema = z.object({
@@ -137,6 +192,31 @@ You do NOT need to call sandbox_write_file after this tool.`,
 
   execute: async (inputData, context) => {
     const ctx = context as ToolContext;
+    const preflight = await runAnimationSkill('codegen', {
+      action: 'preflight',
+      engine: 'theatre',
+      phase: (ctx?.requestContext?.get('phase') as
+        | 'idle'
+        | 'question'
+        | 'plan'
+        | 'executing'
+        | 'preview'
+        | 'complete'
+        | 'error'
+        | undefined),
+      planAccepted: (ctx?.requestContext?.get('planAccepted') as boolean | undefined),
+      sandboxId: (ctx?.requestContext?.get('sandboxId') as string | undefined) || inputData.sandboxId,
+      requestContext: ctx?.requestContext,
+      metadata: { toolName: 'generate_code' },
+    });
+
+    if (!preflight.ok) {
+      return {
+        files: [],
+        summary: preflight.summary || 'ERROR: Code generation preflight failed.',
+        writtenToSandbox: false,
+      };
+    }
 
     // Serialize code generation — wait if another code gen is already in progress.
     const currentActive = (ctx?.requestContext?.get('codeGenActive') as number) || 0;
@@ -168,6 +248,91 @@ You do NOT need to call sandbox_write_file after this tool.`,
     try {
     const sandboxId = await resolveSandboxId(inputData.sandboxId, context as ToolContext);
 
+    if (CODEGEN_MOCK_MODE && sandboxId) {
+      const appContent = `import React from 'react';
+
+export default function App() {
+  return (
+    <div style={{
+      width: '100vw',
+      height: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #334155 100%)',
+      color: 'white',
+      fontFamily: 'Inter, sans-serif',
+      fontSize: 64,
+      fontWeight: 700,
+    }}>
+      Animation Smoke Test
+    </div>
+  );
+}
+`;
+      await getSandboxProvider().writeFile(sandboxId, 'src/App.tsx', appContent);
+      await runAnimationSkill('codegen', { action: 'success', requestContext: ctx?.requestContext });
+      return {
+        files: [{ path: 'src/App.tsx', size: appContent.length }],
+        summary: 'MOCK: Deterministic Theatre code generated.',
+        writtenToSandbox: true,
+        reasoning: 'mock_codegen',
+      };
+    }
+
+    // For modify_existing: auto-read the target file when path is known.
+    if (inputData.task === 'modify_existing' && !inputData.currentContent && inputData.file && sandboxId) {
+      try {
+        const normalizedPath = inputData.file.replace(/^\/app\//, '').replace(/^\/+/, '');
+        const filePath = `/app/${normalizedPath}`;
+        const fileContent = await getSandboxProvider().readFile(sandboxId, filePath);
+        if (fileContent) {
+          const contextualContent = fileContent.length <= MAX_DIRECT_FILE_CONTEXT_CHARS
+            ? truncateMiddle(fileContent, MAX_DIRECT_FILE_CONTEXT_CHARS)
+            : summarizeFileForChange(normalizedPath, fileContent, inputData.change || '', MAX_DIRECT_FILE_CONTEXT_CHARS);
+          inputData = { ...inputData, file: normalizedPath, currentContent: contextualContent };
+          console.log(`[generate_code] Auto-read ${normalizedPath} (${fileContent.length} chars) for modify_existing`);
+        }
+      } catch (err) {
+        console.warn(`[generate_code] Could not auto-read ${inputData.file}:`, err);
+      }
+    }
+
+    // For modify_existing without a specific file: load targeted files only.
+    if (inputData.task === 'modify_existing' && !inputData.file && !inputData.currentContent && sandboxId) {
+      try {
+        const listResult = await getSandboxProvider().runCommand(
+          sandboxId,
+          `find /app/src -type f \\( -name '*.tsx' -o -name '*.ts' \\) | head -200`,
+          { timeout: 5_000 }
+        );
+        const srcFiles = listResult.stdout.trim().split('\n').filter(Boolean);
+        const targets = pickTargetFiles(srcFiles, inputData.change || '', THEATRE_PREFERRED_FILES, MAX_AUTO_CONTEXT_FILES);
+        const fileContents: Array<{ path: string; content: string }> = [];
+        for (const filePath of targets) {
+          try {
+            const content = await getSandboxProvider().readFile(sandboxId, filePath);
+            if (content) {
+              const relativePath = filePath.replace('/app/', '');
+              fileContents.push({ path: relativePath, content });
+            }
+          } catch { /* skip unreadable files */ }
+        }
+        if (fileContents.length > 0) {
+          inputData = {
+            ...inputData,
+            currentContent: buildMultiFileContext(fileContents, inputData.change || ''),
+            file: fileContents.length === 1 ? fileContents[0].path : 'multiple targeted files (see currentContent)',
+          };
+          console.log(
+            `[generate_code] Auto-read ${fileContents.length} targeted file(s) for modify_existing: ${fileContents.map((f) => f.path).join(', ')}`
+          );
+        }
+      } catch (err) {
+        console.warn(`[generate_code] Could not auto-read source files:`, err);
+      }
+    }
+
     // Auto-resolve designSpec from RequestContext if not passed as input arg
     let designSpec = inputData.designSpec;
     if (!designSpec) {
@@ -192,19 +357,49 @@ You do NOT need to call sandbox_write_file after this tool.`,
     console.log(`[generate_code] task=${inputData.task}, sandboxId=${sandboxId || 'NONE'}, designSpec=${designSpec ? `YES (${designSpec.length} chars)` : 'NO'}, mediaFiles=${mediaFiles?.length || 0}, techniques=${inputData.techniques?.length || 0}`);
 
     // Format the request for the code generator subagent (use resolved designSpec + mediaFiles)
-    const prompt = formatCodeGenerationPrompt({ ...inputData, designSpec, mediaFiles });
+    let codegenInput: z.infer<typeof GenerateCodeInputSchema> = {
+      ...inputData,
+      designSpec,
+      mediaFiles,
+    };
+    let prompt = formatCodeGenerationPrompt(codegenInput);
+    let budget = getPromptBudgetResult(prompt);
+
+    if (budget.shouldCompress) {
+      console.warn(
+        `[generate_code] Prompt near token limit (${budget.estimatedTokens}/${budget.modelTokenLimit}, threshold=${budget.compressionThresholdTokens}). Applying compression.`
+      );
+
+      if (codegenInput.task === 'modify_existing' && codegenInput.currentContent) {
+        codegenInput = {
+          ...codegenInput,
+          currentContent: compressModifyContentForPrompt(
+            codegenInput.currentContent,
+            codegenInput.change || '',
+            MAX_AUTO_CONTEXT_FILES,
+          ),
+        };
+      }
+
+      prompt = formatCodeGenerationPrompt(codegenInput);
+      budget = getPromptBudgetResult(prompt);
+
+      if (budget.shouldCompress && codegenInput.designSpec) {
+        codegenInput = {
+          ...codegenInput,
+          designSpec: `AUTO-COMPRESSED DESIGN SPEC (token budget safeguard)\n${truncateMiddle(codegenInput.designSpec, 16_000)}`,
+        };
+        prompt = formatCodeGenerationPrompt(codegenInput);
+        budget = getPromptBudgetResult(prompt);
+      }
+
+      console.warn(`[generate_code] Prompt size after compression: ${budget.estimatedTokens}/${budget.modelTokenLimit}`);
+    }
 
     try {
       // Call the subagent (non-streaming for tool result)
       // Enable thinking/reasoning — each provider ignores keys meant for others
-      const result = await codeGeneratorAgent.generate([
-        { role: 'user', content: prompt },
-      ], {
-        providerOptions: {
-          google: { thinkingConfig: { thinkingBudget: 24576, includeThoughts: true } },
-          anthropic: { thinking: { type: 'enabled', budgetTokens: 10000 } },
-        },
-      });
+      const result = await generateWithRetry(prompt, ctx);
 
       const fullResponse = result.text;
       const reasoning = (result as Record<string, unknown>).reasoningText as string | undefined;
@@ -240,6 +435,7 @@ You do NOT need to call sandbox_write_file after this tool.`,
           await getSandboxProvider().writeFile(sandboxId, file.path, file.content);
           writeResults.push({ path: file.path, size: file.content.length });
         }
+        await runAnimationSkill('codegen', { action: 'success', requestContext: ctx?.requestContext });
         return {
           files: writeResults,
           summary: typeof parsed.summary === 'string' ? parsed.summary : 'Code generated and written to sandbox',
@@ -249,6 +445,7 @@ You do NOT need to call sandbox_write_file after this tool.`,
       }
 
       // No sandboxId — return paths and sizes only (content is too large for conversation)
+      await runAnimationSkill('codegen', { action: 'success', requestContext: ctx?.requestContext });
       return {
         files: files.map(f => ({ path: f.path, size: f.content.length })),
         summary: typeof parsed.summary === 'string' ? parsed.summary : 'Code generated (no sandbox — files not written)',
@@ -261,6 +458,25 @@ You do NOT need to call sandbox_write_file after this tool.`,
       }
       throw error;
     }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      const isTransportDrop = isUpstreamTransportError(errorMsg);
+      const skillTransport = isTransportDrop
+        ? await runAnimationSkill('codegen', {
+          action: 'transport_error',
+          requestContext: ctx?.requestContext,
+          payload: { errorMessage: errorMsg },
+          metadata: { toolName: 'generate_code' },
+        })
+        : null;
+      console.error(`[generate_code] Error:`, errorMsg);
+      return {
+        files: [],
+        summary: isTransportDrop
+          ? (skillTransport?.summary || buildTransportErrorSummary(errorMsg, 1))
+          : `ERROR: Code generation failed: ${errorMsg}.`,
+        writtenToSandbox: false,
+      };
     } finally {
       // Signal code generation complete — render_final can proceed
       const current = (ctx?.requestContext?.get('codeGenActive') as number) || 1;

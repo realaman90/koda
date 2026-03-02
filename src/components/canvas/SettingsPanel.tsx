@@ -43,7 +43,7 @@ export function SettingsPanel() {
   const visibleImageModels: ImageModelType[] = ['auto' as ImageModelType, ...ENABLED_IMAGE_MODELS.filter((m) => enabledImageModels.includes(m))];
 
   const node = settingsPanelNodeId ? getNode(settingsPanelNodeId) : null;
-  const data = node?.data as ImageGeneratorNodeData | undefined;
+  const data = node?.type === 'imageGenerator' ? node.data as ImageGeneratorNodeData : undefined;
 
   const panelRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -445,7 +445,7 @@ export function SettingsPanel() {
               size="icon-sm"
               onClick={handleGenerate}
               disabled={!hasValidPrompt || data.isGenerating}
-              className="h-8 w-8 bg-primary hover:bg-[var(--accent-primary-hover)] text-white rounded-full disabled:opacity-40"
+              className="h-8 w-8 bg-primary hover:bg-primary/90 text-primary-foreground rounded-full disabled:opacity-40"
             >
               {data.isGenerating ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -668,7 +668,7 @@ export function SettingsPanel() {
                         alt={ref.type}
                         className="w-full aspect-square object-cover rounded-lg border border-border"
                       />
-                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
+                      <div className="absolute inset-0 bg-black/35 dark:bg-black/55 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
                         <button
                           onClick={() => handleDeleteReference(ref.id)}
                           className="p-1 bg-red-500 rounded-full hover:bg-red-400 transition-colors"
@@ -676,7 +676,7 @@ export function SettingsPanel() {
                           <X className="h-3 w-3 text-white" />
                         </button>
                       </div>
-                      <span className="absolute bottom-1 left-1 text-[10px] px-1 py-0.5 bg-black/60 text-white/80 rounded capitalize">
+                      <span className="absolute bottom-1 left-1 text-[10px] px-1 py-0.5 rounded capitalize border border-border/70 bg-white/85 text-foreground/80 backdrop-blur-sm dark:border-white/10 dark:bg-black/60 dark:text-white/80">
                         {ref.type}
                       </span>
                     </div>

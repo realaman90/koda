@@ -50,7 +50,7 @@ function resolveContainerPath(path: string): string {
 }
 
 function validatePath(path: string): void {
-  if (path.includes('..') || path.includes('\0')) {
+  if (path.includes('..') || path.includes('\0') || path.includes('\n') || path.includes('\r')) {
     throw new Error(`Invalid sandbox path: ${path}`);
   }
 }
@@ -60,6 +60,21 @@ function touchActivity(sandboxId: string): void {
   if (entry) {
     entry.instance.lastActivityAt = new Date().toISOString();
   }
+}
+
+function toExactArrayBuffer(data: Buffer): ArrayBuffer {
+  return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+}
+
+function shellEscape(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+async function ensureParentDir(entry: { sandbox: Sandbox }, containerPath: string): Promise<void> {
+  const idx = containerPath.lastIndexOf('/');
+  if (idx <= 0) return;
+  const dir = containerPath.slice(0, idx);
+  await entry.sandbox.commands.run(`mkdir -p ${shellEscape(dir)}`, { timeoutMs: 5_000 });
 }
 
 /**
@@ -110,6 +125,49 @@ async function attemptReconnect(sandboxId: string): Promise<{ sandbox: Sandbox; 
   }
 }
 
+async function getOrReconnectEntry(sandboxId: string): Promise<{ sandbox: Sandbox; instance: SandboxInstance } | null> {
+  const entry = activeSandboxes.get(sandboxId);
+  if (entry) return entry;
+  return attemptReconnect(sandboxId);
+}
+
+function isReconnectableTransportError(error: unknown): boolean {
+  const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  return (
+    msg.includes('other side closed') ||
+    msg.includes('cannot connect to api') ||
+    msg.includes('connection closed') ||
+    msg.includes('websocket') ||
+    msg.includes('fetch failed') ||
+    msg.includes('econnreset') ||
+    msg.includes('socket hang up') ||
+    msg.includes('notfounderror') ||
+    msg.includes('sandbox is probably not running anymore') ||
+    msg.includes('sandbox not found')
+  );
+}
+
+async function withReconnectRetry<T>(
+  sandboxId: string,
+  opName: string,
+  operation: (entry: { sandbox: Sandbox; instance: SandboxInstance }) => Promise<T>
+): Promise<T> {
+  let entry = await getOrReconnectEntry(sandboxId);
+  if (!entry) throw new Error(`Sandbox "${sandboxId}" not found.`);
+  try {
+    return await operation(entry);
+  } catch (err) {
+    if (!isReconnectableTransportError(err)) throw err;
+    console.warn(
+      `[E2BProvider] ${opName} failed for ${sandboxId} (${err instanceof Error ? err.message : String(err)}). Reconnecting and retrying once...`
+    );
+    activeSandboxes.delete(sandboxId);
+    entry = await attemptReconnect(sandboxId);
+    if (!entry) throw err;
+    return await operation(entry);
+  }
+}
+
 export const e2bProvider: SandboxProvider = {
   async create(projectId: string, template: SandboxTemplate = 'remotion'): Promise<SandboxInstance> {
     const templateId = getTemplateId(template);
@@ -149,13 +207,7 @@ export const e2bProvider: SandboxProvider = {
   },
 
   async destroy(sandboxId: string): Promise<void> {
-    let entry = activeSandboxes.get(sandboxId);
-
-    // If not in memory, try to reconnect so we can kill it
-    if (!entry) {
-      const recovered = await attemptReconnect(sandboxId);
-      if (recovered) entry = recovered;
-    }
+    const entry = await getOrReconnectEntry(sandboxId);
 
     if (entry) {
       try {
@@ -169,60 +221,60 @@ export const e2bProvider: SandboxProvider = {
 
   async writeFile(sandboxId: string, path: string, content: string): Promise<void> {
     validatePath(path);
-    const entry = activeSandboxes.get(sandboxId);
-    if (!entry) throw new Error(`Sandbox "${sandboxId}" not found. Create a new sandbox first.`);
-    touchActivity(sandboxId);
-
-    const containerPath = resolveContainerPath(path);
-    await entry.sandbox.files.write(containerPath, content);
+    await withReconnectRetry(sandboxId, 'writeFile', async (entry) => {
+      touchActivity(sandboxId);
+      const containerPath = resolveContainerPath(path);
+      await ensureParentDir(entry, containerPath);
+      await entry.sandbox.files.write(containerPath, content);
+    });
   },
 
   async readFile(sandboxId: string, path: string): Promise<string> {
     validatePath(path);
-    const entry = activeSandboxes.get(sandboxId);
-    if (!entry) throw new Error(`Sandbox "${sandboxId}" not found.`);
-    touchActivity(sandboxId);
-
-    const containerPath = resolveContainerPath(path);
-    return await entry.sandbox.files.read(containerPath, { format: 'text' });
+    return await withReconnectRetry(sandboxId, 'readFile', async (entry) => {
+      touchActivity(sandboxId);
+      const containerPath = resolveContainerPath(path);
+      return await entry.sandbox.files.read(containerPath, { format: 'text' });
+    });
   },
 
   async listFiles(sandboxId: string, path: string, recursive = false): Promise<SandboxFile[]> {
     validatePath(path);
-    const entry = activeSandboxes.get(sandboxId);
-    if (!entry) throw new Error(`Sandbox "${sandboxId}" not found.`);
+    return await withReconnectRetry(sandboxId, 'listFiles', async (entry) => {
+      touchActivity(sandboxId);
+      const containerPath = resolveContainerPath(path);
 
-    const containerPath = resolveContainerPath(path);
+      if (recursive) {
+        // E2B doesn't have native recursive listing — use find command
+        const quotedPath = shellEscape(containerPath);
+        const result = await entry.sandbox.commands.run(
+          `find ${quotedPath} \\( -type f -o -type d \\)`,
+          { timeoutMs: DEFAULT_TIMEOUT_MS }
+        );
+        const appPrefix = '/app/';
+        return result.stdout
+          .split('\n')
+          .filter(Boolean)
+          .map((line): SandboxFile => {
+            const relativePath = line.startsWith(appPrefix) ? line.slice(appPrefix.length) : line;
+            return {
+              path: relativePath,
+              type: line.endsWith('/') || line === containerPath ? 'directory' : 'file',
+            };
+          })
+          .filter((f) => f.path !== path && f.path !== '');
+      }
 
-    if (recursive) {
-      // E2B doesn't have native recursive listing — use find command
-      const result = await entry.sandbox.commands.run(
-        `find ${containerPath} \\( -type f -o -type d \\)`,
-        { timeoutMs: DEFAULT_TIMEOUT_MS }
-      );
+      const entries = await entry.sandbox.files.list(containerPath);
       const appPrefix = '/app/';
-      return result.stdout
-        .split('\n')
-        .filter(Boolean)
-        .map((line): SandboxFile => {
-          const relativePath = line.startsWith(appPrefix) ? line.slice(appPrefix.length) : line;
-          return {
-            path: relativePath,
-            type: line.endsWith('/') || line === containerPath ? 'directory' : 'file',
-          };
-        })
-        .filter((f) => f.path !== path && f.path !== '');
-    }
-
-    const entries = await entry.sandbox.files.list(containerPath);
-    const appPrefix = '/app/';
-    return entries.map((e): SandboxFile => {
-      const relativePath = e.path.startsWith(appPrefix) ? e.path.slice(appPrefix.length) : e.path;
-      return {
-        path: relativePath,
-        type: e.type === 'dir' ? 'directory' : 'file',
-        size: 'size' in e ? (e as { size: number }).size : undefined,
-      };
+      return entries.map((e): SandboxFile => {
+        const relativePath = e.path.startsWith(appPrefix) ? e.path.slice(appPrefix.length) : e.path;
+        return {
+          path: relativePath,
+          type: e.type === 'dir' ? 'directory' : 'file',
+          size: 'size' in e ? (e as { size: number }).size : undefined,
+        };
+      });
     });
   },
 
@@ -231,39 +283,44 @@ export const e2bProvider: SandboxProvider = {
     command: string,
     options?: { background?: boolean; timeout?: number }
   ): Promise<CommandResult> {
-    const entry = activeSandboxes.get(sandboxId);
-    if (!entry) throw new Error(`Sandbox "${sandboxId}" not found.`);
-    touchActivity(sandboxId);
-
     const timeout = Math.min(options?.timeout || DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS);
 
-    if (entry.instance) {
-      entry.instance.status = 'busy';
-    }
-
-    try {
-      const wrappedCommand = `${ENV_PREFIX}${command}`;
-
-      if (options?.background) {
-        await entry.sandbox.commands.run(wrappedCommand, {
-          background: true,
-          timeoutMs: timeout,
-        });
-        if (entry.instance) entry.instance.status = 'ready';
-        return { success: true, stdout: '', stderr: '', exitCode: 0 };
+    const runWithEntry = async (entry: { sandbox: Sandbox; instance: SandboxInstance }): Promise<CommandResult> => {
+      touchActivity(sandboxId);
+      if (entry.instance) {
+        entry.instance.status = 'busy';
       }
 
-      const result = await entry.sandbox.commands.run(wrappedCommand, { timeoutMs: timeout });
-      if (entry.instance) entry.instance.status = 'ready';
+      try {
+        const wrappedCommand = `${ENV_PREFIX}${command}`;
 
-      return {
-        success: result.exitCode === 0,
-        stdout: result.stdout,
-        stderr: result.stderr,
-        exitCode: result.exitCode,
-      };
+        if (options?.background) {
+          await entry.sandbox.commands.run(wrappedCommand, {
+            background: true,
+            timeoutMs: timeout,
+          });
+          if (entry.instance) entry.instance.status = 'ready';
+          return { success: true, stdout: '', stderr: '', exitCode: 0 };
+        }
+
+        const result = await entry.sandbox.commands.run(wrappedCommand, { timeoutMs: timeout });
+        if (entry.instance) entry.instance.status = 'ready';
+
+        return {
+          success: result.exitCode === 0,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          exitCode: result.exitCode,
+        };
+      } catch (error: unknown) {
+        if (entry.instance) entry.instance.status = 'ready';
+        throw error;
+      }
+    };
+
+    try {
+      return await withReconnectRetry(sandboxId, 'runCommand', runWithEntry);
     } catch (error: unknown) {
-      if (entry.instance) entry.instance.status = 'ready';
       // E2B throws CommandExitError with a .result property on non-zero exit
       const e2bResult = (error as { result?: { stdout?: string; stderr?: string; exitCode?: number } }).result;
       if (e2bResult) {
@@ -289,107 +346,122 @@ export const e2bProvider: SandboxProvider = {
     destPath: string
   ): Promise<{ success: boolean; path: string; size?: number; error?: string }> {
     validatePath(destPath);
-    const entry = activeSandboxes.get(sandboxId);
-    if (!entry) return { success: false, path: destPath, error: 'Sandbox not found' };
-    touchActivity(sandboxId);
+    try {
+      return await withReconnectRetry(sandboxId, 'uploadMedia', async (entry) => {
+        touchActivity(sandboxId);
+        const containerPath = resolveContainerPath(destPath);
+        const quotedPath = shellEscape(containerPath);
+        const quotedUrl = shellEscape(mediaUrl);
+        await ensureParentDir(entry, containerPath);
 
-    const containerPath = resolveContainerPath(destPath);
+        // Use curl inside the sandbox (same approach as Docker provider)
+        const result = await entry.sandbox.commands.run(
+          `curl -L -s -o ${quotedPath} ${quotedUrl}`,
+          { timeoutMs: 60_000 }
+        );
 
-    // Use curl inside the sandbox (same approach as Docker provider)
-    const result = await entry.sandbox.commands.run(
-      `curl -L -s -o ${containerPath} '${mediaUrl}'`,
-      { timeoutMs: 60_000 }
-    );
+        if (result.exitCode !== 0) {
+          return { success: false, path: destPath, error: `Download failed: ${result.stderr}` };
+        }
 
-    if (result.exitCode !== 0) {
-      return { success: false, path: destPath, error: `Download failed: ${result.stderr}` };
+        // Get file size
+        const sizeResult = await entry.sandbox.commands.run(
+          `stat -c '%s' ${quotedPath}`,
+          { timeoutMs: 5_000 }
+        );
+        const size = parseInt(sizeResult.stdout.trim(), 10) || undefined;
+
+        return { success: true, path: destPath, size };
+      });
+    } catch (err) {
+      return { success: false, path: destPath, error: err instanceof Error ? err.message : String(err) };
     }
-
-    // Get file size
-    const sizeResult = await entry.sandbox.commands.run(
-      `stat -c '%s' ${containerPath}`,
-      { timeoutMs: 5_000 }
-    );
-    const size = parseInt(sizeResult.stdout.trim(), 10) || undefined;
-
-    return { success: true, path: destPath, size };
   },
 
   async writeBinary(sandboxId: string, path: string, data: Buffer): Promise<void> {
     validatePath(path);
-    const entry = activeSandboxes.get(sandboxId);
-    if (!entry) throw new Error(`Sandbox "${sandboxId}" not found.`);
-    touchActivity(sandboxId);
-
-    const containerPath = resolveContainerPath(path);
-    // E2B files.write accepts ArrayBuffer
-    await entry.sandbox.files.write(containerPath, data.buffer as ArrayBuffer);
+    await withReconnectRetry(sandboxId, 'writeBinary', async (entry) => {
+      touchActivity(sandboxId);
+      const containerPath = resolveContainerPath(path);
+      await ensureParentDir(entry, containerPath);
+      // Ensure we only write this Buffer's exact byte range (not the whole backing pool).
+      await entry.sandbox.files.write(containerPath, toExactArrayBuffer(data));
+    });
   },
 
   async getStatus(sandboxId: string): Promise<SandboxInstance | null> {
-    let entry = activeSandboxes.get(sandboxId);
-
-    // If not in memory, try to reconnect to the running E2B sandbox
-    if (!entry) {
-      const recovered = await attemptReconnect(sandboxId);
-      if (!recovered) return null;
-      entry = recovered;
-    }
+    const entry = await getOrReconnectEntry(sandboxId);
+    if (!entry) return null;
 
     try {
       const running = await entry.sandbox.isRunning();
       entry.instance.status = running ? 'ready' : 'error';
       return entry.instance;
-    } catch {
+    } catch (err) {
+      if (isReconnectableTransportError(err)) {
+        activeSandboxes.delete(sandboxId);
+        const recovered = await attemptReconnect(sandboxId);
+        if (recovered) {
+          try {
+            const running = await recovered.sandbox.isRunning();
+            recovered.instance.status = running ? 'ready' : 'error';
+            return recovered.instance;
+          } catch {
+            // Fall through to null
+          }
+        }
+      }
       activeSandboxes.delete(sandboxId);
       return null;
     }
   },
 
   async exportSnapshot(sandboxId: string, paths?: string[]): Promise<Buffer> {
-    const entry = activeSandboxes.get(sandboxId);
-    if (!entry) throw new Error(`Sandbox "${sandboxId}" not found.`);
+    return await withReconnectRetry(sandboxId, 'exportSnapshot', async (entry) => {
+      touchActivity(sandboxId);
+      const tarPaths = (paths && paths.length > 0 ? paths : ['src/', 'public/media/'])
+        .map((p) => shellEscape(p))
+        .join(' ');
 
-    const tarPaths = paths?.join(' ') || 'src/ public/media/';
-
-    // Create tarball inside the sandbox
-    await entry.sandbox.commands.run(
-      `cd /app && tar czf /tmp/snapshot.tar.gz --ignore-failed-read ${tarPaths} 2>/dev/null || true`,
-      { timeoutMs: 15_000 }
-    );
-
-    // Read the tarball as bytes
-    const data = await entry.sandbox.files.read('/tmp/snapshot.tar.gz', { format: 'bytes' });
-
-    // Cleanup (non-critical)
-    entry.sandbox.commands.run('rm -f /tmp/snapshot.tar.gz', { timeoutMs: 5_000 }).catch(() => {});
-
-    return Buffer.from(data);
-  },
-
-  async importSnapshot(sandboxId: string, data: Buffer): Promise<boolean> {
-    const entry = activeSandboxes.get(sandboxId);
-    if (!entry) return false;
-
-    try {
-      // Write the tarball into the sandbox
-      await entry.sandbox.files.write('/tmp/snapshot.tar.gz', data.buffer as ArrayBuffer);
-
-      // Extract over the template code
-      const result = await entry.sandbox.commands.run(
-        'cd /app && tar xzf /tmp/snapshot.tar.gz 2>&1',
+      // Create tarball inside the sandbox
+      await entry.sandbox.commands.run(
+        `cd /app && tar czf /tmp/snapshot.tar.gz --ignore-failed-read ${tarPaths} 2>/dev/null || true`,
         { timeoutMs: 15_000 }
       );
+
+      // Read the tarball as bytes
+      const data = await entry.sandbox.files.read('/tmp/snapshot.tar.gz', { format: 'bytes' });
 
       // Cleanup (non-critical)
       entry.sandbox.commands.run('rm -f /tmp/snapshot.tar.gz', { timeoutMs: 5_000 }).catch(() => {});
 
-      if (result.exitCode !== 0) {
-        console.warn(`[E2BProvider] importSnapshot extract failed: ${result.stderr}`);
-        return false;
-      }
+      return Buffer.from(data);
+    });
+  },
 
-      return true;
+  async importSnapshot(sandboxId: string, data: Buffer): Promise<boolean> {
+    try {
+      return await withReconnectRetry(sandboxId, 'importSnapshot', async (entry) => {
+        touchActivity(sandboxId);
+        // Write the tarball into the sandbox
+        await entry.sandbox.files.write('/tmp/snapshot.tar.gz', toExactArrayBuffer(data));
+
+        // Extract over the template code
+        const result = await entry.sandbox.commands.run(
+          'cd /app && tar xzf /tmp/snapshot.tar.gz 2>&1',
+          { timeoutMs: 15_000 }
+        );
+
+        // Cleanup (non-critical)
+        entry.sandbox.commands.run('rm -f /tmp/snapshot.tar.gz', { timeoutMs: 5_000 }).catch(() => {});
+
+        if (result.exitCode !== 0) {
+          console.warn(`[E2BProvider] importSnapshot extract failed: ${result.stderr}`);
+          return false;
+        }
+
+        return true;
+      });
     } catch (err) {
       console.warn(`[E2BProvider] importSnapshot failed:`, err);
       return false;
@@ -398,21 +470,18 @@ export const e2bProvider: SandboxProvider = {
 
   async readFileRaw(sandboxId: string, path: string): Promise<Buffer> {
     validatePath(path);
-    const entry = activeSandboxes.get(sandboxId);
-    if (!entry) throw new Error(`Sandbox "${sandboxId}" not found.`);
-
-    const containerPath = resolveContainerPath(path);
-    const data = await entry.sandbox.files.read(containerPath, { format: 'bytes' });
-    return Buffer.from(data);
+    return await withReconnectRetry(sandboxId, 'readFileRaw', async (entry) => {
+      touchActivity(sandboxId);
+      const containerPath = resolveContainerPath(path);
+      const data = await entry.sandbox.files.read(containerPath, { format: 'bytes' });
+      return Buffer.from(data);
+    });
   },
 
   async getInstance(sandboxId: string): Promise<SandboxInstance | undefined> {
-    const entry = activeSandboxes.get(sandboxId);
+    const entry = await getOrReconnectEntry(sandboxId);
     if (entry) return entry.instance;
-
-    // Try to reconnect to a running E2B sandbox via metadata lookup
-    const recovered = await attemptReconnect(sandboxId);
-    return recovered?.instance;
+    return undefined;
   },
 };
 

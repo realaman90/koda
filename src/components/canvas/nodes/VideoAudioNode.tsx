@@ -391,7 +391,7 @@ function VideoAudioNodeComponent({ id, data, selected }: NodeProps<VideoAudioNod
             type="target"
             position={Position.Left}
             id="video"
-            className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-zinc-400 !border-zinc-900 hover:!border-zinc-700"
+            className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
           />
           <Video className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
         </div>
@@ -407,7 +407,7 @@ function VideoAudioNodeComponent({ id, data, selected }: NodeProps<VideoAudioNod
             type="target"
             position={Position.Left}
             id="text"
-            className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-zinc-400 !border-zinc-900 hover:!border-zinc-700"
+            className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
           />
           <Type className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
         </div>
@@ -423,7 +423,7 @@ function VideoAudioNodeComponent({ id, data, selected }: NodeProps<VideoAudioNod
             type="source"
             position={Position.Right}
             id="output"
-            className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-zinc-400 !border-zinc-900 hover:!border-zinc-700"
+            className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
           />
           <Film className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
         </div>

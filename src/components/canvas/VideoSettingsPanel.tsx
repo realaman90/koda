@@ -40,7 +40,7 @@ export function VideoSettingsPanel() {
   const visibleVideoModels: VideoModelTypeImport[] = ['auto' as VideoModelTypeImport, ...ENABLED_VIDEO_MODELS.filter((m) => enabledVideoModels.includes(m))];
 
   const node = videoSettingsPanelNodeId ? getNode(videoSettingsPanelNodeId) : null;
-  const data = node?.data as VideoGeneratorNodeData | undefined;
+  const data = node?.type === 'videoGenerator' ? node.data as VideoGeneratorNodeData : undefined;
 
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -447,15 +447,15 @@ export function VideoSettingsPanel() {
         {/* Prompt */}
         <div>
           <div className="flex items-center gap-1.5 mb-2">
-            <label className="text-xs text-zinc-500 uppercase tracking-wider">
+            <label className="text-xs text-muted-foreground uppercase tracking-wider">
               Prompt
             </label>
             <TooltipProvider delayDuration={200}>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Info className="h-3.5 w-3.5 text-zinc-500 hover:text-zinc-300 cursor-help" />
+                  <Info className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground cursor-help" />
                 </TooltipTrigger>
-                <TooltipContent side="right" className="bg-zinc-800 border-zinc-700 text-zinc-200 max-w-[200px]">
+                <TooltipContent side="right" className="bg-popover border-border text-popover-foreground max-w-[200px]">
                   <p className="text-xs">
                     <span className="font-medium">Input Mode:</span>{' '}
                     {inputMode === 'text' && 'Text prompt only'}

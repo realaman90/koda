@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Trash2, Image, Video, Clock, AlertCircle, Search, Filter } from 'lucide-react';
+import { Trash2, Image as ImageIcon, Video, Clock, AlertCircle, Search, Filter, Eye, Download, X } from 'lucide-react';
 import { useSettingsStore, GenerationHistoryItem } from '@/stores/settings-store';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -17,8 +17,35 @@ function formatTimeAgo(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString();
 }
 
-function HistoryItem({ item, onDelete }: { item: GenerationHistoryItem; onDelete: () => void }) {
+function getUrlExtension(url: string, fallbackType: GenerationHistoryItem['type']): string {
+  const clean = url.split('?')[0].split('#')[0];
+  const match = clean.match(/\.([a-zA-Z0-9]+)$/);
+  if (match?.[1]) return match[1].toLowerCase();
+
+  if (fallbackType === 'video') return 'mp4';
+  if (fallbackType === 'svg') return 'svg';
+  return 'png';
+}
+
+function buildDownloadFilename(item: GenerationHistoryItem, url: string, index?: number): string {
+  const extension = getUrlExtension(url, item.type);
+  const safeModel = item.model.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  const safeType = item.type.toLowerCase();
+  const date = new Date(item.timestamp).toISOString().replace(/[:.]/g, '-');
+  const suffix = typeof index === 'number' ? `-${index + 1}` : '';
+  return `${safeType}-${safeModel}-${date}${suffix}.${extension}`;
+}
+
+interface HistoryItemProps {
+  item: GenerationHistoryItem;
+  onDelete: () => void;
+  onPreview: (url: string, type: GenerationHistoryItem['type'], title: string) => void;
+  onDownload: (item: GenerationHistoryItem, url: string, index?: number) => void;
+}
+
+function HistoryItem({ item, onDelete, onPreview, onDownload }: HistoryItemProps) {
   const [expanded, setExpanded] = useState(false);
+  const primaryUrl = item.result?.urls?.[0];
 
   return (
     <div className="bg-muted/50 rounded-lg overflow-hidden">
@@ -28,17 +55,17 @@ function HistoryItem({ item, onDelete }: { item: GenerationHistoryItem; onDelete
       >
         {/* Thumbnail */}
         <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 bg-muted">
-          {item.result?.urls[0] ? (
+          {primaryUrl ? (
             item.type === 'video' ? (
               <video
-                src={item.result.urls[0]}
+                src={primaryUrl}
                 className="w-full h-full object-cover"
                 muted
               />
             ) : (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={item.result.urls[0]}
+                src={primaryUrl}
                 alt=""
                 className="w-full h-full object-cover"
               />
@@ -50,7 +77,7 @@ function HistoryItem({ item, onDelete }: { item: GenerationHistoryItem; onDelete
               ) : item.type === 'video' ? (
                 <Video className="h-6 w-6 text-muted-foreground" />
               ) : (
-                <Image className="h-6 w-6 text-muted-foreground" />
+                <ImageIcon className="h-6 w-6 text-muted-foreground" />
               )}
             </div>
           )}
@@ -62,21 +89,23 @@ function HistoryItem({ item, onDelete }: { item: GenerationHistoryItem; onDelete
             {item.type === 'video' ? (
               <Video className="h-4 w-4 text-violet-400" />
             ) : (
-              <Image className="h-4 w-4 text-blue-400" />
+              <ImageIcon className="h-4 w-4 text-blue-400" />
             )}
             <span className="text-xs font-medium text-muted-foreground uppercase">
               {item.model}
             </span>
-            <span
-              className={cn(
-                'text-xs px-1.5 py-0.5 rounded',
-                item.status === 'completed'
-                  ? 'bg-green-500/20 text-green-400'
-                  : 'bg-red-500/20 text-red-400'
-              )}
-            >
-              {item.status}
-            </span>
+            {item.status !== 'completed' && (
+              <span
+                className={cn(
+                  'text-xs px-1.5 py-0.5 rounded',
+                  item.status === 'failed'
+                    ? 'bg-red-500/20 text-red-400'
+                    : 'bg-muted text-muted-foreground'
+                )}
+              >
+                {item.status}
+              </span>
+            )}
           </div>
           <p className="text-sm text-foreground line-clamp-2">{item.prompt}</p>
           <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
@@ -85,16 +114,42 @@ function HistoryItem({ item, onDelete }: { item: GenerationHistoryItem; onDelete
           </div>
         </div>
 
-        {/* Delete */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
-          className="p-2 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!primaryUrl) return;
+              onPreview(primaryUrl, item.type, item.prompt);
+            }}
+            disabled={!primaryUrl}
+            className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Preview"
+          >
+            <Eye className="h-4 w-4" />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!primaryUrl) return;
+              onDownload(item, primaryUrl);
+            }}
+            disabled={!primaryUrl}
+            className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Download"
+          >
+            <Download className="h-4 w-4" />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+            className="p-2 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+            title="Delete"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       {/* Expanded details */}
@@ -131,20 +186,27 @@ function HistoryItem({ item, onDelete }: { item: GenerationHistoryItem; onDelete
                 <span className="text-xs text-muted-foreground">All Results ({item.result.urls.length})</span>
                 <div className="flex gap-2 mt-2 overflow-x-auto pb-2">
                   {item.result.urls.map((url, i) => (
-                    <a
-                      key={i}
-                      href={url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex-shrink-0"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={url}
-                        alt={`Result ${i + 1}`}
-                        className="w-20 h-20 object-cover rounded-lg hover:ring-2 hover:ring-primary"
-                      />
-                    </a>
+                    <div key={i} className="relative flex-shrink-0 group/result">
+                      <button
+                        onClick={() => onPreview(url, item.type, item.prompt)}
+                        className="block"
+                        title={`Preview result ${i + 1}`}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={url}
+                          alt={`Result ${i + 1}`}
+                          className="w-20 h-20 object-cover rounded-lg hover:ring-2 hover:ring-primary"
+                        />
+                      </button>
+                      <button
+                        onClick={() => onDownload(item, url, i)}
+                        className="absolute right-1 top-1 rounded-md bg-black/55 p-1 text-white opacity-0 transition-opacity group-hover/result:opacity-100"
+                        title={`Download result ${i + 1}`}
+                      >
+                        <Download className="h-3 w-3" />
+                      </button>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -163,6 +225,11 @@ export function HistorySection() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'image' | 'video' | 'svg'>('all');
+  const [preview, setPreview] = useState<{
+    url: string;
+    type: GenerationHistoryItem['type'];
+    title: string;
+  } | null>(null);
 
   const filteredHistory = history.filter((item) => {
     const matchesSearch = item.prompt.toLowerCase().includes(searchQuery.toLowerCase());
@@ -182,79 +249,134 @@ export function HistorySection() {
     toast.success('Item removed');
   };
 
-  return (
-    <div className="space-y-4">
-      {/* Search and Filter */}
-      <div className="flex gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Search history..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full h-10 pl-10 pr-4 bg-muted border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground outline-none focus:border-primary"
-          />
-        </div>
-        <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
-          {(['all', 'image', 'video', 'svg'] as const).map((type) => (
-            <button
-              key={type}
-              onClick={() => setFilterType(type)}
-              className={cn(
-                'px-3 py-1.5 text-sm rounded-md transition-colors',
-                filterType === type
-                  ? 'bg-muted text-foreground'
-                  : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              {type.charAt(0).toUpperCase() + type.slice(1)}
-            </button>
-          ))}
-        </div>
-      </div>
+  const handleDownload = (item: GenerationHistoryItem, url: string, index?: number) => {
+    const filename = buildDownloadFilename(item, url, index);
+    const proxyUrl = `/api/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
+    const a = document.createElement('a');
+    a.href = proxyUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    toast.success('Download started');
+  };
 
-      {/* Stats */}
-      <div className="flex items-center justify-between text-sm">
-        <span className="text-muted-foreground">
-          {filteredHistory.length} of {history.length} items
-        </span>
-        {history.length > 0 && (
-          <button
-            onClick={handleClearAll}
-            className="text-red-400 hover:text-red-300 transition-colors"
-          >
-            Clear All
-          </button>
+  return (
+    <>
+      <div className="space-y-4">
+        {/* Search and Filter */}
+        <div className="flex gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search history..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full h-10 pl-10 pr-4 bg-muted border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground outline-none focus:border-primary"
+            />
+          </div>
+          <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
+            {(['all', 'image', 'video', 'svg'] as const).map((type) => (
+              <button
+                key={type}
+                onClick={() => setFilterType(type)}
+                className={cn(
+                  'px-3 py-1.5 text-sm rounded-md transition-colors',
+                  filterType === type
+                    ? 'bg-muted text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {type.charAt(0).toUpperCase() + type.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Stats */}
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted-foreground">
+            {filteredHistory.length} of {history.length} items
+          </span>
+          {history.length > 0 && (
+            <button
+              onClick={handleClearAll}
+              className="text-red-400 hover:text-red-300 transition-colors"
+            >
+              Clear All
+            </button>
+          )}
+        </div>
+
+        {/* History List */}
+        {filteredHistory.length === 0 ? (
+          <div className="text-center py-12">
+            <Filter className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <p className="text-muted-foreground">
+              {history.length === 0
+                ? 'No generation history yet'
+                : 'No items match your search'}
+            </p>
+            <p className="text-sm text-muted-foreground/50 mt-1">
+              {history.length === 0
+                ? 'Your generations will appear here'
+                : 'Try adjusting your filters'}
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
+            {filteredHistory.map((item) => (
+              <HistoryItem
+                key={item.id}
+                item={item}
+                onDelete={() => handleDelete(item.id)}
+                onPreview={(url, type, title) => setPreview({ url, type, title })}
+                onDownload={handleDownload}
+              />
+            ))}
+          </div>
         )}
       </div>
 
-      {/* History List */}
-      {filteredHistory.length === 0 ? (
-        <div className="text-center py-12">
-          <Filter className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-          <p className="text-muted-foreground">
-            {history.length === 0
-              ? 'No generation history yet'
-              : 'No items match your search'}
-          </p>
-          <p className="text-sm text-muted-foreground/50 mt-1">
-            {history.length === 0
-              ? 'Your generations will appear here'
-              : 'Try adjusting your filters'}
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
-          {filteredHistory.map((item) => (
-            <HistoryItem
-              key={item.id}
-              item={item}
-              onDelete={() => handleDelete(item.id)}
-            />
-          ))}
+      {preview && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 p-6"
+          onClick={() => setPreview(null)}
+        >
+          <div
+            className="relative max-h-[88vh] w-full max-w-5xl rounded-xl border border-border bg-background p-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setPreview(null)}
+              className="absolute right-3 top-3 z-10 rounded-lg bg-black/40 p-2 text-white hover:bg-black/60"
+              aria-label="Close preview"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <div className="mb-2 pr-12 text-sm text-muted-foreground line-clamp-1">
+              {preview.title}
+            </div>
+            <div className="flex items-center justify-center overflow-hidden rounded-lg bg-black/30">
+              {preview.type === 'video' ? (
+                <video
+                  src={preview.url}
+                  controls
+                  className="max-h-[75vh] w-full object-contain"
+                />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={preview.url}
+                  alt="Generation preview"
+                  className="max-h-[75vh] w-full object-contain"
+                />
+              )}
+            </div>
+          </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

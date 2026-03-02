@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useReactFlow } from '@xyflow/react';
+import { useOnViewportChange, useReactFlow } from '@xyflow/react';
 import { ChevronUp, ZoomIn, ZoomOut, Maximize, Focus } from 'lucide-react';
 import { useCanvasStore } from '@/stores/canvas-store';
 
@@ -12,16 +12,15 @@ export function ZoomControls() {
   const selectedNodeIds = useCanvasStore((state) => state.selectedNodeIds);
   const nodes = useCanvasStore((state) => state.nodes);
 
-  // Update zoom display
-  useEffect(() => {
-    const updateZoom = () => {
-      const currentZoom = getZoom();
-      setZoom(Math.round(currentZoom * 100));
-    };
+  // Update zoom display without polling (viewport events)
+  useOnViewportChange({
+    onChange: (viewport) => {
+      setZoom(Math.round(viewport.zoom * 100));
+    },
+  });
 
-    updateZoom();
-    const interval = setInterval(updateZoom, 100);
-    return () => clearInterval(interval);
+  useEffect(() => {
+    setZoom(Math.round(getZoom() * 100));
   }, [getZoom]);
 
   // Close dropdown when clicking outside

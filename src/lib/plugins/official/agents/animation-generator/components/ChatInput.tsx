@@ -250,11 +250,12 @@ export function ChatInput({
 
                   {/* Action buttons */}
                   {editingId !== item.id && (
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity">
                       <button
                         onClick={() => handleStartEdit(item)}
                         className="p-1 text-[var(--an-text-placeholder)] hover:text-[var(--an-text-muted)] transition-colors"
                         title="Edit"
+                        aria-label="Edit queued message"
                       >
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
@@ -262,6 +263,7 @@ export function ChatInput({
                         onClick={() => handleSendQueued(item)}
                         className="p-1 text-[var(--an-text-placeholder)] hover:text-[var(--an-text-muted)] transition-colors"
                         title="Stop current and send this"
+                        aria-label="Send queued message now"
                       >
                         <ArrowUp className="w-3.5 h-3.5" />
                       </button>
@@ -269,6 +271,7 @@ export function ChatInput({
                         onClick={() => handleDeleteQueued(item.id)}
                         className="p-1 text-[var(--an-text-placeholder)] hover:text-[#EF4444] transition-colors"
                         title="Delete"
+                        aria-label="Delete queued message"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>

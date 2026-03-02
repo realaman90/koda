@@ -413,7 +413,7 @@ function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) 
             type="target"
             position={Position.Left}
             id="text"
-            className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-zinc-400 !border-zinc-900 hover:!border-zinc-700"
+            className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
           />
           <Type className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
         </div>
@@ -429,7 +429,7 @@ function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) 
             type="source"
             position={Position.Right}
             id="output"
-            className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-zinc-400 !border-zinc-900 hover:!border-zinc-700"
+            className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
           />
           <Mic className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
         </div>

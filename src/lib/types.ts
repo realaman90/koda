@@ -548,6 +548,7 @@ export interface VideoModelCapabilities {
   lastFrameOptional?: boolean; // For first-last-frame mode: if true, last frame is optional
   supportsVideoRef?: boolean; // Shows a video reference handle (for omni-reference models like Seedance 2.0)
   supportsAudioRef?: boolean; // Shows an audio reference handle (for Seedance 2.0 omni-reference)
+  promptTools?: readonly ('improve' | 'translate')[]; // Which prompt tool actions are available for this model
   description: string;
 }
 
@@ -787,6 +788,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     aspectRatios: ['16:9', '9:16', '1:1'],
     resolutions: ['480p', '720p', '1080p'],
     supportsAudio: true,
+    promptTools: ['improve', 'translate'],
     description: 'Latest with audio generation',
   },
   'seedance-1.5-i2v': {
@@ -800,6 +802,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     resolutions: ['480p', '720p', '1080p'],
     supportsAudio: true,
     lastFrameOptional: true,
+    promptTools: ['improve', 'translate'],
     description: 'Image-to-video with audio',
   },
   'seedance-1.0-pro-t2v': {
@@ -811,6 +814,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     defaultDuration: 5,
     aspectRatios: ['16:9', '9:16', '1:1'],
     resolutions: ['480p', '720p', '1080p'],
+    promptTools: ['improve', 'translate'],
     description: '1080p text-to-video',
   },
   'seedance-1.0-pro-i2v': {
@@ -822,6 +826,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     defaultDuration: 5,
     aspectRatios: ['16:9', '9:16', '1:1'],
     resolutions: ['480p', '720p', '1080p'],
+    promptTools: ['improve', 'translate'],
     description: '1080p image-to-video',
   },
   'seedance-2.0-t2v': {
@@ -833,6 +838,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     defaultDuration: 5,
     aspectRatios: ['16:9', '9:16', '1:1'],
     supportsAudio: true,
+    promptTools: ['improve', 'translate'],
     description: 'Best quality, multi-modal',
   },
   'seedance-2.0-i2v': {
@@ -846,6 +852,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     supportsAudio: true,
     supportsVideoRef: true,
     supportsAudioRef: true,
+    promptTools: ['improve', 'translate'],
     description: 'Image + video + audio reference (omni)',
   },
   'seedance-2.0-fast-t2v': {
@@ -857,6 +864,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     defaultDuration: 5,
     aspectRatios: ['16:9', '9:16', '1:1'],
     supportsAudio: true,
+    promptTools: ['improve', 'translate'],
     description: 'Faster + cheaper',
   },
   'seedance-2.0-fast-i2v': {
@@ -870,6 +878,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     supportsAudio: true,
     supportsVideoRef: true,
     supportsAudioRef: true,
+    promptTools: ['improve', 'translate'],
     description: 'Fast image + video + audio ref (omni)',
   },
   'luma-ray2': {

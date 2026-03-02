@@ -217,6 +217,14 @@ select {
   --handle-border: #d1d5db;
   --handle-hover-bg: #f3f4f6;
   --handle-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  --handle-input-bg: #f8fafc;
+  --handle-input-border: #64748b;
+  --handle-input-border-hover: #475569;
+  --handle-input-icon: #334155;
+  --handle-output-bg: #dbeafe;
+  --handle-output-border: #3b82f6;
+  --handle-output-border-hover: #2563eb;
+  --handle-output-icon: #1d4ed8;
 
   /* Tooltips */
   --tooltip-bg: #ffffff;
@@ -306,6 +314,14 @@ select {
   --handle-border: #52525b;
   --handle-hover-bg: #3f3f46;
   --handle-shadow: none;
+  --handle-input-bg: #27272a;
+  --handle-input-border: #71717a;
+  --handle-input-border-hover: #a1a1aa;
+  --handle-input-icon: #d4d4d8;
+  --handle-output-bg: rgba(59, 130, 246, 0.22);
+  --handle-output-border: #60a5fa;
+  --handle-output-border-hover: #93c5fd;
+  --handle-output-icon: #dbeafe;
 
   /* Tooltips */
   --tooltip-bg: #27272a;
@@ -314,7 +330,7 @@ select {
 
   /* Text colors */
   --text-primary: #fafafa;
-  --text-secondary: #A1A1AA;
+  --text-secondary: #d4d4d8;
   --text-muted: #71717a;
   --text-placeholder: #52525b;
 
@@ -383,14 +399,14 @@ select {
 .node-handle {
   background-color: var(--handle-bg) !important;
   border-color: var(--handle-border) !important;
-  box-shadow: var(--handle-shadow) !important;
+  box-shadow: 0 0 0 2px var(--canvas-bg), var(--handle-shadow) !important;
   transition: all 0.15s ease !important;
 }
 
 .node-handle:hover {
   background-color: var(--handle-hover-bg) !important;
   border-color: var(--node-border-selected) !important;
-  transform: scale(1.02);
+  scale: 1.06;
 }
 
 .node-tooltip {
@@ -485,7 +501,59 @@ select {
 }
 
 .react-flow__handle {
-  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+  box-shadow: 0 0 0 2px var(--canvas-bg), var(--handle-shadow) !important;
+}
+
+.react-flow__handle:hover {
+  scale: 1.06;
+}
+
+.react-flow__handle.react-flow__handle-left {
+  background-color: var(--handle-input-bg) !important;
+  border-color: var(--handle-input-border) !important;
+}
+
+.react-flow__handle.react-flow__handle-left:hover {
+  border-color: var(--handle-input-border-hover) !important;
+}
+
+.react-flow__handle.react-flow__handle-right {
+  background-color: var(--handle-output-bg) !important;
+  border-color: var(--handle-output-border) !important;
+}
+
+.react-flow__handle.react-flow__handle-right:hover {
+  border-color: var(--handle-output-border-hover) !important;
+}
+
+.react-flow__handle.connecting {
+  box-shadow: 0 0 0 2px var(--canvas-bg), 0 0 0 4px rgba(59, 130, 246, 0.25) !important;
+}
+
+.react-flow__handle.valid {
+  border-color: #22c55e !important;
+  box-shadow: 0 0 0 2px var(--canvas-bg), 0 0 0 4px rgba(34, 197, 94, 0.22) !important;
+}
+
+/* Animation plugin uses custom icon pills with transparent overlay handles.
+   Keep these handles neutral so global handle theming doesn't distort hitboxes. */
+.react-flow__handle.animation-handle,
+.react-flow__handle.animation-handle:hover,
+.react-flow__handle.animation-handle.connecting,
+.react-flow__handle.animation-handle.valid {
+  background-color: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  scale: 1 !important;
+}
+
+.react-flow__handle + svg.pointer-events-none {
+  color: var(--handle-input-icon) !important;
+}
+
+.react-flow__handle.react-flow__handle-right + svg.pointer-events-none {
+  color: var(--handle-output-icon) !important;
 }
 
 .react-flow__node {
@@ -1360,4 +1428,3 @@ h1, h2, h3, h4 {
     transition-duration: 0.01ms !important;
   }
 }
-

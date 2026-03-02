@@ -22,11 +22,11 @@ interface ProjectsGridProps {
 
 function LoadingSkeleton() {
   return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+    <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
       {Array.from({ length: 12 }).map((_, index) => (
-        <div key={index} className="overflow-hidden rounded-xl border border-border bg-card">
-          <div className="aspect-video animate-pulse bg-muted" />
-          <div className="space-y-2 p-3">
+        <div key={index} className="overflow-hidden rounded-2xl border border-border/70 bg-card/80">
+          <div className="aspect-video animate-pulse bg-muted/80" />
+          <div className="space-y-2 p-4">
             <div className="h-3 w-3/4 animate-pulse rounded bg-muted" />
             <div className="h-2.5 w-1/2 animate-pulse rounded bg-muted" />
           </div>
@@ -56,13 +56,13 @@ export function ProjectsGrid({
 
   if (loadError) {
     return (
-      <div className="rounded-xl border border-border bg-card/50 px-6 py-12 text-center">
+      <div className="rounded-2xl border border-border/70 bg-card/60 px-6 py-12 text-center">
         <AlertCircle className="mx-auto mb-3 h-7 w-7 text-amber-400" />
         <p className="text-base font-medium text-foreground">{loadErrorTitle || 'Couldn’t load your projects'}</p>
         <p className="mx-auto mt-2 max-w-xl text-sm text-muted-foreground">{loadError}</p>
         <button
           onClick={onRetryLoad}
-          className="mt-5 rounded-lg bg-[#3b82f6] px-4 py-2 text-white transition-colors hover:bg-[#2563eb]"
+          className="mt-5 rounded-xl bg-[#3b82f6] px-4 py-2 text-white transition-colors hover:bg-[#2563eb]"
         >
           {retryLabel || 'Retry loading projects'}
         </button>
@@ -72,7 +72,7 @@ export function ProjectsGrid({
 
   if (canvases.length === 0) {
     return (
-      <div className="rounded-xl border border-border bg-card/50 px-6 py-16 text-center">
+      <div className="rounded-2xl border border-border/70 bg-card/60 px-6 py-16 text-center">
         <Sparkles className="mx-auto mb-3 h-8 w-8 text-[#3b82f6]" />
         <p className="text-base font-medium text-foreground">
           {searchQuery ? 'No projects match your search' : 'No projects yet'}
@@ -86,13 +86,13 @@ export function ProjectsGrid({
           <div className="mt-5 flex items-center justify-center gap-3">
             <button
               onClick={onCreateCanvas}
-              className="rounded-lg bg-[#3b82f6] px-4 py-2 text-white transition-colors hover:bg-[#2563eb]"
+              className="rounded-xl bg-[#3b82f6] px-4 py-2 text-white transition-colors hover:bg-[#2563eb]"
             >
               Create Project
             </button>
             <button
               onClick={onBrowseTemplates}
-              className="rounded-lg border border-border bg-background px-4 py-2 text-foreground transition-colors hover:bg-muted"
+              className="rounded-xl border border-border bg-background px-4 py-2 text-foreground transition-colors hover:bg-muted"
             >
               Browse Templates
             </button>
@@ -103,7 +103,7 @@ export function ProjectsGrid({
   }
 
   return (
-    <StaggeredList className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+    <StaggeredList className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
       {canvases.map((canvas) => (
         <StaggerItem key={canvas.id}>
           <CanvasCard

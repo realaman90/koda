@@ -24,6 +24,8 @@ import {
   generateRemotionCodeTool,
   // Documentation (self-healing)
   fetchDocsTool,
+  // Optional web research
+  webSearchTool,
   // Prompt Enhancement
   enhanceAnimationPromptTool,
   // Media Analysis
@@ -42,6 +44,8 @@ import {
   extractVideoFramesTool,
   sandboxScreenshotTool,
   renderFinalTool,
+  skillRecoverTool,
+  skillMediaPrepareTool,
 } from '../tools/animation';
 
 /**
@@ -74,6 +78,8 @@ export const animationAgent = new Agent({
     generate_remotion_code: generateRemotionCodeTool,  // Remotion (2D)
     // Documentation (self-healing)
     fetch_docs: fetchDocsTool,
+    // Optional web research for factual/current external info
+    search_web: webSearchTool,
     // Prompt Enhancement
     enhance_animation_prompt: enhanceAnimationPromptTool,
     // Media Analysis
@@ -96,5 +102,8 @@ export const animationAgent = new Agent({
     verify_animation: verifyAnimationTool,
     // Rendering
     render_final: renderFinalTool,
+    // Skill adapters
+    skill_recover: skillRecoverTool,
+    skill_media_prepare: skillMediaPrepareTool,
   },
 });

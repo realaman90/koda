@@ -15,6 +15,7 @@
     "db:validate:backfill": "tsx scripts/validate-backfill.ts",
     "validate:permissions": "tsx scripts/validate-permissions-matrix.ts",
     "validate:invites": "tsx scripts/validate-invite-lifecycle.ts",
+    "validate:plugin-handles": "tsx scripts/validate-plugin-handle-contract.ts",
     "validate:auth-collab": "npm run db:validate:collab && npm run db:validate:backfill && npm run validate:permissions && npm run validate:invites && npm run build",
     "validate:distribution-contract": "tsx scripts/validate-distribution-contract.ts",
     "ci:smoke-profile": "tsx src/lib/ci/smoke-profile.ts",

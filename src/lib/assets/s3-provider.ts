@@ -14,6 +14,53 @@ import type {
 import { generateAssetId, getMimeType, getExtensionFromUrl } from './types';
 import { signRequest, type S3Config } from './s3-signing';
 
+const DEFAULT_UPLOAD_ATTEMPTS = 3;
+const DEFAULT_UPLOAD_TIMEOUT_MS = 30_000;
+const DEFAULT_RETRY_BASE_MS = 800;
+
+function readPositiveInt(envValue: string | undefined, fallback: number): number {
+  const parsed = Number(envValue);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.floor(parsed);
+}
+
+function getUploadAttempts(): number {
+  return readPositiveInt(process.env.ASSET_UPLOAD_RETRIES, DEFAULT_UPLOAD_ATTEMPTS);
+}
+
+function getUploadTimeoutMs(): number {
+  return readPositiveInt(process.env.ASSET_UPLOAD_TIMEOUT_MS, DEFAULT_UPLOAD_TIMEOUT_MS);
+}
+
+function getRetryBaseMs(): number {
+  return readPositiveInt(process.env.ASSET_UPLOAD_RETRY_BASE_MS, DEFAULT_RETRY_BASE_MS);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function normalizeErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  return String(error);
+}
+
+function isRetryableUploadError(error: unknown): boolean {
+  const message = normalizeErrorMessage(error).toLowerCase();
+  const causeCode = (error as { cause?: { code?: string } } | undefined)?.cause?.code?.toLowerCase() || '';
+  return (
+    message.includes('timeout') ||
+    message.includes('timed out') ||
+    message.includes('fetch failed') ||
+    message.includes('socket') ||
+    causeCode === 'etimedout' ||
+    causeCode === 'econnreset' ||
+    causeCode === 'econnrefused' ||
+    causeCode === 'und_err_socket' ||
+    causeCode === 'und_err_connect_timeout'
+  );
+}
+
 /**
  * Get S3 configuration from environment
  */
@@ -123,26 +170,57 @@ export class S3AssetProvider implements AssetStorageProvider {
     const extension = options.extension;
     const key = `${id}.${extension}`;
     const mimeType = options.metadata.mimeType || getMimeType(extension);
+    const maxAttempts = getUploadAttempts();
+    const timeoutMs = getUploadTimeoutMs();
+    const retryBaseMs = getRetryBaseMs();
 
-    // Upload to S3/R2
-    const { url, headers } = await signRequest(
-      this.config,
-      'PUT',
-      key,
-      buffer,
-      mimeType
-    );
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        // Sign each attempt separately so headers/date are always fresh.
+        const { url, headers } = await signRequest(
+          this.config,
+          'PUT',
+          key,
+          buffer,
+          mimeType
+        );
 
-    const response = await fetch(url, {
-      method: 'PUT',
-      headers,
-      // Convert Buffer to Uint8Array for fetch body compatibility
-      body: new Uint8Array(buffer),
-    });
+        const response = await fetch(url, {
+          method: 'PUT',
+          headers,
+          signal: AbortSignal.timeout(timeoutMs),
+          // Convert Buffer to Uint8Array for fetch body compatibility
+          body: new Uint8Array(buffer),
+        });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Failed to upload asset: ${response.status} ${errorText}`);
+        if (!response.ok) {
+          const errorText = (await response.text()).slice(0, 400);
+          throw new Error(`Failed to upload asset: ${response.status} ${errorText}`);
+        }
+
+        lastError = undefined;
+        break;
+      } catch (error) {
+        lastError = error;
+        const retryable = isRetryableUploadError(error);
+        if (!retryable || attempt >= maxAttempts) {
+          break;
+        }
+
+        const delayMs = retryBaseMs * attempt;
+        console.warn(
+          `[${this.storageType.toUpperCase()} upload] transient failure on attempt ${attempt}/${maxAttempts} for key=${key}; retrying in ${delayMs}ms`,
+          normalizeErrorMessage(error)
+        );
+        await sleep(delayMs);
+      }
+    }
+
+    if (lastError) {
+      throw new Error(
+        `Failed to upload asset to ${this.storageType.toUpperCase()} after ${maxAttempts} attempt(s): ${normalizeErrorMessage(lastError)}`
+      );
     }
 
     // Create asset record

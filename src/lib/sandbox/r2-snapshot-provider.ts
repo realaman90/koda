@@ -18,6 +18,52 @@ import { signRequest, type S3Config } from '../assets/s3-signing';
 
 const LATEST = 'latest';
 const PREFIX = 'snapshots';
+const DEFAULT_SNAPSHOT_UPLOAD_ATTEMPTS = 3;
+const DEFAULT_SNAPSHOT_UPLOAD_TIMEOUT_MS = 30_000;
+const DEFAULT_SNAPSHOT_RETRY_BASE_MS = 800;
+
+function readPositiveInt(envValue: string | undefined, fallback: number): number {
+  const parsed = Number(envValue);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.floor(parsed);
+}
+
+function getSnapshotUploadAttempts(): number {
+  return readPositiveInt(process.env.SNAPSHOT_UPLOAD_RETRIES, DEFAULT_SNAPSHOT_UPLOAD_ATTEMPTS);
+}
+
+function getSnapshotUploadTimeoutMs(): number {
+  return readPositiveInt(process.env.SNAPSHOT_UPLOAD_TIMEOUT_MS, DEFAULT_SNAPSHOT_UPLOAD_TIMEOUT_MS);
+}
+
+function getSnapshotRetryBaseMs(): number {
+  return readPositiveInt(process.env.SNAPSHOT_UPLOAD_RETRY_BASE_MS, DEFAULT_SNAPSHOT_RETRY_BASE_MS);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function normalizeErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  return String(error);
+}
+
+function isRetryableSnapshotError(error: unknown): boolean {
+  const message = normalizeErrorMessage(error).toLowerCase();
+  const causeCode = (error as { cause?: { code?: string } } | undefined)?.cause?.code?.toLowerCase() || '';
+  return (
+    message.includes('timeout') ||
+    message.includes('timed out') ||
+    message.includes('fetch failed') ||
+    message.includes('socket') ||
+    causeCode === 'etimedout' ||
+    causeCode === 'econnreset' ||
+    causeCode === 'econnrefused' ||
+    causeCode === 'und_err_socket' ||
+    causeCode === 'und_err_connect_timeout'
+  );
+}
 
 function getR2Config(): S3Config {
   const accountId = process.env.R2_ACCOUNT_ID;
@@ -62,15 +108,42 @@ export class R2SnapshotProvider implements SnapshotProvider {
 
   private async putObject(key: string, body: Buffer, contentType: string): Promise<void> {
     const data = new Uint8Array(body);
-    const { url, headers } = await signRequest(this.config, 'PUT', key, data, contentType);
-    const response = await fetch(url, {
-      method: 'PUT',
-      headers,
-      body: Buffer.from(data),
-    });
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`R2 PUT failed for ${key}: ${response.status} ${errorText}`);
+    const attempts = getSnapshotUploadAttempts();
+    const timeoutMs = getSnapshotUploadTimeoutMs();
+    const retryBaseMs = getSnapshotRetryBaseMs();
+
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      try {
+        // Re-sign each attempt so auth/date headers remain valid.
+        const { url, headers } = await signRequest(this.config, 'PUT', key, data, contentType);
+        const response = await fetch(url, {
+          method: 'PUT',
+          headers,
+          signal: AbortSignal.timeout(timeoutMs),
+          body: Buffer.from(data),
+        });
+        if (!response.ok) {
+          const errorText = (await response.text()).slice(0, 400);
+          throw new Error(`R2 PUT failed for ${key}: ${response.status} ${errorText}`);
+        }
+
+        lastError = undefined;
+        break;
+      } catch (error) {
+        lastError = error;
+        const retryable = isRetryableSnapshotError(error);
+        if (!retryable || attempt >= attempts) {
+          break;
+        }
+        const delayMs = retryBaseMs * attempt;
+        console.warn(`[R2Snapshot] transient PUT failure for ${key} (attempt ${attempt}/${attempts}), retrying in ${delayMs}ms`, normalizeErrorMessage(error));
+        await sleep(delayMs);
+      }
+    }
+
+    if (lastError) {
+      throw new Error(`R2 PUT failed for ${key} after ${attempts} attempt(s): ${normalizeErrorMessage(lastError)}`);
     }
   }
 

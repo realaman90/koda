@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useCanvasStore } from '@/stores/canvas-store';
 import type { MediaNode as MediaNodeType } from '@/lib/types';
-import { Image as ImageIcon, Upload, Trash2, X, Link, Volume2, Film } from 'lucide-react';
+import { Image as ImageIcon, Upload, Trash2, X, Link, Volume2, Film, RefreshCw } from 'lucide-react';
 import { uploadAsset } from '@/lib/assets/upload';
 
 function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
@@ -141,14 +141,26 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
       {selected && !isReadOnly && (
         <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1 rounded-lg px-2 py-1.5 node-toolbar-floating z-10">
           {data.url && (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
-              onClick={handleClear}
-            >
-              <X className="h-3.5 w-3.5" />
-            </Button>
+            <>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                onClick={() => fileInputRef.current?.click()}
+                title="Replace media"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                onClick={handleClear}
+                title="Clear media"
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </>
           )}
           <Button
             variant="ghost"
@@ -314,7 +326,7 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
             type="source"
             position={Position.Right}
             id="output"
-            className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-zinc-400 !border-zinc-900 hover:!border-zinc-700"
+            className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
           />
           {data.type === 'audio' ? (
             <Volume2 className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
