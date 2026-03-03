@@ -126,7 +126,7 @@ const DEFAULT_ENABLED_VIDEO: VideoModelType[] = [
 const defaultGenerationSettings: DefaultGenerationSettings = {
   imageModel: 'auto',
   videoModel: 'auto',
-  aspectRatio: '1:1',
+  aspectRatio: 'auto',
   imageCount: 1,
   magicPrompt: true,
   enabledImageModels: DEFAULT_ENABLED_IMAGE,

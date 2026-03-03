@@ -530,6 +530,18 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
                       ))}
                     </SelectContent>
                   </Select>
+                  {modelCapabilities.resolutions && (
+                    <Select value={data.resolution || '1K'} onValueChange={handleResolutionChange}>
+                      <SelectTrigger className="h-7 w-auto bg-white/70 hover:bg-white/95 border border-border/60 text-xs text-foreground gap-1 px-2 rounded-md dark:bg-white/10 dark:hover:bg-white/20 dark:border-0 dark:text-white">
+                        <SelectValue>{data.resolution || '1K'}</SelectValue>
+                      </SelectTrigger>
+                      <SelectContent className="bg-popover border-border">
+                        {modelCapabilities.resolutions.map((res) => (
+                          <SelectItem key={res} value={res} className="text-xs">{res}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                   <div className="flex items-center bg-white/70 dark:bg-white/10 rounded-md h-7">
                     <Button
                       variant="ghost"
@@ -625,6 +637,18 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
                     ))}
                   </SelectContent>
                 </Select>
+                {modelCapabilities.resolutions && (
+                  <Select value={data.resolution || '1K'} onValueChange={handleResolutionChange}>
+                    <SelectTrigger className="h-7 w-auto bg-muted/80 border-0 text-xs text-foreground gap-1 px-2 rounded-md hover:bg-muted">
+                      <SelectValue>{data.resolution || '1K'}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent className="bg-popover border-border">
+                      {modelCapabilities.resolutions.map((res) => (
+                        <SelectItem key={res} value={res} className="text-xs">{res}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
                 <div className="flex items-center bg-muted/80 rounded-md h-7">
                   <Button
                     variant="ghost"
