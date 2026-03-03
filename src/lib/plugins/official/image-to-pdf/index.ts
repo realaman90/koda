@@ -1,7 +1,7 @@
 import { FileOutput } from 'lucide-react';
 import { pluginRegistry } from '@/lib/plugins/registry';
 import type { AgentPlugin } from '@/lib/plugins/types';
-import { ImageToPdfSandbox } from './ImageToPdfSandbox';
+import { ImageToPdfNode } from './ImageToPdfNode';
 
 export const imageToPdfPlugin: AgentPlugin = {
   id: 'image-to-pdf',
@@ -22,14 +22,22 @@ export const imageToPdfPlugin: AgentPlugin = {
     distributionVisibility: ['oss', 'hosted'],
     trustTier: 'official',
   },
-  sandbox: {
-    component: ImageToPdfSandbox,
-    size: 'large',
-    title: 'Image to PDF',
+  rendering: {
+    mode: 'node',
+    component: 'ImageToPdfNode',
+    defaultSize: { width: 420, height: 'auto' },
+    resizable: true,
+    collapsible: true,
   },
   launcherHints: {
     input: 'Canvas images or uploads',
     output: 'Downloaded PDF',
+  },
+  handles: {
+    inputs: [
+      { id: 'reference', name: 'Image Input', type: 'image', optional: true, multiple: true },
+    ],
+    outputs: [],
   },
   capabilities: ['canvas:read', 'storage:upload'],
   services: ['storage'],
@@ -37,4 +45,4 @@ export const imageToPdfPlugin: AgentPlugin = {
 
 pluginRegistry.register(imageToPdfPlugin);
 
-export { ImageToPdfSandbox } from './ImageToPdfSandbox';
+export { ImageToPdfNode } from './ImageToPdfNode';

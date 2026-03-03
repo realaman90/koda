@@ -18,6 +18,7 @@ import { AnimationNode } from '@/lib/plugins/official/agents/animation-generator
 import { MotionAnalyzerNode } from '@/lib/plugins/official/agents/motion-analyzer';
 import { SvgStudioNode } from '@/lib/plugins/official/agents/svg-studio';
 import { PromptStudioNode } from '@/lib/plugins/official/agents/prompt-studio';
+import { ImageToPdfNode } from '@/lib/plugins/official/image-to-pdf';
 
 // Component registry - maps pluginId to component
 const PLUGIN_COMPONENTS: Record<string, React.ComponentType<NodeProps<Node<PluginNodeData, 'pluginNode'>>>> = {
@@ -25,7 +26,7 @@ const PLUGIN_COMPONENTS: Record<string, React.ComponentType<NodeProps<Node<Plugi
   'motion-analyzer': MotionAnalyzerNode as unknown as React.ComponentType<NodeProps<Node<PluginNodeData, 'pluginNode'>>>,
   'svg-studio': SvgStudioNode as unknown as React.ComponentType<NodeProps<Node<PluginNodeData, 'pluginNode'>>>,
   'prompt-studio': PromptStudioNode as unknown as React.ComponentType<NodeProps<Node<PluginNodeData, 'pluginNode'>>>,
-
+  'image-to-pdf': ImageToPdfNode as unknown as React.ComponentType<NodeProps<Node<PluginNodeData, 'pluginNode'>>>,
 };
 
 export type PluginNodeType = Node<PluginNodeData, 'pluginNode'>;

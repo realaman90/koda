@@ -8,11 +8,14 @@ const REQUEST_TIMEOUT_MS = 30_000;
 const MAX_IMAGES = 100;
 const A4_PORTRAIT: [number, number] = [595.28, 841.89];
 const A4_LANDSCAPE: [number, number] = [841.89, 595.28];
-const PAGE_MARGIN = 24;
+const DEFAULT_PAGE_MARGIN = 24;
 
 interface ImageToPdfRequestBody {
   imageUrls?: string[];
   fileName?: string;
+  fitMode?: 'contain' | 'cover';
+  pageMode?: 'a4-auto' | 'image';
+  margin?: number;
 }
 
 function ensurePdfFileName(name: string | undefined): string {
@@ -93,6 +96,12 @@ export async function POST(request: Request) {
       );
     }
 
+    const fitMode: 'contain' | 'cover' = body.fitMode === 'cover' ? 'cover' : 'contain';
+    const pageMode: 'a4-auto' | 'image' = body.pageMode === 'image' ? 'image' : 'a4-auto';
+    const margin = Number.isFinite(body.margin)
+      ? Math.max(0, Math.min(120, Number(body.margin)))
+      : DEFAULT_PAGE_MARGIN;
+
     const normalizedUrls = imageUrls.map((url) => normalizeImageUrl(url, request.url));
     const pdf = await PDFDocument.create();
 
@@ -115,12 +124,18 @@ export async function POST(request: Request) {
         ? await pdf.embedPng(bytes)
         : await pdf.embedJpg(bytes);
 
-      const [pageWidth, pageHeight] = image.width >= image.height ? A4_LANDSCAPE : A4_PORTRAIT;
+      const [pageWidth, pageHeight] = pageMode === 'image'
+        ? [image.width, image.height]
+        : image.width >= image.height
+          ? A4_LANDSCAPE
+          : A4_PORTRAIT;
       const page = pdf.addPage([pageWidth, pageHeight]);
 
-      const maxWidth = pageWidth - PAGE_MARGIN * 2;
-      const maxHeight = pageHeight - PAGE_MARGIN * 2;
-      const scale = Math.min(maxWidth / image.width, maxHeight / image.height);
+      const maxWidth = Math.max(1, pageWidth - margin * 2);
+      const maxHeight = Math.max(1, pageHeight - margin * 2);
+      const scale = fitMode === 'cover'
+        ? Math.max(maxWidth / image.width, maxHeight / image.height)
+        : Math.min(maxWidth / image.width, maxHeight / image.height);
       const drawWidth = image.width * scale;
       const drawHeight = image.height * scale;
       const x = (pageWidth - drawWidth) / 2;
@@ -142,7 +157,7 @@ export async function POST(request: Request) {
       status: 'success',
       source: 'api',
       pluginId: PLUGIN_ID,
-      metadata: { imageCount: normalizedUrls.length },
+      metadata: { imageCount: normalizedUrls.length, fitMode, pageMode, margin },
     });
 
     return new NextResponse(new Uint8Array(pdfBytes), {
