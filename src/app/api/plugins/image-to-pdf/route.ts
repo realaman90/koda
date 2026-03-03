@@ -10,13 +10,24 @@ const DEFAULT_PAGE_MARGIN = 24;
 
 type PdfPageMode =
   | 'image'
+  | 'a0-auto'
+  | 'a1-auto'
   | 'a4-auto'
   | 'letter-auto'
   | 'legal-auto'
+  | 'a2-auto'
   | 'a3-auto'
   | 'a5-auto';
 
 const PAGE_MODE_SIZES: Record<Exclude<PdfPageMode, 'image'>, { portrait: [number, number]; landscape: [number, number] }> = {
+  'a0-auto': {
+    portrait: [2383.94, 3370.39],
+    landscape: [3370.39, 2383.94],
+  },
+  'a1-auto': {
+    portrait: [1683.78, 2383.94],
+    landscape: [2383.94, 1683.78],
+  },
   'a4-auto': {
     portrait: [595.28, 841.89],
     landscape: [841.89, 595.28],
@@ -28,6 +39,10 @@ const PAGE_MODE_SIZES: Record<Exclude<PdfPageMode, 'image'>, { portrait: [number
   'legal-auto': {
     portrait: [612, 1008],
     landscape: [1008, 612],
+  },
+  'a2-auto': {
+    portrait: [1190.55, 1683.78],
+    landscape: [1683.78, 1190.55],
   },
   'a3-auto': {
     portrait: [841.89, 1190.55],

@@ -14,6 +14,7 @@ import {
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useCanvasStore, createMediaNode } from '@/stores/canvas-store';
 import { useSettingsStore } from '@/stores/settings-store';
+import { getApiErrorMessage, normalizeApiErrorMessage } from '@/lib/client/api-error';
 import type { ImageGeneratorNode as ImageGeneratorNodeType, RecraftStyle, IdeogramStyle } from '@/lib/types';
 import { MODEL_CAPABILITIES, ENABLED_IMAGE_MODELS, getApproxDimensions, FLUX_IMAGE_SIZES, RECRAFT_STYLE_LABELS, IDEOGRAM_STYLE_LABELS, getAspectRatioLabel, type FluxImageSize, type NanoBananaResolution, type ImageModelType } from '@/lib/types';
 import {
@@ -213,7 +214,8 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
       });
 
       if (!response.ok) {
-        throw new Error('Generation failed');
+        const message = await getApiErrorMessage(response, 'Generation failed');
+        throw new Error(message);
       }
 
       const result = await response.json();
@@ -255,7 +257,7 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
         },
       });
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Generation failed';
+      const errorMessage = normalizeApiErrorMessage(error, 'Generation failed');
       updateNodeData(id, {
         error: errorMessage,
         isGenerating: false,

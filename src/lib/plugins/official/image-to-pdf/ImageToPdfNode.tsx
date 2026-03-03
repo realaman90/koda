@@ -29,9 +29,12 @@ import {
 type PdfFitMode = 'contain' | 'cover';
 type PdfPageMode =
   | 'image'
+  | 'a0-auto'
+  | 'a1-auto'
   | 'a4-auto'
   | 'letter-auto'
   | 'legal-auto'
+  | 'a2-auto'
   | 'a3-auto'
   | 'a5-auto';
 
@@ -55,9 +58,12 @@ interface ImageToPdfNodeState {
 const DEFAULT_FILE_NAME = 'canvas-images.pdf';
 const PAGE_MODE_OPTIONS: Array<{ value: PdfPageMode; label: string }> = [
   { value: 'image', label: 'Page: Match image' },
+  { value: 'a0-auto', label: 'Page: A0 auto' },
+  { value: 'a1-auto', label: 'Page: A1 auto' },
   { value: 'a4-auto', label: 'Page: A4 auto' },
   { value: 'letter-auto', label: 'Page: Letter auto' },
   { value: 'legal-auto', label: 'Page: Legal auto' },
+  { value: 'a2-auto', label: 'Page: A2 auto' },
   { value: 'a3-auto', label: 'Page: A3 auto' },
   { value: 'a5-auto', label: 'Page: A5 auto' },
 ];

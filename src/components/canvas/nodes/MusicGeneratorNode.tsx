@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { useCanvasStore } from '@/stores/canvas-store';
+import { getApiErrorMessage, normalizeApiErrorMessage } from '@/lib/client/api-error';
 import type { MusicGeneratorNode as MusicGeneratorNodeType, MusicDuration } from '@/lib/types';
 import {
   Music,
@@ -105,8 +106,8 @@ function MusicGeneratorNodeComponent({ id, data, selected }: NodeProps<MusicGene
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Music generation failed');
+        const message = await getApiErrorMessage(response, 'Music generation failed');
+        throw new Error(message);
       }
 
       const result = await response.json();
@@ -118,7 +119,7 @@ function MusicGeneratorNodeComponent({ id, data, selected }: NodeProps<MusicGene
 
       toast.success('Music generated successfully');
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Music generation failed';
+      const errorMessage = normalizeApiErrorMessage(error, 'Music generation failed');
       updateNodeData(id, {
         error: errorMessage,
         isGenerating: false,

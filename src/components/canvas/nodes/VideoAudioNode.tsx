@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { useCanvasStore } from '@/stores/canvas-store';
+import { getApiErrorMessage, normalizeApiErrorMessage } from '@/lib/client/api-error';
 import type { VideoAudioNode as VideoAudioNodeType } from '@/lib/types';
 import {
   Video,
@@ -100,8 +101,8 @@ function VideoAudioNodeComponent({ id, data, selected }: NodeProps<VideoAudioNod
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Video audio generation failed');
+        const message = await getApiErrorMessage(response, 'Video audio generation failed');
+        throw new Error(message);
       }
 
       const result = await response.json();
@@ -113,7 +114,7 @@ function VideoAudioNodeComponent({ id, data, selected }: NodeProps<VideoAudioNod
 
       toast.success('Video with audio generated successfully');
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Video audio generation failed';
+      const errorMessage = normalizeApiErrorMessage(error, 'Video audio generation failed');
       updateNodeData(id, {
         error: errorMessage,
         isGenerating: false,
