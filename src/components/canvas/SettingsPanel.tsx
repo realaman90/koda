@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/select';
 import { useCanvasStore } from '@/stores/canvas-store';
 import type { ImageGeneratorNodeData, ImageReference, FluxImageSize, NanoBananaResolution, RecraftStyle, IdeogramStyle, CharacterPreset, StylePreset, CameraAnglePreset, CameraLensPreset, PresetOption, CharacterSelection } from '@/lib/types';
-import { MODEL_CAPABILITIES, ENABLED_IMAGE_MODELS, FLUX_IMAGE_SIZES, NANO_BANANA_RESOLUTIONS, RECRAFT_STYLE_LABELS, IDEOGRAM_STYLE_LABELS, getApproxDimensions, type ImageModelType } from '@/lib/types';
+import { MODEL_CAPABILITIES, ENABLED_IMAGE_MODELS, FLUX_IMAGE_SIZES, NANO_BANANA_RESOLUTIONS, RECRAFT_STYLE_LABELS, IDEOGRAM_STYLE_LABELS, getApproxDimensions, getAspectRatioLabel, type ImageModelType } from '@/lib/types';
 import { useSettingsStore } from '@/stores/settings-store';
 import { CHARACTER_PRESETS, STYLE_PRESETS, CAMERA_ANGLE_PRESETS, CAMERA_LENS_PRESETS } from '@/lib/presets';
 import { PresetPopover } from './PresetPopover';
@@ -768,7 +768,7 @@ export function SettingsPanel() {
               </SelectTrigger>
               <SelectContent className="bg-popover border-border">
                 {modelCapabilities.aspectRatios.map((ratio) => (
-                  <SelectItem key={ratio} value={ratio}>{ratio}</SelectItem>
+                  <SelectItem key={ratio} value={ratio}>{getAspectRatioLabel(ratio)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

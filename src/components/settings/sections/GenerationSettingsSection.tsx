@@ -24,6 +24,7 @@ const videoModels = [
 ];
 
 const aspectRatios = [
+  { id: 'auto', name: 'Auto' },
   { id: '1:1', name: 'Square (1:1)' },
   { id: '16:9', name: 'Landscape (16:9)' },
   { id: '9:16', name: 'Portrait (9:16)' },

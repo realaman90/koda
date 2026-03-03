@@ -15,7 +15,7 @@ import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useCanvasStore, createMediaNode } from '@/stores/canvas-store';
 import { useSettingsStore } from '@/stores/settings-store';
 import type { ImageGeneratorNode as ImageGeneratorNodeType, RecraftStyle, IdeogramStyle } from '@/lib/types';
-import { MODEL_CAPABILITIES, ENABLED_IMAGE_MODELS, getApproxDimensions, FLUX_IMAGE_SIZES, RECRAFT_STYLE_LABELS, IDEOGRAM_STYLE_LABELS, type FluxImageSize, type NanoBananaResolution, type ImageModelType } from '@/lib/types';
+import { MODEL_CAPABILITIES, ENABLED_IMAGE_MODELS, getApproxDimensions, FLUX_IMAGE_SIZES, RECRAFT_STYLE_LABELS, IDEOGRAM_STYLE_LABELS, getAspectRatioLabel, type FluxImageSize, type NanoBananaResolution, type ImageModelType } from '@/lib/types';
 import {
   ImageIcon,
   Play,
@@ -526,7 +526,7 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
                     </SelectTrigger>
                     <SelectContent className="bg-popover border-border">
                       {modelCapabilities.aspectRatios.map((ratio) => (
-                        <SelectItem key={ratio} value={ratio} className="text-xs">{ratio}</SelectItem>
+                        <SelectItem key={ratio} value={ratio} className="text-xs">{getAspectRatioLabel(ratio)}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -621,7 +621,7 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
                   </SelectTrigger>
                   <SelectContent className="bg-popover border-border">
                     {modelCapabilities.aspectRatios.map((ratio) => (
-                      <SelectItem key={ratio} value={ratio} className="text-xs">{ratio}</SelectItem>
+                      <SelectItem key={ratio} value={ratio} className="text-xs">{getAspectRatioLabel(ratio)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -718,7 +718,7 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
                   </SelectTrigger>
                   <SelectContent className="bg-popover border-border">
                     {modelCapabilities.aspectRatios.map((ratio) => (
-                      <SelectItem key={ratio} value={ratio} className="text-xs">{ratio}</SelectItem>
+                      <SelectItem key={ratio} value={ratio} className="text-xs">{getAspectRatioLabel(ratio)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

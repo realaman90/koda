@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server';
 import { fal } from '@fal-ai/client';
-import { FAL_MODELS, resolveAutoModel, type ImageModelType } from '@/lib/types';
+import {
+  FAL_MODELS,
+  resolveAutoModel,
+  normalizeAspectRatio,
+  extractExplicitAspectRatioFromPrompt,
+  type ImageModelType,
+} from '@/lib/types';
 import { getModelAdapter, type GenerateRequest } from '@/lib/model-adapters';
 import { getAssetStorageType, getExtensionFromUrl, type AssetStorageProvider } from '@/lib/assets';
 import { withCredits } from '@/lib/credits/with-credits';
@@ -100,6 +106,12 @@ export const POST = withCredits(
       }
 
       const modelType = resolveAutoModel(model as ImageModelType);
+      const requestedAspectRatio = normalizeAspectRatio(aspectRatio);
+      const aspectRatioFromPrompt =
+        requestedAspectRatio === 'auto'
+          ? extractExplicitAspectRatioFromPrompt(prompt)
+          : null;
+      const resolvedAspectRatio = aspectRatioFromPrompt || requestedAspectRatio;
 
       // Clamp imageCount to 1-4
       const numImages = Math.max(1, Math.min(4, imageCount));
@@ -108,7 +120,7 @@ export const POST = withCredits(
       const generateRequest: GenerateRequest = {
         prompt,
         model: modelType,
-        aspectRatio,
+        aspectRatio: resolvedAspectRatio,
         imageSize,
         resolution,
         numImages,

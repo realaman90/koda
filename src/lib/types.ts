@@ -53,7 +53,97 @@ export type FluxImageSize = 'square_hd' | 'square' | 'portrait_4_3' | 'portrait_
 export type NanoBananaResolution = '1K' | '2K' | '4K';
 
 // Aspect ratio type (union of all supported)
-export type AspectRatio = '1:1' | '16:9' | '9:16' | '4:3' | '3:4' | '3:2' | '2:3' | '21:9' | '5:4' | '4:5';
+export type AspectRatio = 'auto' | '1:1' | '16:9' | '9:16' | '4:3' | '3:4' | '3:2' | '2:3' | '21:9' | '5:4' | '4:5';
+export type FixedAspectRatio = Exclude<AspectRatio, 'auto'>;
+
+export const DEFAULT_IMAGE_ASPECT_RATIO: FixedAspectRatio = '1:1';
+const ASPECT_RATIO_MATCH_TOLERANCE = 0.06;
+const FIXED_IMAGE_ASPECT_RATIOS: readonly FixedAspectRatio[] = [
+  '1:1',
+  '16:9',
+  '9:16',
+  '4:3',
+  '3:4',
+  '3:2',
+  '2:3',
+  '21:9',
+  '5:4',
+  '4:5',
+] as const;
+const FIXED_IMAGE_ASPECT_RATIO_VALUES: ReadonlyArray<{ ratio: FixedAspectRatio; value: number }> =
+  FIXED_IMAGE_ASPECT_RATIOS.map((ratio) => {
+    const [w, h] = ratio.split(':').map(Number);
+    return { ratio, value: w / h };
+  });
+
+function findClosestAspectRatio(width: number, height: number): FixedAspectRatio | null {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return null;
+  }
+
+  const target = width / height;
+  let closest: { ratio: FixedAspectRatio; delta: number } | null = null;
+
+  for (const candidate of FIXED_IMAGE_ASPECT_RATIO_VALUES) {
+    const delta = Math.abs(candidate.value - target);
+    if (!closest || delta < closest.delta) {
+      closest = { ratio: candidate.ratio, delta };
+    }
+  }
+
+  return closest && closest.delta <= ASPECT_RATIO_MATCH_TOLERANCE ? closest.ratio : null;
+}
+
+function extractAspectRatioFromRegex(prompt: string, pattern: RegExp): FixedAspectRatio | null {
+  pattern.lastIndex = 0;
+  let match: RegExpExecArray | null = null;
+  while ((match = pattern.exec(prompt)) !== null) {
+    const width = Number(match[1]);
+    const height = Number(match[2]);
+    const ratio = findClosestAspectRatio(width, height);
+    if (ratio) {
+      return ratio;
+    }
+  }
+  return null;
+}
+
+export function getAspectRatioLabel(aspectRatio: AspectRatio): string {
+  return aspectRatio === 'auto' ? 'Auto' : aspectRatio;
+}
+
+export function normalizeAspectRatio(
+  aspectRatio: unknown,
+  fallback: AspectRatio = DEFAULT_IMAGE_ASPECT_RATIO
+): AspectRatio {
+  if (typeof aspectRatio !== 'string') {
+    return fallback;
+  }
+  const normalized = aspectRatio.trim().toLowerCase();
+  if (normalized === 'auto') {
+    return 'auto';
+  }
+
+  return (FIXED_IMAGE_ASPECT_RATIOS as readonly string[]).includes(normalized)
+    ? (normalized as FixedAspectRatio)
+    : fallback;
+}
+
+export function extractExplicitAspectRatioFromPrompt(prompt: string): FixedAspectRatio | null {
+  if (!prompt) {
+    return null;
+  }
+
+  const explicitPattern = /(?:--ar|aspect\s*ratio|aspect|ratio|ar)\s*[:=]?\s*(\d{1,4}(?:\.\d+)?)\s*[:xX/]\s*(\d{1,4}(?:\.\d+)?)/gi;
+  const standalonePattern = /\b(\d{1,4}(?:\.\d+)?)\s*[:xX/]\s*(\d{1,4}(?:\.\d+)?)\b/g;
+  const dimensionsPattern = /\b(\d{3,5})\s*[xX×]\s*(\d{3,5})\b/g;
+
+  return (
+    extractAspectRatioFromRegex(prompt, explicitPattern) ||
+    extractAspectRatioFromRegex(prompt, standalonePattern) ||
+    extractAspectRatioFromRegex(prompt, dimensionsPattern)
+  );
+}
 
 // Model input type - determines if model accepts text only, image input, or both
 export type ModelInputType = 'text-only' | 'text-and-image' | 'image-only';
@@ -256,9 +346,11 @@ export const ASPECT_TO_FLUX_SIZE: Record<string, FluxImageSize> = {
 
 // Get dimensions for display (approximation based on aspect ratio)
 export const getApproxDimensions = (aspectRatio: AspectRatio, model: string, resolution?: NanoBananaResolution) => {
+  const effectiveAspectRatio = aspectRatio === 'auto' ? DEFAULT_IMAGE_ASPECT_RATIO : aspectRatio;
+
   if (model === 'nanobanana-pro' || model === 'nanobanana-2') {
     const baseSize = resolution === '4K' ? 4096 : resolution === '2K' ? 2048 : 1024;
-    const [w, h] = aspectRatio.split(':').map(Number);
+    const [w, h] = effectiveAspectRatio.split(':').map(Number);
     const ratio = w / h;
     if (ratio >= 1) {
       return { width: baseSize, height: Math.round(baseSize / ratio) };
@@ -267,7 +359,7 @@ export const getApproxDimensions = (aspectRatio: AspectRatio, model: string, res
     }
   }
   // Flux models use preset sizes
-  const fluxSize = ASPECT_TO_FLUX_SIZE[aspectRatio] || 'square_hd';
+  const fluxSize = ASPECT_TO_FLUX_SIZE[effectiveAspectRatio] || 'square_hd';
   return { width: FLUX_IMAGE_SIZES[fluxSize].width, height: FLUX_IMAGE_SIZES[fluxSize].height };
 };
 
@@ -329,7 +421,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
     maxImages: 4,
     inputType: 'text-and-image',
     supportsReferences: true,
-    aspectRatios: ['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9', '5:4', '4:5'],
+    aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9', '5:4', '4:5'],
     resolutions: ['1K', '2K', '4K'],
     description: 'Best model for the task',
   },
@@ -338,7 +430,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
     maxImages: 4,
     inputType: 'text-only',
     supportsReferences: false,
-    aspectRatios: ['1:1', '4:3', '3:4', '16:9', '9:16'],
+    aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16'],
     imageSizes: ['square_hd', 'square', 'landscape_4_3', 'portrait_4_3', 'landscape_16_9', 'portrait_16_9'],
     description: 'Fast, 1-4 steps',
   },
@@ -347,7 +439,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
     maxImages: 4,
     inputType: 'text-and-image',
     supportsReferences: true,
-    aspectRatios: ['1:1', '4:3', '3:4', '16:9', '9:16'],
+    aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16'],
     imageSizes: ['square_hd', 'square', 'landscape_4_3', 'portrait_4_3', 'landscape_16_9', 'portrait_16_9'],
     description: 'High quality',
   },
@@ -357,7 +449,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
     inputType: 'text-and-image',
     supportsReferences: true,
     maxReferences: 14,
-    aspectRatios: ['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9', '5:4', '4:5'],
+    aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9', '5:4', '4:5'],
     resolutions: ['1K', '2K', '4K'],
     description: 'Up to 14 style refs',
   },
@@ -367,7 +459,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
     inputType: 'text-and-image',
     supportsReferences: true,
     maxReferences: 14,
-    aspectRatios: ['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9', '5:4', '4:5'],
+    aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9', '5:4', '4:5'],
     resolutions: ['1K', '2K', '4K'],
     description: '4x faster, low cost',
   },
@@ -376,7 +468,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
     maxImages: 4,
     inputType: 'text-only',
     supportsReferences: false,
-    aspectRatios: ['1:1', '4:3', '3:4', '16:9', '9:16'],
+    aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16'],
     styles: ['realistic_image', 'digital_illustration', 'vector_illustration'] as const,
     description: 'Versatile styles',
   },
@@ -385,7 +477,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
     maxImages: 4,
     inputType: 'text-only',
     supportsReferences: false,
-    aspectRatios: ['1:1', '4:3', '3:4', '16:9', '9:16'],
+    aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16'],
     styles: ['auto', 'general', 'realistic', 'design', '3d', 'anime'] as const,
     supportsMagicPrompt: true,
     description: 'Best for text & logos',
@@ -395,7 +487,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
     maxImages: 4,
     inputType: 'text-and-image',
     supportsReferences: true,
-    aspectRatios: ['1:1', '4:3', '3:4', '16:9', '9:16'],
+    aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16'],
     supportsAdvancedParams: true,
     description: 'Open model, img2img',
   },
@@ -404,7 +496,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
     maxImages: 4,
     inputType: 'text-only',
     supportsReferences: false,
-    aspectRatios: ['1:1', '4:3', '3:4', '16:9', '9:16'],
+    aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16'],
     imageSizes: ['square_hd', 'square', 'landscape_4_3', 'portrait_4_3', 'landscape_16_9', 'portrait_16_9'],
     description: 'Next-gen Flux, high quality',
   },
@@ -413,7 +505,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
     maxImages: 4,
     inputType: 'text-only',
     supportsReferences: false,
-    aspectRatios: ['1:1', '4:3', '3:4', '16:9', '9:16'],
+    aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16'],
     imageSizes: ['square_hd', 'square', 'landscape_4_3', 'portrait_4_3', 'landscape_16_9', 'portrait_16_9'],
     description: 'Max quality Flux',
   },
@@ -422,7 +514,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
     maxImages: 4,
     inputType: 'text-and-image',
     supportsReferences: true,
-    aspectRatios: ['1:1', '4:3', '3:4', '16:9', '9:16'],
+    aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16'],
     description: 'Text + image context editing',
   },
   'seedream-5': {
@@ -430,7 +522,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
     maxImages: 4,
     inputType: 'text-only',
     supportsReferences: false,
-    aspectRatios: ['1:1', '4:3', '3:4', '16:9', '9:16'],
+    aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16'],
     description: 'ByteDance image gen',
   },
   'recraft-v4': {
@@ -438,7 +530,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
     maxImages: 4,
     inputType: 'text-only',
     supportsReferences: false,
-    aspectRatios: ['1:1', '4:3', '3:4', '16:9', '9:16'],
+    aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16'],
     styles: ['realistic_image', 'digital_illustration', 'vector_illustration'] as const,
     description: 'Latest Recraft, versatile styles',
   },

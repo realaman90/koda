@@ -10,7 +10,7 @@ import type {
   VideoDuration,
   VideoResolution,
 } from './types';
-import { ASPECT_TO_FLUX_SIZE } from './types';
+import { ASPECT_TO_FLUX_SIZE, DEFAULT_IMAGE_ASPECT_RATIO } from './types';
 
 // Request data passed to the adapter
 export interface GenerateRequest {
@@ -38,10 +38,15 @@ export interface ModelAdapter {
   getModelId?(request: GenerateRequest): string;
 }
 
+function getConcreteAspectRatio(aspectRatio: AspectRatio): Exclude<AspectRatio, 'auto'> {
+  return aspectRatio === 'auto' ? DEFAULT_IMAGE_ASPECT_RATIO : aspectRatio;
+}
+
 // Flux models (Schnell and Pro)
 class FluxAdapter implements ModelAdapter {
   buildInput(request: GenerateRequest): Record<string, unknown> {
-    const imageSize = request.imageSize || ASPECT_TO_FLUX_SIZE[request.aspectRatio] || 'square_hd';
+    const concreteAspectRatio = getConcreteAspectRatio(request.aspectRatio);
+    const imageSize = request.imageSize || ASPECT_TO_FLUX_SIZE[concreteAspectRatio] || 'square_hd';
 
     return {
       prompt: request.prompt,
@@ -88,11 +93,12 @@ class NanoBananaAdapter implements ModelAdapter {
   buildInput(request: GenerateRequest): Record<string, unknown> {
     const imageUrls = this.getImageUrls(request);
     const isEditMode = imageUrls.length > 0;
+    const isAutoAspectRatio = request.aspectRatio === 'auto';
 
     return {
       prompt: request.prompt,
-      // For edit mode, use 'auto' aspect ratio; for text-to-image, use specified
-      aspect_ratio: isEditMode ? 'auto' : request.aspectRatio,
+      // Preserve explicit auto selection; edit mode always uses auto framing.
+      aspect_ratio: isEditMode || isAutoAspectRatio ? 'auto' : request.aspectRatio,
       resolution: request.resolution || '1K',
       num_images: request.numImages || 1,
       output_format: 'png',
@@ -135,10 +141,11 @@ class NanoBanana2Adapter implements ModelAdapter {
   buildInput(request: GenerateRequest): Record<string, unknown> {
     const imageUrls = this.getImageUrls(request);
     const isEditMode = imageUrls.length > 0;
+    const isAutoAspectRatio = request.aspectRatio === 'auto';
 
     return {
       prompt: request.prompt,
-      aspect_ratio: isEditMode ? 'auto' : request.aspectRatio,
+      aspect_ratio: isEditMode || isAutoAspectRatio ? 'auto' : request.aspectRatio,
       resolution: request.resolution || '1K',
       num_images: request.numImages || 1,
       output_format: 'png',
@@ -155,6 +162,7 @@ class NanoBanana2Adapter implements ModelAdapter {
 class RecraftAdapter implements ModelAdapter {
   // Map aspect ratio to Recraft size format
   private getSize(aspectRatio: AspectRatio): { width: number; height: number } {
+    const concreteAspectRatio = getConcreteAspectRatio(aspectRatio);
     const sizes: Record<string, { width: number; height: number }> = {
       '1:1': { width: 1024, height: 1024 },
       '4:3': { width: 1365, height: 1024 },
@@ -162,7 +170,7 @@ class RecraftAdapter implements ModelAdapter {
       '16:9': { width: 1820, height: 1024 },
       '9:16': { width: 1024, height: 1820 },
     };
-    return sizes[aspectRatio] || sizes['1:1'];
+    return sizes[concreteAspectRatio] || sizes['1:1'];
   }
 
   buildInput(request: GenerateRequest): Record<string, unknown> {
@@ -184,9 +192,10 @@ class RecraftAdapter implements ModelAdapter {
 // Ideogram V3
 class IdeogramAdapter implements ModelAdapter {
   buildInput(request: GenerateRequest): Record<string, unknown> {
+    const concreteAspectRatio = getConcreteAspectRatio(request.aspectRatio);
     return {
       prompt: request.prompt,
-      aspect_ratio: request.aspectRatio.replace(':', '_'), // Ideogram uses "1_1" format
+      aspect_ratio: concreteAspectRatio.replace(':', '_'), // Ideogram uses "1_1" format
       style_type: (request.style as IdeogramStyle) || 'auto',
       magic_prompt_option: request.magicPrompt ? 'ON' : 'OFF',
       num_images: request.numImages || 1,
@@ -201,6 +210,7 @@ class IdeogramAdapter implements ModelAdapter {
 // Stable Diffusion 3.5 Large
 class SD35Adapter implements ModelAdapter {
   buildInput(request: GenerateRequest): Record<string, unknown> {
+    const concreteAspectRatio = getConcreteAspectRatio(request.aspectRatio);
     const input: Record<string, unknown> = {
       prompt: request.prompt,
       num_images: request.numImages || 1,
@@ -221,7 +231,7 @@ class SD35Adapter implements ModelAdapter {
         '16:9': { width: 1024, height: 576 },
         '9:16': { width: 576, height: 1024 },
       };
-      const size = sizes[request.aspectRatio] || sizes['1:1'];
+      const size = sizes[concreteAspectRatio] || sizes['1:1'];
       input.image_size = size;
     }
 
@@ -236,9 +246,10 @@ class SD35Adapter implements ModelAdapter {
 // Seedream 5.0 (ByteDance)
 class Seedream5Adapter implements ModelAdapter {
   buildInput(request: GenerateRequest): Record<string, unknown> {
+    const concreteAspectRatio = getConcreteAspectRatio(request.aspectRatio);
     return {
       prompt: request.prompt,
-      image_size: request.imageSize || ASPECT_TO_FLUX_SIZE[request.aspectRatio] || 'square_hd',
+      image_size: request.imageSize || ASPECT_TO_FLUX_SIZE[concreteAspectRatio] || 'square_hd',
       num_images: request.numImages || 1,
     };
   }
