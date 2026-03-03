@@ -49,7 +49,11 @@ export function BillingSection() {
   }
 
   const { balance, planKey, creditsPerMonth, lifetimeUsed, periodStart } = credits;
-  const usagePercent = creditsPerMonth > 0 ? Math.min((balance / creditsPerMonth) * 100, 100) : 0;
+  const hasTopupBalance = balance > creditsPerMonth;
+  const leftValue = hasTopupBalance ? lifetimeUsed : balance;
+  const rightValue = hasTopupBalance ? balance : creditsPerMonth;
+  const usagePercent = rightValue > 0 ? Math.min((leftValue / rightValue) * 100, 100) : 0;
+  const usageLabel = hasTopupBalance ? 'Credits used / available' : 'Credits remaining';
 
   return (
     <div className="space-y-8">
@@ -70,8 +74,8 @@ export function BillingSection() {
         <div className="space-y-3">
           <div>
             <div className="flex items-center justify-between text-sm mb-1.5">
-              <span className="text-muted-foreground">Credits remaining</span>
-              <span className="font-medium text-foreground">{balance} / {creditsPerMonth}</span>
+              <span className="text-muted-foreground">{usageLabel}</span>
+              <span className="font-medium text-foreground">{leftValue} / {rightValue}</span>
             </div>
             <div className="h-2 w-full rounded-full bg-muted">
               <div

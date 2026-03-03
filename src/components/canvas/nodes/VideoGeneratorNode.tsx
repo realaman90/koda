@@ -17,6 +17,7 @@ import { useCanvasStore } from '@/stores/canvas-store';
 import type { VideoGeneratorNode as VideoGeneratorNodeType } from '@/lib/types';
 import { VIDEO_MODEL_CAPABILITIES, ENABLED_VIDEO_MODELS, type VideoModelType, type VideoAspectRatio, type VideoDuration } from '@/lib/types';
 import { useSettingsStore } from '@/stores/settings-store';
+import { getApiErrorMessage, normalizeApiErrorMessage } from '@/lib/client/api-error';
 import {
   Video,
   Play,
@@ -415,8 +416,8 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Video generation failed');
+        const message = await getApiErrorMessage(response, 'Video generation failed');
+        throw new Error(message);
       }
 
       const result = await response.json();
@@ -442,7 +443,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
 
       toast.success('Video generated successfully');
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Video generation failed';
+      const errorMessage = normalizeApiErrorMessage(error, 'Video generation failed');
       updateNodeData(id, {
         error: errorMessage,
         isGenerating: false,

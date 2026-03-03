@@ -163,7 +163,7 @@ export const createImageGeneratorNode = (position: { x: number; y: number }, nam
   data: {
     prompt: '',
     model: 'auto',
-    aspectRatio: '1:1',
+    aspectRatio: 'auto',
     isGenerating: false,
     name,
   } as ImageGeneratorNodeData,

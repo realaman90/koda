@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useCanvasStore } from '@/stores/canvas-store';
+import { getApiErrorMessage, normalizeApiErrorMessage } from '@/lib/client/api-error';
 import type { SpeechNode as SpeechNodeType, ElevenLabsVoice } from '@/lib/types';
 import { ELEVENLABS_VOICE_LABELS } from '@/lib/types';
 import {
@@ -335,8 +336,8 @@ function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) 
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Speech generation failed');
+        const message = await getApiErrorMessage(response, 'Speech generation failed');
+        throw new Error(message);
       }
 
       const result = await response.json();
@@ -348,7 +349,7 @@ function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) 
 
       toast.success('Speech generated successfully');
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Speech generation failed';
+      const errorMessage = normalizeApiErrorMessage(error, 'Speech generation failed');
       updateNodeData(id, {
         error: errorMessage,
         isGenerating: false,

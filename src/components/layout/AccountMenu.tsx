@@ -41,8 +41,11 @@ export function AccountMenu({ user, displayName, initials, isLoading = false }: 
     ? PLAN_BADGE_STYLES[credits.planKey] ?? PLAN_BADGE_STYLES.free_user
     : null;
 
-  const usagePercent = credits && credits.creditsPerMonth > 0
-    ? Math.min((credits.balance / credits.creditsPerMonth) * 100, 100)
+  const hasTopupBalance = !!(credits && credits.balance > credits.creditsPerMonth);
+  const creditsLeftValue = hasTopupBalance ? credits!.lifetimeUsed : (credits?.balance ?? 0);
+  const creditsRightValue = hasTopupBalance ? credits!.balance : (credits?.creditsPerMonth ?? 0);
+  const usagePercent = credits && creditsRightValue > 0
+    ? Math.min((creditsLeftValue / creditsRightValue) * 100, 100)
     : 0;
 
   const showUpgrade = credits && credits.planKey !== 'pro_plus_user';
@@ -114,7 +117,7 @@ export function AccountMenu({ user, displayName, initials, isLoading = false }: 
                   />
                 </div>
                 <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
-                  {credits.balance} / {credits.creditsPerMonth}
+                  {creditsLeftValue} / {creditsRightValue}
                 </span>
               </div>
             </div>

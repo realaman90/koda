@@ -12,6 +12,7 @@ import {
 import { useCanvasStore } from '@/stores/canvas-store';
 import type { ImageGeneratorNodeData, ImageReference, FluxImageSize, NanoBananaResolution, RecraftStyle, IdeogramStyle, CharacterPreset, StylePreset, CameraAnglePreset, CameraLensPreset, PresetOption, CharacterSelection } from '@/lib/types';
 import { MODEL_CAPABILITIES, ENABLED_IMAGE_MODELS, FLUX_IMAGE_SIZES, NANO_BANANA_RESOLUTIONS, RECRAFT_STYLE_LABELS, IDEOGRAM_STYLE_LABELS, getApproxDimensions, getAspectRatioLabel, type ImageModelType } from '@/lib/types';
+import { getApiErrorMessage, normalizeApiErrorMessage } from '@/lib/client/api-error';
 import { useSettingsStore } from '@/stores/settings-store';
 import { CHARACTER_PRESETS, STYLE_PRESETS, CAMERA_ANGLE_PRESETS, CAMERA_LENS_PRESETS } from '@/lib/presets';
 import { PresetPopover } from './PresetPopover';
@@ -366,7 +367,8 @@ export function SettingsPanel() {
       });
 
       if (!response.ok) {
-        throw new Error('Generation failed');
+        const message = await getApiErrorMessage(response, 'Generation failed');
+        throw new Error(message);
       }
 
       const result = await response.json();
@@ -379,7 +381,7 @@ export function SettingsPanel() {
       });
     } catch (error) {
       updateNodeData(settingsPanelNodeId, {
-        error: error instanceof Error ? error.message : 'Generation failed',
+        error: normalizeApiErrorMessage(error, 'Generation failed'),
         isGenerating: false,
       });
     }
