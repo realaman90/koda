@@ -136,6 +136,51 @@ function collectImages(nodes: AppNode[], source: OrderedImage['source']): Ordere
   return images;
 }
 
+function areImageListsEqual(a: OrderedImage[], b: OrderedImage[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let index = 0; index < a.length; index += 1) {
+    const left = a[index];
+    const right = b[index];
+    if (
+      left.id !== right.id
+      || left.url !== right.url
+      || left.label !== right.label
+      || left.source !== right.source
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function reconcileConnectedImages(current: OrderedImage[], connected: OrderedImage[]): OrderedImage[] {
+  const connectedById = new Map(connected.map((image) => [image.id, image]));
+  const consumed = new Set<string>();
+  const merged: OrderedImage[] = [];
+
+  for (const image of current) {
+    if (image.source !== 'connected') {
+      merged.push(image);
+      continue;
+    }
+
+    const nextConnected = connectedById.get(image.id);
+    if (nextConnected) {
+      merged.push(nextConnected);
+      consumed.add(image.id);
+    }
+    // Drop stale connected entries that are no longer connected.
+  }
+
+  for (const image of connected) {
+    if (!consumed.has(image.id)) {
+      merged.push(image);
+    }
+  }
+
+  return merged;
+}
+
 function ImageToPdfNodeComponent({ id, data, selected }: NodeProps<Node<PluginNodeData, 'pluginNode'>>) {
   const nodes = useCanvasStore((state) => state.nodes);
   const edges = useCanvasStore((state) => state.edges);
@@ -176,6 +221,14 @@ function ImageToPdfNodeComponent({ id, data, selected }: NodeProps<Node<PluginNo
       },
     });
   }, [id, updateNodeData]);
+
+  const connectedImages = useMemo(() => {
+    const incoming = edges.filter((edge) => edge.target === id);
+    const connectedNodes = incoming
+      .map((edge) => nodes.find((node) => node.id === edge.source))
+      .filter((node): node is AppNode => Boolean(node));
+    return collectImages(connectedNodes, 'connected');
+  }, [edges, id, nodes]);
 
   const loadConnectedImages = useCallback(() => {
     const incoming = edges.filter((edge) => edge.target === id);
@@ -220,17 +273,11 @@ function ImageToPdfNodeComponent({ id, data, selected }: NodeProps<Node<PluginNo
   }, [id, nodes, updateState]);
 
   useEffect(() => {
-    if (state.images.length > 0) return;
-    const incoming = edges.filter((edge) => edge.target === id);
-    if (incoming.length === 0) return;
-    const connectedNodes = incoming
-      .map((edge) => nodes.find((node) => node.id === edge.source))
-      .filter((node): node is AppNode => Boolean(node));
-    const extracted = collectImages(connectedNodes, 'connected');
-    if (extracted.length > 0) {
-      updateState({ images: extracted });
+    const reconciled = reconcileConnectedImages(state.images, connectedImages);
+    if (!areImageListsEqual(reconciled, state.images)) {
+      updateState({ images: reconciled });
     }
-  }, [edges, id, nodes, state.images.length, updateState]);
+  }, [connectedImages, state.images, updateState]);
 
   const moveImage = useCallback((index: number, direction: -1 | 1) => {
     const target = index + direction;
