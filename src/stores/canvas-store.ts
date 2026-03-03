@@ -155,6 +155,24 @@ const cloneSnapshot = (nodes: AppNode[], edges: AppEdge[]): HistorySnapshot => (
   edges: JSON.parse(JSON.stringify(edges)),
 });
 
+/**
+ * Clear transient runtime state when duplicating nodes.
+ * Prevents cloned nodes from inheriting in-flight generation UI state.
+ */
+export const resetTransientNodeStateForDuplicate = (node: AppNode): AppNode => {
+  if (node.type !== 'imageGenerator') return node;
+
+  const data = node.data as ImageGeneratorNodeData;
+  return {
+    ...node,
+    data: {
+      ...data,
+      isGenerating: false,
+      error: undefined,
+    },
+  };
+};
+
 // Default node creators
 export const createImageGeneratorNode = (position: { x: number; y: number }, name?: string): AppNode => ({
   id: generateId(),
@@ -628,7 +646,7 @@ export const useCanvasStore = create<CanvasState>()(
         const newNodes = clonedNodes.map((node) => {
           const newId = generateId();
           idMap.set(node.id, newId);
-          return {
+          return resetTransientNodeStateForDuplicate({
             ...node,
             id: newId,
             position: {
@@ -636,7 +654,7 @@ export const useCanvasStore = create<CanvasState>()(
               y: node.position.y + offsetY,
             },
             selected: true,
-          };
+          });
         });
         const remappedNodes = newNodes.map((node) => {
           if (node.type !== 'group') return node;
