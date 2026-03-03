@@ -379,9 +379,9 @@ export function Canvas() {
     [nodes]
   );
 
-  // Keep Select mode focused on selecting nodes; pan via Pan tool or Space key.
+  // Allow panning on empty canvas while Select tool is active.
   // Hold Shift + drag for marquee selection in scissors mode.
-  const panEnabled = isReadOnly || activeTool === 'pan';
+  const panEnabled = isReadOnly || activeTool === 'pan' || activeTool === 'select';
   const selectionOnDragEnabled = !isReadOnly && activeTool === 'scissors';
 
   return (
