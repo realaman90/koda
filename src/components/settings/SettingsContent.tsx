@@ -204,10 +204,10 @@ export function SettingsContent() {
   );
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-8">
+    <div className="mx-auto flex h-full max-w-6xl min-h-0 flex-col overflow-hidden px-6 py-8">
       <h1 className="mb-8 text-2xl font-bold text-foreground">Settings</h1>
 
-      <div className="flex gap-8">
+      <div className="flex min-h-0 flex-1 gap-8">
         <nav className="w-64 flex-shrink-0">
           <ul className="space-y-1">
             {visibleTabs.map((tab) => {
@@ -235,7 +235,7 @@ export function SettingsContent() {
           </ul>
         </nav>
 
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 overflow-y-auto pr-1">
           <div className="rounded-xl border border-border bg-card/50 p-6">
             {activeTabInfo && (
               <div className="mb-6">

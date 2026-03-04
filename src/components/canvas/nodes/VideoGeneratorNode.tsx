@@ -15,7 +15,16 @@ import {
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useCanvasStore } from '@/stores/canvas-store';
 import type { VideoGeneratorNode as VideoGeneratorNodeType } from '@/lib/types';
-import { VIDEO_MODEL_CAPABILITIES, ENABLED_VIDEO_MODELS, type VideoModelType, type VideoAspectRatio, type VideoDuration } from '@/lib/types';
+import {
+  DEFAULT_HEYGEN_AVATAR4_VOICE,
+  HEYGEN_AVATAR4_VOICES,
+  VIDEO_MODEL_CAPABILITIES,
+  ENABLED_VIDEO_MODELS,
+  type VideoModelType,
+  type VideoAspectRatio,
+  type VideoDuration,
+  type VideoResolution,
+} from '@/lib/types';
 import { useSettingsStore } from '@/stores/settings-store';
 import { getApiErrorMessage, normalizeApiErrorMessage } from '@/lib/client/api-error';
 import {
@@ -85,34 +94,47 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
 
   // Get model capabilities
   const modelCapabilities = VIDEO_MODEL_CAPABILITIES[data.model];
-  const { inputMode, supportsVideoRef } = modelCapabilities;
+  const { inputMode, supportsVideoRef, supportsAudioRef } = modelCapabilities;
+  const imageRefHandleCount = Math.min(8, Math.max(0, modelCapabilities.maxReferences ?? (supportsVideoRef ? 3 : 0)));
+  const hasAdvancedHandles = imageRefHandleCount > 0 || !!supportsVideoRef || !!supportsAudioRef;
 
   // Build mention items from connected handles (for Tiptap @ autocomplete)
   const mentionItems = useMemo((): MentionItem[] => {
-    if (!supportsVideoRef) return [];
+    if (!hasAdvancedHandles) return [];
     const connectedHandles = edges
       .filter(e => e.target === id)
       .map(e => e.targetHandle)
       .filter(Boolean);
     const items: MentionItem[] = [];
-    for (let i = 1; i <= 3; i++) {
+    for (let i = 1; i <= imageRefHandleCount; i++) {
       if (connectedHandles.includes(`ref${i}`)) {
         items.push({ id: `image${i}`, label: `image${i}`, type: 'image' });
       }
     }
-    if (connectedHandles.includes('video')) {
+    if (supportsVideoRef && connectedHandles.includes('video')) {
       items.push({ id: 'video1', label: 'video1', type: 'video' });
     }
-    if (connectedHandles.includes('audio')) {
+    if (supportsAudioRef && connectedHandles.includes('audio')) {
       items.push({ id: 'audio1', label: 'audio1', type: 'audio' });
     }
     return items;
-  }, [supportsVideoRef, edges, id]);
+  }, [hasAdvancedHandles, imageRefHandleCount, supportsVideoRef, supportsAudioRef, edges, id]);
+
+  const isHeygenAvatarModel = data.model === 'heygen-avatar4-i2v';
+  const selectedHeygenVoice = data.heygenVoice || DEFAULT_HEYGEN_AVATAR4_VOICE;
+  const heygenVoiceOptions = useMemo(
+    () =>
+      HEYGEN_AVATAR4_VOICES.map((voice) => ({
+        value: voice,
+        label: voice,
+      })),
+    []
+  );
 
   // Update node internals when input mode changes (handles change)
   useEffect(() => {
     updateNodeInternals(id);
-  }, [id, inputMode, supportsVideoRef, updateNodeInternals]);
+  }, [id, inputMode, supportsVideoRef, supportsAudioRef, imageRefHandleCount, updateNodeInternals]);
 
   useEffect(() => {
     if (isEditingName && nameInputRef.current) {
@@ -153,6 +175,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
           pollIntervalRef.current = null;
           updateNodeData(id, {
             outputUrl: result.videoUrl,
+            outputVideoId: undefined,
             isGenerating: false,
             progress: 100,
             xskillTaskId: undefined,
@@ -299,9 +322,20 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
         updates.resolution = '720p';
       }
 
+      if (newModel === 'heygen-avatar4-i2v' && !data.heygenVoice) {
+        updates.heygenVoice = DEFAULT_HEYGEN_AVATAR4_VOICE;
+      }
+
       updateNodeData(id, updates);
     },
-    [id, data.duration, data.aspectRatio, data.resolution, updateNodeData]
+    [id, data.duration, data.aspectRatio, data.resolution, data.heygenVoice, updateNodeData]
+  );
+
+  const handleHeygenVoiceChange = useCallback(
+    (value: string) => {
+      updateNodeData(id, { heygenVoice: value });
+    },
+    [id, updateNodeData]
   );
 
   const handleAspectRatioChange = useCallback(
@@ -320,7 +354,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
 
   const handleResolutionChange = useCallback(
     (value: string) => {
-      updateNodeData(id, { resolution: value as '540p' | '720p' | '1080p' });
+      updateNodeData(id, { resolution: value as VideoResolution });
     },
     [id, updateNodeData]
   );
@@ -339,11 +373,14 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
   const handleGenerate = useCallback(async () => {
     const connectedInputs = getConnectedInputs(id);
     const modelCaps = VIDEO_MODEL_CAPABILITIES[data.model];
-    const hasAnyMediaInput = !!(
+    const hasImageInput = !!(
       connectedInputs.referenceUrl ||
       connectedInputs.firstFrameUrl ||
       connectedInputs.lastFrameUrl ||
-      connectedInputs.referenceUrls?.length ||
+      connectedInputs.referenceUrls?.length
+    );
+    const hasAnyMediaInput = !!(
+      hasImageInput ||
       connectedInputs.videoUrl ||
       connectedInputs.audioUrl
     );
@@ -352,6 +389,8 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
     if (connectedInputs.textContent) {
       finalPrompt = connectedInputs.textContent + (data.prompt ? `\n${data.prompt}` : '');
     }
+
+    const hasPrompt = !!finalPrompt.trim();
 
     // Validate based on input mode
     if (modelCaps.inputMode === 'first-last-frame') {
@@ -370,18 +409,43 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
         return;
       }
     } else if (modelCaps.inputMode === 'single-image' && modelCaps.inputType === 'image-only') {
-      if (!connectedInputs.referenceUrl) {
+      if (!connectedInputs.referenceUrl && !connectedInputs.firstFrameUrl && !connectedInputs.referenceUrls?.length) {
         toast.error('This model requires a reference image');
         return;
       }
     }
 
-    if (!finalPrompt && !hasAnyMediaInput) {
+    if (modelCaps.requiresPrompt && !hasPrompt) {
+      toast.error('Please enter a prompt');
+      return;
+    }
+
+    if (modelCaps.requiresImageRef && !hasImageInput) {
+      toast.error('Connect at least one image reference');
+      return;
+    }
+
+    if (modelCaps.requiresVideoRef && !connectedInputs.videoUrl) {
+      toast.error('Connect a video input');
+      return;
+    }
+
+    if (modelCaps.requiresAudioRef && !connectedInputs.audioUrl) {
+      toast.error('Connect an audio input');
+      return;
+    }
+
+    if (modelCaps.requiresVideoId && !connectedInputs.videoId) {
+      toast.error('Connect a Sora-generated video to reuse its video ID');
+      return;
+    }
+
+    if (!hasPrompt && !hasAnyMediaInput) {
       toast.error('Please enter a prompt or connect media references');
       return;
     }
 
-    updateNodeData(id, { isGenerating: true, error: undefined, progress: 0 });
+    updateNodeData(id, { isGenerating: true, error: undefined, progress: 0, outputVideoId: undefined });
 
     // Debug: Log what we're sending
     console.log('[VideoGenerator] Sending request:', {
@@ -392,7 +456,9 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
       hasLastFrameUrl: !!connectedInputs.lastFrameUrl,
       referenceUrlsCount: connectedInputs.referenceUrls?.length || 0,
       hasVideoUrl: !!connectedInputs.videoUrl,
+      hasVideoId: !!connectedInputs.videoId,
       hasAudioUrl: !!connectedInputs.audioUrl,
+      hasHeygenVoice: isHeygenAvatarModel && !!selectedHeygenVoice,
     });
 
     try {
@@ -410,8 +476,10 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
           lastFrameUrl: connectedInputs.lastFrameUrl,
           referenceUrls: connectedInputs.referenceUrls,
           videoUrl: connectedInputs.videoUrl,
+          videoId: connectedInputs.videoId,
           audioUrl: connectedInputs.audioUrl,
           generateAudio: data.generateAudio,
+          heygenVoice: isHeygenAvatarModel ? selectedHeygenVoice : undefined,
         }),
       });
 
@@ -429,6 +497,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
           xskillTaskModel: result.model,
           xskillStatus: 'pending',
           xskillStartedAt: Date.now(),
+          outputVideoId: undefined,
         });
         pollXskillTask(result.taskId, result.model);
         return;
@@ -436,6 +505,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
 
       updateNodeData(id, {
         outputUrl: result.videoUrl,
+        outputVideoId: result.videoId,
         thumbnailUrl: result.thumbnailUrl,
         isGenerating: false,
         progress: 100,
@@ -451,7 +521,20 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
       });
       toast.error(`Generation failed: ${errorMessage}`);
     }
-  }, [id, data.prompt, data.model, data.aspectRatio, data.duration, data.resolution, data.generateAudio, updateNodeData, getConnectedInputs, pollXskillTask]);
+  }, [
+    id,
+    data.prompt,
+    data.model,
+    data.aspectRatio,
+    data.duration,
+    data.resolution,
+    data.generateAudio,
+    isHeygenAvatarModel,
+    selectedHeygenVoice,
+    updateNodeData,
+    getConnectedInputs,
+    pollXskillTask,
+  ]);
 
   const handleDelete = useCallback(() => {
     deleteNode(id);
@@ -478,11 +561,14 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
   }, [data.outputUrl]);
 
   const connectedInputs = getConnectedInputs(id);
-  const hasAnyMediaInput = !!(
+  const hasImageInput = !!(
     connectedInputs.referenceUrl ||
     connectedInputs.firstFrameUrl ||
     connectedInputs.lastFrameUrl ||
-    connectedInputs.referenceUrls?.length ||
+    connectedInputs.referenceUrls?.length
+  );
+  const hasAnyMediaInput = !!(
+    hasImageInput ||
     connectedInputs.videoUrl ||
     connectedInputs.audioUrl
   );
@@ -490,22 +576,75 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
   // Determine if we have valid inputs based on mode
   const hasValidInput = (() => {
     const hasPrompt = !!(data.prompt || connectedInputs.textContent);
+    const promptRequired = !!modelCapabilities.requiresPrompt;
 
     switch (inputMode) {
       case 'text':
-        return hasPrompt;
+        return promptRequired ? hasPrompt : (hasPrompt || hasAnyMediaInput);
       case 'single-image':
-        return hasPrompt || hasAnyMediaInput;
+        if (promptRequired && !hasPrompt) return false;
+        if (!hasPrompt && !hasAnyMediaInput) return false;
+        break;
       case 'first-last-frame':
         // First frame required, last frame depends on lastFrameOptional
         if (!connectedInputs.firstFrameUrl) return false;
-        return modelCapabilities.lastFrameOptional || !!connectedInputs.lastFrameUrl;
+        if (!modelCapabilities.lastFrameOptional && !connectedInputs.lastFrameUrl) return false;
+        break;
       case 'multi-reference':
-        return hasPrompt && (!!connectedInputs.referenceUrls?.length || !!connectedInputs.referenceUrl);
+        if (!connectedInputs.referenceUrls?.length && !connectedInputs.referenceUrl) return false;
+        if (promptRequired && !hasPrompt) return false;
+        break;
       default:
-        return hasPrompt;
+        if (promptRequired && !hasPrompt) return false;
+        break;
     }
+
+    if (promptRequired && !hasPrompt) return false;
+    if (modelCapabilities.requiresImageRef && !hasImageInput) return false;
+    if (modelCapabilities.requiresVideoRef && !connectedInputs.videoUrl) return false;
+    if (modelCapabilities.requiresAudioRef && !connectedInputs.audioUrl) return false;
+    if (modelCapabilities.requiresVideoId && !connectedInputs.videoId) return false;
+
+    return hasPrompt || hasAnyMediaInput;
   })();
+
+  const advancedHandleSpecs = useMemo(() => {
+    const specs: Array<{
+      id: string;
+      label: string;
+      icon: 'image' | 'video' | 'audio';
+      badge: string;
+    }> = [];
+
+    for (let i = 1; i <= imageRefHandleCount; i++) {
+      specs.push({
+        id: `ref${i}`,
+        label: `@image${i}`,
+        icon: 'image',
+        badge: String(i),
+      });
+    }
+
+    if (supportsVideoRef) {
+      specs.push({
+        id: 'video',
+        label: '@video1',
+        icon: 'video',
+        badge: '1',
+      });
+    }
+
+    if (supportsAudioRef) {
+      specs.push({
+        id: 'audio',
+        label: '@audio1',
+        icon: 'audio',
+        badge: '1',
+      });
+    }
+
+    return specs;
+  }, [imageRefHandleCount, supportsVideoRef, supportsAudioRef]);
 
   return (
     <div
@@ -670,6 +809,16 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
                     searchPlaceholder="Search models..."
                     triggerClassName="max-w-[100px] bg-white/70 hover:bg-white/95 border border-border/60 text-foreground dark:bg-white/10 dark:hover:bg-white/20 dark:border-0 dark:text-white"
                   />
+                  {isHeygenAvatarModel && (
+                    <SearchableSelect
+                      value={selectedHeygenVoice}
+                      onValueChange={handleHeygenVoiceChange}
+                      options={heygenVoiceOptions}
+                      placeholder="Voice"
+                      searchPlaceholder="Search voices..."
+                      triggerClassName="max-w-[160px] bg-white/70 hover:bg-white/95 border border-border/60 text-foreground dark:bg-white/10 dark:hover:bg-white/20 dark:border-0 dark:text-white"
+                    />
+                  )}
                   <Select value={data.aspectRatio} onValueChange={handleAspectRatioChange}>
                     <SelectTrigger className="h-7 w-auto bg-white/70 hover:bg-white/95 border border-border/60 text-xs text-foreground gap-1 px-2 rounded-md dark:bg-white/10 dark:hover:bg-white/20 dark:border-0 dark:text-white">
                       <span className="flex items-center gap-1">
@@ -748,7 +897,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
               {isPromptExpanded && (
                 <div className="px-3 pb-3 nodrag nopan" onPointerDown={(e) => e.stopPropagation()}>
                   <div className="rounded-xl border border-border/50 bg-muted/30 p-2 min-h-[100px] relative">
-                    {supportsVideoRef ? (
+                    {hasAdvancedHandles ? (
                       <MentionEditor
                         content={data.prompt}
                         onChange={handlePromptChange}
@@ -816,6 +965,16 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
                   searchPlaceholder="Search models..."
                   triggerClassName="max-w-[110px]"
                 />
+                {isHeygenAvatarModel && (
+                  <SearchableSelect
+                    value={selectedHeygenVoice}
+                    onValueChange={handleHeygenVoiceChange}
+                    options={heygenVoiceOptions}
+                    placeholder="Voice"
+                    searchPlaceholder="Search voices..."
+                    triggerClassName="max-w-[150px]"
+                  />
+                )}
                 <Select value={data.aspectRatio} onValueChange={handleAspectRatioChange}>
                   <SelectTrigger className="h-7 w-auto bg-muted/80 border-0 text-xs text-foreground gap-1 px-2 rounded-md hover:bg-muted">
                     <span className="flex items-center gap-1">
@@ -882,7 +1041,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
             /* Prompt Input - Freepik style with inner content area */
             <div className="p-3">
               <div className="node-content-area p-3 min-h-[160px] relative">
-                {supportsVideoRef ? (
+                {hasAdvancedHandles ? (
                   <MentionEditor
                     content={data.prompt}
                     onChange={handlePromptChange}
@@ -957,6 +1116,16 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
             searchPlaceholder="Search models..."
             triggerClassName="max-w-[110px]"
           />
+          {isHeygenAvatarModel && (
+            <SearchableSelect
+              value={selectedHeygenVoice}
+              onValueChange={handleHeygenVoiceChange}
+              options={heygenVoiceOptions}
+              placeholder="Voice"
+              searchPlaceholder="Search voices..."
+              triggerClassName="max-w-[150px]"
+            />
+          )}
 
           {/* Aspect Ratio */}
           <Select value={data.aspectRatio} onValueChange={handleAspectRatioChange}>
@@ -1057,7 +1226,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
       {inputMode !== 'first-last-frame' && (
         <div
           className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
-          style={{ top: inputMode === 'text' ? '50%' : supportsVideoRef ? '18%' : '30%', transform: 'translateY(-50%)' }}
+          style={{ top: inputMode === 'text' ? '50%' : hasAdvancedHandles ? '18%' : '30%', transform: 'translateY(-50%)' }}
         >
           <div className="relative">
             <Handle
@@ -1075,7 +1244,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
       )}
 
       {/* Single Image Reference - for single-image mode without multi-ref */}
-      {inputMode === 'single-image' && !supportsVideoRef && (
+      {inputMode === 'single-image' && !hasAdvancedHandles && (
         <div
           className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
           style={{ top: '60%', transform: 'translateY(-50%)' }}
@@ -1095,68 +1264,45 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
         </div>
       )}
 
-      {/* Numbered image + video handles for omni-reference models (e.g. Seedance 2.0) */}
-      {supportsVideoRef && (
+      {/* Advanced reference handles (image/video/audio) */}
+      {advancedHandleSpecs.length > 0 && (
         <>
-          {[1, 2, 3].map((num) => (
+          {advancedHandleSpecs.map((spec, idx) => {
+            const start = 34;
+            const end = 95;
+            const top = advancedHandleSpecs.length === 1
+              ? 64
+              : start + ((end - start) * idx) / (advancedHandleSpecs.length - 1);
+            return (
             <div
-              key={`img${num}`}
+              key={spec.id}
               className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
-              style={{ top: `${34 + (num - 1) * 16}%`, transform: 'translateY(-50%)' }}
+              style={{ top: `${top}%`, transform: 'translateY(-50%)' }}
             >
               <div className="relative">
                 <Handle
                   type="target"
                   position={Position.Left}
-                  id={`ref${num}`}
+                  id={spec.id}
                   className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
                 />
-                <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
-                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-zinc-900 text-[9px] text-zinc-400 font-bold rounded-full flex items-center justify-center border border-zinc-500/60">{num}</span>
+                {spec.icon === 'image' && (
+                  <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+                )}
+                {spec.icon === 'video' && (
+                  <Video className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+                )}
+                {spec.icon === 'audio' && (
+                  <Music className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+                )}
+                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-zinc-900 text-[9px] text-zinc-400 font-bold rounded-full flex items-center justify-center border border-zinc-500/60">{spec.badge}</span>
               </div>
               <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
-                @image{num}
+                {spec.label}
               </span>
             </div>
-          ))}
-          <div
-            className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
-            style={{ top: '82%', transform: 'translateY(-50%)' }}
-          >
-            <div className="relative">
-              <Handle
-                type="target"
-                position={Position.Left}
-                id="video"
-                className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
-              />
-              <Video className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
-              <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-zinc-900 text-[9px] text-zinc-400 font-bold rounded-full flex items-center justify-center border border-zinc-500/60">1</span>
-            </div>
-            <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
-              @video1
-            </span>
-          </div>
-
-          {/* Audio Reference Handle */}
-          <div
-            className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
-            style={{ top: '95%', transform: 'translateY(-50%)' }}
-          >
-            <div className="relative">
-              <Handle
-                type="target"
-                position={Position.Left}
-                id="audio"
-                className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
-              />
-              <Music className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
-              <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-zinc-900 text-[9px] text-zinc-400 font-bold rounded-full flex items-center justify-center border border-zinc-500/60">1</span>
-            </div>
-            <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
-              @audio1
-            </span>
-          </div>
+          );
+          })}
         </>
       )}
 

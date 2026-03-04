@@ -89,8 +89,8 @@ function resolveVideoSettings(
 function getVideoTargetHandle(modelId: string): string {
   const caps = VIDEO_MODEL_CAPABILITIES[modelId as VideoModelType];
   if (!caps) return 'reference';
-  // Omni-reference models (Seedance 2.0) show numbered handles ref1/ref2/ref3, not 'reference'
-  if (caps.supportsVideoRef) return 'ref1';
+  // Models with numbered image refs show ref1/ref2/ref3 handles.
+  if ((caps.maxReferences ?? 0) > 0 && caps.supportsVideoRef) return 'ref1';
   if (caps.inputMode === 'first-last-frame') return 'firstFrame';
   return 'reference';
 }

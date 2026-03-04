@@ -129,6 +129,7 @@ interface CanvasState {
     characterImageUrl?: string;
     referenceImageUrls?: Record<string, string>;
     videoUrl?: string;
+    videoId?: string;
     audioUrl?: string;
   };
   clearCanvas: () => void;
@@ -1021,6 +1022,14 @@ export const useCanvasStore = create<CanvasState>()(
           return undefined;
         };
 
+        const getVideoId = (node: AppNode | null | undefined): string | undefined => {
+          if (!node) return undefined;
+          if (node.type === 'videoGenerator') {
+            return (node.data as VideoGeneratorNodeData).outputVideoId;
+          }
+          return undefined;
+        };
+
         // Helper to get audio URL from a node
         const getAudioUrl = (node: AppNode | null | undefined): string | undefined => {
           if (!node) return undefined;
@@ -1124,6 +1133,7 @@ export const useCanvasStore = create<CanvasState>()(
           characterImageUrl: getImageUrl(characterImageNode),
           referenceImageUrls: Object.keys(referenceImageUrls).length > 0 ? referenceImageUrls : undefined,
           videoUrl: getVideoUrl(videoNode),
+          videoId: getVideoId(videoNode),
           audioUrl: getAudioUrl(audioNode),
         };
       },

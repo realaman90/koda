@@ -29,6 +29,12 @@ image:
   nanobanana-2:
     fal_cost: 0.08
     credits: 3
+  qwen-image-2:
+    fal_cost: 0.06
+    credits: 2
+  qwen-image-2-pro:
+    fal_cost: 0.08
+    credits: 3
   recraft-v3:
     fal_cost: 0.04
     credits: 2
@@ -93,6 +99,81 @@ video:
     base_duration: 5
     credits: 15
     credits_audio: 23
+  # Vidu Q3
+  vidu-q3-t2v:
+    fal_cost_per_sec: 0.07
+    base_duration: 5
+    credits: 11
+  vidu-q3-i2v:
+    fal_cost_per_sec: 0.07
+    base_duration: 5
+    credits: 11
+  vidu-q3-t2v-turbo:
+    fal_cost_per_sec: 0.035
+    base_duration: 5
+    credits: 6
+  vidu-q3-i2v-turbo:
+    fal_cost_per_sec: 0.035
+    base_duration: 5
+    credits: 6
+  # Sora 2 (pricing aligned to premium tier until explicit Fal rate is exposed)
+  sora-2-t2v:
+    fal_cost_per_sec: 0.20
+    base_duration: 5
+    credits: 30
+  sora-2-i2v:
+    fal_cost_per_sec: 0.20
+    base_duration: 5
+    credits: 30
+  sora-2-pro-i2v:
+    fal_cost_per_sec: 0.30
+    base_duration: 5
+    credits: 45
+  sora-2-remix-v2v:
+    fal_cost_per_sec: 0.20
+    base_duration: 5
+    credits: 30
+  # xAI Grok Imagine Video
+  grok-imagine-t2v:
+    fal_cost_per_sec: 0.07
+    base_duration: 5
+    credits: 11
+  grok-imagine-i2v:
+    fal_cost_per_sec: 0.05
+    base_duration: 5
+    credits: 8
+  grok-imagine-edit-v2v:
+    fal_cost_per_sec: 0.08
+    base_duration: 5
+    credits: 12
+  # LTX 2 19B family (frame-based pricing approximated to per-second at default fps/size)
+  ltx-2-19b-t2v:
+    fal_cost_per_sec: 0.042
+    base_duration: 5
+    credits: 7
+  ltx-2-19b-i2v:
+    fal_cost_per_sec: 0.042
+    base_duration: 5
+    credits: 7
+  ltx-2-19b-v2v:
+    fal_cost_per_sec: 0.042
+    base_duration: 5
+    credits: 7
+  ltx-2-19b-extend:
+    fal_cost_per_sec: 0.042
+    base_duration: 5
+    credits: 7
+  ltx-2-19b-a2v:
+    fal_cost_per_sec: 0.042
+    base_duration: 5
+    credits: 7
+  veed-fabric-1.0:
+    fal_cost_per_video: 0.50
+    credits: 15
+  heygen-avatar4-i2v:
+    fal_cost_per_sec: 0.10
+    base_duration: 5
+    credits: 15
   kling-2.6-t2v:
     fal_cost_per_sec: 0.07
     fal_cost_per_sec_audio: 0.14
