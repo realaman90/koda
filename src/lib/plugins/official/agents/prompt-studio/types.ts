@@ -28,6 +28,7 @@ export interface GeneratedPrompt {
   negativePrompt?: string;
   parameters?: Record<string, string>;
   createdAt: string;
+  seq?: number;
 }
 
 // ============================================

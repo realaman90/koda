@@ -535,12 +535,13 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
   },
   'flux-2-pro': {
     label: 'FLUX.2 Pro',
-    maxImages: 4,
-    inputType: 'text-only',
-    supportsReferences: false,
+    maxImages: 1,
+    inputType: 'text-and-image',
+    supportsReferences: true,
+    maxReferences: 9,
     aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16'],
     imageSizes: ['square_hd', 'square', 'landscape_4_3', 'portrait_4_3', 'landscape_16_9', 'portrait_16_9'],
-    description: 'FLUX.2 Pro for high-quality image editing, style transfer, and iterative refinement.',
+    description: 'FLUX.2 Pro for high-quality generation and multi-reference editing (up to 9 references).',
   },
   'flux-2-max': {
     label: 'FLUX.2 Max',

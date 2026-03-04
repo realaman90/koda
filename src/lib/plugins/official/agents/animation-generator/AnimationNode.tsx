@@ -1980,24 +1980,14 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         stateUpdate.plan = semanticMotionEdit.patchedPlan;
       }
 
-      // Auto-accept plan when user sends ANY message during plan phase with a plan present.
-      // The placeholder says "Type 'yes' to accept, or suggest changes..." — any text input implies engagement.
-      // If the user wanted to reject, they'd click the "Reject" button instead.
-      if (ls.phase === 'plan' && ls.plan && !ls.planAccepted) {
-        stateUpdate.planAccepted = true;
-      }
-
-      // Transition to executing when plan is accepted (either previously via button, or auto-accepted above)
-      // This covers: plan phase (text acceptance), plan phase (failed execution retry),
-      // preview phase (edit request), complete phase (follow-up)
-      if (ls.planAccepted || stateUpdate.planAccepted) {
-        stateUpdate.phase = 'executing';
-        stateUpdate.execution = {
-          todos: ls.execution?.todos || [],
-          thinking: 'Processing your feedback...',
-          files: ls.execution?.files || [],
-        };
-      }
+      // Always transition to executing — no planning step
+      stateUpdate.planAccepted = true;
+      stateUpdate.phase = 'executing';
+      stateUpdate.execution = {
+        todos: ls.execution?.todos || [],
+        thinking: ls.phase === 'idle' ? 'Building your animation...' : 'Processing your feedback...',
+        files: ls.execution?.files || [],
+      };
 
       // Mark live preview as stale when user sends feedback (Issue #22)
       // This shows a visual indicator that the preview is being updated
@@ -2017,29 +2007,34 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       resetStreamingRefs();
       const callbacks = createStreamCallbacks();
 
-      // Build a contextual prompt with instructions
+      // Build a contextual prompt with instructions based on current phase
       let userContent = content;
       const semanticInstruction = shouldApplySemanticPatch ? semanticMotionEdit.instruction : '';
-      if (ls.planAccepted && (ls.phase === 'plan' || ls.phase === 'executing')) {
-        // User is giving feedback after failed execution — emphasize retry, not replan
+      if (ls.phase === 'idle' || ls.phase === 'error') {
+        // Fresh generation — go straight to building
+        userContent = [
+          content,
+          '',
+          'Build this animation now. Go directly: sandbox_create → generate_remotion_code → render_final.',
+          'Make all creative decisions yourself (colors, fonts, timing, style).',
+        ].join('\n');
+      } else if (ls.phase === 'preview' || ls.phase === 'complete') {
+        // User is requesting edits to a working animation
         userContent = [
           content,
           ...(semanticInstruction ? ['', semanticInstruction] : []),
           '',
-          'IMPORTANT: The plan has already been approved. Do NOT re-generate the plan.',
-          'Instead, investigate what went wrong with the previous execution,',
-          'fix the issue (check vite logs, file contents, etc.), and retry.',
+          'IMPORTANT: Modify the existing code to implement the requested changes,',
+          'then call render_final to produce the updated video.',
           ls.sandboxId ? `Active sandbox: ${ls.sandboxId}` : 'No sandbox — create one first with sandbox_create.',
         ].join('\n');
-      } else if (ls.planAccepted && (ls.phase === 'preview' || ls.phase === 'complete')) {
-        // User is requesting edits to a working animation — emphasize modify, not replan
+      } else if (ls.phase === 'executing' || ls.phase === 'plan') {
+        // Retry after failed execution
         userContent = [
           content,
           ...(semanticInstruction ? ['', semanticInstruction] : []),
           '',
-          'IMPORTANT: The plan has already been approved and the animation was rendered successfully.',
-          'Do NOT re-generate the plan. Modify the existing code to implement the requested changes,',
-          'then call render_final to produce the updated video.',
+          'IMPORTANT: Investigate what went wrong, fix the issue, and retry.',
           ls.sandboxId ? `Active sandbox: ${ls.sandboxId}` : 'No sandbox — create one first with sandbox_create.',
         ].join('\n');
       } else if (semanticInstruction) {
@@ -2244,41 +2239,21 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
   }, [id, updateNodeData, abortStream]);
 
   // ─── Input routing ──────────────────────────────────────────────────
+  // No planning step — all phases route to handleSendMessage for direct execution.
   const handleInputSubmit = useCallback(
     (message: string) => {
       switch (state.phase) {
-        case 'idle':
-        case 'error':
-          handleAnalyzePrompt(message);
-          break;
-        case 'plan':
-          if (state.planAccepted) {
-            // Plan already accepted — user is giving post-execution feedback.
-            // Route to handleSendMessage which passes full context (sandboxId, plan, etc.)
-            // so the agent can retry / fix rather than re-plan.
-            handleSendMessage(message);
-          } else if (isAffirmative(message)) {
-            // User typed "yes", "ok", "go", etc. → accept the plan
-            handleAcceptPlan();
-          } else {
-            // User gave specific feedback → revise the plan
-            handleRevisePlan(message);
-          }
-          break;
-        case 'executing':
-        case 'preview':
-        case 'question':
-          handleSendMessage(message);
-          break;
         case 'complete':
           // Start a new animation from scratch
           handleReset();
           break;
         default:
-          handleAnalyzePrompt(message);
+          // All other phases (idle, error, executing, preview, plan, question)
+          // go straight to the agent for direct execution
+          handleSendMessage(message);
       }
     },
-    [state.phase, state.planAccepted, handleAnalyzePrompt, handleAcceptPlan, handleRevisePlan, handleSendMessage, handleReset]
+    [state.phase, handleSendMessage, handleReset]
   );
 
   const inputPlaceholder = useMemo(() => {

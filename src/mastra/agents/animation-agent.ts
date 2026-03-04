@@ -16,9 +16,6 @@ import {
   setThinkingTool,
   addMessageTool,
   requestApprovalTool,
-  // Planning Tools
-  analyzePromptTool,
-  generatePlanTool,
   // Code Generation (subagent-as-tool)
   generateCodeTool,
   generateRemotionCodeTool,
@@ -26,8 +23,6 @@ import {
   fetchDocsTool,
   // Optional web research
   webSearchTool,
-  // Prompt Enhancement
-  enhanceAnimationPromptTool,
   // Media Analysis
   analyzeMediaTool,
   // Video Verification (subagent-as-tool)
@@ -51,12 +46,10 @@ import {
 /**
  * Animation Orchestrator Agent
  *
- * Multi-phase agent for animation generation:
- * 1. Enhance → transform vague prompt into design spec
- * 2. Plan → create scene breakdown for user approval
- * 3. Execute → create sandbox, generate code via subagents
- * 4. Verify → screenshot to check visual output
- * 5. Render → generate preview/final video
+ * Direct-execution agent for animation generation:
+ * 1. Execute → create sandbox, generate code via subagents
+ * 2. Render → generate final video
+ * No planning step — agent makes all creative decisions itself.
  */
 export const animationAgent = new Agent({
   id: 'animation-orchestrator',
@@ -70,9 +63,6 @@ export const animationAgent = new Agent({
     set_thinking: setThinkingTool,
     add_message: addMessageTool,
     request_approval: requestApprovalTool,
-    // Planning Tools
-    analyze_prompt: analyzePromptTool,
-    generate_plan: generatePlanTool,
     // Code Generation (subagent-as-tool)
     generate_code: generateCodeTool,              // Theatre.js (3D)
     generate_remotion_code: generateRemotionCodeTool,  // Remotion (2D)
@@ -80,8 +70,6 @@ export const animationAgent = new Agent({
     fetch_docs: fetchDocsTool,
     // Optional web research for factual/current external info
     search_web: webSearchTool,
-    // Prompt Enhancement
-    enhance_animation_prompt: enhanceAnimationPromptTool,
     // Media Analysis
     analyze_media: analyzeMediaTool,
     // Sandbox Lifecycle

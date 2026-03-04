@@ -65,6 +65,56 @@ class FluxAdapter implements ModelAdapter {
   }
 }
 
+// FLUX.2 Pro (text-to-image + /edit multi-reference mode)
+class Flux2ProAdapter implements ModelAdapter {
+  private hasImageReferences(request: GenerateRequest): boolean {
+    return (
+      (request.referenceUrls && request.referenceUrls.length > 0) ||
+      !!request.referenceUrl
+    );
+  }
+
+  private getImageUrls(request: GenerateRequest): string[] {
+    if (request.referenceUrls && request.referenceUrls.length > 0) {
+      // FLUX.2 Pro edit supports up to 9 references.
+      return request.referenceUrls.slice(0, 9);
+    }
+    if (request.referenceUrl) {
+      return [request.referenceUrl];
+    }
+    return [];
+  }
+
+  getModelId(request: GenerateRequest): string {
+    if (this.hasImageReferences(request)) {
+      return 'fal-ai/flux-2-pro/edit';
+    }
+    return 'fal-ai/flux-2-pro';
+  }
+
+  buildInput(request: GenerateRequest): Record<string, unknown> {
+    const concreteAspectRatio = getConcreteAspectRatio(request.aspectRatio);
+    const imageSize = request.imageSize || ASPECT_TO_FLUX_SIZE[concreteAspectRatio] || 'square_hd';
+    const imageUrls = this.getImageUrls(request);
+    const hasReferences = imageUrls.length > 0;
+    const input: Record<string, unknown> = {
+      prompt: request.prompt,
+      ...(hasReferences && { image_urls: imageUrls }),
+    };
+
+    // In edit mode with auto, preserve reference framing unless user forced an aspect ratio.
+    if (!(hasReferences && request.aspectRatio === 'auto')) {
+      input.image_size = imageSize;
+    }
+
+    return input;
+  }
+
+  extractImageUrls(result: { data?: { images?: Array<{ url: string }> } }): string[] {
+    return result.data?.images?.map((img) => img.url) || [];
+  }
+}
+
 // Nano Banana Pro (supports dual endpoints: text-to-image and image editing)
 class NanoBananaAdapter implements ModelAdapter {
   // Determine if we should use the /edit endpoint
@@ -343,7 +393,7 @@ const adapters: Record<ImageModelType, ModelAdapter> = {
   'auto': new FluxAdapter(), // resolved before adapter lookup
   'flux-schnell': new FluxAdapter(),
   'flux-pro': new FluxAdapter(),
-  'flux-2-pro': new FluxAdapter(),
+  'flux-2-pro': new Flux2ProAdapter(),
   'flux-2-max': new FluxAdapter(),
   'flux-kontext': new FluxKontextAdapter(),
   'nanobanana-pro': new NanoBananaAdapter(),

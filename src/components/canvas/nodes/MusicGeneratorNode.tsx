@@ -307,12 +307,14 @@ function MusicGeneratorNodeComponent({ id, data, selected }: NodeProps<MusicGene
             </div>
           ) : (
             /* Prompt Input */
-            <div className="p-4 min-h-[140px]">
+            <div className="p-4 min-h-[140px] nodrag nopan" onPointerDown={(e) => e.stopPropagation()}>
               <textarea
                 value={data.prompt}
                 onChange={handlePromptChange}
+                onPointerDown={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
                 placeholder="Describe the music you want to generate..."
-                className="w-full h-[100px] bg-transparent border-none text-sm resize-none focus:outline-none node-input"
+                className="w-full h-[100px] bg-transparent border-none text-sm resize-none focus:outline-none node-input nodrag nopan nowheel select-text"
                 style={{ color: 'var(--text-secondary)' }}
               />
             </div>

@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useCallback, useMemo, useState, useRef, useEffect } from 'react';
-import { Handle, Position, useUpdateNodeInternals, type NodeProps } from '@xyflow/react';
+import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -43,7 +43,6 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
   const addToHistory = useSettingsStore((state) => state.addToHistory);
   const enabledImageModels = useSettingsStore((s) => s.defaultSettings.enabledImageModels) || [...ENABLED_IMAGE_MODELS];
   const visibleImageModels: ImageModelType[] = ['auto' as ImageModelType, ...ENABLED_IMAGE_MODELS.filter((m) => enabledImageModels.includes(m))];
-  const updateNodeInternals = useUpdateNodeInternals();
   const [isEditingName, setIsEditingName] = useState(false);
   const [nodeName, setNodeName] = useState(data.name || 'Image Generator');
   const [isHovered, setIsHovered] = useState(false);
@@ -56,24 +55,6 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
 
   const modelCapabilities = MODEL_CAPABILITIES[data.model];
   const maxRefs = Math.max(1, modelCapabilities.maxReferences || 1);
-  const refHandleCount = Math.max(1, Math.min(data.refHandleCount || 1, maxRefs));
-
-  // Update node internals when ref handle count changes
-  useEffect(() => {
-    updateNodeInternals(id);
-  }, [id, refHandleCount, updateNodeInternals]);
-
-  const handleAddRefHandle = useCallback(() => {
-    if (refHandleCount < maxRefs) {
-      updateNodeData(id, { refHandleCount: refHandleCount + 1 });
-    }
-  }, [id, refHandleCount, maxRefs, updateNodeData]);
-
-  const handleRemoveRefHandle = useCallback(() => {
-    if (refHandleCount > 1) {
-      updateNodeData(id, { refHandleCount: refHandleCount - 1 });
-    }
-  }, [id, refHandleCount, updateNodeData]);
 
   useEffect(() => {
     if (isEditingName && nameInputRef.current) {
@@ -178,13 +159,12 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
     }
 
     // Collect all reference URLs (main reference + additional refs)
-    const allReferenceUrls: string[] = [];
-    if (connectedInputs.referenceUrl) {
-      allReferenceUrls.push(connectedInputs.referenceUrl);
-    }
-    if (connectedInputs.referenceUrls) {
-      allReferenceUrls.push(...connectedInputs.referenceUrls);
-    }
+    const allReferenceUrls = Array.from(
+      new Set(
+        [connectedInputs.referenceUrl, ...(connectedInputs.referenceUrls || [])]
+          .filter((url): url is string => !!url)
+      )
+    );
 
     const imageCount = data.imageCount || 1;
     updateNodeData(id, { isGenerating: true, error: undefined });
@@ -319,6 +299,7 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
     data.selectedCameraLens
   );
   const hasValidPrompt = !!(data.prompt || connectedInputs.textContent || hasPresetSelected);
+  const connectedReferenceCount = (connectedInputs.referenceUrl ? 1 : 0) + (connectedInputs.referenceUrls?.length || 0);
 
   const activePresets = useMemo((): { key: string; label: string; preview: string }[] => {
     const pills: { key: string; label: string; preview: string }[] = [];
@@ -423,10 +404,7 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
           ${data.isGenerating ? 'animate-subtle-pulse generating-border-subtle' : ''}
           ${!data.isGenerating && !data.outputUrl ? (selected ? 'node-card node-card-selected' : 'node-card') : ''}
         `}
-        style={{
-          backgroundColor: data.outputUrl ? 'transparent' : undefined,
-          minHeight: refHandleCount > 1 ? `${280 + (refHandleCount - 1) * 45}px` : undefined,
-        }}
+        style={{ backgroundColor: data.outputUrl ? 'transparent' : undefined }}
       >
         {/* Content Area */}
         <div className="relative">
@@ -602,15 +580,24 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
                     <textarea
                       value={data.prompt}
                       onChange={handlePromptChange}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onMouseDown={(e) => e.stopPropagation()}
                       placeholder={isReadOnly ? '' : 'Edit your prompt...'}
                       disabled={isReadOnly}
-                      className={`w-full h-[80px] bg-transparent border-none text-sm resize-none focus:outline-none ${isReadOnly ? 'cursor-default' : ''}`}
+                      className={`w-full h-[80px] bg-transparent border-none text-sm resize-none node-input nodrag nopan nowheel select-text focus:outline-none ${isReadOnly ? 'cursor-default' : ''}`}
                       style={{ color: 'var(--text-secondary)' }}
                     />
                   </div>
                 </div>
               )}
             </div>
+            {connectedReferenceCount > 0 && (
+              <div className="px-3 pb-2">
+                <span className="inline-flex items-center rounded-full border border-border/70 bg-muted/50 px-2 py-0.5 text-[10px] text-muted-foreground">
+                  {connectedReferenceCount} image{connectedReferenceCount > 1 ? 's' : ''} referenced
+                </span>
+              </div>
+            )}
             {/* Bottom toolbar when prompt is expanded */}
             {isPromptExpanded && !isReadOnly && (
               <div className="flex items-center flex-wrap gap-1.5 px-3 py-2.5 node-bottom-toolbar">
@@ -693,13 +680,15 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
           ) : (
             /* Prompt Input - Freepik style with inner content area */
             <>
-              <div className="p-3">
+              <div className="p-3 nodrag nopan" onPointerDown={(e) => e.stopPropagation()}>
                 <div className="node-content-area p-3 min-h-[200px]">
                   <textarea
                     value={data.prompt}
                     onChange={handlePromptChange}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
                     placeholder="Describe the image you want to generate..."
-                    className="w-full h-[170px] bg-transparent border-none text-sm resize-none focus:outline-none"
+                    className="w-full h-[170px] bg-transparent border-none text-sm resize-none node-input nodrag nopan nowheel select-text focus:outline-none"
                     style={{ color: 'var(--text-secondary)' }}
                     disabled={isReadOnly}
                   />
@@ -714,6 +703,13 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
                       {p.label}
                     </span>
                   ))}
+                </div>
+              )}
+              {connectedReferenceCount > 0 && (
+                <div className="px-4 pb-2">
+                  <span className="inline-flex items-center rounded-full border border-border/70 bg-muted/50 px-2 py-0.5 text-[10px] text-muted-foreground">
+                    {connectedReferenceCount} image{connectedReferenceCount > 1 ? 's' : ''} referenced
+                  </span>
                 </div>
               )}
               {/* Error Display */}
@@ -874,57 +870,35 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
       {/* Reference Image Inputs - only shown for models that support image input */}
       {modelCapabilities.inputType !== 'text-only' && (
         <>
-          {/* Dynamic reference handles */}
-          {Array.from({ length: refHandleCount }).map((_, index) => {
-            const baseTop = 160; // Start at 160px from top
-            const spacing = 40; // 40px spacing between handles
-            const top = baseTop + index * spacing;
-            return (
-              <div
-                key={`ref-${index}`}
-                className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
-                style={{ top: `${top}px` }}
-              >
-                <div className="relative">
-                  <Handle
-                    type="target"
-                    position={Position.Left}
-                    id={index === 0 ? 'reference' : `ref${index + 1}`}
-                    className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
-                  />
-                  <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
-                </div>
-                <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
-                  {refHandleCount > 1 ? `Ref ${index + 1}` : 'Reference'}
-                </span>
-              </div>
-            );
-          })}
-          {/* Add/Remove ref buttons - only for multi-ref models, visible on hover/select */}
-          {maxRefs > 1 && (selected || isHovered) && (
-            <div className="absolute -left-3 flex flex-col gap-0.5 transition-opacity duration-200" style={{ top: `${160 + refHandleCount * 40 + 10}px` }}>
-              {refHandleCount < maxRefs && (
-                <button
-                  onClick={handleAddRefHandle}
-                  className="w-6 h-5 rounded flex items-center justify-center transition-colors hover:border-zinc-500"
-                  style={{ backgroundColor: 'var(--handle-bg)', borderWidth: '1px', borderColor: 'var(--handle-border)', color: 'var(--text-muted)' }}
-                  title={`Add reference (${refHandleCount}/${maxRefs})`}
-                >
-                  <Plus className="h-3 w-3" />
-                </button>
-              )}
-              {refHandleCount > 1 && (
-                <button
-                  onClick={handleRemoveRefHandle}
-                  className="w-6 h-5 rounded flex items-center justify-center transition-colors hover:border-zinc-500"
-                  style={{ backgroundColor: 'var(--handle-bg)', borderWidth: '1px', borderColor: 'var(--handle-border)', color: 'var(--text-muted)' }}
-                  title="Remove reference"
-                >
-                  <Minus className="h-3 w-3" />
-                </button>
-              )}
+          {/* Single visible reference handle (supports multiple incoming edges). */}
+          <div
+            className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
+            style={{ top: '160px' }}
+          >
+            <div className="relative">
+              <Handle
+                type="target"
+                position={Position.Left}
+                id="reference"
+                className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
+              />
+              <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
             </div>
-          )}
+            <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
+              {maxRefs > 1 ? `Reference (${maxRefs} max)` : 'Reference'}
+            </span>
+          </div>
+          {/* Hidden legacy handles to keep older saved edges connected. */}
+          {Array.from({ length: 14 }).map((_, index) => (
+            <Handle
+              key={`legacy-ref-${index + 1}`}
+              type="target"
+              position={Position.Left}
+              id={`ref${index + 1}`}
+              className="!absolute !left-0 !w-0 !h-0 !border-0 opacity-0 pointer-events-none"
+              style={{ top: 160 }}
+            />
+          ))}
         </>
       )}
 

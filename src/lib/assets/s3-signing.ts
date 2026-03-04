@@ -186,6 +186,66 @@ export async function generatePresignedPutUrl(
   return `${target.url}?${canonicalQueryString}&X-Amz-Signature=${signature}`;
 }
 
+/**
+ * Generate a presigned GET URL for temporary public read access.
+ * Useful when third-party workers (e.g. model providers) need to fetch
+ * private R2/S3 objects without custom auth headers.
+ */
+export async function generatePresignedGetUrl(
+  config: S3Config,
+  key: string,
+  expiresIn = 3600
+): Promise<string> {
+  const service = 's3';
+  const region = config.region;
+
+  const encodedKey = uriEncode(key, false);
+  const target = getEndpointTarget(config, encodedKey);
+
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
+  const dateStamp = amzDate.slice(0, 8);
+  const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
+  const credential = `${config.accessKeyId}/${credentialScope}`;
+
+  const queryParams: Record<string, string> = {
+    'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
+    'X-Amz-Credential': credential,
+    'X-Amz-Date': amzDate,
+    'X-Amz-Expires': String(expiresIn),
+    'X-Amz-SignedHeaders': 'host',
+  };
+
+  const canonicalQueryString = Object.keys(queryParams)
+    .sort()
+    .map(k => `${uriEncode(k)}=${uriEncode(queryParams[k])}`)
+    .join('&');
+
+  const canonicalHeaders = `host:${target.host}\n`;
+  const signedHeaders = 'host';
+
+  const canonicalRequest = [
+    'GET',
+    target.canonicalUri,
+    canonicalQueryString,
+    canonicalHeaders,
+    signedHeaders,
+    'UNSIGNED-PAYLOAD',
+  ].join('\n');
+
+  const stringToSign = [
+    'AWS4-HMAC-SHA256',
+    amzDate,
+    credentialScope,
+    toHex(await sha256(canonicalRequest)),
+  ].join('\n');
+
+  const signingKey = await getSignatureKey(config.secretAccessKey, dateStamp, region, service);
+  const signature = toHex(await hmac(signingKey, stringToSign));
+
+  return `${target.url}?${canonicalQueryString}&X-Amz-Signature=${signature}`;
+}
+
 export async function signRequest(
   config: S3Config,
   method: string,

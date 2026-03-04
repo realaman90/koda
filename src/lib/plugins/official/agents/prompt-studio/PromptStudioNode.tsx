@@ -112,9 +112,49 @@ const mdComponents = {
   ),
 };
 
-// ─── Sequence counter ────────────────────────────────────────────────────
-let globalSeq = 0;
-function nextSeq(): number { return ++globalSeq; }
+// ─── Sequence helpers ───────────────────────────────────────────────────
+function toMs(value: string | undefined): number {
+  if (!value) return 0;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function getMaxSeqFromState(state: PromptStudioNodeState): number {
+  let maxSeq = 0;
+
+  for (const message of state.messages) {
+    if (typeof message.seq === 'number' && Number.isFinite(message.seq)) {
+      maxSeq = Math.max(maxSeq, message.seq);
+    }
+  }
+  for (const toolCall of state.toolCalls) {
+    if (typeof toolCall.seq === 'number' && Number.isFinite(toolCall.seq)) {
+      maxSeq = Math.max(maxSeq, toolCall.seq);
+    }
+  }
+  for (const block of state.thinkingBlocks) {
+    if (typeof block.seq === 'number' && Number.isFinite(block.seq)) {
+      maxSeq = Math.max(maxSeq, block.seq);
+    }
+  }
+  for (const prompt of state.generatedPrompts) {
+    if (typeof prompt.seq === 'number' && Number.isFinite(prompt.seq)) {
+      maxSeq = Math.max(maxSeq, prompt.seq);
+    }
+  }
+  for (const qna of state.qnaSets) {
+    if (typeof qna.seq === 'number' && Number.isFinite(qna.seq)) {
+      maxSeq = Math.max(maxSeq, qna.seq);
+    }
+  }
+  for (const search of state.searchResults) {
+    if (typeof search.seq === 'number' && Number.isFinite(search.seq)) {
+      maxSeq = Math.max(maxSeq, search.seq);
+    }
+  }
+
+  return maxSeq;
+}
 
 // ─── Model color helper ─────────────────────────────────────────────────
 function getModelColor(model: string): { bg: string; text: string } {
@@ -134,6 +174,54 @@ function getModelColor(model: string): { bg: string; text: string } {
   if (m.includes('ideogram')) return { bg: 'bg-orange-500/15', text: 'text-orange-400' };
   if (m.includes('leonardo')) return { bg: 'bg-emerald-500/15', text: 'text-emerald-400' };
   return { bg: 'bg-[var(--an-accent-bg)]', text: 'text-[var(--an-accent-text)]' };
+}
+
+const SPECIFIC_MODEL_HINTS = [
+  'flux', 'nanobanana', 'nano banana', 'recraft', 'ideogram', 'seedream',
+  'sd 3.5', 'stable diffusion', 'veo', 'kling', 'seedance', 'sora',
+  'luma', 'wan', 'hailuo', 'runway', 'minimax', 'grok',
+];
+
+function hasExplicitModelRequest(text: string): boolean {
+  const normalized = text.toLowerCase();
+  if (!normalized.trim()) return false;
+  return SPECIFIC_MODEL_HINTS.some((hint) => normalized.includes(hint));
+}
+
+function isAutoDetail(detail?: string): boolean {
+  if (!detail) return true;
+  const normalized = detail.toLowerCase().trim();
+  return normalized === 'auto';
+}
+
+function resolvePromptTargetModel({
+  requestedTargetModel,
+  userConversationText,
+  connectedNodes,
+}: {
+  requestedTargetModel?: string;
+  userConversationText: string;
+  connectedNodes?: ConnectedNodeInfo[];
+}): string {
+  const downstream = (connectedNodes || []).filter((n) => n.direction === 'downstream');
+  const hasDownstreamVideo = downstream.some((n) => n.nodeType === 'videoGenerator');
+  const hasDownstreamImage = downstream.some((n) => n.nodeType === 'imageGenerator');
+  const hasSpecificDownstreamModel = downstream.some((n) => {
+    if (n.nodeType !== 'imageGenerator' && n.nodeType !== 'videoGenerator') return false;
+    return !isAutoDetail(n.detail);
+  });
+  const explicitModelRequested = hasExplicitModelRequest(userConversationText);
+
+  if (!explicitModelRequested && !hasSpecificDownstreamModel) {
+    if (hasDownstreamVideo && !hasDownstreamImage) return 'Auto (Video)';
+    if (hasDownstreamImage && !hasDownstreamVideo) return 'Auto (Image)';
+    if (hasDownstreamVideo) return 'Auto (Video)';
+    return 'Auto (Image)';
+  }
+
+  const trimmedRequested = requestedTargetModel?.trim();
+  if (trimmedRequested) return trimmedRequested;
+  return hasDownstreamVideo ? 'Auto (Video)' : 'Auto (Image)';
 }
 
 // ─── Prompt Card Component ──────────────────────────────────────────────
@@ -457,6 +545,11 @@ function PromptStudioNodeComponent({ id, data, selected }: NodeProps<PromptStudi
     if (persisted?.nodeId) return { ...persisted, qnaSets: persisted.qnaSets || [], searchResults: persisted.searchResults || [] };
     return createDefaultState(id);
   });
+  const seqRef = useRef(getMaxSeqFromState(ls));
+  const nextLocalSeq = useCallback((): number => {
+    seqRef.current += 1;
+    return seqRef.current;
+  }, []);
 
   const [inputValue, setInputValue] = useState('');
   const [thinkingMsg, setThinkingMsg] = useState('');
@@ -475,6 +568,11 @@ function PromptStudioNodeComponent({ id, data, selected }: NodeProps<PromptStudi
   useEffect(() => {
     updateNodeInternals(id);
   }, [id, ls.phase, ls.generatedPrompts.length, updateNodeInternals]);
+
+  // Keep per-node sequence monotonic across persisted/rehydrated state.
+  useEffect(() => {
+    seqRef.current = Math.max(seqRef.current, getMaxSeqFromState(ls));
+  }, [ls]);
 
   // Persist Prompt Studio state to canvas store after commit (never during render).
   useEffect(() => {
@@ -600,28 +698,57 @@ function PromptStudioNodeComponent({ id, data, selected }: NodeProps<PromptStudi
 
   // ── Build timeline ──
   type TimelineItem =
-    | { kind: 'user'; data: PromptStudioMessage; seq: number }
-    | { kind: 'assistant'; data: PromptStudioMessage; seq: number }
-    | { kind: 'prompt'; data: GeneratedPrompt; seq: number }
-    | { kind: 'qna'; data: QnASet; seq: number }
-    | { kind: 'search'; data: SearchResult; seq: number }
-    | { kind: 'thinking'; data: ThinkingBlockItem; seq: number };
+    | { kind: 'user'; data: PromptStudioMessage; seq: number; timeMs: number; idx: number }
+    | { kind: 'assistant'; data: PromptStudioMessage; seq: number; timeMs: number; idx: number }
+    | { kind: 'prompt'; data: GeneratedPrompt; seq: number; timeMs: number; idx: number }
+    | { kind: 'qna'; data: QnASet; seq: number; timeMs: number; idx: number }
+    | { kind: 'search'; data: SearchResult; seq: number; timeMs: number; idx: number }
+    | { kind: 'thinking'; data: ThinkingBlockItem; seq: number; timeMs: number; idx: number };
 
   const timeline: TimelineItem[] = [];
+  let timelineIdx = 0;
   ls.messages.forEach((m) => {
-    timeline.push({ kind: m.role === 'user' ? 'user' : 'assistant', data: m, seq: m.seq ?? 0 });
+    timeline.push({
+      kind: m.role === 'user' ? 'user' : 'assistant',
+      data: m,
+      seq: m.seq ?? 0,
+      timeMs: toMs(m.timestamp),
+      idx: timelineIdx++,
+    });
   });
-  ls.generatedPrompts.forEach((p, i) => {
+  ls.generatedPrompts.forEach((p) => {
     const tc = ls.toolCalls.find(tc => tc.toolName === 'generate_prompt' && tc.output?.includes(p.id));
-    timeline.push({ kind: 'prompt', data: p, seq: tc?.seq ?? (i + 1000) });
+    timeline.push({
+      kind: 'prompt',
+      data: p,
+      seq: p.seq ?? tc?.seq ?? 0,
+      timeMs: toMs(p.createdAt),
+      idx: timelineIdx++,
+    });
   });
   ls.qnaSets.forEach((q) => {
-    timeline.push({ kind: 'qna', data: q, seq: q.seq ?? 0 });
+    timeline.push({
+      kind: 'qna',
+      data: q,
+      seq: q.seq ?? 0,
+      timeMs: toMs(q.createdAt),
+      idx: timelineIdx++,
+    });
   });
   ls.searchResults.forEach((s) => {
-    timeline.push({ kind: 'search', data: s, seq: s.seq ?? 0 });
+    timeline.push({
+      kind: 'search',
+      data: s,
+      seq: s.seq ?? 0,
+      timeMs: toMs(s.createdAt),
+      idx: timelineIdx++,
+    });
   });
-  timeline.sort((a, b) => a.seq - b.seq);
+  timeline.sort((a, b) => {
+    if (a.timeMs !== b.timeMs) return a.timeMs - b.timeMs;
+    if (a.seq !== b.seq) return a.seq - b.seq;
+    return a.idx - b.idx;
+  });
 
   const hasTimelineContent = timeline.length > 0 || !!ls.streamingText;
 
@@ -664,7 +791,7 @@ function PromptStudioNodeComponent({ id, data, selected }: NodeProps<PromptStudi
       role: 'user',
       content: text,
       timestamp: new Date().toISOString(),
-      seq: nextSeq(),
+      seq: nextLocalSeq(),
     };
 
     const updatedState: PromptStudioNodeState = {
@@ -690,6 +817,10 @@ function PromptStudioNodeComponent({ id, data, selected }: NodeProps<PromptStudi
       qnaSets: updatedState.qnaSets.length,
       searchResults: updatedState.searchResults.length,
     };
+    const userConversationText = updatedState.messages
+      .filter((m) => m.role === 'user')
+      .map((m) => m.content)
+      .join('\n');
 
     // Helper: commit accumulated text as an assistant message
     const commitTextSegment = () => {
@@ -700,7 +831,7 @@ function PromptStudioNodeComponent({ id, data, selected }: NodeProps<PromptStudi
           role: 'assistant',
           content: cleanText,
           timestamp: new Date().toISOString(),
-          seq: nextSeq(),
+          seq: nextLocalSeq(),
         };
         setLs(prev => ({ ...prev, messages: [...prev.messages, textMsg] }));
       }
@@ -743,7 +874,7 @@ function PromptStudioNodeComponent({ id, data, selected }: NodeProps<PromptStudi
             questions,
             answered: false,
             createdAt: new Date().toISOString(),
-            seq: nextSeq(),
+            seq: nextLocalSeq(),
           };
           setLs(prev => ({ ...prev, qnaSets: [...prev.qnaSets, qnaSet] }));
           qnaToolCallIds.add(event.toolCallId);
@@ -760,7 +891,7 @@ function PromptStudioNodeComponent({ id, data, selected }: NodeProps<PromptStudi
           status: 'running',
           args: event.args,
           timestamp: new Date().toISOString(),
-          seq: nextSeq(),
+          seq: nextLocalSeq(),
         };
         setLs(prev => ({ ...prev, toolCalls: [...prev.toolCalls, tcItem] }));
       },
@@ -779,7 +910,7 @@ function PromptStudioNodeComponent({ id, data, selected }: NodeProps<PromptStudi
                 questions,
                 answered: false,
                 createdAt: new Date().toISOString(),
-                seq: nextSeq(),
+                seq: nextLocalSeq(),
               };
               setLs(prev => ({ ...prev, qnaSets: [...prev.qnaSets, qnaSet] }));
               qnaToolCallIds.add(event.toolCallId);
@@ -800,14 +931,20 @@ function PromptStudioNodeComponent({ id, data, selected }: NodeProps<PromptStudi
 
         // generate_prompt → create prompt
         if (event.toolName === 'generate_prompt' && !event.isError) {
+          const targetModel = resolvePromptTargetModel({
+            requestedTargetModel: args.targetModel as string | undefined,
+            userConversationText,
+            connectedNodes: canvasCtx?.connectedNodes,
+          });
           const newPrompt: GeneratedPrompt = {
             id: (event.result.promptId as string) || `prompt_${Date.now()}`,
             prompt: (args.prompt as string) || '',
-            targetModel: (args.targetModel as string) || 'General',
+            targetModel,
             label: args.label as string | undefined,
             negativePrompt: args.negativePrompt as string | undefined,
             parameters: args.parameters as Record<string, string> | undefined,
             createdAt: new Date().toISOString(),
+            seq: nextLocalSeq(),
           };
           setLs(prev => ({
             ...prev,
@@ -825,7 +962,7 @@ function PromptStudioNodeComponent({ id, data, selected }: NodeProps<PromptStudi
             query: (result.query as string) || '',
             results: (result.results as SearchResult['results']) || [],
             createdAt: new Date().toISOString(),
-            seq: nextSeq(),
+            seq: nextLocalSeq(),
           };
           setLs(prev => ({ ...prev, searchResults: [...prev.searchResults, searchResult] }));
         }
@@ -856,7 +993,7 @@ function PromptStudioNodeComponent({ id, data, selected }: NodeProps<PromptStudi
             role: 'assistant',
             content: cleanText,
             timestamp: new Date().toISOString(),
-            seq: nextSeq(),
+            seq: nextLocalSeq(),
           } : null;
           const newState: PromptStudioNodeState = {
             ...prev,
@@ -883,7 +1020,7 @@ function PromptStudioNodeComponent({ id, data, selected }: NodeProps<PromptStudi
         });
       },
     });
-  }, [inputValue, isStreaming, id, stream, getCanvasContext]);
+  }, [inputValue, isStreaming, id, stream, getCanvasContext, nextLocalSeq]);
 
   const handleReset = useCallback(() => {
     abort();
@@ -951,6 +1088,14 @@ function PromptStudioNodeComponent({ id, data, selected }: NodeProps<PromptStudi
             </button>
           )}
         </div>
+
+        {ls.error?.message && (
+          <div className="px-3.5 py-2 border-b border-[var(--an-border-error)] bg-[var(--an-bg-error)]">
+            <p className="text-[10px] leading-snug text-red-400 line-clamp-3" title={ls.error.message}>
+              {ls.error.message}
+            </p>
+          </div>
+        )}
 
         {/* ── Empty state ── */}
         {!hasTimelineContent && ls.phase === 'idle' && (

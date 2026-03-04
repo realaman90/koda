@@ -343,6 +343,13 @@ export function SettingsPanel() {
 
     if (!finalPrompt) return;
 
+    const allReferenceUrls = Array.from(
+      new Set(
+        [connectedInputs.referenceUrl, ...(connectedInputs.referenceUrls || [])]
+          .filter((url): url is string => !!url)
+      )
+    );
+
     updateNodeData(settingsPanelNodeId, { isGenerating: true, error: undefined });
 
     try {
@@ -357,6 +364,7 @@ export function SettingsPanel() {
           resolution: data.resolution || '1K',
           imageCount: data.imageCount || 1,
           referenceUrl: connectedInputs.referenceUrl,
+          referenceUrls: allReferenceUrls.length > 0 ? allReferenceUrls : undefined,
           // Model-specific params
           style: data.style,
           magicPrompt: data.magicPrompt,
@@ -407,7 +415,7 @@ export function SettingsPanel() {
     if (!settingsPanelPosition) return { left: 0, top: 0 };
 
     const panelWidth = 280;
-    const panelHeight = 500;
+    const panelHeight = 560;
     const padding = 20;
 
     let left = settingsPanelPosition.x;
@@ -431,7 +439,7 @@ export function SettingsPanel() {
   return (
     <div
       ref={panelRef}
-      className="fixed w-[280px] max-h-[500px] bg-popover border border-border rounded-xl z-50 flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+      className="fixed w-[280px] max-h-[560px] bg-popover border border-border rounded-xl z-50 flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-150"
       style={{ left: position.left, top: position.top }}
     >
       {/* Header */}
@@ -728,8 +736,10 @@ export function SettingsPanel() {
             <textarea
               value={data.prompt}
               onChange={handlePromptChange}
+              onPointerDown={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
               placeholder="Describe the image you want to generate..."
-              className="w-full h-[120px] bg-muted border border-border rounded-lg p-3 text-foreground text-sm placeholder:text-muted-foreground/60 resize-none focus:outline-none focus:border-primary"
+              className="w-full min-h-[140px] max-h-[260px] bg-muted border border-border rounded-lg p-3 text-foreground text-sm placeholder:text-muted-foreground/60 resize-y overflow-y-auto nodrag nopan nowheel select-text focus:outline-none focus:border-primary"
             />
           </div>
 

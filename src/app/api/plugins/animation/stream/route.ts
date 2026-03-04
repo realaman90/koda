@@ -33,17 +33,6 @@ const STREAM_HEARTBEAT_MS = 15_000;
 const STREAM_SOFT_TIMEOUT_MS = maxDuration * 1000 - 15_000;
 const CODEGEN_TOOLS = new Set(['generate_code', 'generate_remotion_code']);
 
-// Tools that should NEVER run in the same stream as generate_plan.
-// Gemini ignores instruction-level stop rules, so we enforce at the code level.
-const EXECUTION_TOOLS = new Set([
-  'sandbox_create', 'sandbox_destroy',
-  'sandbox_write_file', 'sandbox_read_file', 'sandbox_run_command', 'sandbox_list_files',
-  'sandbox_screenshot',
-  'sandbox_upload_media', 'sandbox_write_binary', 'extract_video_frames',
-  'generate_code', 'generate_remotion_code',
-  'render_final',
-  'verify_animation',
-]);
 
 const ANIMATION_DEBUG = process.env.ANIMATION_DEBUG === '1';
 const debugLog = (...args: unknown[]) => {
@@ -833,27 +822,14 @@ export async function POST(request: Request) {
     // ⏱ Server-side timing
     const serverStart = Date.now();
 
-    // ── Plan approval enforcement ──────────────────────────────────
-    // Gemini ignores instruction-level "stop after generate_plan" rules.
-    // We enforce it at the code level:
-    // - If no approved plan in context, limit maxSteps (defense-in-depth)
-    // - Stream-level: after generate_plan, block execution tools & close stream
-    const hasPlanDraft = !!context?.plan;
-    const hasApprovedPlan = context?.planAccepted === true;
-    const hasSandbox = !!context?.sandboxId;
-    // Planning phase: no approved plan AND no existing sandbox (not a revision)
-    // Give limited steps — enough for enhance + plan + approval request
-    // Execution/revision phase: full 75 steps (50 was too few — render_final
-    // often lands on the last step and its tool-result gets dropped by the SDK)
-    const maxSteps = (hasApprovedPlan || hasSandbox) ? 75 : 12;
+    // No plan gate — always use full step budget for direct execution
+    const maxSteps = 75;
 
     debugLog(
-      `⏱ [Animation API] Stream request — engine: ${engine}, messages: ${agentMessages.length}, sandboxId: ${context?.sandboxId || 'NONE'}, phase: ${context?.phase || 'unknown'}, techniques: ${context?.techniques?.length || 0}${recipeContent ? ` (~${Math.round(recipeContent.length / 4)} tokens)` : ''}, maxSteps: ${maxSteps}, hasPlanDraft: ${hasPlanDraft}, hasApprovedPlan: ${hasApprovedPlan}, designSpec: ${context?.designSpec ? JSON.stringify(context.designSpec) : 'NONE'}`
+      `⏱ [Animation API] Stream request — engine: ${engine}, messages: ${agentMessages.length}, sandboxId: ${context?.sandboxId || 'NONE'}, phase: ${context?.phase || 'unknown'}, techniques: ${context?.techniques?.length || 0}${recipeContent ? ` (~${Math.round(recipeContent.length / 4)} tokens)` : ''}, maxSteps: ${maxSteps}, designSpec: ${context?.designSpec ? JSON.stringify(context.designSpec) : 'NONE'}`
     );
 
-    // AbortController to kill the agent loop when we close the stream early
-    // (e.g. plan gate). Without this, Mastra continues executing tool calls
-    // in the background even after we stop reading — creating orphan containers.
+    // AbortController to kill the agent loop when client disconnects or soft timeout.
     const agentAbort = new AbortController();
     requestContext.set('streamAbortSignal' as never, agentAbort.signal as never);
 
@@ -864,9 +840,10 @@ export async function POST(request: Request) {
         requestContext,
         abortSignal: agentAbort.signal,
         providerOptions: {
-          // Each provider ignores keys meant for other providers
-          google: { thinkingConfig: { thinkingBudget: 8192, includeThoughts: true } },
-          anthropic: { thinking: { type: 'enabled', budgetTokens: 10000 } },
+          // Each provider ignores keys meant for other providers.
+          // Orchestrator thinking budget kept small — creative work is in the code-gen subagent.
+          google: { thinkingConfig: { thinkingBudget: 2048, includeThoughts: true } },
+          anthropic: { thinking: { type: 'enabled', budgetTokens: 1500 } },
         },
       }
     );
@@ -881,18 +858,12 @@ export async function POST(request: Request) {
     // so the client can store it for subsequent stream calls
     let discoveredSandboxId: string | null = null;
 
-    // ── Plan approval gate ──────────────────────────────────────────
-    // Track whether generate_plan was called in THIS stream.
-    // If so, block all execution tools to force the user to approve first.
-    let planCalledInStream = false;
-    let planResultDelivered = false;
-    let planApprovalDelivered = false;
-    let blockedExecutionQueued = false;
-
     // ── Video delivery tracking (for credit refund) ─────────────────
     // If the stream completes without delivering a video, refund credits.
     let videoDelivered = false;
     let codegenTransportFailures = 0;
+    // planCalledInStream: true if agent called generate_plan this stream (plan-only run, no video expected)
+    const planCalledInStream = false;
 
     let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
     let softTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
@@ -964,10 +935,6 @@ export async function POST(request: Request) {
             safeClose();
           };
 
-          const closeForPlanGate = (finishReason: 'plan-approval-required' | 'plan-approval-sent') => {
-            closeWithComplete(finishReason);
-          };
-
           // Keep the SSE connection alive through proxies/load balancers during long tool runs.
           heartbeatTimer = setInterval(() => {
             if (!closed) {
@@ -1002,27 +969,6 @@ export async function POST(request: Request) {
                 const toolElapsed = ((Date.now() - serverStart) / 1000).toFixed(1);
                 debugLog(`⏱ [Animation API] Tool call: ${chunk.payload.toolName} at +${toolElapsed}s`);
 
-                // Track generate_plan call — once seen, execution tools are blocked
-                if (chunk.payload.toolName === 'generate_plan') {
-                  planCalledInStream = true;
-                }
-
-                // ── Plan approval gate: block execution tools after generate_plan ──
-                // Gemini ignores instruction-level "stop after plan" rules and
-                // calls sandbox_create / generate_remotion_code in the same turn.
-                // We enforce the gate here by closing the stream.
-                if (planCalledInStream && EXECUTION_TOOLS.has(chunk.payload.toolName)) {
-                  if (planResultDelivered || planApprovalDelivered) {
-                    debugLog(`⏱ [Animation API] ⛔ BLOCKING post-plan tool: ${chunk.payload.toolName} — plan needs user approval first`);
-                    closeForPlanGate('plan-approval-required');
-                  } else {
-                    blockedExecutionQueued = true;
-                    debugLog(`⏱ [Animation API] ⏳ Deferring block for ${chunk.payload.toolName} until generate_plan result is forwarded`);
-                  }
-                  sseData = null; // Don't forward the blocked tool-call
-                  break;
-                }
-
                 sseData = JSON.stringify({
                   type: 'tool-call',
                   toolCallId: chunk.payload.toolCallId,
@@ -1041,49 +987,6 @@ export async function POST(request: Request) {
                   ? ` [success=${resultPayload?.success}, msg=${typeof resultPayload?.message === 'string' ? resultPayload.message.slice(0, 120) : 'none'}]`
                   : '';
                 debugLog(`⏱ [Animation API] Tool result: ${chunk.payload.toolName} at +${resultElapsed}s ${isErr ? '❌' : '✅'}${renderInfo}`);
-
-                // Track generate_plan from tool-result too (in case tool-call was missed)
-                if (chunk.payload.toolName === 'generate_plan' && !isErr) {
-                  planCalledInStream = true;
-                  planResultDelivered = true;
-                  if (blockedExecutionQueued) {
-                    const planResultSSE = JSON.stringify({
-                      type: 'tool-result',
-                      toolCallId: chunk.payload.toolCallId,
-                      toolName: chunk.payload.toolName,
-                      result: chunk.payload.result,
-                      isError: false,
-                    });
-                    safeEnqueue(encoder.encode(`data: ${planResultSSE}\n\n`));
-                    debugLog(`⏱ [Animation API] ✅ generate_plan forwarded — closing before queued execution tools`);
-                    closeForPlanGate('plan-approval-required');
-                    sseData = null;
-                    break;
-                  }
-                }
-
-                // ── Close stream after request_approval for plan ──
-                // The plan card is the last thing the user should see in this stream.
-                // Forward the result, send complete, then close.
-                if (planCalledInStream && chunk.payload.toolName === 'request_approval' && !isErr) {
-                  const resultObj = chunk.payload.result as Record<string, unknown>;
-                  if (resultObj?.type === 'plan') {
-                    planApprovalDelivered = true;
-                    debugLog(`⏱ [Animation API] ✅ Plan approval sent — closing stream for user review`);
-                    // Forward the request_approval result
-                    const approvalSSE = JSON.stringify({
-                      type: 'tool-result',
-                      toolCallId: chunk.payload.toolCallId,
-                      toolName: chunk.payload.toolName,
-                      result: chunk.payload.result,
-                      isError: false,
-                    });
-                    safeEnqueue(encoder.encode(`data: ${approvalSSE}\n\n`));
-                    closeForPlanGate('plan-approval-sent');
-                    sseData = null; // Already forwarded manually
-                    break;
-                  }
-                }
 
                 // Track sandbox ID from sandbox_create results so the client
                 // can persist it for subsequent stream calls (Issue #47)

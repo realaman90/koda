@@ -10,6 +10,8 @@ import { promptStudioAgent } from '@/mastra/agents/prompt-studio-agent';
 import { RequestContext } from '@mastra/core/di';
 import { emitLaunchMetric } from '@/lib/observability/launch-metrics';
 import { evaluatePluginLaunchById, emitPluginPolicyAuditEvent } from '@/lib/plugins/launch-policy';
+import { getAssetStorageType } from '@/lib/assets';
+import { generatePresignedGetUrl, type S3Config } from '@/lib/assets/s3-signing';
 import { z } from 'zod';
 
 export const runtime = 'nodejs';
@@ -53,10 +55,108 @@ function normalizeBaseUrl(value: string | undefined): string | undefined {
   return trimmed.replace(/\/+$/, '');
 }
 
+function sanitizeEnv(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function trimTrailingSlashes(value: string): string {
+  return value.replace(/\/+$/, '');
+}
+
+function extractAssetKeyFromProxyPath(pathname: string): string | undefined {
+  if (!pathname.startsWith('/api/assets/key/')) return undefined;
+  const encodedKey = pathname.slice('/api/assets/key/'.length);
+  if (!encodedKey) return undefined;
+  try {
+    const key = encodedKey
+      .split('/')
+      .map((segment) => decodeURIComponent(segment))
+      .join('/')
+      .replace(/^\/+|\/+$/g, '');
+    return key || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function getS3ConfigForAssetReads(): S3Config | undefined {
+  const storageType = getAssetStorageType();
+
+  if (storageType === 'r2') {
+    const accountId = sanitizeEnv(process.env.R2_ACCOUNT_ID);
+    const accessKeyId = sanitizeEnv(process.env.R2_ACCESS_KEY_ID);
+    const secretAccessKey = sanitizeEnv(process.env.R2_SECRET_ACCESS_KEY);
+    const bucket = sanitizeEnv(process.env.R2_BUCKET_NAME);
+    if (!accountId || !accessKeyId || !secretAccessKey || !bucket) return undefined;
+
+    const endpoint = trimTrailingSlashes(
+      sanitizeEnv(process.env.R2_ENDPOINT) || `https://${accountId}.r2.cloudflarestorage.com`
+    );
+    const publicUrl = sanitizeEnv(process.env.R2_PUBLIC_URL);
+
+    return {
+      type: 'r2',
+      accountId,
+      accessKeyId,
+      secretAccessKey,
+      bucket,
+      region: 'auto',
+      endpoint,
+      publicUrl: publicUrl ? trimTrailingSlashes(publicUrl) : undefined,
+    };
+  }
+
+  if (storageType === 's3') {
+    const accessKeyId = sanitizeEnv(process.env.S3_ACCESS_KEY_ID);
+    const secretAccessKey = sanitizeEnv(process.env.S3_SECRET_ACCESS_KEY);
+    const bucket = sanitizeEnv(process.env.S3_BUCKET_NAME);
+    const region = sanitizeEnv(process.env.S3_REGION) || 'us-east-1';
+    if (!accessKeyId || !secretAccessKey || !bucket) return undefined;
+    const publicUrl = sanitizeEnv(process.env.S3_PUBLIC_URL);
+
+    return {
+      type: 's3',
+      accessKeyId,
+      secretAccessKey,
+      bucket,
+      region,
+      publicUrl: publicUrl ? trimTrailingSlashes(publicUrl) : undefined,
+    };
+  }
+
+  return undefined;
+}
+
+async function getFalReachableAssetUrl(key: string): Promise<string | undefined> {
+  const config = getS3ConfigForAssetReads();
+  if (!config) return undefined;
+  if (config.publicUrl) return `${config.publicUrl}/${key}`;
+  return generatePresignedGetUrl(config, key, 3600);
+}
+
+async function fetchImageAsDataUrl(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+    if (!res.ok) return null;
+    const contentType = (res.headers.get('content-type') || 'image/png').split(';')[0] || 'image/png';
+    if (!contentType.startsWith('image/')) return null;
+    const bytes = Buffer.from(await res.arrayBuffer());
+    return `data:${contentType};base64,${bytes.toString('base64')}`;
+  } catch {
+    return null;
+  }
+}
+
 function getRequestOrigin(request: Request): string | null {
+  try {
+    return new URL(request.url).origin;
+  } catch {
+    // Fall back to forwarded headers.
+  }
   const host = request.headers.get('x-forwarded-host') || request.headers.get('host');
   if (!host) return null;
-  const proto = request.headers.get('x-forwarded-proto') || 'https';
+  const proto = request.headers.get('x-forwarded-proto') || 'http';
   return `${proto}://${host}`;
 }
 
@@ -108,10 +208,46 @@ function isLikelyPublicReferenceUrl(url: URL, request: Request): boolean {
 
   const host = (request.headers.get('x-forwarded-host') || request.headers.get('host') || '').toLowerCase();
   if (host && url.hostname.toLowerCase() === host) {
+    if (url.pathname.startsWith('/api/assets/')) {
+      return true;
+    }
     return !url.pathname.startsWith('/api/');
   }
 
   return true;
+}
+
+async function normalizeReferenceImageForAgent(rawUrl: string, request: Request): Promise<string | null> {
+  const absolute = toAbsoluteUrl(rawUrl, request);
+  if (!absolute) return null;
+  if (absolute.protocol !== 'https:' && absolute.protocol !== 'http:') return null;
+
+  if (isPrivateHostname(absolute.hostname)) {
+    const key = extractAssetKeyFromProxyPath(absolute.pathname);
+    if (!key) {
+      // Private non-asset URL: try to inline it directly.
+      return fetchImageAsDataUrl(absolute.toString());
+    }
+
+    // Prefer inlining image bytes so model provider doesn't need network fetch.
+    const fromProxy = await fetchImageAsDataUrl(absolute.toString());
+    if (fromProxy) return fromProxy;
+
+    // Fallback to cloud URL when inlining via proxy fails.
+    const reachable = await getFalReachableAssetUrl(key);
+    if (!reachable) return null;
+
+    const fromReachable = await fetchImageAsDataUrl(reachable);
+    if (fromReachable) return fromReachable;
+
+    return reachable;
+  }
+
+  if (!isLikelyPublicReferenceUrl(absolute, request)) {
+    return null;
+  }
+
+  return absolute.toString();
 }
 
 export async function POST(request: Request) {
@@ -180,11 +316,10 @@ export async function POST(request: Request) {
 
     // Inject reference images as multimodal parts on the last user message
     if (context?.referenceImages?.length) {
-      const imageParts = context.referenceImages
-        .map((rawUrl) => toAbsoluteUrl(rawUrl, request))
-        .filter((url): url is URL => !!url)
-        .filter((url) => isLikelyPublicReferenceUrl(url, request))
-        .map((url) => ({ type: 'image' as const, image: url }));
+      const normalizedImageInputs = (await Promise.all(
+        context.referenceImages.map((rawUrl) => normalizeReferenceImageForAgent(rawUrl, request))
+      )).filter((url): url is string => !!url);
+      const imageParts = normalizedImageInputs.map((image) => ({ type: 'image' as const, image }));
 
       if (imageParts.length < context.referenceImages.length) {
         console.warn(
@@ -194,12 +329,17 @@ export async function POST(request: Request) {
 
       for (let i = agentMessages.length - 1; i >= 0; i--) {
         if (agentMessages[i].role === 'user') {
-          const textContent = agentMessages[i].content as string;
           if (imageParts.length > 0) {
-            agentMessages[i].content = [
-              { type: 'text', text: textContent },
-              ...imageParts,
-            ];
+            const currentContent = agentMessages[i].content;
+            if (Array.isArray(currentContent)) {
+              agentMessages[i].content = [...currentContent, ...imageParts];
+            } else {
+              const textContent = typeof currentContent === 'string' ? currentContent : String(currentContent ?? '');
+              agentMessages[i].content = [
+                { type: 'text', text: textContent },
+                ...imageParts,
+              ];
+            }
           }
           break;
         }
@@ -284,6 +424,7 @@ export async function POST(request: Request) {
           // Gate: when ask_questions is called, suppress everything else
           // and close stream after its tool-result so agent waits for user answers
           let askQuestionsGate = false;
+          let promptGeneratedInTurn = false;
           let streamErrored = false;
           let streamErrorMessage: string | null = null;
           const UI_TOOLS = new Set(['ask_questions', 'set_thinking']);
@@ -305,6 +446,11 @@ export async function POST(request: Request) {
                 break;
 
               case 'tool-call':
+                // Never surface follow-up question carousels after a prompt was already generated.
+                if (chunk.payload.toolName === 'ask_questions' && promptGeneratedInTurn) {
+                  console.log('[Prompt Studio API] Suppressing ask_questions after generate_prompt in same turn');
+                  break;
+                }
                 if (chunk.payload.toolName === 'ask_questions') {
                   askQuestionsGate = true;
                 }
@@ -319,6 +465,14 @@ export async function POST(request: Request) {
                 break;
 
               case 'tool-result':
+                if (chunk.payload.toolName === 'generate_prompt' && !chunk.payload.isError) {
+                  promptGeneratedInTurn = true;
+                }
+                // Never surface follow-up question carousels after a prompt was already generated.
+                if (chunk.payload.toolName === 'ask_questions' && promptGeneratedInTurn) {
+                  console.log('[Prompt Studio API] Suppressing ask_questions result after generate_prompt in same turn');
+                  break;
+                }
                 // After gate, suppress non-UI tool results
                 if (askQuestionsGate && !UI_TOOLS.has(chunk.payload.toolName)) break;
                 sseData = JSON.stringify({

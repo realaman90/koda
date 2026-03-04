@@ -835,13 +835,12 @@ export const useCanvasStore = create<CanvasState>()(
           if (!finalPrompt && !hasPresets) continue;
 
           // Collect all reference URLs (main reference + additional refs)
-          const allReferenceUrls: string[] = [];
-          if (connectedInputs.referenceUrl) {
-            allReferenceUrls.push(connectedInputs.referenceUrl);
-          }
-          if (connectedInputs.referenceUrls) {
-            allReferenceUrls.push(...connectedInputs.referenceUrls);
-          }
+          const allReferenceUrls = Array.from(
+            new Set(
+              [connectedInputs.referenceUrl, ...(connectedInputs.referenceUrls || [])]
+                .filter((url): url is string => !!url)
+            )
+          );
 
           updateNodeData(gen.id, { isGenerating: true, error: undefined });
 
@@ -1046,7 +1045,7 @@ export const useCanvasStore = create<CanvasState>()(
 
         // Find edges connected to specific handles
         const textEdge = incomingEdges.find((e) => e.targetHandle === 'text');
-        const refEdge = incomingEdges.find((e) => e.targetHandle === 'reference');
+        const referenceHandleEdges = incomingEdges.filter((e) => e.targetHandle === 'reference');
         const firstFrameEdge = incomingEdges.find((e) => e.targetHandle === 'firstFrame');
         const lastFrameEdge = incomingEdges.find((e) => e.targetHandle === 'lastFrame');
         const productImageEdge = incomingEdges.find((e) => e.targetHandle === 'productImage');
@@ -1077,14 +1076,13 @@ export const useCanvasStore = create<CanvasState>()(
           if (url) referenceImageUrls['refImage_1'] = url;
         }
 
-        // Multi-reference handles (ref1-ref14 across Image/Video generators)
-        const refEdges = ['ref1', 'ref2', 'ref3', 'ref4', 'ref5', 'ref6', 'ref7', 'ref8', 'ref9', 'ref10', 'ref11', 'ref12', 'ref13', 'ref14']
+        // Legacy multi-reference handles (ref1-ref14) remain supported for existing canvases.
+        const legacyRefEdges = ['ref1', 'ref2', 'ref3', 'ref4', 'ref5', 'ref6', 'ref7', 'ref8', 'ref9', 'ref10', 'ref11', 'ref12', 'ref13', 'ref14']
           .map((handle) => incomingEdges.find((e) => e.targetHandle === handle))
           .filter(Boolean);
 
         // Get source nodes
         const textNode = textEdge ? nodes.find((n) => n.id === textEdge.source) : null;
-        const refNode = refEdge ? nodes.find((n) => n.id === refEdge.source) : null;
         const firstFrameNode = firstFrameEdge ? nodes.find((n) => n.id === firstFrameEdge.source) : null;
         const lastFrameNode = lastFrameEdge ? nodes.find((n) => n.id === lastFrameEdge.source) : null;
         const productImageNode = productImageEdge ? nodes.find((n) => n.id === productImageEdge.source) : null;
@@ -1092,13 +1090,19 @@ export const useCanvasStore = create<CanvasState>()(
         const videoNode = videoEdge ? nodes.find((n) => n.id === videoEdge.source) : null;
         const audioNode = audioEdge ? nodes.find((n) => n.id === audioEdge.source) : null;
 
-        // Get multi-reference URLs
-        const referenceUrls = refEdges
+        // Collect reference URLs from all reference handles:
+        // - primary "reference" handle can have multiple edges
+        // - legacy handles ref1-ref14 for backward compatibility
+        const allRefEdges = [...referenceHandleEdges, ...legacyRefEdges];
+        const allReferenceUrls = allRefEdges
           .map((edge) => {
             const node = edge ? nodes.find((n) => n.id === edge.source) : null;
             return getImageUrl(node, edge?.sourceHandle);
           })
           .filter((url): url is string => !!url);
+        const dedupedReferenceUrls = Array.from(new Set(allReferenceUrls));
+        const primaryReferenceUrl = dedupedReferenceUrls[0];
+        const additionalReferenceUrls = dedupedReferenceUrls.slice(1);
 
         // Resolve text content: supports Text nodes and plugin prompt-output handles
         let resolvedTextContent: string | undefined;
@@ -1125,10 +1129,10 @@ export const useCanvasStore = create<CanvasState>()(
 
         return {
           textContent: resolvedTextContent,
-          referenceUrl: getImageUrl(refNode, refEdge?.sourceHandle),
+          referenceUrl: primaryReferenceUrl,
           firstFrameUrl: getImageUrl(firstFrameNode, firstFrameEdge?.sourceHandle),
           lastFrameUrl: getImageUrl(lastFrameNode, lastFrameEdge?.sourceHandle),
-          referenceUrls: referenceUrls.length > 0 ? referenceUrls : undefined,
+          referenceUrls: additionalReferenceUrls.length > 0 ? additionalReferenceUrls : undefined,
           productImageUrl: getImageUrl(productImageNode),
           characterImageUrl: getImageUrl(characterImageNode),
           referenceImageUrls: Object.keys(referenceImageUrls).length > 0 ? referenceImageUrls : undefined,

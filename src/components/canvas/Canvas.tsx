@@ -282,7 +282,7 @@ export function Canvas() {
         || sourceNode.type === 'speech'
         || (sourceNode.type === 'media' && sourceMediaType === 'audio');
 
-      // Image input handles - reference, firstFrame, lastFrame, ref1-ref8 (for multi-ref models)
+      // Image input handles - reference, firstFrame, lastFrame, legacy ref1-ref14
       const targetHandle = connection.targetHandle || '';
 
       // Animation node fallback: some custom handle compositions may not always report
@@ -296,7 +296,7 @@ export function Canvas() {
         return isImageSource || isVideoSource || isSvgCodeSource;
       }
       const isImageHandle = ['reference', 'firstFrame', 'lastFrame'].includes(targetHandle) ||
-        /^ref[1-8]$/.test(targetHandle);
+        /^ref([1-9]|1[0-4])$/.test(targetHandle);
       if (isImageHandle) {
         if (!isImageSource) return false;
 
@@ -304,7 +304,28 @@ export function Canvas() {
         if (targetNode.type === 'imageGenerator') {
           const model = (targetNode.data as ImageGeneratorNodeData).model as ImageModelType;
           const capabilities = MODEL_CAPABILITIES[model];
-          return capabilities.inputType === 'text-and-image' || capabilities.inputType === 'image-only';
+          if (!(capabilities.inputType === 'text-and-image' || capabilities.inputType === 'image-only')) {
+            return false;
+          }
+          if (!capabilities.supportsReferences) return false;
+
+          // Enforce per-model reference limits.
+          const maxRefs = Math.max(1, capabilities.maxReferences || 1);
+          const existingReferenceEdges = edges.filter(
+            (e) =>
+              e.target === targetNode.id
+              && (
+                e.targetHandle === 'reference'
+                || /^ref([1-9]|1[0-4])$/.test(e.targetHandle || '')
+              )
+          );
+          const hasSameSourceAlreadyConnected = existingReferenceEdges.some(
+            (e) => e.source === connection.source && (e.sourceHandle || '') === (connection.sourceHandle || '')
+          );
+          if (!hasSameSourceAlreadyConnected && existingReferenceEdges.length >= maxRefs) {
+            return false;
+          }
+          return true;
         }
 
         // For video generator nodes - always allow if it's an image handle
@@ -377,7 +398,7 @@ export function Canvas() {
 
       return true;
     },
-    [nodes]
+    [nodes, edges]
   );
 
   // Allow panning on empty canvas while Select tool is active.

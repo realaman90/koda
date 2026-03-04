@@ -269,7 +269,7 @@ function VideoAudioNodeComponent({ id, data, selected }: NodeProps<VideoAudioNod
             </div>
           ) : (
             /* Input State */
-            <div className="p-4 min-h-[180px]">
+            <div className="p-4 min-h-[180px] nodrag nopan" onPointerDown={(e) => e.stopPropagation()}>
               {/* Connection Status */}
               <div className={`mb-3 p-2 rounded-lg text-xs ${
                 hasVideoInput
@@ -286,8 +286,10 @@ function VideoAudioNodeComponent({ id, data, selected }: NodeProps<VideoAudioNod
               <textarea
                 value={data.prompt}
                 onChange={handlePromptChange}
+                onPointerDown={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
                 placeholder="Describe the audio you want (optional)..."
-                className="w-full h-[80px] bg-transparent border-none text-sm resize-none focus:outline-none node-input"
+                className="w-full h-[80px] bg-transparent border-none text-sm resize-none focus:outline-none node-input nodrag nopan nowheel select-text"
                 style={{ color: 'var(--text-secondary)' }}
               />
             </div>

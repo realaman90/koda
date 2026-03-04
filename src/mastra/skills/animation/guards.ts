@@ -3,12 +3,14 @@ import type { AnimationPhase, AnimationSkillId, AnimationSkillInput, SkillErrorC
 const ALLOWED_PHASES: Record<AnimationSkillId, AnimationPhase[]> = {
   intent: ['idle', 'question', 'plan', 'executing'],
   plan: ['idle', 'question', 'plan'],
-  media_prepare: ['idle', 'plan', 'executing'],
-  sandbox: ['executing', 'preview'],
-  codegen: ['executing'],
-  verify: ['preview', 'executing'],
-  render: ['executing', 'preview'],
-  recover: ['executing', 'preview', 'error'],
+  media_prepare: ['idle', 'plan', 'executing', 'preview', 'complete'],
+  // sandbox/codegen/render must work from idle (initial generation) AND
+  // from preview/complete (editing an existing animation without planning step).
+  sandbox: ['idle', 'executing', 'preview', 'complete'],
+  codegen: ['idle', 'executing', 'preview', 'complete'],
+  verify: ['preview', 'executing', 'complete'],
+  render: ['idle', 'executing', 'preview', 'complete'],
+  recover: ['executing', 'preview', 'error', 'complete'],
 };
 
 export class SkillGuardError extends Error {

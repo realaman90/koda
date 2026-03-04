@@ -1457,7 +1457,8 @@ export const renderFinalTool = createTool({
         const permanentUrl_tf = await saveVideoToPermanentStorage(sandboxId, 'output/final.mp4', nodeId_tf);
         const videoUrl_tf = permanentUrl_tf || `/api/plugins/animation/sandbox/${sandboxId}/file?path=output/final.mp4`;
 
-        if (permanentUrl_tf && (context as ToolContext)?.requestContext) {
+        // Always set lastVideoUrl so recovery SSE works even if permanent storage failed
+        if ((context as ToolContext)?.requestContext) {
           (context as ToolContext).requestContext!.set('lastVideoUrl', videoUrl_tf);
         }
 
@@ -1604,7 +1605,8 @@ export const renderFinalTool = createTool({
       const permanentUrl_rf = await saveVideoToPermanentStorage(sandboxId, 'output/final.mp4', nodeId_rf);
       const videoUrl_rf = permanentUrl_rf || `/api/plugins/animation/sandbox/${sandboxId}/file?path=output/final.mp4`;
 
-      if (permanentUrl_rf && (context as ToolContext)?.requestContext) {
+      // Always set lastVideoUrl so recovery SSE works even if permanent storage failed
+      if ((context as ToolContext)?.requestContext) {
         (context as ToolContext).requestContext!.set('lastVideoUrl', videoUrl_rf);
       }
 

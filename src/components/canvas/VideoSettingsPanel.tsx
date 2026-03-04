@@ -347,7 +347,7 @@ export function VideoSettingsPanel() {
     if (!videoSettingsPanelPosition) return { left: 0, top: 0 };
 
     const panelWidth = 280;
-    const panelHeight = 450;
+    const panelHeight = 560;
     const padding = 20;
 
     let left = videoSettingsPanelPosition.x;
@@ -371,7 +371,7 @@ export function VideoSettingsPanel() {
   return (
     <div
       ref={panelRef}
-      className="fixed w-[280px] max-h-[450px] bg-popover border border-border rounded-lg z-50 flex flex-col shadow-xl animate-in fade-in zoom-in-95 duration-150"
+      className="fixed w-[280px] max-h-[560px] bg-popover border border-border rounded-lg z-50 flex flex-col shadow-xl animate-in fade-in zoom-in-95 duration-150"
       style={{ left: position.left, top: position.top }}
     >
       {/* Header */}
@@ -560,8 +560,10 @@ export function VideoSettingsPanel() {
           <textarea
             value={data.prompt}
             onChange={handlePromptChange}
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
             placeholder="Describe the video you want to generate..."
-            className="w-full h-[100px] bg-background border border-border rounded-md p-3 text-foreground text-sm placeholder:text-muted-foreground resize-none focus:outline-none focus:border-input"
+            className="w-full min-h-[140px] max-h-[260px] bg-background border border-border rounded-md p-3 text-foreground text-sm placeholder:text-muted-foreground resize-y overflow-y-auto nodrag nopan nowheel select-text focus:outline-none focus:border-input"
           />
         </div>
 

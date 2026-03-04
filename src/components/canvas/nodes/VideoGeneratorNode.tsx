@@ -912,9 +912,11 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
                       <textarea
                         value={data.prompt}
                         onChange={(e) => handlePromptChange(e.target.value)}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onMouseDown={(e) => e.stopPropagation()}
                         placeholder={isReadOnly ? '' : 'Edit your prompt...'}
                         disabled={isReadOnly || isImproving || isTranslating}
-                        className={`w-full h-[80px] bg-transparent border-none text-sm resize-none focus:outline-none node-text-secondary ${isReadOnly ? 'cursor-default' : ''}`}
+                        className={`w-full h-[80px] bg-transparent border-none text-sm resize-none node-text-secondary nodrag nopan nowheel select-text focus:outline-none ${isReadOnly ? 'cursor-default' : ''}`}
                       />
                     )}
                     {/* Prompt tools in expanded bar */}
@@ -1042,7 +1044,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
             </>
           ) : (
             /* Prompt Input - Freepik style with inner content area */
-            <div className="p-3">
+            <div className="p-3 nodrag nopan" onPointerDown={(e) => e.stopPropagation()}>
               <div className="node-content-area p-3 min-h-[160px] relative">
                 {hasAdvancedHandles ? (
                   <MentionEditor
@@ -1056,9 +1058,11 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
                   <textarea
                     value={data.prompt}
                     onChange={(e) => handlePromptChange(e.target.value)}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
                     placeholder={isReadOnly ? '' : 'Describe the video you want to generate...'}
                     disabled={isReadOnly || isImproving || isTranslating}
-                    className={`w-full h-[130px] bg-transparent border-none text-sm resize-none focus:outline-none node-text-secondary ${isReadOnly ? 'cursor-default' : ''}`}
+                    className={`w-full h-[130px] bg-transparent border-none text-sm resize-none node-text-secondary nodrag nopan nowheel select-text focus:outline-none ${isReadOnly ? 'cursor-default' : ''}`}
                   />
                 )}
                 {/* Improve & Translate buttons — gated by model's promptTools config */}

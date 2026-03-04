@@ -6,6 +6,7 @@
  */
 
 const DEFAULT_GEMINI_31_PRO_PREVIEW = 'google/gemini-3.1-pro-preview';
+const DEFAULT_GEMINI_31_FLASH_LITE_PREVIEW = 'google/gemini-3.1-flash-lite-preview';
 
 // -- Anthropic Claude Models --
 
@@ -71,5 +72,5 @@ export const PROMPT_ENHANCER_MODEL = 'google/gemini-3.1-pro-preview';
 /** Prompt Studio creative director */
 export const PROMPT_STUDIO_MODEL = readModelOverride(
   'KODA_MODEL_PROMPT_STUDIO',
-  CLAUDE_SONNET_4_6
+  DEFAULT_GEMINI_31_FLASH_LITE_PREVIEW
 );
