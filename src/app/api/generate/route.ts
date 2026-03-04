@@ -8,7 +8,7 @@ import {
   type ImageModelType,
 } from '@/lib/types';
 import { getModelAdapter, type GenerateRequest } from '@/lib/model-adapters';
-import { getAssetStorageType, getExtensionFromUrl, type AssetStorageProvider } from '@/lib/assets';
+import { getAssetStorageType, getExtensionFromMime, getExtensionFromUrl, type AssetStorageProvider } from '@/lib/assets';
 import { generatePresignedGetUrl, type S3Config } from '@/lib/assets/s3-signing';
 import { withCredits } from '@/lib/credits/with-credits';
 
@@ -141,6 +141,225 @@ async function getFalReachableAssetUrl(key: string): Promise<string | undefined>
   return generatePresignedGetUrl(config, key, 3600);
 }
 
+const GEMINI_IMAGE_FALLBACK_MODELS: Partial<Record<ImageModelType, string>> = {
+  'nanobanana-pro': 'gemini-3.1-flash-image-preview',
+  'nanobanana-2': 'gemini-3.1-flash-image-preview',
+};
+
+interface GeminiInlineImagePart {
+  mimeType: string;
+  base64Data: string;
+}
+
+interface GeneratedImageBuffer {
+  buffer: Buffer;
+  mimeType: string;
+  extension: string;
+}
+
+interface GeminiGenerateContentResponse {
+  candidates?: Array<{
+    content?: {
+      parts?: Array<{
+        inlineData?: { mimeType?: string; data?: string };
+        inline_data?: { mime_type?: string; data?: string };
+      }>;
+    };
+  }>;
+  error?: { message?: string };
+}
+
+function toNumber(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+function getErrorStatus(error: unknown): number | undefined {
+  if (!error || typeof error !== 'object') return undefined;
+
+  const value = error as {
+    status?: unknown;
+    response?: { status?: unknown };
+    body?: { status?: unknown; status_code?: unknown };
+    cause?: { status?: unknown };
+    message?: string;
+  };
+
+  const fromObject =
+    toNumber(value.status)
+    ?? toNumber(value.response?.status)
+    ?? toNumber(value.body?.status)
+    ?? toNumber(value.body?.status_code)
+    ?? toNumber(value.cause?.status);
+
+  if (fromObject) return fromObject;
+
+  const message = value.message || '';
+  const match = message.match(/\b([45]\d{2})\b/);
+  if (!match) return undefined;
+  return toNumber(match[1]);
+}
+
+function isFalServiceFailure(error: unknown): boolean {
+  const status = getErrorStatus(error);
+  if (typeof status === 'number' && status >= 500) {
+    return true;
+  }
+
+  const message = getErrorMessage(error).toLowerCase();
+  return (
+    message.includes('internal server error') ||
+    message.includes('service unavailable') ||
+    message.includes('bad gateway') ||
+    message.includes('gateway timeout') ||
+    message.includes('upstream') ||
+    message.includes('fetch failed') ||
+    message.includes('network') ||
+    message.includes('timed out') ||
+    message.includes('timeout')
+  );
+}
+
+function parseDataImageUrl(value: string): GeminiInlineImagePart | undefined {
+  const match = value.match(/^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i);
+  if (!match) return undefined;
+  const mimeType = match[1].toLowerCase();
+  const base64Data = match[2];
+  if (!mimeType.startsWith('image/') || !base64Data) {
+    return undefined;
+  }
+  return { mimeType, base64Data };
+}
+
+async function fetchReferenceAsGeminiInlineImage(referenceUrl: string): Promise<GeminiInlineImagePart | undefined> {
+  const inline = parseDataImageUrl(referenceUrl);
+  if (inline) return inline;
+
+  try {
+    const response = await fetch(referenceUrl, { signal: AbortSignal.timeout(20_000) });
+    if (!response.ok) return undefined;
+
+    const mimeType = (response.headers.get('content-type') || 'image/png').split(';')[0].trim().toLowerCase();
+    if (!mimeType.startsWith('image/')) return undefined;
+
+    const bytes = Buffer.from(await response.arrayBuffer());
+    return {
+      mimeType,
+      base64Data: bytes.toString('base64'),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function extractGeminiImages(payload: GeminiGenerateContentResponse): GeneratedImageBuffer[] {
+  const result: GeneratedImageBuffer[] = [];
+
+  for (const candidate of payload.candidates || []) {
+    const parts = candidate.content?.parts || [];
+    for (const part of parts) {
+      const camel = part.inlineData;
+      const snake = part.inline_data;
+
+      const mimeType = (camel?.mimeType || snake?.mime_type || '').toLowerCase();
+      const data = camel?.data || snake?.data || '';
+      if (!mimeType.startsWith('image/') || !data) continue;
+
+      try {
+        const buffer = Buffer.from(data, 'base64');
+        if (buffer.length === 0) continue;
+
+        const extension = getExtensionFromMime(mimeType);
+        result.push({
+          buffer,
+          mimeType,
+          extension: extension === 'bin' ? 'png' : extension,
+        });
+      } catch {
+        // Skip invalid image payloads.
+      }
+    }
+  }
+
+  return result;
+}
+
+async function generateWithGeminiFallback(options: {
+  modelType: ImageModelType;
+  prompt: string;
+  referenceUrls: string[];
+}): Promise<{ modelId: string; images: GeneratedImageBuffer[] }> {
+  const modelId = GEMINI_IMAGE_FALLBACK_MODELS[options.modelType];
+  if (!modelId) {
+    throw new Error(`No Gemini fallback configured for model "${options.modelType}"`);
+  }
+
+  const apiKey = sanitizeEnv(process.env.GOOGLE_GENERATIVE_AI_API_KEY);
+  if (!apiKey) {
+    throw new Error('GOOGLE_GENERATIVE_AI_API_KEY is not configured');
+  }
+
+  const inlineReferences = await Promise.all(
+    options.referenceUrls.slice(0, 14).map(fetchReferenceAsGeminiInlineImage)
+  );
+  const validReferences = inlineReferences.filter((item): item is GeminiInlineImagePart => !!item);
+
+  if (options.referenceUrls.length > 0 && validReferences.length === 0) {
+    throw new Error('Gemini fallback could not read any reference images');
+  }
+
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelId)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const requestBody = {
+    contents: [
+      {
+        role: 'user',
+        parts: [
+          { text: options.prompt },
+          ...validReferences.map((image) => ({
+            inlineData: {
+              mimeType: image.mimeType,
+              data: image.base64Data,
+            },
+          })),
+        ],
+      },
+    ],
+    generationConfig: {
+      responseModalities: ['IMAGE'],
+    },
+  };
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(requestBody),
+    signal: AbortSignal.timeout(120_000),
+  });
+
+  const payload = (await response.json().catch(() => ({}))) as GeminiGenerateContentResponse;
+  if (!response.ok) {
+    throw new Error(`Gemini API ${response.status}: ${payload.error?.message || response.statusText}`);
+  }
+
+  const images = extractGeminiImages(payload);
+  if (images.length === 0) {
+    throw new Error('Gemini fallback returned no images');
+  }
+
+  return { modelId, images };
+}
+
 /**
  * Save generated images to configured asset storage
  * Returns local URLs if storage is configured, otherwise returns original URLs
@@ -178,6 +397,39 @@ async function saveGeneratedImages(
       console.error('Failed to save image asset:', error);
       // Fall back to original URL if save fails
       savedUrls.push(url);
+    }
+  }
+
+  return savedUrls;
+}
+
+/**
+ * Save generated image buffers to configured asset storage.
+ * Used for providers that return inline image bytes (Gemini fallback).
+ */
+async function saveGeneratedImageBuffers(
+  images: GeneratedImageBuffer[],
+  options: { prompt: string; model: string; canvasId?: string; nodeId?: string }
+): Promise<string[]> {
+  const provider = await getProvider();
+  const savedUrls: string[] = [];
+
+  for (const image of images) {
+    try {
+      const asset = await provider.saveFromBuffer(image.buffer, {
+        type: 'image',
+        extension: image.extension,
+        metadata: {
+          mimeType: image.mimeType,
+          prompt: options.prompt,
+          model: options.model,
+          canvasId: options.canvasId,
+          nodeId: options.nodeId,
+        },
+      });
+      savedUrls.push(asset.url);
+    } catch (error) {
+      console.error('Failed to save generated image buffer:', error);
     }
   }
 
@@ -305,37 +557,85 @@ export const POST = withCredits(
         ? adapter.getModelId(generateRequest)
         : FAL_MODELS[modelType] || FAL_MODELS['flux-schnell'];
 
-      // Call Fal API
-      const result = await fal.subscribe(modelId, {
-        input,
-        logs: true,
-        onQueueUpdate: (update) => {
-          console.log('Queue update:', update.status);
-        },
-      });
-
-      // Extract image URLs using adapter
-      const imageUrls = adapter.extractImageUrls(result as { data?: { images?: Array<{ url: string }> } });
-
-      if (imageUrls.length === 0) {
-        throw new Error('No images generated');
-      }
-
-      // Save images to configured asset storage (local filesystem, R2, or S3)
       const { canvasId, nodeId } = body;
-      const savedUrls = await saveGeneratedImages(imageUrls, {
-        prompt,
-        model: modelId,
-        canvasId,
-        nodeId,
-      });
+      let responseModelId = modelId;
+      let originalUrls: string[] = [];
+      let savedUrls: string[] = [];
+
+      try {
+        // Primary path: Fal generation
+        const result = await fal.subscribe(modelId, {
+          input,
+          logs: true,
+          onQueueUpdate: (update) => {
+            console.log('Queue update:', update.status);
+          },
+        });
+
+        // Extract image URLs using adapter
+        const imageUrls = adapter.extractImageUrls(result as { data?: { images?: Array<{ url: string }> } });
+        if (imageUrls.length === 0) {
+          throw new Error('No images generated');
+        }
+
+        originalUrls = imageUrls;
+
+        // Save images to configured asset storage (local filesystem, R2, or S3)
+        savedUrls = await saveGeneratedImages(imageUrls, {
+          prompt,
+          model: modelId,
+          canvasId,
+          nodeId,
+        });
+      } catch (falError) {
+        const fallbackModelId = GEMINI_IMAGE_FALLBACK_MODELS[modelType];
+        const hasGeminiKey = !!sanitizeEnv(process.env.GOOGLE_GENERATIVE_AI_API_KEY);
+        const shouldFallback =
+          !!fallbackModelId &&
+          hasGeminiKey &&
+          isFalServiceFailure(falError);
+
+        if (!shouldFallback) {
+          throw falError;
+        }
+
+        console.warn(
+          `Fal image generation failed for ${modelId}. Falling back to Gemini ${fallbackModelId}.`,
+          falError
+        );
+
+        try {
+          const fallback = await generateWithGeminiFallback({
+            modelType,
+            prompt,
+            referenceUrls: normalizedReferences,
+          });
+
+          responseModelId = `google/${fallback.modelId}`;
+          originalUrls = [];
+          savedUrls = await saveGeneratedImageBuffers(fallback.images, {
+            prompt,
+            model: responseModelId,
+            canvasId,
+            nodeId,
+          });
+
+          if (savedUrls.length === 0) {
+            throw new Error('Gemini fallback generated images but none could be saved');
+          }
+        } catch (fallbackError) {
+          throw new Error(
+            `Fal generation failed (${getErrorMessage(falError)}). Gemini fallback failed (${getErrorMessage(fallbackError)}).`
+          );
+        }
+      }
 
       return NextResponse.json({
         success: true,
         imageUrl: savedUrls[0], // For backwards compatibility
         imageUrls: savedUrls, // Array of all generated images (now local URLs if storage configured)
-        originalUrls: imageUrls, // Keep original fal.ai URLs as backup
-        model: modelId,
+        originalUrls, // Keep original fal.ai URLs as backup when available
+        model: responseModelId,
       });
     } catch (error) {
       console.error('Generation error:', error);
