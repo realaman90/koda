@@ -97,6 +97,11 @@ const MIME_TO_EXT: Record<string, string> = {
   'image/svg+xml': 'svg',
 };
 
+function toCloudProxyUrl(key: string): string {
+  const encoded = key.split('/').map(encodeURIComponent).join('/');
+  return `/api/assets/key/${encoded}`;
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -123,20 +128,25 @@ export async function POST(request: Request) {
 
     const uploadUrl = await generatePresignedPutUrl(config, key, contentType, 3600);
 
-    // Build public URL
-    let publicUrl: string;
+    // Build direct public URL (storage-native) and proxy URL (always app-served).
+    let directPublicUrl: string;
     if (config.publicUrl) {
-      publicUrl = `${config.publicUrl}/${key}`;
+      directPublicUrl = `${config.publicUrl}/${key}`;
     } else if (config.type === 'r2') {
       const endpoint = trimTrailingSlashes(config.endpoint || '');
-      publicUrl = r2EndpointIncludesBucket(endpoint, config.bucket)
+      directPublicUrl = r2EndpointIncludesBucket(endpoint, config.bucket)
         ? `${endpoint}/${key}`
         : `${endpoint}/${config.bucket}/${key}`;
     } else {
-      publicUrl = `https://${config.bucket}.s3.${config.region}.amazonaws.com/${key}`;
+      directPublicUrl = `https://${config.bucket}.s3.${config.region}.amazonaws.com/${key}`;
     }
 
-    return NextResponse.json({ uploadUrl, publicUrl, key });
+    return NextResponse.json({
+      uploadUrl,
+      publicUrl: toCloudProxyUrl(key),
+      directPublicUrl,
+      key,
+    });
   } catch (error) {
     console.error('[assets/presign] Error:', error);
     return NextResponse.json({ error: 'Failed to generate presigned URL' }, { status: 500 });

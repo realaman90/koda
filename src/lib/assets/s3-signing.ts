@@ -16,6 +16,8 @@ export interface S3Config {
   publicUrl?: string;      // Public URL for serving assets
 }
 
+const EMPTY_PAYLOAD_SHA256 = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+
 interface RequestTarget {
   url: string;
   host: string;
@@ -203,7 +205,7 @@ export async function signRequest(
 
   const payloadHash = body
     ? toHex(await sha256(body))
-    : 'UNSIGNED-PAYLOAD';
+    : EMPTY_PAYLOAD_SHA256;
 
   const headers: Record<string, string> = {
     'host': target.host,

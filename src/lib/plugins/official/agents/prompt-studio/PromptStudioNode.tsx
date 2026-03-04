@@ -476,9 +476,10 @@ function PromptStudioNodeComponent({ id, data, selected }: NodeProps<PromptStudi
     updateNodeInternals(id);
   }, [id, ls.phase, ls.generatedPrompts.length, updateNodeInternals]);
 
-  const persistState = useCallback((state: PromptStudioNodeState) => {
-    updateNodeData(id, { state });
-  }, [id, updateNodeData]);
+  // Persist Prompt Studio state to canvas store after commit (never during render).
+  useEffect(() => {
+    updateNodeData(id, { state: ls }, true);
+  }, [id, ls, updateNodeData]);
 
   // Auto-scroll
   useEffect(() => {
@@ -566,12 +567,8 @@ function PromptStudioNodeComponent({ id, data, selected }: NodeProps<PromptStudi
   const activePromptId = ls.activePromptId || ls.generatedPrompts[ls.generatedPrompts.length - 1]?.id;
 
   const handleSelectPrompt = useCallback((promptId: string) => {
-    setLs(prev => {
-      const newState = { ...prev, activePromptId: promptId };
-      persistState(newState);
-      return newState;
-    });
-  }, [persistState]);
+    setLs(prev => ({ ...prev, activePromptId: promptId }));
+  }, []);
 
   // ── Node styling (matches AnimationNode) ──
   const nodeClasses = useMemo(() => {
@@ -677,7 +674,6 @@ function PromptStudioNodeComponent({ id, data, selected }: NodeProps<PromptStudi
       updatedAt: new Date().toISOString(),
     };
     setLs(updatedState);
-    persistState(updatedState);
     setThinkingMsg('');
     setReasoning('');
 
@@ -852,7 +848,6 @@ function PromptStudioNodeComponent({ id, data, selected }: NodeProps<PromptStudi
               reasoning: undefined,
               updatedAt: new Date().toISOString(),
             };
-            persistState(newState);
             return newState;
           }
 
@@ -871,7 +866,6 @@ function PromptStudioNodeComponent({ id, data, selected }: NodeProps<PromptStudi
             reasoning: undefined,
             updatedAt: new Date().toISOString(),
           };
-          persistState(newState);
           return newState;
         });
       },
@@ -885,22 +879,20 @@ function PromptStudioNodeComponent({ id, data, selected }: NodeProps<PromptStudi
             streamingText: undefined,
             updatedAt: new Date().toISOString(),
           };
-          persistState(newState);
           return newState;
         });
       },
     });
-  }, [inputValue, isStreaming, id, stream, persistState]);
+  }, [inputValue, isStreaming, id, stream, getCanvasContext]);
 
   const handleReset = useCallback(() => {
     abort();
     const newState = createDefaultState(id);
     setLs(newState);
-    persistState(newState);
     setThinkingMsg('');
     setReasoning('');
     setInputValue('');
-  }, [id, abort, persistState]);
+  }, [id, abort]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {

@@ -91,7 +91,7 @@ function isPrivateHostname(hostname: string): boolean {
 function isLikelyPublicReferenceUrl(url: URL, request: Request): boolean {
   if (url.protocol !== 'https:' && url.protocol !== 'http:') return false;
   if (isPrivateHostname(url.hostname)) return false;
-  if (url.pathname.startsWith('/api/')) return false;
+  if (url.pathname.startsWith('/api/') && !url.pathname.startsWith('/api/assets/')) return false;
 
   const publicPrefixes = [
     process.env.R2_PUBLIC_URL,

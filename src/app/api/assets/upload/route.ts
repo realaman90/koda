@@ -30,6 +30,11 @@ async function getProvider(): Promise<AssetStorageProvider> {
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
 
+function toCloudProxyUrl(key: string): string {
+  const encoded = key.split('/').map(encodeURIComponent).join('/');
+  return `/api/assets/key/${encoded}`;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -70,9 +75,15 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    const storageType = getAssetStorageType();
+    const url = (storageType === 'r2' || storageType === 's3')
+      ? toCloudProxyUrl(asset.key)
+      : asset.url;
+
     return NextResponse.json({
       id: asset.id,
-      url: asset.url,
+      url,
+      key: asset.key,
       mimeType: file.type,
       sizeBytes: file.size,
     });

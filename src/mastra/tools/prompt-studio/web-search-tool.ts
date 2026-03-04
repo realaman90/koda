@@ -9,7 +9,31 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import Exa from 'exa-js';
 
-const exa = new Exa(process.env.EXA_API_KEY);
+let exaClient: Exa | null | undefined;
+let warnedMissingKey = false;
+
+function getExaClient(): Exa | null {
+  if (exaClient !== undefined) return exaClient;
+
+  const apiKey = process.env.EXA_API_KEY?.trim();
+  if (!apiKey) {
+    if (!warnedMissingKey) {
+      warnedMissingKey = true;
+      console.warn('[search_web] EXA_API_KEY is not configured; returning empty web search results.');
+    }
+    exaClient = null;
+    return exaClient;
+  }
+
+  try {
+    exaClient = new Exa(apiKey);
+  } catch (err) {
+    console.error('[search_web] Failed to initialize Exa client:', err);
+    exaClient = null;
+  }
+
+  return exaClient;
+}
 
 export const webSearchTool = createTool({
   id: 'search_web',
@@ -43,6 +67,16 @@ export const webSearchTool = createTool({
   }),
   execute: async (input) => {
     try {
+      const exa = getExaClient();
+      if (!exa) {
+        return {
+          success: false,
+          searchId: `search_${Date.now()}`,
+          query: input.query,
+          results: [],
+        };
+      }
+
       const response = await exa.searchAndContents(input.query, {
         type: 'auto',
         numResults: input.numResults || 3,
