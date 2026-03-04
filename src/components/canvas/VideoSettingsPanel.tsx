@@ -9,9 +9,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useCanvasStore } from '@/stores/canvas-store';
 import type { VideoGeneratorNodeData, VideoModelType, VideoAspectRatio, VideoDuration, VideoResolution } from '@/lib/types';
-import { VIDEO_MODEL_CAPABILITIES, ENABLED_VIDEO_MODELS, type VideoModelType as VideoModelTypeImport } from '@/lib/types';
+import {
+  DEFAULT_HEYGEN_AVATAR4_VOICE,
+  ENABLED_VIDEO_MODELS,
+  HEYGEN_AVATAR4_VOICES,
+  VIDEO_MODEL_CAPABILITIES,
+  type VideoModelType as VideoModelTypeImport,
+} from '@/lib/types';
 import { useSettingsStore } from '@/stores/settings-store';
 import {
   X,
@@ -28,6 +35,11 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+
+const HEYGEN_AVATAR4_VOICE_OPTIONS = HEYGEN_AVATAR4_VOICES.map((voice) => ({
+  value: voice,
+  label: voice,
+}));
 
 export function VideoSettingsPanel() {
   const videoSettingsPanelNodeId = useCanvasStore((state) => state.videoSettingsPanelNodeId);
@@ -92,9 +104,22 @@ export function VideoSettingsPanel() {
         updates.resolution = '720p';
       }
 
+      if (newModel === 'heygen-avatar4-i2v' && !data.heygenVoice) {
+        updates.heygenVoice = DEFAULT_HEYGEN_AVATAR4_VOICE;
+      }
+
       updateNodeData(videoSettingsPanelNodeId, updates);
     },
     [videoSettingsPanelNodeId, data, updateNodeData]
+  );
+
+  const handleHeygenVoiceChange = useCallback(
+    (value: string) => {
+      if (videoSettingsPanelNodeId) {
+        updateNodeData(videoSettingsPanelNodeId, { heygenVoice: value });
+      }
+    },
+    [videoSettingsPanelNodeId, updateNodeData]
   );
 
   const handleAspectRatioChange = useCallback(
@@ -144,11 +169,14 @@ export function VideoSettingsPanel() {
 
     const connectedInputs = getConnectedInputs(videoSettingsPanelNodeId);
     const modelCaps = VIDEO_MODEL_CAPABILITIES[data.model];
-    const hasAnyMediaInput = !!(
+    const hasImageInput = !!(
       connectedInputs.referenceUrl ||
       connectedInputs.firstFrameUrl ||
       connectedInputs.lastFrameUrl ||
-      connectedInputs.referenceUrls?.length ||
+      connectedInputs.referenceUrls?.length
+    );
+    const hasAnyMediaInput = !!(
+      hasImageInput ||
       connectedInputs.videoUrl ||
       connectedInputs.audioUrl
     );
@@ -157,6 +185,7 @@ export function VideoSettingsPanel() {
     if (connectedInputs.textContent) {
       finalPrompt = connectedInputs.textContent + (data.prompt ? `\n${data.prompt}` : '');
     }
+    const hasPrompt = !!finalPrompt.trim();
 
     // Validate based on input mode
     if (modelCaps.inputMode === 'first-last-frame') {
@@ -172,18 +201,37 @@ export function VideoSettingsPanel() {
         return;
       }
     } else if (modelCaps.inputMode === 'single-image' && modelCaps.inputType === 'image-only') {
-      if (!connectedInputs.referenceUrl) {
+      if (!connectedInputs.referenceUrl && !connectedInputs.firstFrameUrl && !connectedInputs.referenceUrls?.length) {
         return;
       }
     }
 
-    if (!finalPrompt && !hasAnyMediaInput) {
+    if (modelCaps.requiresPrompt && !hasPrompt) {
+      return;
+    }
+    if (modelCaps.requiresImageRef && !hasImageInput) {
+      return;
+    }
+    if (modelCaps.requiresVideoRef && !connectedInputs.videoUrl) {
+      return;
+    }
+    if (modelCaps.requiresAudioRef && !connectedInputs.audioUrl) {
+      return;
+    }
+    if (modelCaps.requiresVideoId && !connectedInputs.videoId) {
       return;
     }
 
-    updateNodeData(videoSettingsPanelNodeId, { isGenerating: true, error: undefined, progress: 0 });
+    if (!hasPrompt && !hasAnyMediaInput) {
+      return;
+    }
+
+    updateNodeData(videoSettingsPanelNodeId, { isGenerating: true, error: undefined, progress: 0, outputVideoId: undefined });
 
     try {
+      const heygenVoice = data.model === 'heygen-avatar4-i2v'
+        ? (data.heygenVoice || DEFAULT_HEYGEN_AVATAR4_VOICE)
+        : undefined;
       const response = await fetch('/api/generate-video', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -198,8 +246,10 @@ export function VideoSettingsPanel() {
           lastFrameUrl: connectedInputs.lastFrameUrl,
           referenceUrls: connectedInputs.referenceUrls,
           videoUrl: connectedInputs.videoUrl,
+          videoId: connectedInputs.videoId,
           audioUrl: connectedInputs.audioUrl,
           generateAudio: data.generateAudio,
+          heygenVoice,
         }),
       });
 
@@ -216,12 +266,14 @@ export function VideoSettingsPanel() {
           xskillTaskModel: result.model,
           xskillStatus: 'pending',
           xskillStartedAt: Date.now(),
+          outputVideoId: undefined,
         });
         return;
       }
 
       updateNodeData(videoSettingsPanelNodeId, {
         outputUrl: result.videoUrl,
+        outputVideoId: result.videoId,
         thumbnailUrl: result.thumbnailUrl,
         isGenerating: false,
         progress: 100,
@@ -240,34 +292,54 @@ export function VideoSettingsPanel() {
   const connectedInputs = getConnectedInputs(videoSettingsPanelNodeId);
   const modelCapabilities = VIDEO_MODEL_CAPABILITIES[data.model];
   const { inputMode } = modelCapabilities;
+  const isHeygenAvatarModel = data.model === 'heygen-avatar4-i2v';
+  const selectedHeygenVoice = data.heygenVoice || DEFAULT_HEYGEN_AVATAR4_VOICE;
 
   // Determine if we have valid inputs
-  const hasAnyMediaInput = !!(
+  const hasImageInput = !!(
     connectedInputs.referenceUrl ||
     connectedInputs.firstFrameUrl ||
     connectedInputs.lastFrameUrl ||
-    connectedInputs.referenceUrls?.length ||
+    connectedInputs.referenceUrls?.length
+  );
+  const hasAnyMediaInput = !!(
+    hasImageInput ||
     connectedInputs.videoUrl ||
     connectedInputs.audioUrl
   );
 
   const hasValidInput = (() => {
     const hasPrompt = !!(data.prompt || connectedInputs.textContent);
+    const promptRequired = !!modelCapabilities.requiresPrompt;
 
     switch (inputMode) {
       case 'text':
-        return hasPrompt;
+        return promptRequired ? hasPrompt : (hasPrompt || hasAnyMediaInput);
       case 'single-image':
-        return hasPrompt || hasAnyMediaInput;
+        if (promptRequired && !hasPrompt) return false;
+        if (!hasPrompt && !hasAnyMediaInput) return false;
+        break;
       case 'first-last-frame':
         // First frame required, last frame depends on lastFrameOptional
         if (!connectedInputs.firstFrameUrl) return false;
-        return modelCapabilities.lastFrameOptional || !!connectedInputs.lastFrameUrl;
+        if (!modelCapabilities.lastFrameOptional && !connectedInputs.lastFrameUrl) return false;
+        break;
       case 'multi-reference':
-        return hasPrompt && (!!connectedInputs.referenceUrls?.length || !!connectedInputs.referenceUrl);
+        if (!connectedInputs.referenceUrls?.length && !connectedInputs.referenceUrl) return false;
+        if (promptRequired && !hasPrompt) return false;
+        break;
       default:
-        return hasPrompt;
+        if (promptRequired && !hasPrompt) return false;
+        break;
     }
+
+    if (promptRequired && !hasPrompt) return false;
+    if (modelCapabilities.requiresImageRef && !hasImageInput) return false;
+    if (modelCapabilities.requiresVideoRef && !connectedInputs.videoUrl) return false;
+    if (modelCapabilities.requiresAudioRef && !connectedInputs.audioUrl) return false;
+    if (modelCapabilities.requiresVideoId && !connectedInputs.videoId) return false;
+
+    return hasPrompt || hasAnyMediaInput;
   })();
 
   // Calculate position to keep panel on screen
@@ -355,6 +427,22 @@ export function VideoSettingsPanel() {
           </Select>
           <p className="text-xs text-zinc-500 mt-1.5">{modelCapabilities.description}</p>
         </div>
+
+        {isHeygenAvatarModel && (
+          <div>
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2 block">
+              Voice
+            </label>
+            <SearchableSelect
+              value={selectedHeygenVoice}
+              onValueChange={handleHeygenVoiceChange}
+              options={HEYGEN_AVATAR4_VOICE_OPTIONS}
+              placeholder="Select voice"
+              searchPlaceholder="Search voices..."
+              triggerClassName="h-9 w-full bg-background border border-border text-foreground text-sm px-3"
+            />
+          </div>
+        )}
 
         {/* Duration */}
         <div>

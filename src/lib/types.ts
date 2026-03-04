@@ -169,7 +169,22 @@ export const IDEOGRAM_STYLE_LABELS: Record<IdeogramStyle, string> = {
 } as const;
 
 // All supported model types
-export type ImageModelType = 'auto' | 'flux-schnell' | 'flux-pro' | 'flux-2-pro' | 'flux-2-max' | 'flux-kontext' | 'nanobanana-pro' | 'nanobanana-2' | 'recraft-v3' | 'recraft-v4' | 'seedream-5' | 'ideogram-v3' | 'sd-3.5';
+export type ImageModelType =
+  | 'auto'
+  | 'flux-schnell'
+  | 'flux-pro'
+  | 'flux-2-pro'
+  | 'flux-2-max'
+  | 'flux-kontext'
+  | 'nanobanana-pro'
+  | 'nanobanana-2'
+  | 'qwen-image-2'
+  | 'qwen-image-2-pro'
+  | 'recraft-v3'
+  | 'recraft-v4'
+  | 'seedream-5'
+  | 'ideogram-v3'
+  | 'sd-3.5';
 
 
 // Enabled models - comment/uncomment to toggle visibility in UI
@@ -182,6 +197,8 @@ export const ENABLED_IMAGE_MODELS: ImageModelType[] = [
   'flux-kontext',
   'nanobanana-pro',
   'nanobanana-2',
+  'qwen-image-2',
+  'qwen-image-2-pro',
   'recraft-v3',
   'recraft-v4',
   'seedream-5',
@@ -381,6 +398,8 @@ export const FAL_MODELS: Record<ImageModelType, string> = {
   'flux-kontext': 'fal-ai/flux-pro/kontext',
   'nanobanana-pro': 'fal-ai/nano-banana-pro',
   'nanobanana-2': 'fal-ai/nano-banana-2',
+  'qwen-image-2': 'fal-ai/qwen-image-2/text-to-image',
+  'qwen-image-2-pro': 'fal-ai/qwen-image-2/pro/text-to-image',
   'recraft-v3': 'fal-ai/recraft-v3',
   'recraft-v4': 'fal-ai/recraft/v4/text-to-image',
   'seedream-5': 'fal-ai/bytedance/seedream/v5/lite/text-to-image',
@@ -423,7 +442,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
     supportsReferences: true,
     aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9', '5:4', '4:5'],
     resolutions: ['1K', '2K', '4K'],
-    description: 'Best model for the task',
+    description: 'Automatically picks the best model for quality, speed, and cost.',
   },
   'flux-schnell': {
     label: 'Flux Schnell',
@@ -432,7 +451,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
     supportsReferences: false,
     aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16'],
     imageSizes: ['square_hd', 'square', 'landscape_4_3', 'portrait_4_3', 'landscape_16_9', 'portrait_16_9'],
-    description: 'Fast, 1-4 steps',
+    description: '12B Flux model for fast text-to-image in 1-4 denoising steps.',
   },
   'flux-pro': {
     label: 'Flux Pro',
@@ -441,7 +460,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
     supportsReferences: true,
     aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16'],
     imageSizes: ['square_hd', 'square', 'landscape_4_3', 'portrait_4_3', 'landscape_16_9', 'portrait_16_9'],
-    description: 'High quality',
+    description: 'Professional-grade Flux model for premium quality commercial image generation.',
   },
   'nanobanana-pro': {
     label: 'Nano Banana Pro',
@@ -451,7 +470,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
     maxReferences: 14,
     aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9', '5:4', '4:5'],
     resolutions: ['1K', '2K', '4K'],
-    description: 'Up to 14 style refs',
+    description: 'Google Nano Banana Pro for state-of-the-art generation, editing, and typography.',
   },
   'nanobanana-2': {
     label: 'Nano Banana 2',
@@ -461,7 +480,27 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
     maxReferences: 14,
     aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9', '5:4', '4:5'],
     resolutions: ['1K', '2K', '4K'],
-    description: '4x faster, low cost',
+    description: 'Faster, lower-cost Nano Banana 2 for high-quality generation and editing.',
+  },
+  'qwen-image-2': {
+    label: 'Qwen Image 2',
+    maxImages: 4,
+    inputType: 'text-and-image',
+    supportsReferences: true,
+    maxReferences: 8,
+    aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16'],
+    imageSizes: ['square_hd', 'square', 'landscape_4_3', 'portrait_4_3', 'landscape_16_9', 'portrait_16_9'],
+    description: 'Qwen-Image 2 unified model for strong generation, editing, realism, and text.',
+  },
+  'qwen-image-2-pro': {
+    label: 'Qwen Image 2 Pro',
+    maxImages: 4,
+    inputType: 'text-and-image',
+    supportsReferences: true,
+    maxReferences: 8,
+    aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16'],
+    imageSizes: ['square_hd', 'square', 'landscape_4_3', 'portrait_4_3', 'landscape_16_9', 'portrait_16_9'],
+    description: 'Higher-fidelity Qwen-Image 2 Pro for advanced generation and editing workflows.',
   },
   'recraft-v3': {
     label: 'Recraft V3',
@@ -470,7 +509,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
     supportsReferences: false,
     aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16'],
     styles: ['realistic_image', 'digital_illustration', 'vector_illustration'] as const,
-    description: 'Versatile styles',
+    description: 'Recraft V3 for long text rendering, vector-style assets, and brand visuals.',
   },
   'ideogram-v3': {
     label: 'Ideogram V3',
@@ -480,7 +519,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
     aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16'],
     styles: ['auto', 'general', 'realistic', 'design', '3d', 'anime'] as const,
     supportsMagicPrompt: true,
-    description: 'Best for text & logos',
+    description: 'Ideogram V3 optimized for posters, logos, typography, and photoreal outputs.',
   },
   'sd-3.5': {
     label: 'SD 3.5 Large',
@@ -489,7 +528,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
     supportsReferences: true,
     aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16'],
     supportsAdvancedParams: true,
-    description: 'Open model, img2img',
+    description: 'Open Stable Diffusion 3.5 Large with strong prompt following and text rendering.',
   },
   'flux-2-pro': {
     label: 'FLUX.2 Pro',
@@ -498,7 +537,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
     supportsReferences: false,
     aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16'],
     imageSizes: ['square_hd', 'square', 'landscape_4_3', 'portrait_4_3', 'landscape_16_9', 'portrait_16_9'],
-    description: 'Next-gen Flux, high quality',
+    description: 'FLUX.2 Pro for high-quality image editing, style transfer, and iterative refinement.',
   },
   'flux-2-max': {
     label: 'FLUX.2 Max',
@@ -507,7 +546,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
     supportsReferences: false,
     aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16'],
     imageSizes: ['square_hd', 'square', 'landscape_4_3', 'portrait_4_3', 'landscape_16_9', 'portrait_16_9'],
-    description: 'Max quality Flux',
+    description: 'FLUX.2 Max for top-end realism, precision, and consistency in final renders.',
   },
   'flux-kontext': {
     label: 'Flux Kontext',
@@ -515,7 +554,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
     inputType: 'text-and-image',
     supportsReferences: true,
     aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16'],
-    description: 'Text + image context editing',
+    description: 'FLUX Kontext for text+reference-guided local edits and scene transformations.',
   },
   'seedream-5': {
     label: 'Seedream 5.0',
@@ -523,7 +562,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
     inputType: 'text-only',
     supportsReferences: false,
     aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16'],
-    description: 'ByteDance image gen',
+    description: 'ByteDance Seedream 5.0 Lite for fast, high-quality text-to-image generation.',
   },
   'recraft-v4': {
     label: 'Recraft V4',
@@ -532,7 +571,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
     supportsReferences: false,
     aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16'],
     styles: ['realistic_image', 'digital_illustration', 'vector_illustration'] as const,
-    description: 'Latest Recraft, versatile styles',
+    description: 'Designer-tuned Recraft V4 for refined composition, lighting, and brand consistency.',
   },
 } as const;
 
@@ -549,6 +588,24 @@ export type VideoModelType =
   | 'veo-3.1-ref'
   | 'veo-3.1-flf'
   | 'veo-3.1-fast-flf'
+  | 'vidu-q3-t2v'
+  | 'vidu-q3-i2v'
+  | 'vidu-q3-t2v-turbo'
+  | 'vidu-q3-i2v-turbo'
+  | 'sora-2-t2v'
+  | 'sora-2-i2v'
+  | 'sora-2-pro-i2v'
+  | 'sora-2-remix-v2v'
+  | 'grok-imagine-t2v'
+  | 'grok-imagine-i2v'
+  | 'grok-imagine-edit-v2v'
+  | 'ltx-2-19b-t2v'
+  | 'ltx-2-19b-i2v'
+  | 'ltx-2-19b-v2v'
+  | 'ltx-2-19b-extend'
+  | 'ltx-2-19b-a2v'
+  | 'veed-fabric-1.0'
+  | 'heygen-avatar4-i2v'
   | 'kling-2.6-t2v'
   | 'kling-2.6-i2v'
   | 'kling-o3-t2v'
@@ -595,7 +652,117 @@ export type VideoDuration = 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 15;
 export type VideoAspectRatio = '16:9' | '9:16' | '1:1' | '4:3' | '3:4';
 
 // Video resolution
-export type VideoResolution = '480p' | '540p' | '720p' | '1080p';
+export type VideoResolution = '360p' | '480p' | '540p' | '720p' | '1080p';
+
+export const DEFAULT_HEYGEN_AVATAR4_VOICE = 'Melissa';
+
+// Heygen Avatar 4 voice options (from Fal model schema)
+export const HEYGEN_AVATAR4_VOICES = [
+  'Melissa',
+  'Warm Pro Narrator',
+  'Chill Brian',
+  'Ivy',
+  'John Doe',
+  'Monika Sogam',
+  'Hope',
+  'Archer',
+  'Brittney',
+  'Patrick',
+  'David Castlemore',
+  'Michael C',
+  'Adam Stone',
+  'Juniper',
+  'Cassidy',
+  'Jessica Anne Bogart',
+  'Arabella',
+  'Andrew',
+  'Spuds Oxley',
+  'Grace Elder',
+  'Helen',
+  'Canyon Rivers',
+  'Derya - Lifelike - Excited 🤩',
+  'Mellow Marcus',
+  'Jack Sterling - Broadcaster 🎙️',
+  'Brenda - UGC - 1.mp4',
+  'Reid',
+  'Reagan',
+  'Terry',
+  'Jenny',
+  'Radio Rick',
+  'Denise',
+  'Tim in car - Excited 🤩',
+  'Iskander',
+  'Thompson',
+  'Delicate Daisy - Excited 🤩',
+  'Kingston',
+  'George UGC 1',
+  'Bold Blake',
+  'Jane',
+  'Expressive Evan',
+  'Marianne - IA',
+  'Aaron',
+  'Modern Recipe Host - Voice 1',
+  'Willow',
+  'Cute Chloe - Friendly 😊',
+  'Rafael',
+  'June - Lifelike',
+  'Crisp Chloe',
+  'Slick Simon',
+  'Nassim - Informative',
+  'Baritone Ben',
+  'Maxwell',
+  'Ellie Faye - Excited 🤩',
+  'Milani',
+  'Feisty Fiona - Excited 🤩',
+  'Professor Dean',
+  'Rose - UGC - 1.mp4',
+  'Shona',
+  'Hudson Wilder',
+  'Ann - IA',
+  'Alastair Kensington',
+  'Oxley',
+  'Christina',
+  'Andrew Rizz',
+  'Peyton',
+  'Gerardo - Outdoor',
+  'Chloe - Lifelike',
+  'Stephanie',
+  'Anthony - IA',
+  'Signal - Voice 1',
+  'Luca',
+  'Lisa - Voice 1',
+  'T.W.Tucker',
+  'Jack Sullivan - Serious 😐',
+  'Winter',
+  'Mireia - Lifelike',
+  'Georgia',
+  'Stella',
+  'Masha - Lifelike',
+  'Charming Charles - Friendly 😊',
+  'Serenity',
+  'Annie - Excited',
+  'Ralph',
+  'Bethany',
+  'Dominic',
+  'Mason Finn',
+  'Leena',
+  'Veteran Victor',
+  'Tamara',
+  'Nik Public',
+  'Calm Chloe',
+  'Sevik',
+  'Reilly',
+  'Raul',
+  'Imposing Ian',
+  'Relaxed Ray',
+  'Dexter - Professional',
+  'Relaxed Rick',
+  'Edwin',
+  'Rupert Blackwood',
+  'Ginny',
+] as const;
+
+export type HeygenAvatar4Voice = typeof HEYGEN_AVATAR4_VOICES[number] | (string & {});
 
 // Video Generator Node Data
 export interface VideoGeneratorNodeData extends Record<string, unknown> {
@@ -607,8 +774,10 @@ export interface VideoGeneratorNodeData extends Record<string, unknown> {
   resolution?: VideoResolution;
   // Model-specific options
   generateAudio?: boolean; // For Veo 3, Kling 2.6
+  heygenVoice?: HeygenAvatar4Voice; // For Heygen Avatar 4
   // Output
   outputUrl?: string;
+  outputVideoId?: string; // For models that return reusable video IDs (e.g. Sora remix)
   thumbnailUrl?: string;
   isGenerating?: boolean;
   progress?: number; // 0-100
@@ -640,6 +809,11 @@ export interface VideoModelCapabilities {
   lastFrameOptional?: boolean; // For first-last-frame mode: if true, last frame is optional
   supportsVideoRef?: boolean; // Shows a video reference handle (for omni-reference models like Seedance 2.0)
   supportsAudioRef?: boolean; // Shows an audio reference handle (for Seedance 2.0 omni-reference)
+  requiresPrompt?: boolean; // If false, prompt can be empty
+  requiresImageRef?: boolean; // Requires at least one connected image input
+  requiresVideoRef?: boolean; // Requires a connected video input URL
+  requiresAudioRef?: boolean; // Requires a connected audio input URL
+  requiresVideoId?: boolean; // Requires a reusable video ID (not just URL)
   promptTools?: readonly ('improve' | 'translate')[]; // Which prompt tool actions are available for this model
   description: string;
 }
@@ -653,6 +827,24 @@ export const ENABLED_VIDEO_MODELS: VideoModelType[] = [
   'veo-3.1-ref',
   'veo-3.1-flf',
   'veo-3.1-fast-flf',
+  'vidu-q3-t2v',
+  'vidu-q3-i2v',
+  'vidu-q3-t2v-turbo',
+  'vidu-q3-i2v-turbo',
+  'sora-2-t2v',
+  'sora-2-i2v',
+  'sora-2-pro-i2v',
+  'sora-2-remix-v2v',
+  'grok-imagine-t2v',
+  'grok-imagine-i2v',
+  'grok-imagine-edit-v2v',
+  'ltx-2-19b-t2v',
+  'ltx-2-19b-i2v',
+  'ltx-2-19b-v2v',
+  'ltx-2-19b-extend',
+  'ltx-2-19b-a2v',
+  'veed-fabric-1.0',
+  'heygen-avatar4-i2v',
   'kling-2.6-t2v',
   'kling-2.6-i2v',
   'kling-o3-t2v',
@@ -678,7 +870,6 @@ export const ENABLED_VIDEO_MODELS: VideoModelType[] = [
   'hailuo-2.3-i2v',
   'luma-ray2',
   'minimax-video',
-  'runway-gen3',
 ];
 
 export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabilities> = {
@@ -691,7 +882,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     defaultDuration: 5,
     aspectRatios: ['16:9', '9:16', '1:1'],
     supportsAudio: true,
-    description: 'Best model for the task',
+    description: 'Automatically picks the best model for quality, speed, and cost.',
   },
   'veo-3': {
     label: 'Veo 3',
@@ -703,7 +894,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     aspectRatios: ['16:9', '9:16'],
     resolutions: ['720p', '1080p'],
     supportsAudio: true,
-    description: 'Best quality text-to-video',
+    description: 'Google Veo 3 flagship text-to-video model with native sound generation.',
   },
   'veo-3.1-i2v': {
     label: 'Veo 3.1 Image',
@@ -715,7 +906,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     aspectRatios: ['16:9', '9:16'],
     resolutions: ['720p', '1080p'],
     supportsAudio: true,
-    description: 'Animate a single image',
+    description: 'Google Veo 3.1 image-to-video for high-fidelity motion from a single image.',
   },
   'veo-3.1-fast-i2v': {
     label: 'Veo 3.1 Fast Image',
@@ -727,7 +918,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     aspectRatios: ['16:9', '9:16'],
     resolutions: ['720p', '1080p'],
     supportsAudio: true,
-    description: 'Fast image-to-video',
+    description: 'Veo 3.1 Fast image-to-video for quicker generation at lower latency.',
   },
   'veo-3.1-ref': {
     label: 'Veo 3.1 Multi-Ref',
@@ -740,7 +931,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     resolutions: ['720p', '1080p'],
     supportsAudio: true,
     maxReferences: 3,
-    description: 'Multiple reference images',
+    description: 'Veo 3.1 reference-to-video for stronger subject and style consistency.',
   },
   'veo-3.1-flf': {
     label: 'Veo 3.1 First-Last',
@@ -752,7 +943,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     aspectRatios: ['16:9', '9:16'],
     resolutions: ['720p', '1080p'],
     supportsAudio: true,
-    description: 'First & last frame to video',
+    description: 'Veo 3.1 first/last-frame video interpolation with prompt-driven motion control.',
   },
   'veo-3.1-fast-flf': {
     label: 'Veo 3.1 Fast F-L',
@@ -764,7 +955,247 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     aspectRatios: ['16:9', '9:16'],
     resolutions: ['720p', '1080p'],
     supportsAudio: true,
-    description: 'Fast first & last frame',
+    description: 'Faster Veo 3.1 first/last-frame interpolation for rapid iterations.',
+  },
+  'vidu-q3-t2v': {
+    label: 'Vidu Q3 Text',
+    group: 'Vidu',
+    inputType: 'text-only',
+    inputMode: 'text',
+    durations: [4, 5, 6, 8, 10],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1', '4:3', '3:4'],
+    resolutions: ['360p', '540p', '720p', '1080p'],
+    supportsAudio: true,
+    description: 'Vidu Q3 Pro text-to-video with high quality cinematic motion and audio.',
+  },
+  'vidu-q3-i2v': {
+    label: 'Vidu Q3 Image',
+    group: 'Vidu',
+    inputType: 'text-and-image',
+    inputMode: 'first-last-frame',
+    durations: [4, 5, 6, 8, 10],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1', '4:3', '3:4'],
+    resolutions: ['360p', '540p', '720p', '1080p'],
+    supportsAudio: true,
+    lastFrameOptional: true,
+    description: 'Vidu Q3 Pro image-to-video with optional end-frame transition guidance.',
+  },
+  'vidu-q3-t2v-turbo': {
+    label: 'Vidu Q3 Turbo Text',
+    group: 'Vidu',
+    inputType: 'text-only',
+    inputMode: 'text',
+    durations: [4, 5, 6, 8, 10],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1', '4:3', '3:4'],
+    resolutions: ['360p', '540p', '720p', '1080p'],
+    supportsAudio: true,
+    description: 'Vidu Q3 Turbo text-to-video optimized for speed and cost efficiency.',
+  },
+  'vidu-q3-i2v-turbo': {
+    label: 'Vidu Q3 Turbo Image',
+    group: 'Vidu',
+    inputType: 'text-and-image',
+    inputMode: 'first-last-frame',
+    durations: [4, 5, 6, 8, 10],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1', '4:3', '3:4'],
+    resolutions: ['360p', '540p', '720p', '1080p'],
+    supportsAudio: true,
+    lastFrameOptional: true,
+    description: 'Vidu Q3 Turbo image-to-video optimized for fast turnaround.',
+  },
+  'sora-2-t2v': {
+    label: 'Sora 2 Text',
+    group: 'Sora 2',
+    inputType: 'text-only',
+    inputMode: 'text',
+    durations: [4, 8, 12],
+    defaultDuration: 4,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    resolutions: ['480p', '720p', '1080p'],
+    description: 'OpenAI Sora 2 text-to-video for richly detailed, dynamic clips with audio.',
+  },
+  'sora-2-i2v': {
+    label: 'Sora 2 Image',
+    group: 'Sora 2',
+    inputType: 'text-and-image',
+    inputMode: 'single-image',
+    durations: [4, 8, 12],
+    defaultDuration: 4,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    resolutions: ['480p', '720p', '1080p'],
+    requiresPrompt: true,
+    requiresImageRef: true,
+    description: 'OpenAI Sora 2 image-to-video for detailed motion and native audio.',
+  },
+  'sora-2-pro-i2v': {
+    label: 'Sora 2 Pro Image',
+    group: 'Sora 2',
+    inputType: 'text-and-image',
+    inputMode: 'single-image',
+    durations: [4, 8, 12],
+    defaultDuration: 4,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    resolutions: ['480p', '720p', '1080p'],
+    requiresPrompt: true,
+    requiresImageRef: true,
+    description: 'OpenAI Sora 2 Pro image-to-video for highest fidelity and motion quality.',
+  },
+  'sora-2-remix-v2v': {
+    label: 'Sora 2 Remix',
+    group: 'Sora 2',
+    inputType: 'text-only',
+    inputMode: 'text',
+    durations: [4, 8, 12],
+    defaultDuration: 4,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    maxReferences: 0,
+    supportsVideoRef: true,
+    requiresPrompt: true,
+    requiresVideoRef: true,
+    requiresVideoId: true,
+    description: 'Sora 2 video remix for prompt-based restyling while preserving scene structure.',
+  },
+  'grok-imagine-t2v': {
+    label: 'Grok Imagine Text',
+    group: 'xAI Grok',
+    inputType: 'text-only',
+    inputMode: 'text',
+    durations: [4, 6, 8, 10],
+    defaultDuration: 6,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    resolutions: ['480p', '720p'],
+    description: 'xAI Grok Imagine text-to-video with synchronized audio output.',
+  },
+  'grok-imagine-i2v': {
+    label: 'Grok Imagine Image',
+    group: 'xAI Grok',
+    inputType: 'text-and-image',
+    inputMode: 'single-image',
+    durations: [4, 6, 8, 10],
+    defaultDuration: 6,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    resolutions: ['480p', '720p'],
+    requiresPrompt: true,
+    requiresImageRef: true,
+    description: 'xAI Grok Imagine image-to-video with synchronized audio output.',
+  },
+  'grok-imagine-edit-v2v': {
+    label: 'Grok Imagine Edit',
+    group: 'xAI Grok',
+    inputType: 'text-only',
+    inputMode: 'text',
+    durations: [4, 6, 8, 10],
+    defaultDuration: 6,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    resolutions: ['480p', '720p'],
+    maxReferences: 0,
+    supportsVideoRef: true,
+    requiresPrompt: true,
+    requiresVideoRef: true,
+    description: 'xAI Grok Imagine video editing/remix from existing video inputs.',
+  },
+  'ltx-2-19b-t2v': {
+    label: 'LTX 2 19B Text',
+    group: 'LTX',
+    inputType: 'text-only',
+    inputMode: 'text',
+    durations: [4, 5, 6, 8, 10, 12, 15],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1', '4:3', '3:4'],
+    supportsAudio: true,
+    requiresPrompt: true,
+    description: 'LTX-2 19B text-to-video with integrated audio generation.',
+  },
+  'ltx-2-19b-i2v': {
+    label: 'LTX 2 19B Image',
+    group: 'LTX',
+    inputType: 'text-and-image',
+    inputMode: 'first-last-frame',
+    durations: [4, 5, 6, 8, 10, 12, 15],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1', '4:3', '3:4'],
+    supportsAudio: true,
+    requiresPrompt: true,
+    lastFrameOptional: true,
+    description: 'LTX-2 19B image-to-video with optional end-frame and audio support.',
+  },
+  'ltx-2-19b-v2v': {
+    label: 'LTX 2 19B Video',
+    group: 'LTX',
+    inputType: 'text-only',
+    inputMode: 'text',
+    durations: [4, 5, 6, 8, 10, 12, 15],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1', '4:3', '3:4'],
+    supportsAudio: true,
+    supportsVideoRef: true,
+    supportsAudioRef: true,
+    maxReferences: 1,
+    requiresPrompt: true,
+    requiresVideoRef: true,
+    description: 'LTX-2 19B video-to-video transformation with prompt and audio conditioning.',
+  },
+  'ltx-2-19b-extend': {
+    label: 'LTX 2 19B Extend',
+    group: 'LTX',
+    inputType: 'text-only',
+    inputMode: 'text',
+    durations: [4, 5, 6, 8, 10, 12, 15],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1', '4:3', '3:4'],
+    supportsAudio: true,
+    supportsVideoRef: true,
+    maxReferences: 0,
+    requiresPrompt: true,
+    requiresVideoRef: true,
+    description: 'LTX-2 19B video extension for coherent continuation beyond the original clip.',
+  },
+  'ltx-2-19b-a2v': {
+    label: 'LTX 2 19B Audio',
+    group: 'LTX',
+    inputType: 'text-only',
+    inputMode: 'text',
+    durations: [4, 5, 6, 8, 10, 12, 15],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1', '4:3', '3:4'],
+    supportsAudioRef: true,
+    maxReferences: 1,
+    requiresPrompt: true,
+    requiresAudioRef: true,
+    description: 'LTX-2 19B audio-to-video from audio, prompt, and optional image reference.',
+  },
+  'veed-fabric-1.0': {
+    label: 'Veed Fabric 1.0',
+    group: 'Veed',
+    inputType: 'image-only',
+    inputMode: 'text',
+    durations: [5],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    resolutions: ['720p', '1080p'],
+    supportsAudioRef: true,
+    maxReferences: 1,
+    requiresPrompt: false,
+    requiresImageRef: true,
+    requiresAudioRef: true,
+    description: 'VEED Fabric 1.0 lip-sync model turning a single image into a talking video.',
+  },
+  'heygen-avatar4-i2v': {
+    label: 'Heygen Avatar 4',
+    group: 'Heygen',
+    inputType: 'text-and-image',
+    inputMode: 'single-image',
+    durations: [5],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    resolutions: ['360p', '480p', '540p', '720p', '1080p'],
+    requiresPrompt: true,
+    requiresImageRef: true,
+    description: 'Heygen Avatar 4 talking portrait generation from one image and a script.',
   },
   'kling-2.6-t2v': {
     label: 'Kling 2.6 Text',
@@ -775,7 +1206,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     defaultDuration: 5,
     aspectRatios: ['16:9', '9:16', '1:1'],
     supportsAudio: true,
-    description: 'Text-to-video with audio',
+    description: 'Kling 2.6 Pro text-to-video with cinematic visuals, fluid motion, and audio.',
   },
   'kling-2.6-i2v': {
     label: 'Kling 2.6 Image',
@@ -787,7 +1218,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     aspectRatios: ['16:9', '9:16', '1:1'],
     supportsAudio: true,
     lastFrameOptional: true,
-    description: 'Start + optional end frame with audio',
+    description: 'Kling 2.6 Pro image-to-video with cinematic visuals, fluid motion, and audio.',
   },
   'kling-o3-t2v': {
     label: 'Kling O3 Text',
@@ -798,7 +1229,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     defaultDuration: 5,
     aspectRatios: ['16:9', '9:16', '1:1'],
     supportsAudio: true,
-    description: 'O3 Pro text-to-video',
+    description: 'Kling O3 Pro text-to-video for realistic motion and cinematic scene control.',
   },
   'kling-o3-i2v': {
     label: 'Kling O3 Image',
@@ -810,7 +1241,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     aspectRatios: ['16:9', '9:16', '1:1'],
     supportsAudio: true,
     lastFrameOptional: true,
-    description: 'O3 Standard image-to-video',
+    description: 'Kling O3 Standard image-to-video with strong frame-to-frame transition control.',
   },
   'kling-o3-pro-i2v': {
     label: 'Kling O3 Pro Image',
@@ -822,7 +1253,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     aspectRatios: ['16:9', '9:16', '1:1'],
     supportsAudio: true,
     lastFrameOptional: true,
-    description: 'O3 Pro image-to-video',
+    description: 'Kling O3 Pro image-to-video with enhanced fidelity and transition quality.',
   },
   'kling-3.0-t2v': {
     label: 'Kling 3.0 Text',
@@ -833,7 +1264,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     defaultDuration: 5,
     aspectRatios: ['16:9', '9:16', '1:1'],
     supportsAudio: true,
-    description: '3.0 Standard text-to-video',
+    description: 'Kling 3.0 Standard text-to-video with multi-shot support and native audio.',
   },
   'kling-3.0-i2v': {
     label: 'Kling 3.0 Image',
@@ -845,7 +1276,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     aspectRatios: ['16:9', '9:16', '1:1'],
     supportsAudio: true,
     lastFrameOptional: true,
-    description: '3.0 Standard image-to-video',
+    description: 'Kling 3.0 Standard image-to-video with custom element support and audio.',
   },
   'kling-3.0-pro-t2v': {
     label: 'Kling 3.0 Pro Text',
@@ -856,7 +1287,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     defaultDuration: 5,
     aspectRatios: ['16:9', '9:16', '1:1'],
     supportsAudio: true,
-    description: '3.0 Pro text-to-video',
+    description: 'Kling 3.0 Pro text-to-video for premium multi-shot cinematic generation.',
   },
   'kling-3.0-pro-i2v': {
     label: 'Kling 3.0 Pro Image',
@@ -868,7 +1299,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     aspectRatios: ['16:9', '9:16', '1:1'],
     supportsAudio: true,
     lastFrameOptional: true,
-    description: '3.0 Pro image-to-video',
+    description: 'Kling 3.0 Pro image-to-video for highest quality custom-element animation.',
   },
   'seedance-1.5-t2v': {
     label: 'Seedance 1.5 Text',
@@ -881,7 +1312,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     resolutions: ['480p', '720p', '1080p'],
     supportsAudio: true,
     promptTools: ['improve', 'translate'],
-    description: 'Latest with audio generation',
+    description: 'ByteDance Seedance 1.5 Pro text-to-video with native audio generation.',
   },
   'seedance-1.5-i2v': {
     label: 'Seedance 1.5 Image',
@@ -895,7 +1326,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     supportsAudio: true,
     lastFrameOptional: true,
     promptTools: ['improve', 'translate'],
-    description: 'Image-to-video with audio',
+    description: 'ByteDance Seedance 1.5 Pro image-to-video with optional end frame and audio.',
   },
   'seedance-1.0-pro-t2v': {
     label: 'Seedance 1.0 Pro Text',
@@ -907,7 +1338,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     aspectRatios: ['16:9', '9:16', '1:1'],
     resolutions: ['480p', '720p', '1080p'],
     promptTools: ['improve', 'translate'],
-    description: '1080p text-to-video',
+    description: 'Seedance 1.0 Pro text-to-video with 1080p output and multi-shot storytelling.',
   },
   'seedance-1.0-pro-i2v': {
     label: 'Seedance 1.0 Pro Image',
@@ -919,7 +1350,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     aspectRatios: ['16:9', '9:16', '1:1'],
     resolutions: ['480p', '720p', '1080p'],
     promptTools: ['improve', 'translate'],
-    description: '1080p image-to-video',
+    description: 'Seedance 1.0 Pro image-to-video with 1080p output and multi-shot control.',
   },
   'seedance-2.0-t2v': {
     label: 'Seedance 2.0 Text',
@@ -931,7 +1362,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     aspectRatios: ['16:9', '9:16', '1:1'],
     supportsAudio: true,
     promptTools: ['improve', 'translate'],
-    description: 'Best quality, multi-modal',
+    description: 'Seedance 2.0 multimodal text-to-video with director-level control and audio-video sync.',
   },
   'seedance-2.0-i2v': {
     label: 'Seedance 2.0 Image',
@@ -942,10 +1373,11 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     defaultDuration: 5,
     aspectRatios: ['16:9', '9:16', '1:1'],
     supportsAudio: true,
+    maxReferences: 3,
     supportsVideoRef: true,
     supportsAudioRef: true,
     promptTools: ['improve', 'translate'],
-    description: 'Image + video + audio reference (omni)',
+    description: 'Seedance 2.0 multimodal image-to-video with strong reference consistency and editing.',
   },
   'seedance-2.0-fast-t2v': {
     label: 'Seedance 2.0 Fast Text',
@@ -957,7 +1389,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     aspectRatios: ['16:9', '9:16', '1:1'],
     supportsAudio: true,
     promptTools: ['improve', 'translate'],
-    description: 'Faster + cheaper',
+    description: 'Faster Seedance 2.0 text-to-video variant for lower latency multimodal workflows.',
   },
   'seedance-2.0-fast-i2v': {
     label: 'Seedance 2.0 Fast Image',
@@ -968,10 +1400,11 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     defaultDuration: 5,
     aspectRatios: ['16:9', '9:16', '1:1'],
     supportsAudio: true,
+    maxReferences: 3,
     supportsVideoRef: true,
     supportsAudioRef: true,
     promptTools: ['improve', 'translate'],
-    description: 'Fast image + video + audio ref (omni)',
+    description: 'Faster Seedance 2.0 image-to-video variant with multimodal reference support.',
   },
   'luma-ray2': {
     label: 'Luma Ray 2',
@@ -982,7 +1415,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     defaultDuration: 5,
     aspectRatios: ['16:9', '9:16', '4:3', '3:4', '1:1'],
     resolutions: ['540p', '720p', '1080p'],
-    description: 'Cinematic quality',
+    description: 'Luma Dream Machine video generation with natural motion and cinematic camera movement.',
   },
   'minimax-video': {
     label: 'Minimax',
@@ -992,7 +1425,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     durations: [5],
     defaultDuration: 5,
     aspectRatios: ['16:9', '9:16', '1:1'],
-    description: 'Fast generation',
+    description: 'MiniMax image-to-video endpoint for fast general-purpose video generation.',
   },
   'runway-gen3': {
     label: 'Runway Gen-3',
@@ -1002,7 +1435,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     durations: [5, 10],
     defaultDuration: 5,
     aspectRatios: ['16:9', '9:16'],
-    description: 'Premium image-to-video',
+    description: 'Runway Gen-3 Turbo image-to-video (currently unavailable in Fal integration).',
   },
   'wan-2.6-t2v': {
     label: 'Wan 2.6 Text',
@@ -1013,7 +1446,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     defaultDuration: 5,
     aspectRatios: ['16:9', '9:16', '1:1'],
     resolutions: ['720p', '1080p'],
-    description: 'High quality text-to-video',
+    description: 'Wan 2.6 text-to-video with multi-shot generation, audio input, and 720p/1080p output.',
   },
   'wan-2.6-i2v': {
     label: 'Wan 2.6 Image',
@@ -1024,7 +1457,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     defaultDuration: 5,
     aspectRatios: ['16:9', '9:16', '1:1'],
     resolutions: ['720p', '1080p'],
-    description: 'Image-to-video generation',
+    description: 'Wan 2.6 image-to-video with prompt-guided motion, multi-shot support, and audio input.',
   },
   'hailuo-02-t2v': {
     label: 'Hailuo 02 Text',
@@ -1034,7 +1467,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     durations: [5],
     defaultDuration: 5,
     aspectRatios: ['16:9', '9:16', '1:1'],
-    description: 'Hailuo 02 Pro text-to-video',
+    description: 'MiniMax Hailuo 02 Pro text-to-video with advanced generation at 1080p.',
   },
   'hailuo-02-i2v': {
     label: 'Hailuo 02 Image',
@@ -1044,7 +1477,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     durations: [5],
     defaultDuration: 5,
     aspectRatios: ['16:9', '9:16', '1:1'],
-    description: 'Hailuo 02 Pro image-to-video',
+    description: 'MiniMax Hailuo 02 Pro image-to-video with advanced generation at 1080p.',
   },
   'hailuo-2.3-t2v': {
     label: 'Hailuo 2.3 Text',
@@ -1054,7 +1487,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     durations: [5],
     defaultDuration: 5,
     aspectRatios: ['16:9', '9:16', '1:1'],
-    description: 'Hailuo 2.3 Fast text-to-video',
+    description: 'MiniMax Hailuo 2.3 Pro text-to-video with 1080p output.',
   },
   'hailuo-2.3-i2v': {
     label: 'Hailuo 2.3 Image',
@@ -1064,7 +1497,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     durations: [5],
     defaultDuration: 5,
     aspectRatios: ['16:9', '9:16', '1:1'],
-    description: 'Hailuo 2.3 Fast image-to-video',
+    description: 'MiniMax Hailuo 2.3 Fast Pro image-to-video with 1080p output.',
   },
 } as const;
 
@@ -1080,6 +1513,24 @@ export const VIDEO_MODEL_PROVIDERS: Record<VideoModelType, VideoModelProvider> =
   'veo-3.1-ref': 'fal',
   'veo-3.1-flf': 'fal',
   'veo-3.1-fast-flf': 'fal',
+  'vidu-q3-t2v': 'fal',
+  'vidu-q3-i2v': 'fal',
+  'vidu-q3-t2v-turbo': 'fal',
+  'vidu-q3-i2v-turbo': 'fal',
+  'sora-2-t2v': 'fal',
+  'sora-2-i2v': 'fal',
+  'sora-2-pro-i2v': 'fal',
+  'sora-2-remix-v2v': 'fal',
+  'grok-imagine-t2v': 'fal',
+  'grok-imagine-i2v': 'fal',
+  'grok-imagine-edit-v2v': 'fal',
+  'ltx-2-19b-t2v': 'fal',
+  'ltx-2-19b-i2v': 'fal',
+  'ltx-2-19b-v2v': 'fal',
+  'ltx-2-19b-extend': 'fal',
+  'ltx-2-19b-a2v': 'fal',
+  'veed-fabric-1.0': 'fal',
+  'heygen-avatar4-i2v': 'fal',
   'kling-2.6-t2v': 'fal',
   'kling-2.6-i2v': 'fal',
   'kling-o3-t2v': 'fal',
@@ -1116,6 +1567,24 @@ export const FAL_VIDEO_MODELS: Partial<Record<VideoModelType, string>> = {
   'veo-3.1-ref': 'fal-ai/veo3.1/reference-to-video',
   'veo-3.1-flf': 'fal-ai/veo3.1/first-last-frame-to-video',
   'veo-3.1-fast-flf': 'fal-ai/veo3.1/fast/first-last-frame-to-video',
+  'vidu-q3-t2v': 'fal-ai/vidu/q3/text-to-video',
+  'vidu-q3-i2v': 'fal-ai/vidu/q3/image-to-video',
+  'vidu-q3-t2v-turbo': 'fal-ai/vidu/q3/text-to-video/turbo',
+  'vidu-q3-i2v-turbo': 'fal-ai/vidu/q3/image-to-video/turbo',
+  'sora-2-t2v': 'fal-ai/sora-2/text-to-video',
+  'sora-2-i2v': 'fal-ai/sora-2/image-to-video',
+  'sora-2-pro-i2v': 'fal-ai/sora-2/image-to-video/pro',
+  'sora-2-remix-v2v': 'fal-ai/sora-2/video-to-video/remix',
+  'grok-imagine-t2v': 'xai/grok-imagine-video/text-to-video',
+  'grok-imagine-i2v': 'xai/grok-imagine-video/image-to-video',
+  'grok-imagine-edit-v2v': 'xai/grok-imagine-video/edit-video',
+  'ltx-2-19b-t2v': 'fal-ai/ltx-2-19b/text-to-video',
+  'ltx-2-19b-i2v': 'fal-ai/ltx-2-19b/image-to-video',
+  'ltx-2-19b-v2v': 'fal-ai/ltx-2-19b/video-to-video',
+  'ltx-2-19b-extend': 'fal-ai/ltx-2-19b/extend-video',
+  'ltx-2-19b-a2v': 'fal-ai/ltx-2-19b/audio-to-video',
+  'veed-fabric-1.0': 'veed/fabric-1.0',
+  'heygen-avatar4-i2v': 'fal-ai/heygen/avatar4/image-to-video',
   'kling-2.6-t2v': 'fal-ai/kling-video/v2.6/pro/text-to-video',
   'kling-2.6-i2v': 'fal-ai/kling-video/v2.6/pro/image-to-video',
   'kling-o3-t2v': 'fal-ai/kling-video/o3/pro/text-to-video',
@@ -1464,6 +1933,8 @@ export const IMAGE_MODEL_CREDITS: Partial<Record<ImageModelType, number>> = {
   'flux-kontext': 2,
   'nanobanana-pro': 5,
   'nanobanana-2': 3,
+  'qwen-image-2': 2,
+  'qwen-image-2-pro': 3,
   'recraft-v3': 2,
   'recraft-v4': 2,
   'seedream-5': 2,
@@ -1478,6 +1949,24 @@ export const VIDEO_MODEL_CREDITS: Partial<Record<VideoModelType, number>> = {
   'veo-3.1-ref': 30,
   'veo-3.1-flf': 30,
   'veo-3.1-fast-flf': 15,
+  'vidu-q3-t2v': 11,
+  'vidu-q3-i2v': 11,
+  'vidu-q3-t2v-turbo': 6,
+  'vidu-q3-i2v-turbo': 6,
+  'sora-2-t2v': 30,
+  'sora-2-i2v': 30,
+  'sora-2-pro-i2v': 45,
+  'sora-2-remix-v2v': 30,
+  'grok-imagine-t2v': 11,
+  'grok-imagine-i2v': 8,
+  'grok-imagine-edit-v2v': 12,
+  'ltx-2-19b-t2v': 7,
+  'ltx-2-19b-i2v': 7,
+  'ltx-2-19b-v2v': 7,
+  'ltx-2-19b-extend': 7,
+  'ltx-2-19b-a2v': 7,
+  'veed-fabric-1.0': 15,
+  'heygen-avatar4-i2v': 15,
   'kling-2.6-t2v': 11,
   'kling-2.6-i2v': 11,
   'kling-o3-t2v': 34,

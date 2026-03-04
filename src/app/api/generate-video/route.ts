@@ -111,8 +111,11 @@ async function rehostForXskill(
 async function generateViaFal(
   modelId: string,
   input: Record<string, unknown>,
-  adapter: { extractVideoUrl: (result: Record<string, unknown>) => string | undefined }
-): Promise<string> {
+  adapter: {
+    extractVideoUrl: (result: Record<string, unknown>) => string | undefined;
+    extractVideoId?: (result: Record<string, unknown>) => string | undefined;
+  }
+): Promise<{ videoUrl: string; videoId?: string }> {
   const result = await fal.subscribe(modelId, {
     input,
     logs: true,
@@ -127,7 +130,8 @@ async function generateViaFal(
   if (!videoUrl) {
     throw new Error('No video generated from Fal');
   }
-  return videoUrl;
+  const videoId = adapter.extractVideoId?.(result as Record<string, unknown>);
+  return { videoUrl, videoId };
 }
 
 export const POST = withCredits(
@@ -153,8 +157,10 @@ export const POST = withCredits(
       lastFrameUrl,
       referenceUrls: rawReferenceUrls,
       videoUrl: inputVideoUrl,
+      videoId: inputVideoId,
       audioUrl: inputAudioUrl,
       generateAudio,
+      heygenVoice: inputHeygenVoice,
     } = body;
 
     const normalizedReferenceUrl = normalizeMediaUrl(referenceUrl, request);
@@ -162,9 +168,18 @@ export const POST = withCredits(
     const normalizedLastFrameUrl = normalizeMediaUrl(lastFrameUrl, request);
     const normalizedReferenceUrls = normalizeMediaUrls(rawReferenceUrls, request);
     const normalizedVideoUrl = normalizeMediaUrl(inputVideoUrl, request);
+    const normalizedVideoId = typeof inputVideoId === 'string' ? inputVideoId.trim() || undefined : undefined;
     const normalizedAudioUrl = normalizeMediaUrl(inputAudioUrl, request);
+    const normalizedHeygenVoice =
+      typeof inputHeygenVoice === 'string' ? inputHeygenVoice.trim() || undefined : undefined;
 
     const modelType = resolveAutoVideoModel(model as VideoModelType);
+    if (modelType === 'runway-gen3') {
+      return NextResponse.json(
+        { error: 'Runway Gen-3 is currently unavailable. Please select another video model.' },
+        { status: 400 }
+      );
+    }
     const provider = VIDEO_MODEL_PROVIDERS[modelType] || 'fal';
     const { canvasId, nodeId } = body;
 
@@ -173,6 +188,7 @@ export const POST = withCredits(
     let finalLastFrameUrl = normalizedLastFrameUrl;
     let finalReferenceUrls = normalizedReferenceUrls;
     let finalVideoUrl = normalizedVideoUrl;
+    const finalVideoId = normalizedVideoId;
     let finalAudioUrl = normalizedAudioUrl;
 
     if (provider === 'xskill') {
@@ -220,8 +236,10 @@ export const POST = withCredits(
       lastFrameUrl: finalLastFrameUrl,
       referenceUrls: finalReferenceUrls,
       videoUrl: finalVideoUrl,
+      videoId: finalVideoId,
       audioUrl: finalAudioUrl,
       generateAudio,
+      heygenVoice: normalizedHeygenVoice,
     };
 
     // Get adapter and build input
@@ -236,7 +254,9 @@ export const POST = withCredits(
       hasLastFrameUrl: !!finalLastFrameUrl,
       referenceUrlsCount: finalReferenceUrls?.length || 0,
       hasVideoUrl: !!finalVideoUrl,
+      hasVideoId: !!finalVideoId,
       hasAudioUrl: !!finalAudioUrl,
+      hasHeygenVoice: !!normalizedHeygenVoice,
       input,
     });
 
@@ -263,7 +283,7 @@ export const POST = withCredits(
       console.warn(`No Fal model ID for "${modelType}". Falling back to veo-3.`);
     }
     const modelLabel = falModelId || FAL_VIDEO_MODELS['veo-3']!;
-    const videoUrl = await generateViaFal(modelLabel, input, adapter);
+    const { videoUrl, videoId } = await generateViaFal(modelLabel, input, adapter);
 
     // Save video to configured asset storage (local filesystem, R2, or S3)
     const savedUrl = await saveGeneratedVideo(videoUrl, {
@@ -277,6 +297,7 @@ export const POST = withCredits(
       success: true,
       videoUrl: savedUrl,
       originalUrl: videoUrl,
+      videoId,
       model: modelLabel,
     });
   } catch (error) {

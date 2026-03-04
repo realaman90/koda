@@ -17,6 +17,20 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
 export const bodySizeLimit = '50mb';
 
+function createTraceId(): string {
+  return `ma_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function jsonWithTrace(
+  traceId: string,
+  body: unknown,
+  init?: ResponseInit
+): NextResponse {
+  const headers = new Headers(init?.headers);
+  headers.set('x-koda-trace-id', traceId);
+  return NextResponse.json(body, { ...init, headers });
+}
+
 const VideoContextSchema = z.object({
   id: z.string().min(1),
   source: z.enum(['upload', 'youtube']),
@@ -74,6 +88,10 @@ const MotionStreamRequestSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  const traceId = request.headers.get('x-koda-trace-id') || createTraceId();
+  const contentLength = request.headers.get('content-length') || 'unknown';
+  console.info(`[Motion Analyzer API][${traceId}] POST /stream content-length=${contentLength}`);
+
   try {
     const policyDecision = evaluatePluginLaunchById('motion-analyzer');
     emitPluginPolicyAuditEvent({
@@ -83,6 +101,9 @@ export async function POST(request: Request) {
     });
 
     if (!policyDecision.allowed) {
+      console.warn(
+        `[Motion Analyzer API][${traceId}] blocked by policy code=${policyDecision.code} reason=${policyDecision.reason}`
+      );
       emitLaunchMetric({
         metric: 'plugin_execution',
         status: 'error',
@@ -91,7 +112,8 @@ export async function POST(request: Request) {
         errorCode: policyDecision.code,
       });
 
-      return NextResponse.json(
+      return jsonWithTrace(
+        traceId,
         {
           error: 'Plugin launch blocked by policy.',
           code: policyDecision.code,
@@ -101,10 +123,25 @@ export async function POST(request: Request) {
       );
     }
 
-    const rawBody = await request.json();
+    let rawBody: unknown;
+    try {
+      rawBody = await request.json();
+    } catch (parseError) {
+      console.error(`[Motion Analyzer API][${traceId}] invalid JSON payload:`, parseError);
+      return jsonWithTrace(
+        traceId,
+        { error: 'Invalid JSON payload' },
+        { status: 400 }
+      );
+    }
+
     const parsedBody = MotionStreamRequestSchema.safeParse(rawBody);
     if (!parsedBody.success) {
-      return NextResponse.json(
+      console.warn(
+        `[Motion Analyzer API][${traceId}] schema validation failed (${parsedBody.error.issues.length} issues)`
+      );
+      return jsonWithTrace(
+        traceId,
         {
           error: 'Invalid request payload',
           issues: parsedBody.error.issues,
@@ -130,7 +167,8 @@ export async function POST(request: Request) {
         pluginId: 'motion-analyzer',
         errorCode: 'missing_prompt_or_messages',
       });
-      return NextResponse.json(
+      return jsonWithTrace(
+        traceId,
         { error: 'Either prompt or messages is required' },
         { status: 400 }
       );
@@ -170,7 +208,7 @@ export async function POST(request: Request) {
           ? `\nIMPORTANT: The user selected a trim range of ${context.video.trimStart}s to ${context.video.trimEnd}s (${(context.video.trimEnd! - context.video.trimStart!).toFixed(1)}s segment). Focus your analysis ONLY on this time window. Timestamps in your response should be relative to the start of the full video.`
           : '';
 
-        console.log(`[Motion Analyzer API] Video loaded: ${context.video.name} (${mimeType}, ${Math.round(base64.length * 0.75 / 1024)}KB)${hasTrim ? ` [trim: ${context.video.trimStart}s-${context.video.trimEnd}s]` : ''}`);
+        console.log(`[Motion Analyzer API][${traceId}] Video loaded: ${context.video.name} (${mimeType}, ${Math.round(base64.length * 0.75 / 1024)}KB)${hasTrim ? ` [trim: ${context.video.trimStart}s-${context.video.trimEnd}s]` : ''}`);
 
         agentMessages.unshift({
           role: 'system',
@@ -198,7 +236,7 @@ The video data is available. Use the analyze_video_motion tool with the video da
           ? `\nIMPORTANT: The user selected a trim range of ${context.video.trimStart}s to ${context.video.trimEnd}s (${(context.video.trimEnd! - context.video.trimStart!).toFixed(1)}s segment). Focus your analysis ONLY on this time window.`
           : '';
 
-        console.log(`[Motion Analyzer API] Video URL: ${context.video.name} → ${resolvedUrl.slice(0, 80)}${hasTrim ? ` [trim: ${context.video.trimStart}s-${context.video.trimEnd}s]` : ''}`);
+        console.log(`[Motion Analyzer API][${traceId}] Video URL: ${context.video.name} → ${resolvedUrl.slice(0, 80)}${hasTrim ? ` [trim: ${context.video.trimStart}s-${context.video.trimEnd}s]` : ''}`);
 
         agentMessages.unshift({
           role: 'system',
@@ -218,7 +256,9 @@ Note: YouTube URL provided. Analyze the video content using the URL.`,
       });
     }
 
-    console.log(`[Motion Analyzer API] Starting stream: nodeId=${context?.nodeId}, hasVideo=${!!context?.video}, messageCount=${agentMessages.length}`);
+    console.log(
+      `[Motion Analyzer API][${traceId}] Starting stream: nodeId=${context?.nodeId}, hasVideo=${!!context?.video}, messageCount=${agentMessages.length}`
+    );
 
     // Stream the agent response
     const result = await motionAnalyzerAgent.stream(
@@ -363,7 +403,7 @@ Note: YouTube URL provided. Analyze the video content using the URL.`,
 
           safeClose();
         } catch (error) {
-          console.error('[Motion Analyzer API] Stream error:', error);
+          console.error(`[Motion Analyzer API][${traceId}] Stream error:`, error);
           emitLaunchMetric({
             metric: 'plugin_execution',
             status: 'error',
@@ -386,10 +426,11 @@ Note: YouTube URL provided. Analyze the video content using the URL.`,
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
+        'x-koda-trace-id': traceId,
       },
     });
   } catch (error) {
-    console.error('[Motion Analyzer API] Error:', error);
+    console.error(`[Motion Analyzer API][${traceId}] Error:`, error);
     emitLaunchMetric({
       metric: 'plugin_execution',
       status: 'error',
@@ -398,7 +439,8 @@ Note: YouTube URL provided. Analyze the video content using the URL.`,
       errorCode: 'execution_failed',
       metadata: { message: error instanceof Error ? error.message : String(error) },
     });
-    return NextResponse.json(
+    return jsonWithTrace(
+      traceId,
       { error: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 }
     );

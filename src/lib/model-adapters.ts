@@ -10,7 +10,11 @@ import type {
   VideoDuration,
   VideoResolution,
 } from './types';
-import { ASPECT_TO_FLUX_SIZE, DEFAULT_IMAGE_ASPECT_RATIO } from './types';
+import {
+  ASPECT_TO_FLUX_SIZE,
+  DEFAULT_HEYGEN_AVATAR4_VOICE,
+  DEFAULT_IMAGE_ASPECT_RATIO,
+} from './types';
 
 // Request data passed to the adapter
 export interface GenerateRequest {
@@ -158,6 +162,65 @@ class NanoBanana2Adapter implements ModelAdapter {
   }
 }
 
+// Qwen Image 2 (regular/pro, text-to-image + /edit)
+class QwenImage2Adapter implements ModelAdapter {
+  constructor(private variant: 'regular' | 'pro') {}
+
+  private hasImageReferences(request: GenerateRequest): boolean {
+    return (
+      (request.referenceUrls && request.referenceUrls.length > 0) ||
+      !!request.referenceUrl
+    );
+  }
+
+  private getImageUrls(request: GenerateRequest): string[] {
+    if (request.referenceUrls && request.referenceUrls.length > 0) {
+      return request.referenceUrls;
+    }
+    if (request.referenceUrl) {
+      return [request.referenceUrl];
+    }
+    return [];
+  }
+
+  private getBaseModelPath(): string {
+    return this.variant === 'pro' ? 'fal-ai/qwen-image-2/pro' : 'fal-ai/qwen-image-2';
+  }
+
+  getModelId(request: GenerateRequest): string {
+    const base = this.getBaseModelPath();
+    if (this.hasImageReferences(request)) {
+      return `${base}/edit`;
+    }
+    return `${base}/text-to-image`;
+  }
+
+  buildInput(request: GenerateRequest): Record<string, unknown> {
+    const imageUrls = this.getImageUrls(request);
+    const hasReferences = imageUrls.length > 0;
+    const concreteAspectRatio = getConcreteAspectRatio(request.aspectRatio);
+    const input: Record<string, unknown> = {
+      prompt: request.prompt,
+      num_images: request.numImages || 1,
+      output_format: 'png',
+      enable_prompt_expansion: true,
+      enable_safety_checker: true,
+      ...(hasReferences && { image_urls: imageUrls }),
+    };
+
+    // In edit mode with auto ratio, preserve input image framing.
+    if (!(hasReferences && request.aspectRatio === 'auto')) {
+      input.image_size = ASPECT_TO_FLUX_SIZE[concreteAspectRatio] || 'square_hd';
+    }
+
+    return input;
+  }
+
+  extractImageUrls(result: { data?: { images?: Array<{ url: string }> } }): string[] {
+    return result.data?.images?.map((img) => img.url) || [];
+  }
+}
+
 // Recraft V3
 class RecraftAdapter implements ModelAdapter {
   // Map aspect ratio to Recraft size format
@@ -284,6 +347,8 @@ const adapters: Record<ImageModelType, ModelAdapter> = {
   'flux-kontext': new FluxKontextAdapter(),
   'nanobanana-pro': new NanoBananaAdapter(),
   'nanobanana-2': new NanoBanana2Adapter(),
+  'qwen-image-2': new QwenImage2Adapter('regular'),
+  'qwen-image-2-pro': new QwenImage2Adapter('pro'),
   'recraft-v3': new RecraftAdapter(),
   'recraft-v4': new RecraftAdapter(), // same API shape as V3
   'seedream-5': new Seedream5Adapter(),
@@ -315,15 +380,20 @@ export interface VideoGenerateRequest {
   referenceUrls?: string[];
   // Video reference (for omni-reference models like Seedance 2.0)
   videoUrl?: string;
+  // Reusable provider-native video ID (required by some remix endpoints)
+  videoId?: string;
   // Audio reference (for Seedance 2.0 omni-reference)
   audioUrl?: string;
   generateAudio?: boolean;
+  // Heygen Avatar 4 specific
+  heygenVoice?: string;
 }
 
 // Common interface for video adapters
 export interface VideoModelAdapter {
   buildInput(request: VideoGenerateRequest): Record<string, unknown>;
   extractVideoUrl(result: Record<string, unknown>): string | undefined;
+  extractVideoId?(result: Record<string, unknown>): string | undefined;
 }
 
 // Google Veo 3
@@ -412,6 +482,366 @@ class Veo31FLFAdapter implements VideoModelAdapter {
       duration: `${request.duration}s`,
       resolution: request.resolution || '720p',
       generate_audio: request.generateAudio ?? true,
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+}
+
+// Vidu Q3 Text-to-Video
+class ViduT2VAdapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    return {
+      prompt: request.prompt,
+      duration: request.duration,
+      aspect_ratio: request.aspectRatio,
+      resolution: request.resolution || '720p',
+      audio: request.generateAudio !== false,
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+}
+
+// Vidu Q3 Image-to-Video
+class ViduI2VAdapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    const startImage = request.firstFrameUrl || request.referenceUrl;
+    const endImage = request.lastFrameUrl;
+    if (!startImage) {
+      throw new Error('Vidu Q3 image model requires a reference image');
+    }
+    return {
+      prompt: request.prompt,
+      image_url: startImage,
+      ...(endImage && { end_image_url: endImage }),
+      duration: request.duration,
+      resolution: request.resolution || '720p',
+      audio: request.generateAudio !== false,
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+}
+
+// OpenAI Sora 2 Text-to-Video
+class Sora2T2VAdapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    return {
+      prompt: request.prompt,
+      duration: request.duration,
+      aspect_ratio: request.aspectRatio,
+      resolution: request.resolution || '720p',
+      enable_safety_checker: true,
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+
+  extractVideoId(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video_id?: string } | undefined;
+    return data?.video_id;
+  }
+}
+
+// OpenAI Sora 2 Image-to-Video
+class Sora2I2VAdapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    const imageUrl = request.firstFrameUrl || request.referenceUrl;
+    if (!imageUrl) {
+      throw new Error('Sora 2 image model requires a reference image');
+    }
+    return {
+      prompt: request.prompt,
+      image_url: imageUrl,
+      duration: request.duration,
+      aspect_ratio: request.aspectRatio,
+      resolution: request.resolution || '720p',
+      enable_safety_checker: true,
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+
+  extractVideoId(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video_id?: string } | undefined;
+    return data?.video_id;
+  }
+}
+
+// Sora 2 Remix (requires provider-native video_id from a previous Sora output)
+class Sora2RemixAdapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    if (!request.videoId) {
+      throw new Error('Sora 2 remix requires a connected Sora video output (video_id)');
+    }
+    if (!request.prompt?.trim()) {
+      throw new Error('Sora 2 remix requires a prompt');
+    }
+    return {
+      video_id: request.videoId,
+      prompt: request.prompt,
+      delete_video: true,
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+
+  extractVideoId(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video_id?: string } | undefined;
+    return data?.video_id;
+  }
+}
+
+// xAI Grok Text-to-Video
+class GrokT2VAdapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    return {
+      prompt: request.prompt,
+      duration: request.duration,
+      aspect_ratio: request.aspectRatio,
+      resolution: request.resolution || '720p',
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+}
+
+// xAI Grok Image-to-Video
+class GrokI2VAdapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    const imageUrl = request.firstFrameUrl || request.referenceUrl;
+    if (!imageUrl) {
+      throw new Error('Grok image-to-video requires a reference image');
+    }
+    return {
+      prompt: request.prompt,
+      image_url: imageUrl,
+      duration: request.duration,
+      aspect_ratio: request.aspectRatio,
+      resolution: request.resolution || '720p',
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+}
+
+// xAI Grok Edit-Video
+class GrokEditVideoAdapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    if (!request.videoUrl) {
+      throw new Error('Grok edit-video requires a video input');
+    }
+    return {
+      prompt: request.prompt,
+      video_url: request.videoUrl,
+      resolution: request.resolution || '720p',
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+}
+
+function toLtxVideoSize(aspectRatio: VideoAspectRatio): string {
+  const map: Record<VideoAspectRatio, string> = {
+    '16:9': 'landscape_16_9',
+    '9:16': 'portrait_16_9',
+    '1:1': 'square_hd',
+    '4:3': 'landscape_4_3',
+    '3:4': 'portrait_4_3',
+  };
+  return map[aspectRatio] || 'landscape_4_3';
+}
+
+function toLtxNumFrames(duration: VideoDuration): number {
+  // LTX is frame-based; this keeps duration roughly aligned with UI seconds.
+  return Math.max(25, duration * 25 + 1);
+}
+
+// LTX 2 19B Text-to-Video
+class LtxT2VAdapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    return {
+      prompt: request.prompt,
+      video_size: toLtxVideoSize(request.aspectRatio),
+      num_frames: toLtxNumFrames(request.duration),
+      generate_audio: request.generateAudio !== false,
+      fps: 25,
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+}
+
+// LTX 2 19B Image-to-Video
+class LtxI2VAdapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    const imageUrl = request.firstFrameUrl || request.referenceUrl;
+    if (!imageUrl) {
+      throw new Error('LTX image-to-video requires a reference image');
+    }
+    return {
+      prompt: request.prompt,
+      image_url: imageUrl,
+      ...(request.lastFrameUrl && { end_image_url: request.lastFrameUrl }),
+      video_size: toLtxVideoSize(request.aspectRatio),
+      num_frames: toLtxNumFrames(request.duration),
+      generate_audio: request.generateAudio !== false,
+      fps: 25,
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+}
+
+// LTX 2 19B Video-to-Video
+class LtxV2VAdapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    if (!request.videoUrl) {
+      throw new Error('LTX video-to-video requires a video input');
+    }
+    const imageUrl = request.referenceUrls?.[0] || request.referenceUrl || request.firstFrameUrl;
+    return {
+      prompt: request.prompt,
+      video_url: request.videoUrl,
+      ...(request.audioUrl && { audio_url: request.audioUrl }),
+      ...(imageUrl && { image_url: imageUrl }),
+      ...(request.lastFrameUrl && { end_image_url: request.lastFrameUrl }),
+      video_size: toLtxVideoSize(request.aspectRatio),
+      num_frames: toLtxNumFrames(request.duration),
+      generate_audio: request.generateAudio !== false,
+      fps: 25,
+      match_video_length: false,
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+}
+
+// LTX 2 19B Extend Video
+class LtxExtendAdapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    if (!request.videoUrl) {
+      throw new Error('LTX extend-video requires a video input');
+    }
+    return {
+      prompt: request.prompt,
+      video_url: request.videoUrl,
+      ...(request.lastFrameUrl && { end_image_url: request.lastFrameUrl }),
+      video_size: toLtxVideoSize(request.aspectRatio),
+      num_frames: toLtxNumFrames(request.duration),
+      generate_audio: request.generateAudio !== false,
+      fps: 25,
+      extend_direction: 'forward',
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+}
+
+// LTX 2 19B Audio-to-Video
+class LtxA2VAdapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    if (!request.audioUrl) {
+      throw new Error('LTX audio-to-video requires an audio input');
+    }
+    const imageUrl = request.referenceUrls?.[0] || request.referenceUrl || request.firstFrameUrl;
+    return {
+      prompt: request.prompt,
+      audio_url: request.audioUrl,
+      ...(imageUrl && { image_url: imageUrl }),
+      ...(request.lastFrameUrl && { end_image_url: request.lastFrameUrl }),
+      video_size: toLtxVideoSize(request.aspectRatio),
+      num_frames: toLtxNumFrames(request.duration),
+      fps: 25,
+      match_audio_length: false,
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+}
+
+// Veed Fabric 1.0 (requires image + audio)
+class VeedFabricAdapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    const imageUrl = request.referenceUrls?.[0] || request.referenceUrl || request.firstFrameUrl;
+    if (!imageUrl) {
+      throw new Error('Veed Fabric requires an image input');
+    }
+    if (!request.audioUrl) {
+      throw new Error('Veed Fabric requires an audio input');
+    }
+    return {
+      image_url: imageUrl,
+      audio_url: request.audioUrl,
+      resolution: request.resolution || '720p',
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+}
+
+// Heygen Avatar 4
+class HeygenAvatar4Adapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    const imageUrl = request.firstFrameUrl || request.referenceUrl;
+    if (!imageUrl) {
+      throw new Error('Heygen Avatar 4 requires an image input');
+    }
+    if (!request.prompt?.trim()) {
+      throw new Error('Heygen Avatar 4 requires a script prompt');
+    }
+    return {
+      image_url: imageUrl,
+      prompt: request.prompt,
+      voice: request.heygenVoice || DEFAULT_HEYGEN_AVATAR4_VOICE,
+      talking_style: 'stable',
+      resolution: request.resolution || '720p',
     };
   }
 
@@ -825,6 +1255,24 @@ const videoAdapters: Record<VideoModelType, VideoModelAdapter> = {
   'veo-3.1-ref': new Veo31RefAdapter(),
   'veo-3.1-flf': new Veo31FLFAdapter(),
   'veo-3.1-fast-flf': new Veo31FLFAdapter(), // Uses same adapter as regular FLF
+  'vidu-q3-t2v': new ViduT2VAdapter(),
+  'vidu-q3-i2v': new ViduI2VAdapter(),
+  'vidu-q3-t2v-turbo': new ViduT2VAdapter(),
+  'vidu-q3-i2v-turbo': new ViduI2VAdapter(),
+  'sora-2-t2v': new Sora2T2VAdapter(),
+  'sora-2-i2v': new Sora2I2VAdapter(),
+  'sora-2-pro-i2v': new Sora2I2VAdapter(),
+  'sora-2-remix-v2v': new Sora2RemixAdapter(),
+  'grok-imagine-t2v': new GrokT2VAdapter(),
+  'grok-imagine-i2v': new GrokI2VAdapter(),
+  'grok-imagine-edit-v2v': new GrokEditVideoAdapter(),
+  'ltx-2-19b-t2v': new LtxT2VAdapter(),
+  'ltx-2-19b-i2v': new LtxI2VAdapter(),
+  'ltx-2-19b-v2v': new LtxV2VAdapter(),
+  'ltx-2-19b-extend': new LtxExtendAdapter(),
+  'ltx-2-19b-a2v': new LtxA2VAdapter(),
+  'veed-fabric-1.0': new VeedFabricAdapter(),
+  'heygen-avatar4-i2v': new HeygenAvatar4Adapter(),
   'kling-2.6-t2v': new KlingT2VAdapter(),
   'kling-2.6-i2v': new KlingI2VAdapter(),
   'kling-o3-t2v': new KlingO3T2VAdapter(),

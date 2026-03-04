@@ -55,18 +55,18 @@ export const THEATRE_CODE_GEN_MODEL = readModelOverride(
 );
 
 /** Image analysis (vision) */
-export const IMAGE_ANALYZER_MODEL = 'google/gemini-3-flash-preview';
+export const IMAGE_ANALYZER_MODEL = 'google/gemini-3.1-flash-lite-preview';
 
 /** Video analysis (native video understanding) */
-export const VIDEO_ANALYZER_MODEL = 'google/gemini-3-flash-preview';
+export const VIDEO_ANALYZER_MODEL = 'google/gemini-3.1-flash-lite-preview';
 
 /** Animation prompt enhancer (design spec generation) */
-export const ANIMATION_PROMPT_ENHANCER_MODEL = 'google/gemini-3-pro-preview';
+export const ANIMATION_PROMPT_ENHANCER_MODEL = 'google/gemini-3.1-flash-lite-preview';
 
 // -- General Agents --
 
 /** Image generation prompt enhancer */
-export const PROMPT_ENHANCER_MODEL = 'google/gemini-3-pro-preview';
+export const PROMPT_ENHANCER_MODEL = 'google/gemini-3.1-pro-preview';
 
 /** Prompt Studio creative director */
 export const PROMPT_STUDIO_MODEL = readModelOverride(

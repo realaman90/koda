@@ -18,17 +18,22 @@ import { toast } from 'sonner';
 const IMAGE_MODEL_GROUPS: { label: string; models: ImageModelType[] }[] = [
   { label: 'Flux', models: ['flux-schnell', 'flux-pro', 'flux-2-pro', 'flux-2-max', 'flux-kontext'] },
   { label: 'Nano Banana', models: ['nanobanana-pro', 'nanobanana-2'] },
+  { label: 'Qwen', models: ['qwen-image-2', 'qwen-image-2-pro'] },
   { label: 'Other', models: ['seedream-5', 'recraft-v3', 'recraft-v4', 'ideogram-v3', 'sd-3.5'] },
 ];
 
 // Group definitions for video models
 const VIDEO_MODEL_GROUPS: { label: string; models: VideoModelType[] }[] = [
   { label: 'Google Veo', models: ['veo-3', 'veo-3.1-i2v', 'veo-3.1-fast-i2v', 'veo-3.1-ref', 'veo-3.1-flf', 'veo-3.1-fast-flf'] },
+  { label: 'Vidu', models: ['vidu-q3-t2v', 'vidu-q3-i2v', 'vidu-q3-t2v-turbo', 'vidu-q3-i2v-turbo'] },
+  { label: 'Sora 2', models: ['sora-2-t2v', 'sora-2-i2v', 'sora-2-pro-i2v', 'sora-2-remix-v2v'] },
+  { label: 'xAI Grok', models: ['grok-imagine-t2v', 'grok-imagine-i2v', 'grok-imagine-edit-v2v'] },
+  { label: 'LTX', models: ['ltx-2-19b-t2v', 'ltx-2-19b-i2v', 'ltx-2-19b-v2v', 'ltx-2-19b-extend', 'ltx-2-19b-a2v'] },
   { label: 'Kling', models: ['kling-2.6-t2v', 'kling-2.6-i2v', 'kling-o3-t2v', 'kling-o3-i2v', 'kling-o3-pro-i2v', 'kling-3.0-t2v', 'kling-3.0-i2v', 'kling-3.0-pro-t2v', 'kling-3.0-pro-i2v'] },
   { label: 'Seedance', models: ['seedance-1.5-t2v', 'seedance-1.5-i2v', 'seedance-1.0-pro-t2v', 'seedance-1.0-pro-i2v', 'seedance-2.0-t2v', 'seedance-2.0-i2v', 'seedance-2.0-fast-t2v', 'seedance-2.0-fast-i2v'] },
   { label: 'Wan', models: ['wan-2.6-t2v', 'wan-2.6-i2v'] },
   { label: 'Hailuo', models: ['hailuo-02-t2v', 'hailuo-02-i2v', 'hailuo-2.3-t2v', 'hailuo-2.3-i2v'] },
-  { label: 'Other', models: ['luma-ray2', 'minimax-video', 'runway-gen3'] },
+  { label: 'Other', models: ['luma-ray2', 'minimax-video', 'veed-fabric-1.0', 'heygen-avatar4-i2v'] },
 ];
 
 type Tab = 'image' | 'video';
