@@ -3,6 +3,7 @@
 import { ReactNode } from 'react';
 import { TopBar } from './TopBar';
 import { Sidebar } from './Sidebar';
+import { AnnouncementNotifications } from './AnnouncementNotifications';
 import { BreadcrumbItem } from './Breadcrumbs';
 import { cn } from '@/lib/utils';
 
@@ -60,6 +61,8 @@ export function AppShell({
         onExportJSON={onExportJSON}
         onExportPNG={onExportPNG}
       />
+
+      <AnnouncementNotifications mode={mode} />
 
       {/* Main Content Area */}
       <div className="flex flex-1 overflow-hidden">
