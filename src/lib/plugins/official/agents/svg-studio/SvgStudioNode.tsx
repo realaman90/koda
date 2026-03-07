@@ -7,6 +7,7 @@ import type { PluginNodeData } from '@/lib/types';
 import { useCanvasStore } from '@/stores/canvas-store';
 import { PenTool, Play, RefreshCw, Type, ImageIcon, Code, Download, Copy, Check, Eye, CodeIcon, Square, ChevronDown, Sparkles, Loader2 } from 'lucide-react';
 import { useSettingsStore } from '@/stores/settings-store';
+import { getApiErrorMessage, normalizeApiErrorMessage } from '@/lib/client/api-error';
 import { createDefaultSvgStudioState, type SvgStudioNodeData, type SvgStudioState, type SvgStudioModel, type SvgStudioPhase } from './types';
 
 const QUIVER_ENABLED = process.env.NEXT_PUBLIC_QUIVER_ENABLED === 'true';
@@ -210,12 +211,8 @@ function SvgStudioNodeComponent({ id, data, selected }: NodeProps<Node<PluginNod
       });
 
       if (!res.ok) {
-        const errorBody = await res.json().catch(() => ({}));
-        throw new Error(
-          (errorBody as Record<string, unknown>)?.error as string
-          || (errorBody as Record<string, unknown>)?.message as string
-          || `HTTP ${res.status}`
-        );
+        const message = await getApiErrorMessage(res, `HTTP ${res.status}`);
+        throw new Error(message);
       }
 
       const reader = res.body?.getReader();
@@ -306,7 +303,7 @@ function SvgStudioNodeComponent({ id, data, selected }: NodeProps<Node<PluginNod
       if ((err as Error)?.name === 'AbortError') {
         updateState({ phase: 'idle', error: undefined, partialSvg: undefined });
       } else {
-        const errorMessage = err instanceof Error ? err.message : 'SVG generation failed';
+        const errorMessage = normalizeApiErrorMessage(err, 'SVG generation failed');
         updateState({ phase: 'error', error: errorMessage, partialSvg: undefined });
 
         addToHistory({

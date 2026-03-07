@@ -21,6 +21,7 @@ import type { AnimationStreamEvent, AnimationAppEvent } from '../events';
 import { toolCallToAppEvent, toolResultToAppEvent } from '../events';
 import { resolveMediaCache } from '../media-cache';
 import { animationDebugLog } from '../debug';
+import { getApiErrorMessage, normalizeApiErrorMessage } from '@/lib/client/api-error';
 
 // ============================================
 // Types
@@ -186,8 +187,8 @@ export function useAnimationStream(): UseAnimationStreamReturn {
         });
 
         if (!response.ok) {
-          const errorData = await response.json().catch(() => ({ error: 'Stream request failed' }));
-          throw new Error(errorData.error || `Stream request failed (${response.status})`);
+          const message = await getApiErrorMessage(response, `Stream request failed (${response.status})`);
+          throw new Error(message);
         }
 
         if (!response.body) {
@@ -370,7 +371,7 @@ export function useAnimationStream(): UseAnimationStreamReturn {
           return fullText;
         }
 
-        const errorMessage = err instanceof Error ? err.message : 'Stream failed';
+        const errorMessage = normalizeApiErrorMessage(err, 'Stream failed');
         if (isTransientTransportError(errorMessage)) {
           console.warn('[useAnimationStream] Transient stream transport error, finalizing gracefully:', errorMessage);
           if (!completeFiredRef.current) {

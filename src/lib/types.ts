@@ -640,14 +640,61 @@ export type VideoModelType =
 
 // Auto model constants — resolved at runtime
 export const AUTO_IMAGE_MODEL: ImageModelType = 'nanobanana-2';
-export const AUTO_VIDEO_MODEL: VideoModelType = 'seedance-2.0-fast-t2v';
+export const AUTO_VIDEO_TEXT_MODEL: VideoModelType = 'kling-3.0-t2v';
+export const AUTO_VIDEO_IMAGE_MODEL: VideoModelType = 'kling-3.0-i2v';
+export const AUTO_VIDEO_MODEL: VideoModelType = AUTO_VIDEO_TEXT_MODEL;
+
+export interface VideoModelResolutionContext {
+  referenceUrl?: string;
+  firstFrameUrl?: string;
+  lastFrameUrl?: string;
+  referenceUrls?: string[];
+}
+
+export const TEMPORARILY_UNAVAILABLE_VIDEO_MODELS: VideoModelType[] = [
+  'seedance-2.0-t2v',
+  'seedance-2.0-i2v',
+  'seedance-2.0-fast-t2v',
+  'seedance-2.0-fast-i2v',
+];
+
+export const TEMPORARILY_UNAVAILABLE_VIDEO_MODEL_FALLBACKS: Partial<Record<VideoModelType, VideoModelType>> = {
+  'seedance-2.0-t2v': 'kling-3.0-pro-t2v',
+  'seedance-2.0-i2v': 'kling-3.0-pro-i2v',
+  'seedance-2.0-fast-t2v': 'kling-3.0-t2v',
+  'seedance-2.0-fast-i2v': 'kling-3.0-i2v',
+};
+
+function hasVideoImageContext(context?: VideoModelResolutionContext): boolean {
+  return !!(
+    context?.referenceUrl ||
+    context?.firstFrameUrl ||
+    context?.lastFrameUrl ||
+    context?.referenceUrls?.length
+  );
+}
 
 // Resolve 'auto' to the actual default model
 export function resolveAutoModel(model: ImageModelType): ImageModelType {
   return model === 'auto' ? AUTO_IMAGE_MODEL : model;
 }
-export function resolveAutoVideoModel(model: VideoModelType): VideoModelType {
-  return model === 'auto' ? AUTO_VIDEO_MODEL : model;
+export function resolveAutoVideoModel(
+  model: VideoModelType,
+  context?: VideoModelResolutionContext
+): VideoModelType {
+  if (model !== 'auto') return model;
+  return hasVideoImageContext(context) ? AUTO_VIDEO_IMAGE_MODEL : AUTO_VIDEO_TEXT_MODEL;
+}
+
+export function resolveDeprecatedVideoModel(model: VideoModelType): VideoModelType {
+  return TEMPORARILY_UNAVAILABLE_VIDEO_MODEL_FALLBACKS[model] ?? model;
+}
+
+export function resolveVideoModel(
+  model: VideoModelType,
+  context?: VideoModelResolutionContext
+): VideoModelType {
+  return resolveDeprecatedVideoModel(resolveAutoVideoModel(model, context));
 }
 
 // Video duration options (in seconds)
@@ -658,6 +705,12 @@ export type VideoAspectRatio = '16:9' | '9:16' | '1:1' | '4:3' | '3:4';
 
 // Video resolution
 export type VideoResolution = '360p' | '480p' | '540p' | '720p' | '1080p';
+
+export interface VideoModelOptionOverrides {
+  aspectRatio?: string;
+  duration?: number;
+  resolution?: string;
+}
 
 export const DEFAULT_HEYGEN_AVATAR4_VOICE = 'Melissa';
 
@@ -863,10 +916,6 @@ export const ENABLED_VIDEO_MODELS: VideoModelType[] = [
   'seedance-1.5-i2v',
   'seedance-1.0-pro-t2v',
   'seedance-1.0-pro-i2v',
-  'seedance-2.0-t2v',
-  'seedance-2.0-i2v',
-  'seedance-2.0-fast-t2v',
-  'seedance-2.0-fast-i2v',
   'wan-2.6-t2v',
   'wan-2.6-i2v',
   'hailuo-02-t2v',
@@ -883,11 +932,11 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     group: 'Auto',
     inputType: 'text-only',
     inputMode: 'text',
-    durations: [4, 5, 6, 7, 8, 9, 10, 11, 12, 15],
+    durations: [5, 10, 15],
     defaultDuration: 5,
     aspectRatios: ['16:9', '9:16', '1:1'],
     supportsAudio: true,
-    description: 'Automatically picks the best model for quality, speed, and cost.',
+    description: 'Automatically picks Kling 3.0 Text or Kling 3.0 Image based on your inputs.',
   },
   'veo-3': {
     label: 'Veo 3',
@@ -1505,6 +1554,56 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     description: 'MiniMax Hailuo 2.3 Fast Pro image-to-video with 1080p output.',
   },
 } as const;
+
+function getClosestVideoDuration(
+  durations: readonly VideoDuration[],
+  duration: number | undefined,
+  fallback: VideoDuration
+): VideoDuration {
+  if (typeof duration !== 'number' || !Number.isFinite(duration)) return fallback;
+  const exact = durations.find((value) => value === duration);
+  if (exact) return exact;
+
+  return durations.reduce((best, candidate) => (
+    Math.abs(candidate - duration) < Math.abs(best - duration) ? candidate : best
+  ), fallback);
+}
+
+export function normalizeVideoModelOptions(
+  model: VideoModelType,
+  options: VideoModelOptionOverrides
+): {
+  aspectRatio: VideoAspectRatio;
+  duration: VideoDuration;
+  resolution?: VideoResolution;
+} {
+  const capabilities = VIDEO_MODEL_CAPABILITIES[model];
+  const aspectRatio = capabilities.aspectRatios.includes(options.aspectRatio as VideoAspectRatio)
+    ? options.aspectRatio as VideoAspectRatio
+    : capabilities.aspectRatios[0];
+  const duration = getClosestVideoDuration(
+    capabilities.durations,
+    options.duration,
+    capabilities.defaultDuration
+  );
+
+  if (!capabilities.resolutions) {
+    return {
+      aspectRatio,
+      duration,
+    };
+  }
+
+  const resolution = capabilities.resolutions.includes(options.resolution as VideoResolution)
+    ? options.resolution as VideoResolution
+    : capabilities.resolutions[0];
+
+  return {
+    aspectRatio,
+    duration,
+    resolution,
+  };
+}
 
 // Video model API provider
 export type VideoModelProvider = 'fal' | 'xskill';

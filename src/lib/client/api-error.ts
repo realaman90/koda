@@ -1,4 +1,6 @@
-type ApiErrorPayload = {
+import { openBillingPrompt } from '@/stores/billing-prompt-store';
+
+export type ApiErrorPayload = {
   error?: unknown;
   message?: unknown;
   required?: unknown;
@@ -27,6 +29,27 @@ function buildCreditMessage(payload: ApiErrorPayload): string {
   return 'You are out of credits. Please upgrade your plan to continue generating.';
 }
 
+function isInsufficientCredits(response: Response, payload: ApiErrorPayload | null): boolean {
+  const errorCode = asTrimmedString(payload?.error);
+  return response.status === 402 || errorCode === 'INSUFFICIENT_CREDITS';
+}
+
+function maybeOpenBillingPrompt(payload: ApiErrorPayload | null): void {
+  if (typeof window === 'undefined') return;
+
+  openBillingPrompt({
+    message: asTrimmedString(payload?.message) ?? buildCreditMessage(payload ?? {}),
+    required: asFiniteNumber(payload?.required),
+    balance: asFiniteNumber(payload?.balance),
+  });
+}
+
+export function handleInsufficientCreditsPayload(payload: ApiErrorPayload | null): string {
+  const message = asTrimmedString(payload?.message) ?? buildCreditMessage(payload ?? {});
+  maybeOpenBillingPrompt(payload);
+  return message;
+}
+
 /**
  * Parse API error responses into a user-friendly message.
  * Handles credit-specific responses from withCredits() (402 + INSUFFICIENT_CREDITS).
@@ -40,10 +63,8 @@ export async function getApiErrorMessage(response: Response, fallback: string): 
     payload = null;
   }
 
-  const errorCode = asTrimmedString(payload?.error);
-  if (response.status === 402 || errorCode === 'INSUFFICIENT_CREDITS') {
-    const message = asTrimmedString(payload?.message);
-    return message ?? buildCreditMessage(payload ?? {});
+  if (isInsufficientCredits(response, payload)) {
+    return handleInsufficientCreditsPayload(payload);
   }
 
   const message = asTrimmedString(payload?.message);

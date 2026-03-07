@@ -10,6 +10,7 @@ import {
   type ReactFlowInstance,
 } from '@xyflow/react';
 import type { AppNode, AppEdge, ImageGeneratorNodeData, VideoGeneratorNodeData, TextNodeData, MediaNodeData, StickyNoteNodeData, StickerNodeData, GroupNodeData, StoryboardNodeData,ProductShotNodeData, MusicGeneratorNodeData, SpeechNodeData, VideoAudioNodeData, PluginNodeData } from '@/lib/types';
+import { getApiErrorMessage, normalizeApiErrorMessage } from '@/lib/client/api-error';
 import { remapChildNodeIds, resolveInheritedGroupDelta } from './grouping-utils';
 
 // History snapshot type
@@ -887,7 +888,8 @@ export const useCanvasStore = create<CanvasState>()(
             });
 
             if (!response.ok) {
-              throw new Error('Generation failed');
+              const message = await getApiErrorMessage(response, 'Generation failed');
+              throw new Error(message);
             }
 
             const result = await response.json();
@@ -899,8 +901,9 @@ export const useCanvasStore = create<CanvasState>()(
               isGenerating: false,
             });
           } catch (error) {
+            const errorMessage = normalizeApiErrorMessage(error, 'Generation failed');
             updateNodeData(gen.id, {
-              error: error instanceof Error ? error.message : 'Generation failed',
+              error: errorMessage,
               isGenerating: false,
             });
           }

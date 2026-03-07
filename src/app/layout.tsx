@@ -3,6 +3,7 @@ import { ClerkProvider } from '@clerk/nextjs';
 import { Geist, Geist_Mono, Instrument_Serif } from 'next/font/google';
 import { Toaster } from 'sonner';
 import { ThemeProvider } from '@/components/providers/ThemeProvider';
+import { BillingPromptModal } from '@/components/providers/BillingPromptModal';
 import { CommandPalette } from '@/components/common/CommandPalette';
 import './globals.css';
 
@@ -48,6 +49,7 @@ export default function RootLayout({
       <ThemeProvider>
         {children}
         <CommandPalette />
+        <BillingPromptModal />
       </ThemeProvider>
       <Toaster
         position="bottom-right"

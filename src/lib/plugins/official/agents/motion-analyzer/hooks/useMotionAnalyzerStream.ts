@@ -10,6 +10,7 @@ import type { VideoInput } from '../types';
 import type { MotionAnalyzerStreamEvent, MotionAnalyzerAppEvent } from '../events';
 import { toolCallToAppEvent, toolResultToAppEvent } from '../events';
 import { getCached, loadFromDB } from '../../animation-generator/media-cache';
+import { handleInsufficientCreditsPayload, normalizeApiErrorMessage } from '@/lib/client/api-error';
 
 // ============================================
 // Types
@@ -82,9 +83,12 @@ async function buildHttpError(response: Response, traceId: string): Promise<Erro
 
   if (contentType.includes('application/json')) {
     const payload = await response.json().catch(() => null) as
-      | { error?: unknown; details?: unknown; reason?: unknown }
+      | { error?: unknown; message?: unknown; required?: unknown; balance?: unknown; details?: unknown; reason?: unknown }
       | null;
     if (payload) {
+      if (response.status === 402 || payload.error === 'INSUFFICIENT_CREDITS') {
+        return new Error(handleInsufficientCreditsPayload(payload));
+      }
       if (typeof payload.error === 'string') serverError = payload.error;
       if (typeof payload.details === 'string') details = payload.details;
       if (!details && typeof payload.reason === 'string') details = payload.reason;
@@ -318,7 +322,7 @@ export function useMotionAnalyzerStream(): UseMotionAnalyzerStreamReturn {
           setIsStreaming(false);
           return fullText;
         }
-        let errorMessage = err instanceof Error ? err.message : 'Stream failed';
+        let errorMessage = normalizeApiErrorMessage(err, 'Stream failed');
 
         const video = context?.video;
         if (video && !video.remoteUrl) {

@@ -91,17 +91,27 @@ function ProductShotNodeComponent({ id, data, selected }: NodeProps<ProductShotN
   );
 
   // Validation
-  const isValid = (data.productName?.trim().length ?? 0) > 0;
+  const isValid = (data.productName?.trim().length ?? 0) > 0 && hasProductImage;
 
   // Generate product shots
   const handleGenerate = useCallback(async () => {
     if (!isValid) return;
+
+    const connectedInputs = getConnectedInputs(id);
+    if (!connectedInputs.productImageUrl) {
+      updateNodeData(id, {
+        viewState: 'form',
+        error: 'Connect a product image before generating shots.',
+      });
+      return;
+    }
 
     updateNodeData(id, { viewState: 'loading', error: undefined });
 
     try {
       const input = {
         productName: data.productName.trim(),
+        productImageUrl: connectedInputs.productImageUrl,
         shotCount: data.shotCount,
         background: data.background,
         lighting: data.lighting,
@@ -136,7 +146,7 @@ function ProductShotNodeComponent({ id, data, selected }: NodeProps<ProductShotN
         error: err instanceof Error ? err.message : 'Generation failed',
       });
     }
-  }, [id, data.productName, data.shotCount, data.background, data.lighting, data.additionalNotes, isValid, updateNodeData]);
+  }, [id, data.productName, data.shotCount, data.background, data.lighting, data.additionalNotes, isValid, updateNodeData, getConnectedInputs]);
 
   // Toggle a shot's enabled state
   const toggleShot = useCallback((shotNumber: number) => {
@@ -240,7 +250,7 @@ function ProductShotNodeComponent({ id, data, selected }: NodeProps<ProductShotN
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create nodes');
     }
-  }, [data.result, canvas, id]);
+  }, [data.background, data.lighting, data.productName, data.result, canvas, id]);
 
   // Render form view
   const renderForm = () => (
@@ -344,6 +354,12 @@ function ProductShotNodeComponent({ id, data, selected }: NodeProps<ProductShotN
           <Sparkles className="w-4 h-4" />
           Generate Shots
         </button>
+      )}
+
+      {!hasProductImage && (
+        <p className="text-[11px] text-muted-foreground">
+          Connect a product image to generate accurate shot prompts.
+        </p>
       )}
     </div>
   );

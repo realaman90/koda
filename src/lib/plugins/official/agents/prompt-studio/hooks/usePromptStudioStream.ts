@@ -8,6 +8,7 @@
 import { useState, useCallback, useRef } from 'react';
 import type { PromptStudioStreamEvent, PromptStudioAppEvent } from '../events';
 import { toolCallToAppEvent, toolResultToAppEvent } from '../events';
+import { getApiErrorMessage, normalizeApiErrorMessage } from '@/lib/client/api-error';
 
 // ============================================
 // Types
@@ -116,8 +117,8 @@ export function usePromptStudioStream(): UsePromptStudioStreamReturn {
         });
 
         if (!response.ok) {
-          const errorData = await response.json().catch(() => ({ error: 'Stream request failed' }));
-          throw new Error(errorData.error || `Stream request failed (${response.status})`);
+          const message = await getApiErrorMessage(response, `Stream request failed (${response.status})`);
+          throw new Error(message);
         }
 
         if (!response.body) throw new Error('No response body');
@@ -226,7 +227,7 @@ export function usePromptStudioStream(): UsePromptStudioStreamReturn {
           setIsStreaming(false);
           return fullText;
         }
-        const errorMessage = err instanceof Error ? err.message : 'Stream failed';
+        const errorMessage = normalizeApiErrorMessage(err, 'Stream failed');
         if (abortedRef.current) {
           setIsStreaming(false);
           return fullText;

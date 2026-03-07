@@ -52,14 +52,19 @@ const STYLE_OPTIONS: { value: StoryboardStyle; label: string }[] = [
 const VIDEO_MODEL_OPTIONS: { value: StoryboardVideoModel; label: string; hint: string }[] = [
   { value: 'veo', label: 'Veo', hint: 'Cinematic polish, audio & lip sync' },
   { value: 'kling', label: 'Kling', hint: 'Motion physics & multi-shot' },
-  { value: 'seedance', label: 'Seedance', hint: 'Character consistency & multimodal' },
 ];
+
+function normalizeStoryboardVideoModel(model?: StoryboardVideoModel): StoryboardVideoModel {
+  if (!model) return 'veo';
+  if (model === 'seedance') return 'kling';
+  return model;
+}
 
 // Model family → video model IDs for canvas node creation
 const VIDEO_MODEL_IDS: Record<StoryboardVideoModel, { transition: string; singleShot: string }> = {
   veo: { transition: 'veo-3.1-flf', singleShot: 'veo-3.1-i2v' },
   kling: { transition: 'kling-3.0-i2v', singleShot: 'kling-3.0-i2v' },
-  seedance: { transition: 'seedance-2.0-i2v', singleShot: 'seedance-2.0-i2v' },
+  seedance: { transition: 'kling-3.0-i2v', singleShot: 'kling-3.0-i2v' },
 };
 
 // Resolve per-scene video settings with validation against model capabilities
@@ -156,7 +161,7 @@ function ReferenceCard({
   referenceImageUrls,
   updateReference,
   removeReference,
-  refCardRefs,
+  setCardRef,
   refsLength,
 }: {
   ref: StoryboardReference;
@@ -165,14 +170,17 @@ function ReferenceCard({
   referenceImageUrls: Record<string, string>;
   updateReference: (refId: string, field: keyof StoryboardReference, value: string) => void;
   removeReference: (refId: string) => void;
-  refCardRefs: React.MutableRefObject<(HTMLDivElement | null)[]>;
+  setCardRef: (index: number, el: HTMLDivElement | null) => void;
   refsLength: number;
 }) {
   const labelField = useLocalField(refData.label, (v) => updateReference(refData.id, 'label', v));
   const descField = useLocalField(refData.description, (v) => updateReference(refData.id, 'description', v));
+  const handleCardRef = useCallback((el: HTMLDivElement | null) => {
+    setCardRef(index, el);
+  }, [index, setCardRef]);
 
   return (
-    <div ref={(el) => { refCardRefs.current[index] = el; }} className="p-2 bg-muted/50 border border-border rounded-lg space-y-1.5">
+    <div ref={handleCardRef} className="p-2 bg-muted/50 border border-border rounded-lg space-y-1.5">
       <div className="flex items-center gap-1.5">
         {/* Role dropdown */}
         <select
@@ -238,6 +246,9 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const rootNodeRef = useRef<HTMLDivElement>(null);
   const refCardRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const setRefCardRef = useCallback((index: number, el: HTMLDivElement | null) => {
+    refCardRefs.current[index] = el;
+  }, []);
   const [handleTops, setHandleTops] = useState<(number | null)[]>([]);
 
   // Sequence counter for ordering timeline items
@@ -390,7 +401,14 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
 
   // References helpers
   const refs = data.references || [];
+  const targetVideoModel = normalizeStoryboardVideoModel(data.targetVideoModel);
   const MAX_REFS = 8;
+
+  useEffect(() => {
+    if (data.targetVideoModel === 'seedance') {
+      updateField('targetVideoModel', 'kling');
+    }
+  }, [data.targetVideoModel, updateField]);
 
   // Force React Flow to recalculate handle positions when references change
   const updateNodeInternals = useUpdateNodeInternals();
@@ -481,7 +499,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
           product: subjectRef?.label?.trim() || refs[0]?.label?.trim(),
           character: characterRef?.label?.trim() || undefined,
           style: data.style,
-          targetVideoModel: data.targetVideoModel || 'veo',
+          targetVideoModel,
           connectedNodes: connectedParts.join(', ') || undefined,
         }),
       });
@@ -496,7 +514,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
     } finally {
       setIsGeneratingConcept(false);
     }
-  }, [id, refs, data.style, data.targetVideoModel, getConnectedInputs, updateField, referenceImageUrls]);
+  }, [id, refs, data.style, targetVideoModel, getConnectedInputs, updateField, referenceImageUrls]);
 
   // Helper to flush batched reasoning to store
   const flushReasoning = useCallback(() => {
@@ -745,14 +763,14 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
       sceneCount: data.sceneCount,
       style: data.style,
       mode,
-      targetVideoModel: data.targetVideoModel || 'veo',
+      targetVideoModel,
       videoRecipes: data.videoRecipes?.length ? data.videoRecipes : undefined,
       productImageUrl: connectedImages.productImageUrl || refImageUrls['refImage_0'] || undefined,
       characterImageUrl: connectedImages.characterImageUrl || refImageUrls['refImage_1'] || undefined,
     };
 
     await streamGeneration(input, 'Generating storyboard');
-  }, [id, data, refs, isValid, updateNodeData, streamGeneration, getConnectedInputs, referenceImageUrls]);
+  }, [id, data, refs, isValid, targetVideoModel, updateNodeData, streamGeneration, getConnectedInputs, referenceImageUrls]);
 
   // Refinement from chat input
   const handleRefinement = useCallback(async (feedback: string) => {
@@ -806,7 +824,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
       },
       feedback,
       mode,
-      targetVideoModel: data.targetVideoModel || 'veo',
+      targetVideoModel,
       references: refsInput,
       product: firstSubject?.label?.trim() || currentRefs[0]?.label?.trim() || '',
       character: firstCharacter?.label?.trim() || undefined,
@@ -818,7 +836,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
     };
 
     await streamGeneration(body, 'Refining storyboard');
-  }, [id, data, refs, updateNodeData, streamGeneration, getConnectedInputs, referenceImageUrls]);
+  }, [id, data, refs, targetVideoModel, updateNodeData, streamGeneration, getConnectedInputs, referenceImageUrls]);
 
   // Stop streaming
   const handleStop = useCallback(() => {
@@ -1050,7 +1068,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
 
         const videoNodeStartIndex = nodeInputs.length;
 
-        const videoModelFamily = data.targetVideoModel || 'veo';
+        const videoModelFamily = targetVideoModel;
         const videoModelId = VIDEO_MODEL_IDS[videoModelFamily].singleShot;
         const videoTargetHandle = getVideoTargetHandle(videoModelId);
 
@@ -1060,12 +1078,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
             x: imagePos.x + (IMAGE_NODE_WIDTH - VIDEO_NODE_WIDTH) / 2,
             y: startY + VIDEO_Y_OFFSET,
           };
-          let motionPrompt = scene.motion || generateFallbackMotion(scene);
-
-          // Seedance R2V: prepend @image1 reference tag for image-to-video mode
-          if (videoModelFamily === 'seedance' && activeRefIds.length > 0) {
-            motionPrompt = `@image1 ${motionPrompt}`;
-          }
+          const motionPrompt = scene.motion || generateFallbackMotion(scene);
 
           // Validate per-scene video settings against model capabilities
           const videoSettings = resolveVideoSettings(scene, videoModelId);
@@ -1160,7 +1173,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
 
         const videoNodeStartIndex = nodeInputs.length;
 
-        const videoModelFamily = data.targetVideoModel || 'veo';
+        const videoModelFamily = targetVideoModel;
         const transitionModelId = VIDEO_MODEL_IDS[videoModelFamily].transition;
 
         for (let i = 0; i < activeDraft.scenes.length - 1; i++) {
@@ -1174,12 +1187,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
             y: imageStartY + VIDEO_Y_OFFSET,
           };
 
-          let transitionPrompt = currentScene.transition || generateFallbackTransition(currentScene, nextScene);
-
-          // Seedance R2V: prepend @image1 reference tag
-          if (videoModelFamily === 'seedance' && activeRefIds.length > 0) {
-            transitionPrompt = `@image1 ${transitionPrompt}`;
-          }
+          const transitionPrompt = currentScene.transition || generateFallbackTransition(currentScene, nextScene);
 
           // Validate per-scene video settings against model capabilities
           const videoSettings = resolveVideoSettings(currentScene, transitionModelId);
@@ -1263,7 +1271,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create nodes');
     }
-  }, [activeDraft, data.mode, refs, data.style, data.targetVideoModel, canvas, id, generateFallbackTransition, generateFallbackMotion]);
+  }, [activeDraft, data.mode, refs, data.style, targetVideoModel, canvas, id, generateFallbackTransition, generateFallbackMotion]);
 
   // Build sorted timeline from chat messages, completed thinking blocks, and drafts
   const timelineItems = useMemo((): TimelineItem[] => {
@@ -1326,7 +1334,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
               referenceImageUrls={referenceImageUrls}
               updateReference={updateReference}
               removeReference={removeReference}
-              refCardRefs={refCardRefs}
+              setCardRef={setRefCardRef}
               refsLength={refs.length}
             />
           ))}
@@ -1476,7 +1484,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
                     <button
                       onClick={() => updateField('targetVideoModel', opt.value)}
                       className={`flex-1 py-2 px-2 rounded-md text-xs font-medium transition-colors nodrag ${
-                        (data.targetVideoModel || 'veo') === opt.value
+                        targetVideoModel === opt.value
                           ? 'bg-background text-foreground shadow-sm'
                           : 'text-muted-foreground hover:text-foreground'
                       }`}
@@ -1492,7 +1500,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
             ))}
           </div>
           <p className="text-[10px] text-muted-foreground/80">
-            {VIDEO_MODEL_OPTIONS.find((o) => o.value === (data.targetVideoModel || 'veo'))?.hint}
+            {VIDEO_MODEL_OPTIONS.find((o) => o.value === targetVideoModel)?.hint}
           </p>
         </div>
       )}

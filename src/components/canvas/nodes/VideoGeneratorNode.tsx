@@ -20,6 +20,8 @@ import {
   HEYGEN_AVATAR4_VOICES,
   VIDEO_MODEL_CAPABILITIES,
   ENABLED_VIDEO_MODELS,
+  normalizeVideoModelOptions,
+  resolveDeprecatedVideoModel,
   type VideoModelType,
   type VideoAspectRatio,
   type VideoDuration,
@@ -87,13 +89,14 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
   const nameInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const resolvedModel = resolveDeprecatedVideoModel(data.model);
 
   // Check if this node has any connections
   const isConnected = edges.some(edge => edge.source === id || edge.target === id);
   const showHandles = selected || isHovered || isConnected;
 
   // Get model capabilities
-  const modelCapabilities = VIDEO_MODEL_CAPABILITIES[data.model];
+  const modelCapabilities = VIDEO_MODEL_CAPABILITIES[resolvedModel];
   const { inputMode, supportsVideoRef, supportsAudioRef } = modelCapabilities;
   const imageRefHandleCount = Math.min(
     14,
@@ -123,7 +126,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
     return items;
   }, [hasAdvancedHandles, imageRefHandleCount, supportsVideoRef, supportsAudioRef, edges, id]);
 
-  const isHeygenAvatarModel = data.model === 'heygen-avatar4-i2v';
+  const isHeygenAvatarModel = resolvedModel === 'heygen-avatar4-i2v';
   const selectedHeygenVoice = data.heygenVoice || DEFAULT_HEYGEN_AVATAR4_VOICE;
   const heygenVoiceOptions = useMemo(
     () =>
@@ -138,6 +141,19 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
   useEffect(() => {
     updateNodeInternals(id);
   }, [id, inputMode, supportsVideoRef, supportsAudioRef, imageRefHandleCount, updateNodeInternals]);
+
+  useEffect(() => {
+    if (resolvedModel === data.model) return;
+    const normalizedOptions = normalizeVideoModelOptions(resolvedModel, {
+      aspectRatio: data.aspectRatio,
+      duration: data.duration,
+      resolution: data.resolution,
+    });
+    updateNodeData(id, {
+      model: resolvedModel,
+      ...normalizedOptions,
+    });
+  }, [id, data.model, data.aspectRatio, data.duration, data.resolution, resolvedModel, updateNodeData]);
 
   useEffect(() => {
     if (isEditingName && nameInputRef.current) {
@@ -375,7 +391,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
 
   const handleGenerate = useCallback(async () => {
     const connectedInputs = getConnectedInputs(id);
-    const modelCaps = VIDEO_MODEL_CAPABILITIES[data.model];
+    const modelCaps = VIDEO_MODEL_CAPABILITIES[resolvedModel];
     const hasImageInput = !!(
       connectedInputs.referenceUrl ||
       connectedInputs.firstFrameUrl ||
@@ -453,7 +469,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
     // Debug: Log what we're sending
     console.log('[VideoGenerator] Sending request:', {
       nodeId: id,
-      model: data.model,
+      model: resolvedModel,
       hasReferenceUrl: !!connectedInputs.referenceUrl,
       hasFirstFrameUrl: !!connectedInputs.firstFrameUrl,
       hasLastFrameUrl: !!connectedInputs.lastFrameUrl,
@@ -470,7 +486,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           prompt: finalPrompt,
-          model: data.model,
+          model: resolvedModel,
           aspectRatio: data.aspectRatio,
           duration: data.duration,
           resolution: data.resolution,
@@ -527,7 +543,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
   }, [
     id,
     data.prompt,
-    data.model,
+    resolvedModel,
     data.aspectRatio,
     data.duration,
     data.resolution,
@@ -800,13 +816,13 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
               {!isReadOnly && !isPromptExpanded && (
                 <div className="absolute bottom-3 left-3 right-3 flex items-center gap-1.5 px-2.5 py-2 rounded-xl opacity-0 group-hover/video:opacity-100 transition-all duration-300 ease-out translate-y-2 group-hover/video:translate-y-0 shadow-xl border border-border/70 bg-white/85 backdrop-blur-xl dark:border-white/10 dark:bg-black/50">
                   <SearchableSelect
-                    value={data.model}
+                    value={resolvedModel}
                     onValueChange={handleModelChange}
-                    options={Object.entries(VIDEO_MODEL_CAPABILITIES).map(([key, cap]) => ({
+                    options={visibleVideoModels.map((key) => ({
                       value: key,
-                      label: cap.label,
-                      description: cap.description,
-                      group: cap.group,
+                      label: VIDEO_MODEL_CAPABILITIES[key].label,
+                      description: VIDEO_MODEL_CAPABILITIES[key].description,
+                      group: VIDEO_MODEL_CAPABILITIES[key].group,
                     }))}
                     placeholder="Select model"
                     searchPlaceholder="Search models..."
@@ -958,7 +974,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
             {isPromptExpanded && !isReadOnly && (
               <div className="flex items-center flex-wrap gap-1.5 px-3 py-2.5 node-bottom-toolbar">
                 <SearchableSelect
-                  value={data.model}
+                  value={resolvedModel}
                   onValueChange={handleModelChange}
                   options={visibleVideoModels.map(key => ({
                     value: key,
@@ -1111,7 +1127,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
         <div className="flex items-center flex-wrap gap-1.5 px-3 py-2.5 node-bottom-toolbar">
           {/* Model Selector */}
           <SearchableSelect
-            value={data.model}
+            value={resolvedModel}
             onValueChange={handleModelChange}
             options={visibleVideoModels.map(key => ({
               value: key,

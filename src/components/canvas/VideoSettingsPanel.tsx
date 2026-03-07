@@ -17,6 +17,8 @@ import {
   ENABLED_VIDEO_MODELS,
   HEYGEN_AVATAR4_VOICES,
   VIDEO_MODEL_CAPABILITIES,
+  normalizeVideoModelOptions,
+  resolveDeprecatedVideoModel,
   type VideoModelType as VideoModelTypeImport,
 } from '@/lib/types';
 import { useSettingsStore } from '@/stores/settings-store';
@@ -35,6 +37,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { getApiErrorMessage, normalizeApiErrorMessage } from '@/lib/client/api-error';
 
 const HEYGEN_AVATAR4_VOICE_OPTIONS = HEYGEN_AVATAR4_VOICES.map((voice) => ({
   value: voice,
@@ -53,6 +56,7 @@ export function VideoSettingsPanel() {
 
   const node = videoSettingsPanelNodeId ? getNode(videoSettingsPanelNodeId) : null;
   const data = node?.type === 'videoGenerator' ? node.data as VideoGeneratorNodeData : undefined;
+  const resolvedModel = data ? resolveDeprecatedVideoModel(data.model) : undefined;
 
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -80,6 +84,24 @@ export function VideoSettingsPanel() {
       document.removeEventListener('keydown', handleEscape);
     };
   }, [videoSettingsPanelNodeId, closeVideoSettingsPanel]);
+
+  useEffect(() => {
+    if (!videoSettingsPanelNodeId || !data || !resolvedModel || resolvedModel === data.model) return;
+    const normalizedOptions = normalizeVideoModelOptions(resolvedModel, {
+      aspectRatio: data.aspectRatio,
+      duration: data.duration,
+      resolution: data.resolution,
+    });
+    updateNodeData(videoSettingsPanelNodeId, {
+      model: resolvedModel,
+      ...normalizedOptions,
+    });
+  }, [
+    videoSettingsPanelNodeId,
+    data,
+    resolvedModel,
+    updateNodeData,
+  ]);
 
   const handleModelChange = useCallback(
     (value: string) => {
@@ -168,7 +190,7 @@ export function VideoSettingsPanel() {
     if (!videoSettingsPanelNodeId || !data) return;
 
     const connectedInputs = getConnectedInputs(videoSettingsPanelNodeId);
-    const modelCaps = VIDEO_MODEL_CAPABILITIES[data.model];
+    const modelCaps = VIDEO_MODEL_CAPABILITIES[resolvedModel || data.model];
     const hasImageInput = !!(
       connectedInputs.referenceUrl ||
       connectedInputs.firstFrameUrl ||
@@ -229,7 +251,7 @@ export function VideoSettingsPanel() {
     updateNodeData(videoSettingsPanelNodeId, { isGenerating: true, error: undefined, progress: 0, outputVideoId: undefined });
 
     try {
-      const heygenVoice = data.model === 'heygen-avatar4-i2v'
+      const heygenVoice = (resolvedModel || data.model) === 'heygen-avatar4-i2v'
         ? (data.heygenVoice || DEFAULT_HEYGEN_AVATAR4_VOICE)
         : undefined;
       const response = await fetch('/api/generate-video', {
@@ -237,7 +259,7 @@ export function VideoSettingsPanel() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           prompt: finalPrompt,
-          model: data.model,
+          model: resolvedModel || data.model,
           aspectRatio: data.aspectRatio,
           duration: data.duration,
           resolution: data.resolution,
@@ -254,8 +276,8 @@ export function VideoSettingsPanel() {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Video generation failed');
+        const message = await getApiErrorMessage(response, 'Video generation failed');
+        throw new Error(message);
       }
 
       const result = await response.json();
@@ -279,20 +301,21 @@ export function VideoSettingsPanel() {
         progress: 100,
       });
     } catch (error) {
+      const errorMessage = normalizeApiErrorMessage(error, 'Video generation failed');
       updateNodeData(videoSettingsPanelNodeId, {
-        error: error instanceof Error ? error.message : 'Video generation failed',
+        error: errorMessage,
         isGenerating: false,
         progress: 0,
       });
     }
-  }, [videoSettingsPanelNodeId, data, updateNodeData, getConnectedInputs]);
+  }, [videoSettingsPanelNodeId, data, resolvedModel, updateNodeData, getConnectedInputs]);
 
   if (!videoSettingsPanelNodeId || !data) return null;
 
   const connectedInputs = getConnectedInputs(videoSettingsPanelNodeId);
-  const modelCapabilities = VIDEO_MODEL_CAPABILITIES[data.model];
+  const modelCapabilities = VIDEO_MODEL_CAPABILITIES[resolvedModel || data.model];
   const { inputMode } = modelCapabilities;
-  const isHeygenAvatarModel = data.model === 'heygen-avatar4-i2v';
+  const isHeygenAvatarModel = (resolvedModel || data.model) === 'heygen-avatar4-i2v';
   const selectedHeygenVoice = data.heygenVoice || DEFAULT_HEYGEN_AVATAR4_VOICE;
 
   // Determine if we have valid inputs
@@ -413,7 +436,7 @@ export function VideoSettingsPanel() {
           <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2 block">
             Model
           </label>
-          <Select value={data.model} onValueChange={handleModelChange}>
+          <Select value={resolvedModel || data.model} onValueChange={handleModelChange}>
             <SelectTrigger className="w-full bg-background border-border text-foreground">
               <SelectValue>{modelCapabilities.label}</SelectValue>
             </SelectTrigger>
