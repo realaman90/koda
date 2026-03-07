@@ -36,6 +36,14 @@ function buildDownloadFilename(item: GenerationHistoryItem, url: string, index?:
   return `${safeType}-${safeModel}-${date}${suffix}.${extension}`;
 }
 
+function getPrimaryUrl(item: GenerationHistoryItem): string | undefined {
+  return item.result?.urls?.[0] || item.compareResults?.find((result) => result.urls?.[0])?.urls?.[0];
+}
+
+function getCompareThumbnail(item: GenerationHistoryItem): string | undefined {
+  return item.compareResults?.find((result) => result.thumbnailUrl)?.thumbnailUrl;
+}
+
 interface HistoryItemProps {
   item: GenerationHistoryItem;
   onDelete: () => void;
@@ -45,7 +53,9 @@ interface HistoryItemProps {
 
 function HistoryItem({ item, onDelete, onPreview, onDownload }: HistoryItemProps) {
   const [expanded, setExpanded] = useState(false);
-  const primaryUrl = item.result?.urls?.[0];
+  const primaryUrl = getPrimaryUrl(item);
+  const compareThumbnail = getCompareThumbnail(item);
+  const isCompareItem = item.mode === 'compare';
 
   return (
     <div className="bg-muted/50 rounded-lg overflow-hidden">
@@ -59,6 +69,7 @@ function HistoryItem({ item, onDelete, onPreview, onDownload }: HistoryItemProps
             item.type === 'video' ? (
               <video
                 src={primaryUrl}
+                poster={compareThumbnail}
                 className="w-full h-full object-cover"
                 muted
               />
@@ -94,6 +105,16 @@ function HistoryItem({ item, onDelete, onPreview, onDownload }: HistoryItemProps
             <span className="text-xs font-medium text-muted-foreground uppercase">
               {item.model}
             </span>
+            {isCompareItem && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/15 text-primary">
+                Compare
+              </span>
+            )}
+            {item.winnerModel && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300">
+                Winner: {item.winnerModel}
+              </span>
+            )}
             {item.status !== 'completed' && (
               <span
                 className={cn(
@@ -107,6 +128,15 @@ function HistoryItem({ item, onDelete, onPreview, onDownload }: HistoryItemProps
               </span>
             )}
           </div>
+          {item.models?.length ? (
+            <div className="mb-2 flex flex-wrap gap-1">
+              {item.models.map((model) => (
+                <span key={model} className="rounded-full bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                  {model}
+                </span>
+              ))}
+            </div>
+          ) : null}
           <p className="text-sm text-foreground line-clamp-2">{item.prompt}</p>
           <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
             <Clock className="h-3 w-3" />
@@ -211,6 +241,82 @@ function HistoryItem({ item, onDelete, onPreview, onDownload }: HistoryItemProps
                 </div>
               </div>
             )}
+            {item.compareResults?.length ? (
+              <div>
+                <span className="text-xs text-muted-foreground">Compare Results</span>
+                <div className="mt-2 grid grid-cols-1 gap-2">
+                  {item.compareResults.map((result, index) => {
+                    const url = result.urls?.[0];
+                    const isWinner = item.winnerModel === result.model;
+                    return (
+                      <div key={`${result.model}-${index}`} className="rounded-lg border border-border/60 bg-background/70 p-3">
+                        <div className="flex items-start gap-3">
+                          <div className="h-12 w-12 overflow-hidden rounded-md bg-muted">
+                            {url ? (
+                              item.type === 'video' ? (
+                                <video src={url} poster={result.thumbnailUrl} className="h-full w-full object-cover" muted />
+                              ) : (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={url} alt={result.model} className="h-full w-full object-cover" />
+                              )
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center">
+                                {result.status === 'failed' ? (
+                                  <AlertCircle className="h-4 w-4 text-red-400" />
+                                ) : item.type === 'video' ? (
+                                  <Video className="h-4 w-4 text-muted-foreground" />
+                                ) : (
+                                  <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-xs font-medium text-foreground">{result.model}</span>
+                              <span
+                                className={cn(
+                                  'text-[10px] px-1.5 py-0.5 rounded',
+                                  result.status === 'completed'
+                                    ? 'bg-emerald-500/15 text-emerald-300'
+                                    : 'bg-red-500/15 text-red-300'
+                                )}
+                              >
+                                {result.status}
+                              </span>
+                              {isWinner && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300">
+                                  Winner
+                                </span>
+                              )}
+                            </div>
+                            {result.error && (
+                              <p className="mt-1 text-[11px] text-red-300">{result.error}</p>
+                            )}
+                            {url && (
+                              <div className="mt-2 flex items-center gap-2">
+                                <button
+                                  onClick={() => onPreview(url, item.type, `${item.prompt} (${result.model})`)}
+                                  className="text-xs text-primary hover:underline"
+                                >
+                                  Preview
+                                </button>
+                                <button
+                                  onClick={() => onDownload(item, url)}
+                                  className="text-xs text-muted-foreground hover:text-foreground"
+                                >
+                                  Download
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       )}

@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useRef, useEffect } from 'react';
+import { useCallback, useRef, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { SearchableMultiSelect } from '@/components/ui/searchable-multi-select';
 import {
   Select,
   SelectContent,
@@ -16,12 +17,17 @@ import {
   DEFAULT_HEYGEN_AVATAR4_VOICE,
   ENABLED_VIDEO_MODELS,
   HEYGEN_AVATAR4_VOICES,
+  MAX_COMPARE_MODELS,
   VIDEO_MODEL_CAPABILITIES,
   normalizeVideoModelOptions,
   resolveDeprecatedVideoModel,
   type VideoModelType as VideoModelTypeImport,
 } from '@/lib/types';
 import { useSettingsStore } from '@/stores/settings-store';
+import { fetchVideoCompareEstimate } from '@/lib/compare/run';
+import { buildInitialCompareSelection, fillCompareSelection } from '@/lib/compare/utils';
+import { startVideoCompare } from '@/lib/compare/controller';
+import { buildVideoGenerationRequest, buildVideoPrompt, getCompatibleVideoCompareModels, validateVideoGenerationInputForModel } from '@/lib/generation/client';
 import {
   X,
   Play,
@@ -30,6 +36,8 @@ import {
   Volume2,
   VolumeX,
   Info,
+  Images,
+  AlertCircle,
 } from 'lucide-react';
 import {
   Tooltip,
@@ -51,6 +59,8 @@ export function VideoSettingsPanel() {
   const getNode = useCanvasStore((state) => state.getNode);
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
   const getConnectedInputs = useCanvasStore((state) => state.getConnectedInputs);
+  const addToHistory = useSettingsStore((state) => state.addToHistory);
+  const updateHistoryItem = useSettingsStore((state) => state.updateHistoryItem);
   const enabledVideoModels = useSettingsStore((s) => s.defaultSettings.enabledVideoModels) || [...ENABLED_VIDEO_MODELS];
   const visibleVideoModels: VideoModelTypeImport[] = ['auto' as VideoModelTypeImport, ...ENABLED_VIDEO_MODELS.filter((m) => enabledVideoModels.includes(m))];
 
@@ -59,13 +69,21 @@ export function VideoSettingsPanel() {
   const resolvedModel = data ? resolveDeprecatedVideoModel(data.model) : undefined;
 
   const panelRef = useRef<HTMLDivElement>(null);
+  const [compareEstimateError, setCompareEstimateError] = useState<string | null>(null);
+  const [compareEstimate, setCompareEstimate] = useState<{
+    items: Array<{ model: VideoModelType; estimatedCredits: number }>;
+    totalCredits: number;
+    balance: number | null;
+    hasSufficientCredits: boolean | null;
+  } | null>(null);
 
   // Close on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
-        closeVideoSettingsPanel();
-      }
+      const target = e.target as Node;
+      if (panelRef.current && panelRef.current.contains(target)) return;
+      if ((target as Element).closest?.('[data-radix-popper-content-wrapper], [data-slot="select-content"], [data-searchable-multi-select="true"]')) return;
+      closeVideoSettingsPanel();
     };
 
     const handleEscape = (e: KeyboardEvent) => {
@@ -190,89 +208,21 @@ export function VideoSettingsPanel() {
     if (!videoSettingsPanelNodeId || !data) return;
 
     const connectedInputs = getConnectedInputs(videoSettingsPanelNodeId);
-    const modelCaps = VIDEO_MODEL_CAPABILITIES[resolvedModel || data.model];
-    const hasImageInput = !!(
-      connectedInputs.referenceUrl ||
-      connectedInputs.firstFrameUrl ||
-      connectedInputs.lastFrameUrl ||
-      connectedInputs.referenceUrls?.length
-    );
-    const hasAnyMediaInput = !!(
-      hasImageInput ||
-      connectedInputs.videoUrl ||
-      connectedInputs.audioUrl
-    );
-
-    let finalPrompt = data.prompt || '';
-    if (connectedInputs.textContent) {
-      finalPrompt = connectedInputs.textContent + (data.prompt ? `\n${data.prompt}` : '');
-    }
-    const hasPrompt = !!finalPrompt.trim();
-
-    // Validate based on input mode
-    if (modelCaps.inputMode === 'first-last-frame') {
-      // First frame always required, last frame depends on lastFrameOptional
-      if (!connectedInputs.firstFrameUrl) {
-        return;
-      }
-      if (!modelCaps.lastFrameOptional && !connectedInputs.lastFrameUrl) {
-        return;
-      }
-    } else if (modelCaps.inputMode === 'multi-reference') {
-      if (!connectedInputs.referenceUrls?.length && !connectedInputs.referenceUrl) {
-        return;
-      }
-    } else if (modelCaps.inputMode === 'single-image' && modelCaps.inputType === 'image-only') {
-      if (!connectedInputs.referenceUrl && !connectedInputs.firstFrameUrl && !connectedInputs.referenceUrls?.length) {
-        return;
-      }
-    }
-
-    if (modelCaps.requiresPrompt && !hasPrompt) {
-      return;
-    }
-    if (modelCaps.requiresImageRef && !hasImageInput) {
-      return;
-    }
-    if (modelCaps.requiresVideoRef && !connectedInputs.videoUrl) {
-      return;
-    }
-    if (modelCaps.requiresAudioRef && !connectedInputs.audioUrl) {
-      return;
-    }
-    if (modelCaps.requiresVideoId && !connectedInputs.videoId) {
+    const resolvedGenerationModel = resolvedModel || data.model;
+    const validationError = validateVideoGenerationInputForModel(data, connectedInputs, resolvedGenerationModel);
+    if (validationError) {
       return;
     }
 
-    if (!hasPrompt && !hasAnyMediaInput) {
-      return;
-    }
-
+    const finalPrompt = buildVideoPrompt(data, connectedInputs);
+    const requestBody = buildVideoGenerationRequest(data, connectedInputs, resolvedGenerationModel);
     updateNodeData(videoSettingsPanelNodeId, { isGenerating: true, error: undefined, progress: 0, outputVideoId: undefined });
 
     try {
-      const heygenVoice = (resolvedModel || data.model) === 'heygen-avatar4-i2v'
-        ? (data.heygenVoice || DEFAULT_HEYGEN_AVATAR4_VOICE)
-        : undefined;
       const response = await fetch('/api/generate-video', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: finalPrompt,
-          model: resolvedModel || data.model,
-          aspectRatio: data.aspectRatio,
-          duration: data.duration,
-          resolution: data.resolution,
-          referenceUrl: connectedInputs.referenceUrl,
-          firstFrameUrl: connectedInputs.firstFrameUrl,
-          lastFrameUrl: connectedInputs.lastFrameUrl,
-          referenceUrls: connectedInputs.referenceUrls,
-          videoUrl: connectedInputs.videoUrl,
-          videoId: connectedInputs.videoId,
-          audioUrl: connectedInputs.audioUrl,
-          generateAudio: data.generateAudio,
-          heygenVoice,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -300,6 +250,21 @@ export function VideoSettingsPanel() {
         isGenerating: false,
         progress: 100,
       });
+
+      addToHistory({
+        type: 'video',
+        mode: 'single',
+        prompt: finalPrompt || data.prompt || '(no prompt)',
+        model: resolvedGenerationModel,
+        status: 'completed',
+        result: { urls: result.videoUrl ? [result.videoUrl] : [], duration: data.duration },
+        settings: {
+          aspectRatio: data.aspectRatio,
+          duration: data.duration,
+          resolution: data.resolution,
+          generateAudio: data.generateAudio,
+        },
+      });
     } catch (error) {
       const errorMessage = normalizeApiErrorMessage(error, 'Video generation failed');
       updateNodeData(videoSettingsPanelNodeId, {
@@ -307,8 +272,152 @@ export function VideoSettingsPanel() {
         isGenerating: false,
         progress: 0,
       });
+
+      addToHistory({
+        type: 'video',
+        mode: 'single',
+        prompt: finalPrompt || data.prompt || '(no prompt)',
+        model: resolvedGenerationModel,
+        status: 'failed',
+        error: errorMessage,
+        settings: {
+          aspectRatio: data.aspectRatio,
+          duration: data.duration,
+          resolution: data.resolution,
+          generateAudio: data.generateAudio,
+        },
+      });
     }
-  }, [videoSettingsPanelNodeId, data, resolvedModel, updateNodeData, getConnectedInputs]);
+  }, [videoSettingsPanelNodeId, data, resolvedModel, updateNodeData, getConnectedInputs, addToHistory]);
+
+  const handleCompareToggle = useCallback(() => {
+    if (!videoSettingsPanelNodeId || !data) return;
+
+    const compatibleModels = getCompatibleVideoCompareModels(enabledVideoModels, data, getConnectedInputs(videoSettingsPanelNodeId));
+    const nextEnabled = !data.compareEnabled;
+    updateNodeData(videoSettingsPanelNodeId, {
+      compareEnabled: nextEnabled,
+      compareModels: nextEnabled
+        ? (data.compareModels?.length ? data.compareModels : buildInitialCompareSelection(resolvedModel || data.model, compatibleModels))
+        : data.compareModels,
+      compareRunStatus: nextEnabled ? (data.compareRunStatus || 'idle') : 'idle',
+    }, true);
+  }, [videoSettingsPanelNodeId, data, enabledVideoModels, getConnectedInputs, resolvedModel, updateNodeData]);
+
+  const handleCompareModelsChange = useCallback((models: string[]) => {
+    if (!videoSettingsPanelNodeId) return;
+    setCompareEstimate(null);
+    setCompareEstimateError(null);
+    updateNodeData(videoSettingsPanelNodeId, {
+      compareModels: models as VideoModelType[],
+      compareEstimateCredits: undefined,
+    }, true);
+  }, [videoSettingsPanelNodeId, updateNodeData]);
+
+  const handleCompareFill = useCallback(() => {
+    if (!videoSettingsPanelNodeId || !data) return;
+    const compatibleModels = getCompatibleVideoCompareModels(enabledVideoModels, data, getConnectedInputs(videoSettingsPanelNodeId));
+    handleCompareModelsChange(fillCompareSelection(compatibleModels));
+  }, [videoSettingsPanelNodeId, data, enabledVideoModels, getConnectedInputs, handleCompareModelsChange]);
+
+  const handleClearCompare = useCallback(() => {
+    if (!videoSettingsPanelNodeId) return;
+    setCompareEstimate(null);
+    setCompareEstimateError(null);
+    updateNodeData(videoSettingsPanelNodeId, {
+      compareRunStatus: 'idle',
+      compareEstimateCredits: undefined,
+      compareResults: undefined,
+      promotedCompareResultId: undefined,
+      compareHistoryId: undefined,
+      error: undefined,
+    }, true);
+  }, [videoSettingsPanelNodeId, updateNodeData]);
+
+  const handleCompareRun = useCallback(async () => {
+    if (!videoSettingsPanelNodeId || !data) return;
+
+    const connectedInputs = getConnectedInputs(videoSettingsPanelNodeId);
+    try {
+      const result = await startVideoCompare({
+        nodeId: videoSettingsPanelNodeId,
+        data,
+        connectedInputs,
+        updateNodeData,
+        history: {
+          addToHistory,
+          updateHistoryItem,
+        },
+      });
+      if (!result.cancelled) {
+        setCompareEstimateError(null);
+      }
+    } catch (error) {
+      const errorMessage = normalizeApiErrorMessage(error, 'Compare failed');
+      updateNodeData(videoSettingsPanelNodeId, {
+        error: errorMessage,
+        compareRunStatus: 'failed',
+      }, true);
+      setCompareEstimateError(errorMessage);
+    }
+  }, [videoSettingsPanelNodeId, data, getConnectedInputs, updateNodeData, addToHistory, updateHistoryItem]);
+
+  useEffect(() => {
+    if (!videoSettingsPanelNodeId || !data?.compareEnabled) {
+      setCompareEstimate(null);
+      setCompareEstimateError(null);
+      return;
+    }
+
+    const connectedInputs = getConnectedInputs(videoSettingsPanelNodeId);
+    const compatibleModels = getCompatibleVideoCompareModels(enabledVideoModels, data, connectedInputs);
+    const selectedModels = (data.compareModels || []).filter((model): model is VideoModelType => compatibleModels.includes(model));
+    if (selectedModels.length < 2) {
+      setCompareEstimate(null);
+      setCompareEstimateError(null);
+      if (typeof data.compareEstimateCredits !== 'undefined') {
+        updateNodeData(videoSettingsPanelNodeId, { compareEstimateCredits: undefined }, true);
+      }
+      return;
+    }
+
+    let cancelled = false;
+    setCompareEstimateError(null);
+
+    fetchVideoCompareEstimate(selectedModels, data.duration, data.generateAudio !== false)
+      .then((estimate) => {
+        if (cancelled) return;
+        setCompareEstimate(estimate);
+        if (data.compareEstimateCredits !== estimate.totalCredits) {
+          updateNodeData(videoSettingsPanelNodeId, { compareEstimateCredits: estimate.totalCredits }, true);
+        }
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setCompareEstimate(null);
+        setCompareEstimateError(normalizeApiErrorMessage(error, 'Compare estimate failed'));
+        if (typeof data.compareEstimateCredits !== 'undefined') {
+          updateNodeData(videoSettingsPanelNodeId, { compareEstimateCredits: undefined }, true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    videoSettingsPanelNodeId,
+    data?.compareEnabled,
+    data?.compareModels,
+    data?.compareEstimateCredits,
+    data?.duration,
+    data?.generateAudio,
+    data?.prompt,
+    data?.aspectRatio,
+    data?.resolution,
+    enabledVideoModels,
+    getConnectedInputs,
+    updateNodeData,
+  ]);
 
   if (!videoSettingsPanelNodeId || !data) return null;
 
@@ -317,53 +426,14 @@ export function VideoSettingsPanel() {
   const { inputMode } = modelCapabilities;
   const isHeygenAvatarModel = (resolvedModel || data.model) === 'heygen-avatar4-i2v';
   const selectedHeygenVoice = data.heygenVoice || DEFAULT_HEYGEN_AVATAR4_VOICE;
-
-  // Determine if we have valid inputs
-  const hasImageInput = !!(
-    connectedInputs.referenceUrl ||
-    connectedInputs.firstFrameUrl ||
-    connectedInputs.lastFrameUrl ||
-    connectedInputs.referenceUrls?.length
-  );
-  const hasAnyMediaInput = !!(
-    hasImageInput ||
-    connectedInputs.videoUrl ||
-    connectedInputs.audioUrl
-  );
-
-  const hasValidInput = (() => {
-    const hasPrompt = !!(data.prompt || connectedInputs.textContent);
-    const promptRequired = !!modelCapabilities.requiresPrompt;
-
-    switch (inputMode) {
-      case 'text':
-        return promptRequired ? hasPrompt : (hasPrompt || hasAnyMediaInput);
-      case 'single-image':
-        if (promptRequired && !hasPrompt) return false;
-        if (!hasPrompt && !hasAnyMediaInput) return false;
-        break;
-      case 'first-last-frame':
-        // First frame required, last frame depends on lastFrameOptional
-        if (!connectedInputs.firstFrameUrl) return false;
-        if (!modelCapabilities.lastFrameOptional && !connectedInputs.lastFrameUrl) return false;
-        break;
-      case 'multi-reference':
-        if (!connectedInputs.referenceUrls?.length && !connectedInputs.referenceUrl) return false;
-        if (promptRequired && !hasPrompt) return false;
-        break;
-      default:
-        if (promptRequired && !hasPrompt) return false;
-        break;
-    }
-
-    if (promptRequired && !hasPrompt) return false;
-    if (modelCapabilities.requiresImageRef && !hasImageInput) return false;
-    if (modelCapabilities.requiresVideoRef && !connectedInputs.videoUrl) return false;
-    if (modelCapabilities.requiresAudioRef && !connectedInputs.audioUrl) return false;
-    if (modelCapabilities.requiresVideoId && !connectedInputs.videoId) return false;
-
-    return hasPrompt || hasAnyMediaInput;
-  })();
+  const hasValidInput = validateVideoGenerationInputForModel(data, connectedInputs, resolvedModel || data.model) === null;
+  const compatibleCompareModels = getCompatibleVideoCompareModels(enabledVideoModels, data, connectedInputs);
+  const compareModelOptions = compatibleCompareModels.map((model) => ({
+    value: model,
+    label: VIDEO_MODEL_CAPABILITIES[model].label,
+    description: VIDEO_MODEL_CAPABILITIES[model].description,
+    group: VIDEO_MODEL_CAPABILITIES[model].group,
+  }));
 
   // Calculate position to keep panel on screen
   const getPosition = () => {
@@ -588,6 +658,122 @@ export function VideoSettingsPanel() {
             placeholder="Describe the video you want to generate..."
             className="w-full min-h-[140px] max-h-[260px] bg-background border border-border rounded-md p-3 text-foreground text-sm placeholder:text-muted-foreground resize-y overflow-y-auto nodrag nopan nowheel select-text focus:outline-none focus:border-input"
           />
+        </div>
+
+        <div className="space-y-3 rounded-xl border border-border/60 bg-muted/20 p-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Images className="h-4 w-4 text-muted-foreground" />
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Compare
+              </label>
+            </div>
+            <Button
+              variant={data.compareEnabled ? 'default' : 'outline'}
+              size="sm"
+              onClick={handleCompareToggle}
+              className="h-7 text-xs"
+            >
+              {data.compareEnabled ? 'Enabled' : 'Off'}
+            </Button>
+          </div>
+
+          {data.compareEnabled && (
+            <div className="space-y-3">
+              <SearchableMultiSelect
+                value={data.compareModels || []}
+                onValueChange={handleCompareModelsChange}
+                options={compareModelOptions}
+                maxSelected={MAX_COMPARE_MODELS}
+                placeholder="Select compare models"
+                searchPlaceholder="Search compare models..."
+                emptyMessage={hasValidInput ? 'No compatible enabled models' : 'Fix inputs to unlock compare models'}
+                triggerClassName="h-9 w-full border border-border bg-background px-3 text-sm"
+              />
+
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] text-muted-foreground">
+                  Compatible enabled models only. Select 2-{MAX_COMPARE_MODELS}.
+                </p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleCompareFill}
+                  disabled={compatibleCompareModels.length === 0}
+                  className="h-7 px-2 text-[11px]"
+                >
+                  Fill top {MAX_COMPARE_MODELS}
+                </Button>
+              </div>
+
+              {compareEstimate?.items?.length ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {compareEstimate.items.map((item) => (
+                    <span
+                      key={item.model}
+                      className="rounded-full bg-background px-2 py-0.5 text-[10px] text-muted-foreground"
+                    >
+                      {VIDEO_MODEL_CAPABILITIES[item.model].label}: {item.estimatedCredits} cr
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+
+              {(compareEstimateError || data.compareRunStatus === 'failed') && (
+                <div className="flex items-start gap-2 rounded-lg bg-red-500/10 p-2 text-[11px] text-red-300">
+                  <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>{compareEstimateError || data.error}</span>
+                </div>
+              )}
+
+              {compareEstimate && (
+                <div className="rounded-lg border border-border/60 bg-background p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs text-muted-foreground">Estimated total</span>
+                    <span className="text-sm font-medium text-foreground">{compareEstimate.totalCredits} credits</span>
+                  </div>
+                  {compareEstimate.balance !== null && (
+                    <div className="mt-1 flex items-center justify-between gap-3">
+                      <span className="text-xs text-muted-foreground">Balance</span>
+                      <span className="text-xs text-foreground">{compareEstimate.balance} credits</span>
+                    </div>
+                  )}
+                  {compareEstimate.hasSufficientCredits === false && (
+                    <p className="mt-2 text-[11px] text-amber-300">
+                      Not enough credits for this compare run.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={handleCompareRun}
+                  disabled={!hasValidInput || (data.compareModels?.length || 0) < 2 || data.compareRunStatus === 'running'}
+                  className="flex-1"
+                >
+                  {data.compareRunStatus === 'running' ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Comparing...
+                    </>
+                  ) : (
+                    <>
+                      <Images className="h-4 w-4" />
+                      Run Compare
+                    </>
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleClearCompare}
+                  disabled={!data.compareResults?.length && !data.compareHistoryId && !data.promotedCompareResultId}
+                >
+                  Clear Compare
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Error */}

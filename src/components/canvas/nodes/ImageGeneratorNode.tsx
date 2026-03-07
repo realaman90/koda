@@ -4,6 +4,7 @@ import { memo, useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { CompareResultsSection } from '@/components/canvas/CompareResultsSection';
 import {
   Select,
   SelectContent,
@@ -17,6 +18,10 @@ import { useSettingsStore } from '@/stores/settings-store';
 import { getApiErrorMessage, normalizeApiErrorMessage } from '@/lib/client/api-error';
 import type { ImageGeneratorNode as ImageGeneratorNodeType, RecraftStyle, IdeogramStyle } from '@/lib/types';
 import { MODEL_CAPABILITIES, ENABLED_IMAGE_MODELS, getApproxDimensions, FLUX_IMAGE_SIZES, RECRAFT_STYLE_LABELS, IDEOGRAM_STYLE_LABELS, getAspectRatioLabel, type FluxImageSize, type NanoBananaResolution, type ImageModelType } from '@/lib/types';
+import { startImageCompare } from '@/lib/compare/controller';
+import { promoteImageCompareResult } from '@/lib/compare/run';
+import { buildInitialCompareSelection, pruneCompareSelection } from '@/lib/compare/utils';
+import { buildImageGenerationRequest, buildImagePrompt, getCompatibleImageCompareModels, hasValidImagePromptInput } from '@/lib/generation/client';
 import {
   ImageIcon,
   Play,
@@ -30,6 +35,7 @@ import {
   Wand2,
   Sparkle,
   ChevronRight,
+  Images,
 } from 'lucide-react';
 
 function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, positionAbsoluteY }: NodeProps<ImageGeneratorNodeType>) {
@@ -41,12 +47,14 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
   const isReadOnly = useCanvasStore((state) => state.isReadOnly);
   const edges = useCanvasStore((state) => state.edges);
   const addToHistory = useSettingsStore((state) => state.addToHistory);
+  const updateHistoryItem = useSettingsStore((state) => state.updateHistoryItem);
   const enabledImageModels = useSettingsStore((s) => s.defaultSettings.enabledImageModels) || [...ENABLED_IMAGE_MODELS];
   const visibleImageModels: ImageModelType[] = ['auto' as ImageModelType, ...ENABLED_IMAGE_MODELS.filter((m) => enabledImageModels.includes(m))];
   const [isEditingName, setIsEditingName] = useState(false);
   const [nodeName, setNodeName] = useState(data.name || 'Image Generator');
   const [isHovered, setIsHovered] = useState(false);
   const [isPromptExpanded, setIsPromptExpanded] = useState(false);
+  const [isCompareTrayOpen, setIsCompareTrayOpen] = useState(!data.outputUrl);
   const nameInputRef = useRef<HTMLInputElement>(null);
 
   // Check if this node has any connections
@@ -55,6 +63,8 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
 
   const modelCapabilities = MODEL_CAPABILITIES[data.model];
   const maxRefs = Math.max(1, modelCapabilities.maxReferences || 1);
+  const connectedInputs = getConnectedInputs(id);
+  const compatibleCompareModels = getCompatibleImageCompareModels(enabledImageModels, data, connectedInputs);
 
   useEffect(() => {
     if (isEditingName && nameInputRef.current) {
@@ -62,6 +72,25 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
       nameInputRef.current.select();
     }
   }, [isEditingName]);
+
+  useEffect(() => {
+    if (!data.compareEnabled) return;
+
+    const { models, removed } = pruneCompareSelection(data.compareModels, compatibleCompareModels);
+    if (removed.length === 0) return;
+
+    updateNodeData(id, {
+      compareModels: models,
+      compareEstimateCredits: undefined,
+    }, true);
+    toast.info(`Removed incompatible compare models: ${removed.map((model) => MODEL_CAPABILITIES[model].label).join(', ')}`);
+  }, [id, data.compareEnabled, data.compareModels, compatibleCompareModels, updateNodeData]);
+
+  useEffect(() => {
+    if ((data.compareResults?.length || 0) > 0 && !data.outputUrl) {
+      setIsCompareTrayOpen(true);
+    }
+  }, [data.compareResults, data.outputUrl]);
 
   const handleNameSubmit = useCallback(() => {
     setIsEditingName(false);
@@ -115,82 +144,21 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
   }, [id, data.magicPrompt, updateNodeData]);
 
   const handleGenerate = useCallback(async () => {
-    // Get connected inputs from TextNode and MediaNode
-    const connectedInputs = getConnectedInputs(id);
-
-    // Build final prompt with preset modifiers (matching SettingsPanel behavior)
-    const promptParts: string[] = [];
-
-    // Add character modifier
-    if (data.selectedCharacter?.type === 'preset' && data.selectedCharacter.promptModifier) {
-      promptParts.push(data.selectedCharacter.promptModifier);
-    }
-
-    // Add style preset modifier
-    if (data.selectedStyle?.promptModifier) {
-      promptParts.push(data.selectedStyle.promptModifier);
-    }
-
-    // Add camera angle modifier
-    if (data.selectedCameraAngle?.promptModifier) {
-      promptParts.push(data.selectedCameraAngle.promptModifier);
-    }
-
-    // Add camera lens modifier
-    if (data.selectedCameraLens?.promptModifier) {
-      promptParts.push(data.selectedCameraLens.promptModifier);
-    }
-
-    // Add connected text content
-    if (connectedInputs.textContent) {
-      promptParts.push(connectedInputs.textContent);
-    }
-
-    // Add user prompt
-    if (data.prompt) {
-      promptParts.push(data.prompt);
-    }
-
-    const finalPrompt = promptParts.join(', ');
+    const finalPrompt = buildImagePrompt(data, connectedInputs);
 
     if (!finalPrompt) {
       toast.error('Please enter a prompt, connect a text node, or select presets');
       return;
     }
-
-    // Collect all reference URLs (main reference + additional refs)
-    const allReferenceUrls = Array.from(
-      new Set(
-        [connectedInputs.referenceUrl, ...(connectedInputs.referenceUrls || [])]
-          .filter((url): url is string => !!url)
-      )
-    );
-
-    const imageCount = data.imageCount || 1;
+    const requestBody = buildImageGenerationRequest(data, connectedInputs);
+    const imageCount = requestBody.imageCount;
     updateNodeData(id, { isGenerating: true, error: undefined });
 
     try {
       const response = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: finalPrompt,
-          model: data.model,
-          aspectRatio: data.aspectRatio,
-          imageSize: data.imageSize || 'square_hd',
-          resolution: data.resolution || '1K',
-          imageCount,
-          // Pass single referenceUrl for backwards compatibility
-          referenceUrl: connectedInputs.referenceUrl,
-          // Pass all references as array for multi-reference models (NanoBanana supports up to 14)
-          referenceUrls: allReferenceUrls.length > 0 ? allReferenceUrls : undefined,
-          // Model-specific params
-          style: data.style,
-          magicPrompt: data.magicPrompt,
-          cfgScale: data.cfgScale,
-          steps: data.steps,
-          strength: data.strength,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -224,6 +192,7 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
 
       addToHistory({
         type: 'image',
+        mode: 'single',
         prompt: finalPrompt,
         model: data.model,
         status: 'completed',
@@ -246,6 +215,7 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
 
       addToHistory({
         type: 'image',
+        mode: 'single',
         prompt: finalPrompt || data.prompt || '(no prompt)',
         model: data.model,
         status: 'failed',
@@ -253,7 +223,73 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
         settings: { aspectRatio: data.aspectRatio, imageCount },
       });
     }
-  }, [id, data.prompt, data.model, data.aspectRatio, data.imageCount, data.selectedCharacter, data.selectedStyle, data.selectedCameraAngle, data.selectedCameraLens, data.imageSize, data.resolution, data.style, data.magicPrompt, data.cfgScale, data.steps, data.strength, updateNodeData, getConnectedInputs, addNode, addToHistory, positionAbsoluteX, positionAbsoluteY]);
+  }, [id, data, connectedInputs, updateNodeData, addNode, addToHistory, positionAbsoluteX, positionAbsoluteY]);
+
+  const openSettingsFromElement = useCallback((element: HTMLElement) => {
+    const rect = element.closest('.react-flow__node')?.getBoundingClientRect();
+    if (rect) {
+      openSettingsPanel(id, { x: rect.right + 10, y: rect.top });
+    }
+  }, [id, openSettingsPanel]);
+
+  const handleCompareAction = useCallback(async (event: React.MouseEvent) => {
+    event.stopPropagation();
+
+    const selectedModels = (data.compareModels || []).filter((model) => compatibleCompareModels.includes(model));
+    if (!data.compareEnabled || selectedModels.length < 2) {
+      const nextSelection = selectedModels.length > 0
+        ? selectedModels
+        : buildInitialCompareSelection(data.model, compatibleCompareModels);
+      updateNodeData(id, {
+        compareEnabled: true,
+        compareModels: nextSelection,
+        compareEstimateCredits: undefined,
+      }, true);
+      openSettingsFromElement(event.currentTarget as HTMLElement);
+      toast.info('Select at least 2 compare models to run a compare.');
+      return;
+    }
+
+    try {
+      const result = await startImageCompare({
+        nodeId: id,
+        data,
+        connectedInputs,
+        updateNodeData,
+        history: {
+          addToHistory,
+          updateHistoryItem,
+        },
+      });
+
+      if (!result.cancelled) {
+        toast.success('Compare run completed');
+      }
+    } catch (error) {
+      const errorMessage = normalizeApiErrorMessage(error, 'Compare failed');
+      updateNodeData(id, { error: errorMessage, compareRunStatus: 'failed' }, true);
+      toast.error(`Compare failed: ${errorMessage}`);
+    }
+  }, [id, data, connectedInputs, compatibleCompareModels, updateNodeData, openSettingsFromElement, addToHistory, updateHistoryItem]);
+
+  const handleClearCompare = useCallback(() => {
+    updateNodeData(id, {
+      compareRunStatus: 'idle',
+      compareEstimateCredits: undefined,
+      compareResults: undefined,
+      promotedCompareResultId: undefined,
+      compareHistoryId: undefined,
+      error: undefined,
+    }, true);
+  }, [id, updateNodeData]);
+
+  const handlePromoteCompare = useCallback((result: NonNullable<typeof data.compareResults>[number]) => {
+    promoteImageCompareResult(id, result, updateNodeData, {
+      historyId: data.compareHistoryId,
+      updateHistoryItem,
+    });
+    toast.success(`Promoted ${MODEL_CAPABILITIES[result.model].label}`);
+  }, [id, data.compareHistoryId, updateNodeData, updateHistoryItem]);
 
   const handleDelete = useCallback(() => {
     deleteNode(id);
@@ -261,12 +297,8 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
   }, [id, deleteNode]);
 
   const handleOpenSettings = useCallback((e: React.MouseEvent) => {
-    // Position popover to the right of the node
-    const rect = (e.currentTarget as HTMLElement).closest('.react-flow__node')?.getBoundingClientRect();
-    if (rect) {
-      openSettingsPanel(id, { x: rect.right + 10, y: rect.top });
-    }
-  }, [id, openSettingsPanel]);
+    openSettingsFromElement(e.currentTarget as HTMLElement);
+  }, [openSettingsFromElement]);
 
   const handleDownload = useCallback(async () => {
     if (!data.outputUrl) return;
@@ -290,16 +322,10 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
   // Get dimensions for badge
   const dimensions = getApproxDimensions(data.aspectRatio, data.model, data.resolution);
 
-  // Check if we have a valid prompt (direct, connected, or from presets)
-  const connectedInputs = getConnectedInputs(id);
-  const hasPresetSelected = !!(
-    data.selectedCharacter ||
-    data.selectedStyle ||
-    data.selectedCameraAngle ||
-    data.selectedCameraLens
-  );
-  const hasValidPrompt = !!(data.prompt || connectedInputs.textContent || hasPresetSelected);
+  const hasValidPrompt = hasValidImagePromptInput(data, connectedInputs);
   const connectedReferenceCount = (connectedInputs.referenceUrl ? 1 : 0) + (connectedInputs.referenceUrls?.length || 0);
+  const hasCompareResults = (data.compareResults?.length || 0) > 0;
+  const showCompareAsPrimary = !data.outputUrl && hasCompareResults;
 
   const activePresets = useMemo((): { key: string; label: string; preview: string }[] => {
     const pills: { key: string; label: string; preview: string }[] = [];
@@ -338,6 +364,18 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
               disabled={!hasValidPrompt || data.isGenerating}
             >
               <Play className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          {!isReadOnly && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              onClick={handleCompareAction}
+              disabled={!hasValidPrompt || data.compareRunStatus === 'running'}
+              title="Compare models"
+            >
+              <Images className="h-3.5 w-3.5" />
             </Button>
           )}
           {data.outputUrl && (
@@ -676,7 +714,31 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
                 </Button>
               </div>
             )}
+            {hasCompareResults && (
+              <CompareResultsSection
+                type="image"
+                results={data.compareResults || []}
+                runStatus={data.compareRunStatus}
+                promotedCompareResultId={data.promotedCompareResultId}
+                getModelLabel={(model) => MODEL_CAPABILITIES[model].label}
+                onPromote={handlePromoteCompare}
+                onClear={handleClearCompare}
+                collapsible
+                defaultOpen={isCompareTrayOpen}
+              />
+            )}
             </>
+          ) : showCompareAsPrimary ? (
+            <CompareResultsSection
+              type="image"
+              results={data.compareResults || []}
+              runStatus={data.compareRunStatus}
+              promotedCompareResultId={data.promotedCompareResultId}
+              getModelLabel={(model) => MODEL_CAPABILITIES[model].label}
+              onPromote={handlePromoteCompare}
+              onClear={handleClearCompare}
+              defaultOpen
+            />
           ) : (
             /* Prompt Input - Freepik style with inner content area */
             <>

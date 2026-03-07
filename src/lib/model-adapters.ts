@@ -272,6 +272,44 @@ class QwenImage2Adapter implements ModelAdapter {
   }
 }
 
+// xAI Grok Imagine image generation/editing
+class GrokImagineImageAdapter implements ModelAdapter {
+  constructor(private mode: 'generate' | 'edit') {}
+
+  private getImageUrls(request: GenerateRequest): string[] {
+    if (request.referenceUrls && request.referenceUrls.length > 0) {
+      return request.referenceUrls.slice(0, 3);
+    }
+    if (request.referenceUrl) {
+      return [request.referenceUrl];
+    }
+    return [];
+  }
+
+  buildInput(request: GenerateRequest): Record<string, unknown> {
+    const input: Record<string, unknown> = {
+      prompt: request.prompt,
+      num_images: request.numImages || 1,
+    };
+
+    if (this.mode === 'generate') {
+      input.aspect_ratio = getConcreteAspectRatio(request.aspectRatio);
+      return input;
+    }
+
+    const imageUrls = this.getImageUrls(request);
+    if (imageUrls.length > 0) {
+      input.image_urls = imageUrls;
+    }
+
+    return input;
+  }
+
+  extractImageUrls(result: { data?: { images?: Array<{ url: string }> } }): string[] {
+    return result.data?.images?.map((img) => img.url) || [];
+  }
+}
+
 // Recraft V3
 class RecraftAdapter implements ModelAdapter {
   // Map aspect ratio to Recraft size format
@@ -400,6 +438,8 @@ const adapters: Record<ImageModelType, ModelAdapter> = {
   'nanobanana-2': new NanoBanana2Adapter(),
   'qwen-image-2': new QwenImage2Adapter('regular'),
   'qwen-image-2-pro': new QwenImage2Adapter('pro'),
+  'grok-imagine-image': new GrokImagineImageAdapter('generate'),
+  'grok-imagine-image-edit': new GrokImagineImageAdapter('edit'),
   'recraft-v3': new RecraftAdapter(),
   'recraft-v4': new RecraftAdapter(), // same API shape as V3
   'seedream-5': new Seedream5Adapter(),
@@ -711,6 +751,53 @@ class GrokEditVideoAdapter implements VideoModelAdapter {
       prompt: request.prompt,
       video_url: request.videoUrl,
       resolution: request.resolution || '720p',
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+}
+
+// LTX 2.3 Text-to-Video
+class Ltx23T2VAdapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    return {
+      prompt: request.prompt,
+      duration: request.duration,
+      resolution: request.resolution || '1080p',
+      aspect_ratio: request.aspectRatio,
+      fps: 25,
+      generate_audio: request.generateAudio !== false,
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+}
+
+// LTX 2.3 Image-to-Video
+class Ltx23I2VAdapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    const startImage = request.firstFrameUrl || request.referenceUrl;
+    const endImage = request.lastFrameUrl;
+
+    if (!startImage) {
+      throw new Error('LTX 2.3 image-to-video requires a reference image');
+    }
+
+    return {
+      image_url: startImage,
+      ...(endImage && { end_image_url: endImage }),
+      prompt: request.prompt,
+      duration: request.duration,
+      resolution: request.resolution || '1080p',
+      aspect_ratio: request.aspectRatio,
+      fps: 25,
+      generate_audio: request.generateAudio !== false,
     };
   }
 
@@ -1317,6 +1404,9 @@ const videoAdapters: Record<VideoModelType, VideoModelAdapter> = {
   'grok-imagine-t2v': new GrokT2VAdapter(),
   'grok-imagine-i2v': new GrokI2VAdapter(),
   'grok-imagine-edit-v2v': new GrokEditVideoAdapter(),
+  'ltx-2.3-i2v': new Ltx23I2VAdapter(),
+  'ltx-2.3-fast-t2v': new Ltx23T2VAdapter(),
+  'ltx-2.3-fast-i2v': new Ltx23I2VAdapter(),
   'ltx-2-19b-t2v': new LtxT2VAdapter(),
   'ltx-2-19b-i2v': new LtxI2VAdapter(),
   'ltx-2-19b-v2v': new LtxV2VAdapter(),

@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
+import { SearchableMultiSelect } from '@/components/ui/searchable-multi-select';
 import {
   Select,
   SelectContent,
@@ -11,9 +12,14 @@ import {
 } from '@/components/ui/select';
 import { useCanvasStore } from '@/stores/canvas-store';
 import type { ImageGeneratorNodeData, ImageReference, FluxImageSize, NanoBananaResolution, RecraftStyle, IdeogramStyle, CharacterPreset, StylePreset, CameraAnglePreset, CameraLensPreset, PresetOption, CharacterSelection } from '@/lib/types';
+import { MAX_COMPARE_MODELS } from '@/lib/types';
 import { MODEL_CAPABILITIES, ENABLED_IMAGE_MODELS, FLUX_IMAGE_SIZES, NANO_BANANA_RESOLUTIONS, RECRAFT_STYLE_LABELS, IDEOGRAM_STYLE_LABELS, getApproxDimensions, getAspectRatioLabel, type ImageModelType } from '@/lib/types';
 import { getApiErrorMessage, normalizeApiErrorMessage } from '@/lib/client/api-error';
 import { useSettingsStore } from '@/stores/settings-store';
+import { fetchImageCompareEstimate } from '@/lib/compare/run';
+import { buildInitialCompareSelection, fillCompareSelection } from '@/lib/compare/utils';
+import { startImageCompare } from '@/lib/compare/controller';
+import { buildImageGenerationRequest, buildImagePrompt, getCompatibleImageCompareModels, hasValidImagePromptInput } from '@/lib/generation/client';
 import { CHARACTER_PRESETS, STYLE_PRESETS, CAMERA_ANGLE_PRESETS, CAMERA_LENS_PRESETS } from '@/lib/presets';
 import { PresetPopover } from './PresetPopover';
 import { Slider } from '@/components/ui/slider';
@@ -31,6 +37,8 @@ import {
   Palette,
   Aperture,
   Camera,
+  Images,
+  AlertCircle,
 } from 'lucide-react';
 
 export function SettingsPanel() {
@@ -40,6 +48,8 @@ export function SettingsPanel() {
   const getNode = useCanvasStore((state) => state.getNode);
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
   const getConnectedInputs = useCanvasStore((state) => state.getConnectedInputs);
+  const addToHistory = useSettingsStore((state) => state.addToHistory);
+  const updateHistoryItem = useSettingsStore((state) => state.updateHistoryItem);
   const enabledImageModels = useSettingsStore((s) => s.defaultSettings.enabledImageModels) || [...ENABLED_IMAGE_MODELS];
   const visibleImageModels: ImageModelType[] = ['auto' as ImageModelType, ...ENABLED_IMAGE_MODELS.filter((m) => enabledImageModels.includes(m))];
 
@@ -49,6 +59,13 @@ export function SettingsPanel() {
   const panelRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingUploadType, setPendingUploadType] = useState<'style' | 'character' | 'upload'>('upload');
+  const [compareEstimateError, setCompareEstimateError] = useState<string | null>(null);
+  const [compareEstimate, setCompareEstimate] = useState<{
+    items: Array<{ model: ImageModelType; estimatedCredits: number }>;
+    totalCredits: number;
+    balance: number | null;
+    hasSufficientCredits: boolean | null;
+  } | null>(null);
 
   // Close on outside click
   useEffect(() => {
@@ -66,7 +83,7 @@ export function SettingsPanel() {
       // Don't close if clicking inside a Radix UI Select dropdown (portaled to body)
       // Check both popper mode wrapper and item-aligned mode content (data-slot set in our Select component)
       const radixSelect = (target as Element).closest?.('[data-radix-popper-content-wrapper], [data-slot="select-content"]');
-      if (radixSelect) {
+      if (radixSelect || (target as Element).closest?.('[data-searchable-multi-select="true"]')) {
         return;
       }
       closeSettingsPanel();
@@ -303,52 +320,12 @@ export function SettingsPanel() {
   const handleGenerate = useCallback(async () => {
     if (!settingsPanelNodeId || !data) return;
 
-    // Get connected inputs
     const connectedInputs = getConnectedInputs(settingsPanelNodeId);
-
-    // Build final prompt with preset modifiers
-    const promptParts: string[] = [];
-
-    // Add character modifier
-    if (data.selectedCharacter?.type === 'preset') {
-      promptParts.push(data.selectedCharacter.promptModifier);
-    }
-
-    // Add style preset modifier
-    if (data.selectedStyle) {
-      promptParts.push(data.selectedStyle.promptModifier);
-    }
-
-    // Add camera angle modifier
-    if (data.selectedCameraAngle) {
-      promptParts.push(data.selectedCameraAngle.promptModifier);
-    }
-
-    // Add camera lens modifier
-    if (data.selectedCameraLens) {
-      promptParts.push(data.selectedCameraLens.promptModifier);
-    }
-
-    // Add connected text content
-    if (connectedInputs.textContent) {
-      promptParts.push(connectedInputs.textContent);
-    }
-
-    // Add user prompt
-    if (data.prompt) {
-      promptParts.push(data.prompt);
-    }
-
-    const finalPrompt = promptParts.join(', ');
+    const finalPrompt = buildImagePrompt(data, connectedInputs);
 
     if (!finalPrompt) return;
 
-    const allReferenceUrls = Array.from(
-      new Set(
-        [connectedInputs.referenceUrl, ...(connectedInputs.referenceUrls || [])]
-          .filter((url): url is string => !!url)
-      )
-    );
+    const requestBody = buildImageGenerationRequest(data, connectedInputs);
 
     updateNodeData(settingsPanelNodeId, { isGenerating: true, error: undefined });
 
@@ -356,22 +333,7 @@ export function SettingsPanel() {
       const response = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: finalPrompt,
-          model: data.model,
-          aspectRatio: data.aspectRatio,
-          imageSize: data.imageSize || 'square_hd',
-          resolution: data.resolution || '1K',
-          imageCount: data.imageCount || 1,
-          referenceUrl: connectedInputs.referenceUrl,
-          referenceUrls: allReferenceUrls.length > 0 ? allReferenceUrls : undefined,
-          // Model-specific params
-          style: data.style,
-          magicPrompt: data.magicPrompt,
-          cfgScale: data.cfgScale,
-          steps: data.steps,
-          strength: data.strength,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -387,25 +349,186 @@ export function SettingsPanel() {
         outputUrls: imageUrls,
         isGenerating: false,
       });
+
+      addToHistory({
+        type: 'image',
+        mode: 'single',
+        prompt: finalPrompt,
+        model: data.model,
+        status: 'completed',
+        result: { urls: imageUrls },
+        settings: {
+          aspectRatio: data.aspectRatio,
+          imageCount: data.imageCount || 1,
+          ...(data.style && { style: data.style }),
+          ...(data.resolution && { resolution: data.resolution }),
+          ...(data.imageSize && { imageSize: data.imageSize }),
+        },
+      });
     } catch (error) {
+      const errorMessage = normalizeApiErrorMessage(error, 'Generation failed');
       updateNodeData(settingsPanelNodeId, {
-        error: normalizeApiErrorMessage(error, 'Generation failed'),
+        error: errorMessage,
         isGenerating: false,
       });
+
+      addToHistory({
+        type: 'image',
+        mode: 'single',
+        prompt: finalPrompt || data.prompt || '(no prompt)',
+        model: data.model,
+        status: 'failed',
+        error: errorMessage,
+        settings: {
+          aspectRatio: data.aspectRatio,
+          imageCount: data.imageCount || 1,
+        },
+      });
     }
-  }, [settingsPanelNodeId, data, updateNodeData, getConnectedInputs]);
+  }, [settingsPanelNodeId, data, updateNodeData, getConnectedInputs, addToHistory]);
+
+  const handleCompareToggle = useCallback(() => {
+    if (!settingsPanelNodeId || !data) return;
+
+    const compatibleModels = getCompatibleImageCompareModels(enabledImageModels, data, getConnectedInputs(settingsPanelNodeId));
+    const nextEnabled = !data.compareEnabled;
+    updateNodeData(settingsPanelNodeId, {
+      compareEnabled: nextEnabled,
+      compareModels: nextEnabled
+        ? ((data.compareModels?.length ? data.compareModels : buildInitialCompareSelection(data.model, compatibleModels)))
+        : data.compareModels,
+      compareRunStatus: nextEnabled ? (data.compareRunStatus || 'idle') : 'idle',
+    }, true);
+  }, [settingsPanelNodeId, data, enabledImageModels, getConnectedInputs, updateNodeData]);
+
+  const handleCompareModelsChange = useCallback((models: string[]) => {
+    if (!settingsPanelNodeId) return;
+    setCompareEstimateError(null);
+    setCompareEstimate(null);
+    updateNodeData(settingsPanelNodeId, {
+      compareModels: models as ImageModelType[],
+      compareEstimateCredits: undefined,
+    }, true);
+  }, [settingsPanelNodeId, updateNodeData]);
+
+  const handleCompareFill = useCallback(() => {
+    if (!settingsPanelNodeId || !data) return;
+    const compatibleModels = getCompatibleImageCompareModels(enabledImageModels, data, getConnectedInputs(settingsPanelNodeId));
+    handleCompareModelsChange(fillCompareSelection(compatibleModels));
+  }, [settingsPanelNodeId, data, enabledImageModels, getConnectedInputs, handleCompareModelsChange]);
+
+  const handleClearCompare = useCallback(() => {
+    if (!settingsPanelNodeId) return;
+    setCompareEstimate(null);
+    setCompareEstimateError(null);
+    updateNodeData(settingsPanelNodeId, {
+      compareRunStatus: 'idle',
+      compareEstimateCredits: undefined,
+      compareResults: undefined,
+      promotedCompareResultId: undefined,
+      compareHistoryId: undefined,
+      error: undefined,
+    }, true);
+  }, [settingsPanelNodeId, updateNodeData]);
+
+  const handleCompareRun = useCallback(async () => {
+    if (!settingsPanelNodeId || !data) return;
+
+    const connectedInputs = getConnectedInputs(settingsPanelNodeId);
+    try {
+      const result = await startImageCompare({
+        nodeId: settingsPanelNodeId,
+        data,
+        connectedInputs,
+        updateNodeData,
+        history: {
+          addToHistory,
+          updateHistoryItem,
+        },
+      });
+
+      if (!result.cancelled) {
+        setCompareEstimateError(null);
+      }
+    } catch (error) {
+      const errorMessage = normalizeApiErrorMessage(error, 'Compare failed');
+      updateNodeData(settingsPanelNodeId, {
+        error: errorMessage,
+        compareRunStatus: 'failed',
+      }, true);
+      setCompareEstimateError(errorMessage);
+    }
+  }, [settingsPanelNodeId, data, getConnectedInputs, updateNodeData, addToHistory, updateHistoryItem]);
+
+  useEffect(() => {
+    if (!settingsPanelNodeId || !data?.compareEnabled) {
+      setCompareEstimate(null);
+      setCompareEstimateError(null);
+      return;
+    }
+
+    const connectedInputs = getConnectedInputs(settingsPanelNodeId);
+    const compatibleModels = getCompatibleImageCompareModels(enabledImageModels, data, connectedInputs);
+    const selectedModels = (data.compareModels || []).filter((model): model is ImageModelType => compatibleModels.includes(model));
+    if (selectedModels.length < 2) {
+      setCompareEstimate(null);
+      setCompareEstimateError(null);
+      if (typeof data.compareEstimateCredits !== 'undefined') {
+        updateNodeData(settingsPanelNodeId, { compareEstimateCredits: undefined }, true);
+      }
+      return;
+    }
+
+    let cancelled = false;
+    setCompareEstimateError(null);
+
+    fetchImageCompareEstimate(selectedModels)
+      .then((estimate) => {
+        if (cancelled) return;
+        setCompareEstimate(estimate);
+        if (data.compareEstimateCredits !== estimate.totalCredits) {
+          updateNodeData(settingsPanelNodeId, { compareEstimateCredits: estimate.totalCredits }, true);
+        }
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setCompareEstimate(null);
+        setCompareEstimateError(normalizeApiErrorMessage(error, 'Compare estimate failed'));
+        if (typeof data.compareEstimateCredits !== 'undefined') {
+          updateNodeData(settingsPanelNodeId, { compareEstimateCredits: undefined }, true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    settingsPanelNodeId,
+    data?.compareEnabled,
+    data?.compareModels,
+    data?.compareEstimateCredits,
+    data?.prompt,
+    data?.selectedCharacter,
+    data?.selectedStyle,
+    data?.selectedCameraAngle,
+    data?.selectedCameraLens,
+    data?.aspectRatio,
+    enabledImageModels,
+    getConnectedInputs,
+    updateNodeData,
+  ]);
 
   if (!settingsPanelNodeId || !data) return null;
 
   // Check if we have a valid prompt (direct, connected, or from presets)
   const connectedInputs = getConnectedInputs(settingsPanelNodeId);
-  const hasPresetSelected = !!(
-    data.selectedCharacter ||
-    data.selectedStyle ||
-    data.selectedCameraAngle ||
-    data.selectedCameraLens
-  );
-  const hasValidPrompt = !!(data.prompt || connectedInputs.textContent || hasPresetSelected);
+  const hasValidPrompt = hasValidImagePromptInput(data, connectedInputs);
+  const compatibleCompareModels = getCompatibleImageCompareModels(enabledImageModels, data, connectedInputs);
+  const compareModelOptions = compatibleCompareModels.map((model) => ({
+    value: model,
+    label: MODEL_CAPABILITIES[model].label,
+    description: MODEL_CAPABILITIES[model].description,
+  }));
 
   // Get model capabilities
   const modelCapabilities = MODEL_CAPABILITIES[data.model];
@@ -741,6 +864,122 @@ export function SettingsPanel() {
               placeholder="Describe the image you want to generate..."
               className="w-full min-h-[140px] max-h-[260px] bg-muted border border-border rounded-lg p-3 text-foreground text-sm placeholder:text-muted-foreground/60 resize-y overflow-y-auto nodrag nopan nowheel select-text focus:outline-none focus:border-primary"
             />
+          </div>
+
+          <div className="space-y-3 rounded-xl border border-border/60 bg-muted/20 p-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Images className="h-4 w-4 text-muted-foreground" />
+                <label className="text-xs text-muted-foreground uppercase tracking-wider">
+                  Compare
+                </label>
+              </div>
+              <Button
+                variant={data.compareEnabled ? 'default' : 'outline'}
+                size="sm"
+                onClick={handleCompareToggle}
+                className="h-7 text-xs"
+              >
+                {data.compareEnabled ? 'Enabled' : 'Off'}
+              </Button>
+            </div>
+
+            {data.compareEnabled && (
+              <div className="space-y-3">
+                <SearchableMultiSelect
+                  value={data.compareModels || []}
+                  onValueChange={handleCompareModelsChange}
+                  options={compareModelOptions}
+                  maxSelected={MAX_COMPARE_MODELS}
+                  placeholder="Select compare models"
+                  searchPlaceholder="Search compare models..."
+                  emptyMessage={hasValidPrompt ? 'No compatible enabled models' : 'Add a prompt or text input first'}
+                  triggerClassName="h-9 w-full border border-border bg-background px-3 text-sm"
+                />
+
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[11px] text-muted-foreground">
+                    Compatible enabled models only. Select 2-{MAX_COMPARE_MODELS}.
+                  </p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleCompareFill}
+                    disabled={compatibleCompareModels.length === 0}
+                    className="h-7 px-2 text-[11px]"
+                  >
+                    Fill top {MAX_COMPARE_MODELS}
+                  </Button>
+                </div>
+
+                {compareEstimate?.items?.length ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {compareEstimate.items.map((item) => (
+                      <span
+                        key={item.model}
+                        className="rounded-full bg-background px-2 py-0.5 text-[10px] text-muted-foreground"
+                      >
+                        {MODEL_CAPABILITIES[item.model].label}: {item.estimatedCredits} cr
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+
+                {(compareEstimateError || data.compareRunStatus === 'failed') && (
+                  <div className="flex items-start gap-2 rounded-lg bg-red-500/10 p-2 text-[11px] text-red-300">
+                    <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>{compareEstimateError || data.error}</span>
+                  </div>
+                )}
+
+                {compareEstimate && (
+                  <div className="rounded-lg border border-border/60 bg-background p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-xs text-muted-foreground">Estimated total</span>
+                      <span className="text-sm font-medium text-foreground">{compareEstimate.totalCredits} credits</span>
+                    </div>
+                    {compareEstimate.balance !== null && (
+                      <div className="mt-1 flex items-center justify-between gap-3">
+                        <span className="text-xs text-muted-foreground">Balance</span>
+                        <span className="text-xs text-foreground">{compareEstimate.balance} credits</span>
+                      </div>
+                    )}
+                    {compareEstimate.hasSufficientCredits === false && (
+                      <p className="mt-2 text-[11px] text-amber-300">
+                        Not enough credits for this compare run.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={handleCompareRun}
+                    disabled={!hasValidPrompt || (data.compareModels?.length || 0) < 2 || data.compareRunStatus === 'running'}
+                    className="flex-1"
+                  >
+                    {data.compareRunStatus === 'running' ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Comparing...
+                      </>
+                    ) : (
+                      <>
+                        <Images className="h-4 w-4" />
+                        Run Compare
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={handleClearCompare}
+                    disabled={!data.compareResults?.length && !data.compareHistoryId && !data.promotedCompareResultId}
+                  >
+                    Clear Compare
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Error */}

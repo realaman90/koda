@@ -8,13 +8,11 @@ import { useBillingPromptStore } from '@/stores/billing-prompt-store';
 
 export function BillingPromptModal() {
   const router = useRouter();
-  const { isOpen, message, required, balance, close } = useBillingPromptStore((state) => ({
-    isOpen: state.isOpen,
-    message: state.message,
-    required: state.required,
-    balance: state.balance,
-    close: state.close,
-  }));
+  const isOpen = useBillingPromptStore((state) => state.isOpen);
+  const message = useBillingPromptStore((state) => state.message);
+  const required = useBillingPromptStore((state) => state.required);
+  const balance = useBillingPromptStore((state) => state.balance);
+  const close = useBillingPromptStore((state) => state.close);
 
   const billingEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
 

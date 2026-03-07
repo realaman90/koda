@@ -5,6 +5,7 @@ import { MentionEditor, type MentionItem } from '@/components/ui/mention-editor'
 import { Handle, Position, useUpdateNodeInternals, type NodeProps } from '@xyflow/react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { CompareResultsSection } from '@/components/canvas/CompareResultsSection';
 import {
   Select,
   SelectContent,
@@ -29,6 +30,10 @@ import {
 } from '@/lib/types';
 import { useSettingsStore } from '@/stores/settings-store';
 import { getApiErrorMessage, normalizeApiErrorMessage } from '@/lib/client/api-error';
+import { startVideoCompare } from '@/lib/compare/controller';
+import { promoteVideoCompareResult } from '@/lib/compare/run';
+import { buildInitialCompareSelection, pruneCompareSelection } from '@/lib/compare/utils';
+import { buildVideoGenerationRequest, buildVideoPrompt, getCompatibleVideoCompareModels, validateVideoGenerationInputForModel } from '@/lib/generation/client';
 import {
   Video,
   Play,
@@ -76,6 +81,8 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
   const openVideoSettingsPanel = useCanvasStore((state) => state.openVideoSettingsPanel);
   const isReadOnly = useCanvasStore((state) => state.isReadOnly);
   const edges = useCanvasStore((state) => state.edges);
+  const addToHistory = useSettingsStore((state) => state.addToHistory);
+  const updateHistoryItem = useSettingsStore((state) => state.updateHistoryItem);
   const enabledVideoModels = useSettingsStore((s) => s.defaultSettings.enabledVideoModels) || [...ENABLED_VIDEO_MODELS];
   const visibleVideoModels: VideoModelType[] = ['auto' as VideoModelType, ...ENABLED_VIDEO_MODELS.filter((m) => enabledVideoModels.includes(m))];
   const updateNodeInternals = useUpdateNodeInternals();
@@ -86,10 +93,13 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
   const [isPromptExpanded, setIsPromptExpanded] = useState(false);
   const originalPromptRef = useRef<string>('');
   const [isHovered, setIsHovered] = useState(false);
+  const [isCompareTrayOpen, setIsCompareTrayOpen] = useState(!data.outputUrl);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const resolvedModel = resolveDeprecatedVideoModel(data.model);
+  const connectedInputs = getConnectedInputs(id);
+  const compatibleCompareModels = getCompatibleVideoCompareModels(enabledVideoModels, data, connectedInputs);
 
   // Check if this node has any connections
   const isConnected = edges.some(edge => edge.source === id || edge.target === id);
@@ -162,6 +172,25 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
     }
   }, [isEditingName]);
 
+  useEffect(() => {
+    if (!data.compareEnabled) return;
+
+    const { models, removed } = pruneCompareSelection(data.compareModels, compatibleCompareModels);
+    if (removed.length === 0) return;
+
+    updateNodeData(id, {
+      compareModels: models,
+      compareEstimateCredits: undefined,
+    }, true);
+    toast.info(`Removed incompatible compare models: ${removed.map((model) => VIDEO_MODEL_CAPABILITIES[model].label).join(', ')}`);
+  }, [id, data.compareEnabled, data.compareModels, compatibleCompareModels, updateNodeData]);
+
+  useEffect(() => {
+    if ((data.compareResults?.length || 0) > 0 && !data.outputUrl) {
+      setIsCompareTrayOpen(true);
+    }
+  }, [data.compareResults, data.outputUrl]);
+
   // Poll xskill task status
   const pollXskillTask = useCallback((taskId: string, taskModel: string) => {
     // Clear any existing poll
@@ -192,6 +221,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
         if (result.status === 'completed') {
           if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
           pollIntervalRef.current = null;
+          const finalPrompt = buildVideoPrompt(data, getConnectedInputs(id));
           updateNodeData(id, {
             outputUrl: result.videoUrl,
             outputVideoId: undefined,
@@ -202,10 +232,25 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
             xskillStatus: undefined,
             xskillStartedAt: undefined,
           });
+          addToHistory({
+            type: 'video',
+            mode: 'single',
+            prompt: finalPrompt || data.prompt || '(no prompt)',
+            model: resolvedModel,
+            status: 'completed',
+            result: { urls: result.videoUrl ? [result.videoUrl] : [], duration: data.duration },
+            settings: {
+              aspectRatio: data.aspectRatio,
+              duration: data.duration,
+              resolution: data.resolution,
+              generateAudio: data.generateAudio,
+            },
+          });
           toast.success('Video generated successfully');
         } else if (result.status === 'failed') {
           if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
           pollIntervalRef.current = null;
+          const finalPrompt = buildVideoPrompt(data, getConnectedInputs(id));
           updateNodeData(id, {
             error: result.error || 'Video generation failed',
             isGenerating: false,
@@ -214,6 +259,20 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
             xskillTaskModel: undefined,
             xskillStatus: undefined,
             xskillStartedAt: undefined,
+          });
+          addToHistory({
+            type: 'video',
+            mode: 'single',
+            prompt: finalPrompt || data.prompt || '(no prompt)',
+            model: resolvedModel,
+            status: 'failed',
+            error: result.error || 'Video generation failed',
+            settings: {
+              aspectRatio: data.aspectRatio,
+              duration: data.duration,
+              resolution: data.resolution,
+              generateAudio: data.generateAudio,
+            },
           });
           toast.error(`Generation failed: ${result.error || 'Unknown error'}`);
         }
@@ -226,7 +285,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
         // Don't stop polling on transient network errors
       }
     }, 5000);
-  }, [id, data.prompt, updateNodeData]);
+  }, [id, data, resolvedModel, updateNodeData, getConnectedInputs, addToHistory]);
 
   // Resume/start polling whenever an async xskill task is active.
   useEffect(() => {
@@ -382,124 +441,33 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
     updateNodeData(id, { generateAudio: !data.generateAudio });
   }, [id, data.generateAudio, updateNodeData]);
 
-  const handleOpenSettings = useCallback((e: React.MouseEvent) => {
-    const rect = (e.currentTarget as HTMLElement).closest('.react-flow__node')?.getBoundingClientRect();
+  const openSettingsFromElement = useCallback((element: HTMLElement) => {
+    const rect = element.closest('.react-flow__node')?.getBoundingClientRect();
     if (rect) {
       openVideoSettingsPanel(id, { x: rect.right + 10, y: rect.top });
     }
   }, [id, openVideoSettingsPanel]);
 
+  const handleOpenSettings = useCallback((e: React.MouseEvent) => {
+    openSettingsFromElement(e.currentTarget as HTMLElement);
+  }, [openSettingsFromElement]);
+
   const handleGenerate = useCallback(async () => {
-    const connectedInputs = getConnectedInputs(id);
-    const modelCaps = VIDEO_MODEL_CAPABILITIES[resolvedModel];
-    const hasImageInput = !!(
-      connectedInputs.referenceUrl ||
-      connectedInputs.firstFrameUrl ||
-      connectedInputs.lastFrameUrl ||
-      connectedInputs.referenceUrls?.length
-    );
-    const hasAnyMediaInput = !!(
-      hasImageInput ||
-      connectedInputs.videoUrl ||
-      connectedInputs.audioUrl
-    );
-
-    let finalPrompt = data.prompt || '';
-    if (connectedInputs.textContent) {
-      finalPrompt = connectedInputs.textContent + (data.prompt ? `\n${data.prompt}` : '');
-    }
-
-    const hasPrompt = !!finalPrompt.trim();
-
-    // Validate based on input mode
-    if (modelCaps.inputMode === 'first-last-frame') {
-      // First frame always required, last frame depends on lastFrameOptional
-      if (!connectedInputs.firstFrameUrl) {
-        toast.error('Connect a start frame image');
-        return;
-      }
-      if (!modelCaps.lastFrameOptional && !connectedInputs.lastFrameUrl) {
-        toast.error('Connect both first and last frame images');
-        return;
-      }
-    } else if (modelCaps.inputMode === 'multi-reference') {
-      if (!connectedInputs.referenceUrls?.length && !connectedInputs.referenceUrl) {
-        toast.error('Connect at least one reference image');
-        return;
-      }
-    } else if (modelCaps.inputMode === 'single-image' && modelCaps.inputType === 'image-only') {
-      if (!connectedInputs.referenceUrl && !connectedInputs.firstFrameUrl && !connectedInputs.referenceUrls?.length) {
-        toast.error('This model requires a reference image');
-        return;
-      }
-    }
-
-    if (modelCaps.requiresPrompt && !hasPrompt) {
-      toast.error('Please enter a prompt');
+    const validationError = validateVideoGenerationInputForModel(data, connectedInputs, resolvedModel);
+    if (validationError) {
+      toast.error(validationError);
       return;
     }
 
-    if (modelCaps.requiresImageRef && !hasImageInput) {
-      toast.error('Connect at least one image reference');
-      return;
-    }
-
-    if (modelCaps.requiresVideoRef && !connectedInputs.videoUrl) {
-      toast.error('Connect a video input');
-      return;
-    }
-
-    if (modelCaps.requiresAudioRef && !connectedInputs.audioUrl) {
-      toast.error('Connect an audio input');
-      return;
-    }
-
-    if (modelCaps.requiresVideoId && !connectedInputs.videoId) {
-      toast.error('Connect a Sora-generated video to reuse its video ID');
-      return;
-    }
-
-    if (!hasPrompt && !hasAnyMediaInput) {
-      toast.error('Please enter a prompt or connect media references');
-      return;
-    }
-
+    const finalPrompt = buildVideoPrompt(data, connectedInputs);
+    const requestBody = buildVideoGenerationRequest(data, connectedInputs, resolvedModel);
     updateNodeData(id, { isGenerating: true, error: undefined, progress: 0, outputVideoId: undefined });
-
-    // Debug: Log what we're sending
-    console.log('[VideoGenerator] Sending request:', {
-      nodeId: id,
-      model: resolvedModel,
-      hasReferenceUrl: !!connectedInputs.referenceUrl,
-      hasFirstFrameUrl: !!connectedInputs.firstFrameUrl,
-      hasLastFrameUrl: !!connectedInputs.lastFrameUrl,
-      referenceUrlsCount: connectedInputs.referenceUrls?.length || 0,
-      hasVideoUrl: !!connectedInputs.videoUrl,
-      hasVideoId: !!connectedInputs.videoId,
-      hasAudioUrl: !!connectedInputs.audioUrl,
-      hasHeygenVoice: isHeygenAvatarModel && !!selectedHeygenVoice,
-    });
 
     try {
       const response = await fetch('/api/generate-video', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: finalPrompt,
-          model: resolvedModel,
-          aspectRatio: data.aspectRatio,
-          duration: data.duration,
-          resolution: data.resolution,
-          referenceUrl: connectedInputs.referenceUrl,
-          firstFrameUrl: connectedInputs.firstFrameUrl,
-          lastFrameUrl: connectedInputs.lastFrameUrl,
-          referenceUrls: connectedInputs.referenceUrls,
-          videoUrl: connectedInputs.videoUrl,
-          videoId: connectedInputs.videoId,
-          audioUrl: connectedInputs.audioUrl,
-          generateAudio: data.generateAudio,
-          heygenVoice: isHeygenAvatarModel ? selectedHeygenVoice : undefined,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -531,6 +499,20 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
       });
 
       toast.success('Video generated successfully');
+      addToHistory({
+        type: 'video',
+        mode: 'single',
+        prompt: finalPrompt || data.prompt || '(no prompt)',
+        model: resolvedModel,
+        status: 'completed',
+        result: { urls: result.videoUrl ? [result.videoUrl] : [], duration: data.duration },
+        settings: {
+          aspectRatio: data.aspectRatio,
+          duration: data.duration,
+          resolution: data.resolution,
+          generateAudio: data.generateAudio,
+        },
+      });
     } catch (error) {
       const errorMessage = normalizeApiErrorMessage(error, 'Video generation failed');
       updateNodeData(id, {
@@ -539,21 +521,89 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
         progress: 0,
       });
       toast.error(`Generation failed: ${errorMessage}`);
+      addToHistory({
+        type: 'video',
+        mode: 'single',
+        prompt: finalPrompt || data.prompt || '(no prompt)',
+        model: resolvedModel,
+        status: 'failed',
+        error: errorMessage,
+        settings: {
+          aspectRatio: data.aspectRatio,
+          duration: data.duration,
+          resolution: data.resolution,
+          generateAudio: data.generateAudio,
+        },
+      });
     }
   }, [
     id,
-    data.prompt,
+    data,
     resolvedModel,
-    data.aspectRatio,
-    data.duration,
-    data.resolution,
-    data.generateAudio,
-    isHeygenAvatarModel,
-    selectedHeygenVoice,
+    connectedInputs,
     updateNodeData,
-    getConnectedInputs,
     pollXskillTask,
+    addToHistory,
   ]);
+
+  const handleCompareAction = useCallback(async (event: React.MouseEvent) => {
+    event.stopPropagation();
+
+    const selectedModels = (data.compareModels || []).filter((model) => compatibleCompareModels.includes(model));
+    if (!data.compareEnabled || selectedModels.length < 2) {
+      const nextSelection = selectedModels.length > 0
+        ? selectedModels
+        : buildInitialCompareSelection(resolvedModel, compatibleCompareModels);
+      updateNodeData(id, {
+        compareEnabled: true,
+        compareModels: nextSelection,
+        compareEstimateCredits: undefined,
+      }, true);
+      openSettingsFromElement(event.currentTarget as HTMLElement);
+      toast.info('Select at least 2 compare models to run a compare.');
+      return;
+    }
+
+    try {
+      const result = await startVideoCompare({
+        nodeId: id,
+        data,
+        connectedInputs,
+        updateNodeData,
+        history: {
+          addToHistory,
+          updateHistoryItem,
+        },
+      });
+
+      if (!result.cancelled) {
+        toast.success('Compare run completed');
+      }
+    } catch (error) {
+      const errorMessage = normalizeApiErrorMessage(error, 'Compare failed');
+      updateNodeData(id, { error: errorMessage, compareRunStatus: 'failed' }, true);
+      toast.error(`Compare failed: ${errorMessage}`);
+    }
+  }, [id, data, connectedInputs, compatibleCompareModels, resolvedModel, updateNodeData, openSettingsFromElement, addToHistory, updateHistoryItem]);
+
+  const handleClearCompare = useCallback(() => {
+    updateNodeData(id, {
+      compareRunStatus: 'idle',
+      compareEstimateCredits: undefined,
+      compareResults: undefined,
+      promotedCompareResultId: undefined,
+      compareHistoryId: undefined,
+      error: undefined,
+    }, true);
+  }, [id, updateNodeData]);
+
+  const handlePromoteCompare = useCallback((result: NonNullable<typeof data.compareResults>[number]) => {
+    promoteVideoCompareResult(id, result, updateNodeData, {
+      historyId: data.compareHistoryId,
+      updateHistoryItem,
+    });
+    toast.success(`Promoted ${VIDEO_MODEL_CAPABILITIES[result.model].label}`);
+  }, [id, data.compareHistoryId, updateNodeData, updateHistoryItem]);
 
   const handleDelete = useCallback(() => {
     deleteNode(id);
@@ -579,53 +629,9 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
     }
   }, [data.outputUrl]);
 
-  const connectedInputs = getConnectedInputs(id);
-  const hasImageInput = !!(
-    connectedInputs.referenceUrl ||
-    connectedInputs.firstFrameUrl ||
-    connectedInputs.lastFrameUrl ||
-    connectedInputs.referenceUrls?.length
-  );
-  const hasAnyMediaInput = !!(
-    hasImageInput ||
-    connectedInputs.videoUrl ||
-    connectedInputs.audioUrl
-  );
-
-  // Determine if we have valid inputs based on mode
-  const hasValidInput = (() => {
-    const hasPrompt = !!(data.prompt || connectedInputs.textContent);
-    const promptRequired = !!modelCapabilities.requiresPrompt;
-
-    switch (inputMode) {
-      case 'text':
-        return promptRequired ? hasPrompt : (hasPrompt || hasAnyMediaInput);
-      case 'single-image':
-        if (promptRequired && !hasPrompt) return false;
-        if (!hasPrompt && !hasAnyMediaInput) return false;
-        break;
-      case 'first-last-frame':
-        // First frame required, last frame depends on lastFrameOptional
-        if (!connectedInputs.firstFrameUrl) return false;
-        if (!modelCapabilities.lastFrameOptional && !connectedInputs.lastFrameUrl) return false;
-        break;
-      case 'multi-reference':
-        if (!connectedInputs.referenceUrls?.length && !connectedInputs.referenceUrl) return false;
-        if (promptRequired && !hasPrompt) return false;
-        break;
-      default:
-        if (promptRequired && !hasPrompt) return false;
-        break;
-    }
-
-    if (promptRequired && !hasPrompt) return false;
-    if (modelCapabilities.requiresImageRef && !hasImageInput) return false;
-    if (modelCapabilities.requiresVideoRef && !connectedInputs.videoUrl) return false;
-    if (modelCapabilities.requiresAudioRef && !connectedInputs.audioUrl) return false;
-    if (modelCapabilities.requiresVideoId && !connectedInputs.videoId) return false;
-
-    return hasPrompt || hasAnyMediaInput;
-  })();
+  const hasValidInput = validateVideoGenerationInputForModel(data, connectedInputs, resolvedModel) === null;
+  const hasCompareResults = (data.compareResults?.length || 0) > 0;
+  const showCompareAsPrimary = !data.outputUrl && hasCompareResults;
 
   const advancedHandleSpecs = useMemo(() => {
     const specs: Array<{
@@ -682,6 +688,16 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
             disabled={!hasValidInput || data.isGenerating}
           >
             <Play className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+            onClick={handleCompareAction}
+            disabled={!hasValidInput || data.compareRunStatus === 'running'}
+            title="Compare models"
+          >
+            <Images className="h-3.5 w-3.5" />
           </Button>
           {data.outputUrl && (
             <Button
@@ -1057,7 +1073,31 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
                 </Button>
               </div>
             )}
+            {hasCompareResults && (
+              <CompareResultsSection
+                type="video"
+                results={data.compareResults || []}
+                runStatus={data.compareRunStatus}
+                promotedCompareResultId={data.promotedCompareResultId}
+                getModelLabel={(model) => VIDEO_MODEL_CAPABILITIES[model].label}
+                onPromote={handlePromoteCompare}
+                onClear={handleClearCompare}
+                collapsible
+                defaultOpen={isCompareTrayOpen}
+              />
+            )}
             </>
+          ) : showCompareAsPrimary ? (
+            <CompareResultsSection
+              type="video"
+              results={data.compareResults || []}
+              runStatus={data.compareRunStatus}
+              promotedCompareResultId={data.promotedCompareResultId}
+              getModelLabel={(model) => VIDEO_MODEL_CAPABILITIES[model].label}
+              onPromote={handlePromoteCompare}
+              onClear={handleClearCompare}
+              defaultOpen
+            />
           ) : (
             /* Prompt Input - Freepik style with inner content area */
             <div className="p-3 nodrag nopan" onPointerDown={(e) => e.stopPropagation()}>

@@ -9,8 +9,11 @@ import {
   type Connection,
   type ReactFlowInstance,
 } from '@xyflow/react';
-import type { AppNode, AppEdge, ImageGeneratorNodeData, VideoGeneratorNodeData, TextNodeData, MediaNodeData, StickyNoteNodeData, StickerNodeData, GroupNodeData, StoryboardNodeData,ProductShotNodeData, MusicGeneratorNodeData, SpeechNodeData, VideoAudioNodeData, PluginNodeData } from '@/lib/types';
+import type { AppNode, AppEdge, ConnectedNodeInputs, ImageGeneratorNodeData, VideoGeneratorNodeData, TextNodeData, MediaNodeData, StickyNoteNodeData, StickerNodeData, GroupNodeData, StoryboardNodeData,ProductShotNodeData, MusicGeneratorNodeData, SpeechNodeData, VideoAudioNodeData, PluginNodeData } from '@/lib/types';
 import { getApiErrorMessage, normalizeApiErrorMessage } from '@/lib/client/api-error';
+import { startImageCompare } from '@/lib/compare/controller';
+import { buildImageGenerationRequest, buildImagePrompt, hasValidImagePromptInput } from '@/lib/generation/client';
+import { useSettingsStore } from './settings-store';
 import { remapChildNodeIds, resolveInheritedGroupDelta } from './grouping-utils';
 
 // History snapshot type
@@ -120,19 +123,7 @@ interface CanvasState {
 
   // Utility
   getNode: (nodeId: string) => AppNode | undefined;
-  getConnectedInputs: (nodeId: string) => {
-    textContent?: string;
-    referenceUrl?: string;
-    firstFrameUrl?: string;
-    lastFrameUrl?: string;
-    referenceUrls?: string[];
-    productImageUrl?: string;
-    characterImageUrl?: string;
-    referenceImageUrls?: Record<string, string>;
-    videoUrl?: string;
-    videoId?: string;
-    audioUrl?: string;
-  };
+  getConnectedInputs: (nodeId: string) => ConnectedNodeInputs;
   clearCanvas: () => void;
 
   // Canvas loading (for multi-canvas support)
@@ -776,6 +767,7 @@ export const useCanvasStore = create<CanvasState>()(
       // Workflow actions
       runAll: async () => {
         const { nodes, updateNodeData, getConnectedInputs } = get() as CanvasState & { _pushHistory: () => void };
+        const history = useSettingsStore.getState();
 
         // Get all ImageGenerator nodes that have a prompt (direct or connected)
         const generators = nodes.filter((n) => n.type === 'imageGenerator');
@@ -788,85 +780,38 @@ export const useCanvasStore = create<CanvasState>()(
         for (const gen of generators) {
           const data = gen.data as ImageGeneratorNodeData;
           const connectedInputs = getConnectedInputs(gen.id);
+          if (!hasValidImagePromptInput(data, connectedInputs)) continue;
 
-          // Build final prompt with preset modifiers
-          const promptParts: string[] = [];
-
-          // Add character modifier
-          if (data.selectedCharacter?.type === 'preset') {
-            promptParts.push(data.selectedCharacter.promptModifier);
+          if (data.compareEnabled && (data.compareModels?.length || 0) >= 2) {
+            try {
+              await startImageCompare({
+                nodeId: gen.id,
+                data,
+                connectedInputs,
+                updateNodeData,
+                history: {
+                  addToHistory: history.addToHistory,
+                  updateHistoryItem: history.updateHistoryItem,
+                },
+              });
+            } catch (error) {
+              updateNodeData(gen.id, {
+                error: normalizeApiErrorMessage(error, 'Compare failed'),
+                compareRunStatus: 'failed',
+              }, true);
+            }
+            continue;
           }
 
-          // Add style preset modifier
-          if (data.selectedStyle) {
-            promptParts.push(data.selectedStyle.promptModifier);
-          }
-
-          // Add camera angle modifier
-          if (data.selectedCameraAngle) {
-            promptParts.push(data.selectedCameraAngle.promptModifier);
-          }
-
-          // Add camera lens modifier
-          if (data.selectedCameraLens) {
-            promptParts.push(data.selectedCameraLens.promptModifier);
-          }
-
-          // Add connected text content
-          if (connectedInputs.textContent) {
-            promptParts.push(connectedInputs.textContent);
-          }
-
-          // Add user prompt
-          if (data.prompt) {
-            promptParts.push(data.prompt);
-          }
-
-          const finalPrompt = promptParts.join(', ');
-
-          // Check if we have any input (presets count as valid input)
-          const hasPresets = !!(
-            data.selectedCharacter ||
-            data.selectedStyle ||
-            data.selectedCameraAngle ||
-            data.selectedCameraLens
-          );
-
-          // Skip if no prompt and no presets
-          if (!finalPrompt && !hasPresets) continue;
-
-          // Collect all reference URLs (main reference + additional refs)
-          const allReferenceUrls = Array.from(
-            new Set(
-              [connectedInputs.referenceUrl, ...(connectedInputs.referenceUrls || [])]
-                .filter((url): url is string => !!url)
-            )
-          );
-
-          updateNodeData(gen.id, { isGenerating: true, error: undefined });
+          const requestBody = buildImageGenerationRequest(data, connectedInputs);
+          const finalPrompt = buildImagePrompt(data, connectedInputs);
+          updateNodeData(gen.id, { isGenerating: true, error: undefined, compareRunStatus: 'idle' });
 
           try {
             const response = await fetch('/api/generate', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                prompt: finalPrompt,
-                model: data.model,
-                aspectRatio: data.aspectRatio,
-                imageSize: data.imageSize || 'square_hd',
-                resolution: data.resolution || '1K',
-                imageCount: data.imageCount || 1,
-                // Pass single referenceUrl for backwards compatibility
-                referenceUrl: connectedInputs.referenceUrl,
-                // Pass all references as array for multi-reference models (NanoBanana supports up to 14)
-                referenceUrls: allReferenceUrls.length > 0 ? allReferenceUrls : undefined,
-                // Model-specific params
-                style: data.style,
-                magicPrompt: data.magicPrompt,
-                cfgScale: data.cfgScale,
-                steps: data.steps,
-                strength: data.strength,
-              }),
+              body: JSON.stringify(requestBody),
             });
 
             if (!response.ok) {
@@ -882,11 +827,40 @@ export const useCanvasStore = create<CanvasState>()(
               outputUrls: imageUrls,
               isGenerating: false,
             });
+
+            history.addToHistory({
+              type: 'image',
+              mode: 'single',
+              prompt: finalPrompt,
+              model: data.model,
+              status: 'completed',
+              result: { urls: imageUrls },
+              settings: {
+                aspectRatio: data.aspectRatio,
+                imageCount: data.imageCount || 1,
+                ...(data.style && { style: data.style }),
+                ...(data.resolution && { resolution: data.resolution }),
+                ...(data.imageSize && { imageSize: data.imageSize }),
+              },
+            });
           } catch (error) {
             const errorMessage = normalizeApiErrorMessage(error, 'Generation failed');
             updateNodeData(gen.id, {
               error: errorMessage,
               isGenerating: false,
+            });
+
+            history.addToHistory({
+              type: 'image',
+              mode: 'single',
+              prompt: finalPrompt || data.prompt || '(no prompt)',
+              model: data.model,
+              status: 'failed',
+              error: errorMessage,
+              settings: {
+                aspectRatio: data.aspectRatio,
+                imageCount: data.imageCount || 1,
+              },
             });
           }
         }

@@ -48,6 +48,20 @@ export interface ImageReference {
   type: 'style' | 'character' | 'upload';
 }
 
+export interface ConnectedNodeInputs {
+  textContent?: string;
+  referenceUrl?: string;
+  firstFrameUrl?: string;
+  lastFrameUrl?: string;
+  referenceUrls?: string[];
+  productImageUrl?: string;
+  characterImageUrl?: string;
+  referenceImageUrls?: Record<string, string>;
+  videoUrl?: string;
+  videoId?: string;
+  audioUrl?: string;
+}
+
 // Resolution options per model type
 export type FluxImageSize = 'square_hd' | 'square' | 'portrait_4_3' | 'portrait_16_9' | 'landscape_4_3' | 'landscape_16_9';
 export type NanoBananaResolution = '1K' | '2K' | '4K';
@@ -180,11 +194,51 @@ export type ImageModelType =
   | 'nanobanana-2'
   | 'qwen-image-2'
   | 'qwen-image-2-pro'
+  | 'grok-imagine-image'
+  | 'grok-imagine-image-edit'
   | 'recraft-v3'
   | 'recraft-v4'
   | 'seedream-5'
   | 'ideogram-v3'
   | 'sd-3.5';
+
+export type CompareRunStatus =
+  | 'idle'
+  | 'estimating'
+  | 'confirming'
+  | 'running'
+  | 'completed'
+  | 'partial_failed'
+  | 'failed';
+
+export type CompareResultStatus = 'queued' | 'running' | 'completed' | 'failed';
+
+export const MAX_COMPARE_MODELS = 4;
+
+export interface ImageCompareResult {
+  id: string;
+  model: ImageModelType;
+  status: CompareResultStatus;
+  estimatedCredits: number;
+  outputUrl?: string;
+  outputUrls?: string[];
+  error?: string;
+  startedAt?: number;
+  completedAt?: number;
+}
+
+export interface VideoCompareResult {
+  id: string;
+  model: VideoModelType;
+  status: CompareResultStatus;
+  estimatedCredits: number;
+  outputUrl?: string;
+  thumbnailUrl?: string;
+  outputVideoId?: string;
+  error?: string;
+  startedAt?: number;
+  completedAt?: number;
+}
 
 
 // Enabled models - comment/uncomment to toggle visibility in UI
@@ -199,6 +253,8 @@ export const ENABLED_IMAGE_MODELS: ImageModelType[] = [
   'nanobanana-2',
   'qwen-image-2',
   'qwen-image-2-pro',
+  'grok-imagine-image',
+  'grok-imagine-image-edit',
   'recraft-v3',
   'recraft-v4',
   'seedream-5',
@@ -232,6 +288,13 @@ export interface ImageGeneratorNodeData extends Record<string, unknown> {
   // Output
   outputUrl?: string;
   outputUrls?: string[]; // Array for multiple outputs
+  compareEnabled?: boolean;
+  compareModels?: ImageModelType[];
+  compareRunStatus?: CompareRunStatus;
+  compareEstimateCredits?: number;
+  compareResults?: ImageCompareResult[];
+  promotedCompareResultId?: string;
+  compareHistoryId?: string;
   isGenerating?: boolean;
   error?: string;
 }
@@ -400,6 +463,8 @@ export const FAL_MODELS: Record<ImageModelType, string> = {
   'nanobanana-2': 'fal-ai/nano-banana-2',
   'qwen-image-2': 'fal-ai/qwen-image-2/text-to-image',
   'qwen-image-2-pro': 'fal-ai/qwen-image-2/pro/text-to-image',
+  'grok-imagine-image': 'xai/grok-imagine-image',
+  'grok-imagine-image-edit': 'xai/grok-imagine-image/edit',
   'recraft-v3': 'fal-ai/recraft-v3',
   'recraft-v4': 'fal-ai/recraft/v4/text-to-image',
   'seedream-5': 'fal-ai/bytedance/seedream/v5/lite/text-to-image',
@@ -421,6 +486,7 @@ export interface ModelCapabilities {
   maxImages: number;
   inputType: ModelInputType; // Whether model accepts images
   supportsReferences: boolean;
+  requiresReferenceForGeneration?: boolean;
   maxReferences?: number; // Max reference images (default 1)
   aspectRatios: readonly AspectRatio[];
   // Flux uses image size presets, Nano Banana uses resolution tiers
@@ -503,6 +569,24 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
     aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16'],
     imageSizes: ['square_hd', 'square', 'landscape_4_3', 'portrait_4_3', 'landscape_16_9', 'portrait_16_9'],
     description: 'Higher-fidelity Qwen-Image 2 Pro for advanced generation and editing workflows.',
+  },
+  'grok-imagine-image': {
+    label: 'Grok Imagine Image',
+    maxImages: 4,
+    inputType: 'text-only',
+    supportsReferences: false,
+    aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3'],
+    description: 'xAI Grok Imagine for direct text-to-image generation with broad aspect ratio support.',
+  },
+  'grok-imagine-image-edit': {
+    label: 'Grok Imagine Edit',
+    maxImages: 4,
+    inputType: 'text-and-image',
+    supportsReferences: true,
+    requiresReferenceForGeneration: true,
+    maxReferences: 3,
+    aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3'],
+    description: 'xAI Grok Imagine edit endpoint for prompt-guided image transformations with up to 3 references.',
   },
   'recraft-v3': {
     label: 'Recraft V3',
@@ -604,6 +688,9 @@ export type VideoModelType =
   | 'grok-imagine-t2v'
   | 'grok-imagine-i2v'
   | 'grok-imagine-edit-v2v'
+  | 'ltx-2.3-i2v'
+  | 'ltx-2.3-fast-t2v'
+  | 'ltx-2.3-fast-i2v'
   | 'ltx-2-19b-t2v'
   | 'ltx-2-19b-i2v'
   | 'ltx-2-19b-v2v'
@@ -837,6 +924,13 @@ export interface VideoGeneratorNodeData extends Record<string, unknown> {
   outputUrl?: string;
   outputVideoId?: string; // For models that return reusable video IDs (e.g. Sora remix)
   thumbnailUrl?: string;
+  compareEnabled?: boolean;
+  compareModels?: VideoModelType[];
+  compareRunStatus?: CompareRunStatus;
+  compareEstimateCredits?: number;
+  compareResults?: VideoCompareResult[];
+  promotedCompareResultId?: string;
+  compareHistoryId?: string;
   isGenerating?: boolean;
   progress?: number; // 0-100
   error?: string;
@@ -896,6 +990,9 @@ export const ENABLED_VIDEO_MODELS: VideoModelType[] = [
   'grok-imagine-t2v',
   'grok-imagine-i2v',
   'grok-imagine-edit-v2v',
+  'ltx-2.3-i2v',
+  'ltx-2.3-fast-t2v',
+  'ltx-2.3-fast-i2v',
   'ltx-2-19b-t2v',
   'ltx-2-19b-i2v',
   'ltx-2-19b-v2v',
@@ -1121,7 +1218,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     durations: [4, 6, 8, 10],
     defaultDuration: 6,
     aspectRatios: ['16:9', '9:16', '1:1'],
-    resolutions: ['480p', '720p'],
+    resolutions: ['720p'],
     description: 'xAI Grok Imagine text-to-video with synchronized audio output.',
   },
   'grok-imagine-i2v': {
@@ -1132,7 +1229,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     durations: [4, 6, 8, 10],
     defaultDuration: 6,
     aspectRatios: ['16:9', '9:16', '1:1'],
-    resolutions: ['480p', '720p'],
+    resolutions: ['720p'],
     requiresPrompt: true,
     requiresImageRef: true,
     description: 'xAI Grok Imagine image-to-video with synchronized audio output.',
@@ -1145,12 +1242,55 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     durations: [4, 6, 8, 10],
     defaultDuration: 6,
     aspectRatios: ['16:9', '9:16', '1:1'],
-    resolutions: ['480p', '720p'],
+    resolutions: ['720p'],
     maxReferences: 0,
     supportsVideoRef: true,
     requiresPrompt: true,
     requiresVideoRef: true,
     description: 'xAI Grok Imagine video editing/remix from existing video inputs.',
+  },
+  'ltx-2.3-i2v': {
+    label: 'LTX 2.3 Image',
+    group: 'LTX',
+    inputType: 'text-and-image',
+    inputMode: 'first-last-frame',
+    durations: [6, 8, 10],
+    defaultDuration: 6,
+    aspectRatios: ['16:9', '9:16'],
+    resolutions: ['1080p'],
+    supportsAudio: true,
+    requiresPrompt: true,
+    requiresImageRef: true,
+    lastFrameOptional: true,
+    description: 'LTX 2.3 Pro image-to-video at the 1080p tier with optional end-frame guidance and audio.',
+  },
+  'ltx-2.3-fast-t2v': {
+    label: 'LTX 2.3 Fast Text',
+    group: 'LTX',
+    inputType: 'text-only',
+    inputMode: 'text',
+    durations: [6, 8, 10, 12],
+    defaultDuration: 6,
+    aspectRatios: ['16:9', '9:16'],
+    resolutions: ['1080p'],
+    supportsAudio: true,
+    requiresPrompt: true,
+    description: 'LTX 2.3 Fast text-to-video at the 1080p tier with native audio generation.',
+  },
+  'ltx-2.3-fast-i2v': {
+    label: 'LTX 2.3 Fast Image',
+    group: 'LTX',
+    inputType: 'text-and-image',
+    inputMode: 'first-last-frame',
+    durations: [6, 8, 10, 12],
+    defaultDuration: 6,
+    aspectRatios: ['16:9', '9:16'],
+    resolutions: ['1080p'],
+    supportsAudio: true,
+    requiresPrompt: true,
+    requiresImageRef: true,
+    lastFrameOptional: true,
+    description: 'LTX 2.3 Fast image-to-video at the 1080p tier with optional end-frame guidance and audio.',
   },
   'ltx-2-19b-t2v': {
     label: 'LTX 2 19B Text',
@@ -1628,6 +1768,9 @@ export const VIDEO_MODEL_PROVIDERS: Record<VideoModelType, VideoModelProvider> =
   'grok-imagine-t2v': 'fal',
   'grok-imagine-i2v': 'fal',
   'grok-imagine-edit-v2v': 'fal',
+  'ltx-2.3-i2v': 'fal',
+  'ltx-2.3-fast-t2v': 'fal',
+  'ltx-2.3-fast-i2v': 'fal',
   'ltx-2-19b-t2v': 'fal',
   'ltx-2-19b-i2v': 'fal',
   'ltx-2-19b-v2v': 'fal',
@@ -1682,6 +1825,9 @@ export const FAL_VIDEO_MODELS: Partial<Record<VideoModelType, string>> = {
   'grok-imagine-t2v': 'xai/grok-imagine-video/text-to-video',
   'grok-imagine-i2v': 'xai/grok-imagine-video/image-to-video',
   'grok-imagine-edit-v2v': 'xai/grok-imagine-video/edit-video',
+  'ltx-2.3-i2v': 'fal-ai/ltx-2.3/image-to-video',
+  'ltx-2.3-fast-t2v': 'fal-ai/ltx-2.3/text-to-video/fast',
+  'ltx-2.3-fast-i2v': 'fal-ai/ltx-2.3/image-to-video/fast',
   'ltx-2-19b-t2v': 'fal-ai/ltx-2-19b/text-to-video',
   'ltx-2-19b-i2v': 'fal-ai/ltx-2-19b/image-to-video',
   'ltx-2-19b-v2v': 'fal-ai/ltx-2-19b/video-to-video',
@@ -2039,6 +2185,8 @@ export const IMAGE_MODEL_CREDITS: Partial<Record<ImageModelType, number>> = {
   'nanobanana-2': 3,
   'qwen-image-2': 2,
   'qwen-image-2-pro': 3,
+  'grok-imagine-image': 1,
+  'grok-imagine-image-edit': 1,
   'recraft-v3': 2,
   'recraft-v4': 2,
   'seedream-5': 2,
@@ -2062,8 +2210,11 @@ export const VIDEO_MODEL_CREDITS: Partial<Record<VideoModelType, number>> = {
   'sora-2-pro-i2v': 45,
   'sora-2-remix-v2v': 30,
   'grok-imagine-t2v': 11,
-  'grok-imagine-i2v': 8,
+  'grok-imagine-i2v': 11,
   'grok-imagine-edit-v2v': 12,
+  'ltx-2.3-i2v': 9,
+  'ltx-2.3-fast-t2v': 6,
+  'ltx-2.3-fast-i2v': 6,
   'ltx-2-19b-t2v': 7,
   'ltx-2-19b-i2v': 7,
   'ltx-2-19b-v2v': 7,

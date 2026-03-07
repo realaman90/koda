@@ -13,12 +13,22 @@ export interface GenerationHistoryItem {
   type: 'image' | 'video' | 'svg';
   prompt: string;
   model: string;
+  mode?: 'single' | 'compare';
+  models?: string[];
+  winnerModel?: string;
   timestamp: number;
   status: 'completed' | 'failed';
   result?: {
     urls: string[];
     duration?: number; // for video
   };
+  compareResults?: Array<{
+    model: string;
+    status: 'completed' | 'failed';
+    urls?: string[];
+    thumbnailUrl?: string;
+    error?: string;
+  }>;
   settings?: {
     aspectRatio?: string;
     resolution?: string;
@@ -86,7 +96,8 @@ interface SettingsState {
 
   // Generation History
   generationHistory: GenerationHistoryItem[];
-  addToHistory: (item: Omit<GenerationHistoryItem, 'id' | 'timestamp'>) => void;
+  addToHistory: (item: Omit<GenerationHistoryItem, 'id' | 'timestamp'>) => string;
+  updateHistoryItem: (id: string, patch: Partial<Omit<GenerationHistoryItem, 'id' | 'timestamp'>>) => void;
   clearHistory: () => void;
   removeFromHistory: (id: string) => void;
 
@@ -211,16 +222,27 @@ export const useSettingsStore = create<SettingsState>()(
 
       // Generation History
       generationHistory: [],
-      addToHistory: (item) =>
+      addToHistory: (item) => {
+        const id = `gen_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
         set((state) => ({
           generationHistory: [
             {
               ...item,
-              id: `gen_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+              id,
               timestamp: Date.now(),
             },
             ...state.generationHistory,
           ].slice(0, 100), // Keep last 100 items
+        }));
+        return id;
+      },
+      updateHistoryItem: (id, patch) =>
+        set((state) => ({
+          generationHistory: state.generationHistory.map((item) =>
+            item.id === id
+              ? { ...item, ...patch }
+              : item
+          ),
         })),
       clearHistory: () => set({ generationHistory: [] }),
       removeFromHistory: (id) =>

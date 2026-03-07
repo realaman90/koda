@@ -32,3 +32,29 @@ test('normalizeVideoModelOptions snaps unsupported values to a valid Kling confi
     duration: 10,
   });
 });
+
+test('normalizeVideoModelOptions constrains LTX 2.3 Fast and Grok to the priced tiers', () => {
+  const ltx = normalizeVideoModelOptions('ltx-2.3-fast-t2v', {
+    aspectRatio: '1:1',
+    duration: 15,
+    resolution: '720p',
+  });
+
+  assert.deepEqual(ltx, {
+    aspectRatio: '16:9',
+    duration: 12,
+    resolution: '1080p',
+  });
+
+  const grok = normalizeVideoModelOptions('grok-imagine-t2v', {
+    aspectRatio: '1:1',
+    duration: 6,
+    resolution: '480p',
+  });
+
+  assert.deepEqual(grok, {
+    aspectRatio: '1:1',
+    duration: 6,
+    resolution: '720p',
+  });
+});

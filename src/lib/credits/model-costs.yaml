@@ -35,6 +35,12 @@ image:
   qwen-image-2-pro:
     fal_cost: 0.08
     credits: 3
+  grok-imagine-image:
+    fal_cost: 0.02
+    credits: 1
+  grok-imagine-image-edit:
+    fal_cost: 0.022
+    credits: 1
   recraft-v3:
     fal_cost: 0.04
     credits: 2
@@ -139,13 +145,27 @@ video:
     base_duration: 5
     credits: 11
   grok-imagine-i2v:
-    fal_cost_per_sec: 0.05
+    # Fal adds a one-time $0.002 image input fee; this amortizes it across the 5s base duration.
+    fal_cost_per_sec: 0.0704
     base_duration: 5
-    credits: 8
+    credits: 11
   grok-imagine-edit-v2v:
     fal_cost_per_sec: 0.08
     base_duration: 5
     credits: 12
+  # LTX 2.3 family (priced against the 1080p tier exposed in the app)
+  ltx-2.3-i2v:
+    fal_cost_per_sec: 0.06
+    base_duration: 5
+    credits: 9
+  ltx-2.3-fast-t2v:
+    fal_cost_per_sec: 0.04
+    base_duration: 5
+    credits: 6
+  ltx-2.3-fast-i2v:
+    fal_cost_per_sec: 0.04
+    base_duration: 5
+    credits: 6
   # LTX 2 19B family (frame-based pricing approximated to per-second at default fps/size)
   ltx-2-19b-t2v:
     fal_cost_per_sec: 0.042
