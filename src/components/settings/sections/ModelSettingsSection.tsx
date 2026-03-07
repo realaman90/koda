@@ -30,7 +30,7 @@ const VIDEO_MODEL_GROUPS: { label: string; models: VideoModelType[] }[] = [
   { label: 'xAI Grok', models: ['grok-imagine-t2v', 'grok-imagine-i2v', 'grok-imagine-edit-v2v'] },
   { label: 'LTX', models: ['ltx-2-19b-t2v', 'ltx-2-19b-i2v', 'ltx-2-19b-v2v', 'ltx-2-19b-extend', 'ltx-2-19b-a2v'] },
   { label: 'Kling', models: ['kling-2.6-t2v', 'kling-2.6-i2v', 'kling-o3-t2v', 'kling-o3-i2v', 'kling-o3-pro-i2v', 'kling-3.0-t2v', 'kling-3.0-i2v', 'kling-3.0-pro-t2v', 'kling-3.0-pro-i2v'] },
-  { label: 'Seedance', models: ['seedance-1.5-t2v', 'seedance-1.5-i2v', 'seedance-1.0-pro-t2v', 'seedance-1.0-pro-i2v', 'seedance-2.0-t2v', 'seedance-2.0-i2v', 'seedance-2.0-fast-t2v', 'seedance-2.0-fast-i2v'] },
+  { label: 'Seedance', models: ['seedance-1.5-t2v', 'seedance-1.5-i2v', 'seedance-1.0-pro-t2v', 'seedance-1.0-pro-i2v'] },
   { label: 'Wan', models: ['wan-2.6-t2v', 'wan-2.6-i2v'] },
   { label: 'Hailuo', models: ['hailuo-02-t2v', 'hailuo-02-i2v', 'hailuo-2.3-t2v', 'hailuo-2.3-i2v'] },
   { label: 'Other', models: ['luma-ray2', 'minimax-video', 'veed-fabric-1.0', 'heygen-avatar4-i2v'] },
@@ -115,7 +115,7 @@ export function ModelSettingsSection() {
           <p className="text-xs text-muted-foreground">
             {activeTab === 'image'
               ? 'Defaults to Nano Banana 2 \u2014 best balance of speed and quality'
-              : 'Defaults to Seedance 2.0 Fast \u2014 best balance of speed and quality'}
+              : 'Defaults to Kling 3.0 \u2014 balanced speed, quality, and availability'}
           </p>
         </div>
         <span className="text-xs text-primary font-medium px-2 py-0.5 bg-primary/10 rounded">Always on</span>

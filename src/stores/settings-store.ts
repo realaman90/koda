@@ -1,6 +1,11 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { ENABLED_IMAGE_MODELS, ENABLED_VIDEO_MODELS, type ImageModelType, type VideoModelType } from '@/lib/types';
+import {
+  ENABLED_VIDEO_MODELS,
+  resolveDeprecatedVideoModel,
+  type ImageModelType,
+  type VideoModelType,
+} from '@/lib/types';
 
 // Generation history item
 export interface GenerationHistoryItem {
@@ -108,20 +113,38 @@ const DEFAULT_ENABLED_IMAGE: ImageModelType[] = [
 ];
 
 const DEFAULT_ENABLED_VIDEO: VideoModelType[] = [
-  'seedance-2.0-fast-t2v',
-  'seedance-2.0-fast-i2v',
-  'seedance-2.0-t2v',
-  'seedance-2.0-i2v',
+  'kling-3.0-t2v',
+  'kling-3.0-i2v',
+  'kling-3.0-pro-t2v',
+  'kling-3.0-pro-i2v',
   'veo-3',
   'veo-3.1-i2v',
   'veo-3.1-fast-i2v',
-  'kling-3.0-t2v',
-  'kling-3.0-i2v',
   'wan-2.6-t2v',
   'wan-2.6-i2v',
   'hailuo-02-t2v',
   'hailuo-02-i2v',
 ];
+
+function sanitizeEnabledVideoModels(models: VideoModelType[] | undefined): VideoModelType[] {
+  const requested = (models || DEFAULT_ENABLED_VIDEO).map(resolveDeprecatedVideoModel);
+  const next = ENABLED_VIDEO_MODELS.filter((modelId) => requested.includes(modelId));
+  return next.length > 0 ? next : [...DEFAULT_ENABLED_VIDEO];
+}
+
+function sanitizeDefaultSettings(
+  settings: Partial<DefaultGenerationSettings> | undefined
+): DefaultGenerationSettings {
+  return {
+    ...defaultGenerationSettings,
+    ...settings,
+    videoModel: resolveDeprecatedVideoModel(
+      (settings?.videoModel as VideoModelType | undefined) || defaultGenerationSettings.videoModel as VideoModelType
+    ),
+    enabledImageModels: settings?.enabledImageModels || [...DEFAULT_ENABLED_IMAGE],
+    enabledVideoModels: sanitizeEnabledVideoModels(settings?.enabledVideoModels),
+  };
+}
 
 const defaultGenerationSettings: DefaultGenerationSettings = {
   imageModel: 'auto',
@@ -209,7 +232,7 @@ export const useSettingsStore = create<SettingsState>()(
       clearAllData: () => {
         set({
           apiKeys: defaultApiKeys,
-          defaultSettings: defaultGenerationSettings,
+          defaultSettings: sanitizeDefaultSettings(defaultGenerationSettings),
           canvasPreferences: defaultCanvasPreferences,
           theme: 'dark',
           generationHistory: [],
@@ -231,7 +254,7 @@ export const useSettingsStore = create<SettingsState>()(
           const parsed = JSON.parse(data);
           set({
             apiKeys: parsed.apiKeys || defaultApiKeys,
-            defaultSettings: parsed.defaultSettings || defaultGenerationSettings,
+            defaultSettings: sanitizeDefaultSettings(parsed.defaultSettings),
             canvasPreferences: parsed.canvasPreferences || defaultCanvasPreferences,
             theme: parsed.theme || 'dark',
             generationHistory: parsed.generationHistory || [],
@@ -244,6 +267,14 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'spaces-settings-storage',
+      merge: (persistedState, currentState) => {
+        const typedState = persistedState as Partial<SettingsState> | undefined;
+        return {
+          ...currentState,
+          ...typedState,
+          defaultSettings: sanitizeDefaultSettings(typedState?.defaultSettings),
+        };
+      },
       partialize: (state) => ({
         apiKeys: state.apiKeys,
         defaultSettings: state.defaultSettings,

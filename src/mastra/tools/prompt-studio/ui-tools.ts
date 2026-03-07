@@ -36,7 +36,7 @@ export const generatePromptTool = createTool({
   description: 'Generate a polished, production-quality prompt for image or video generation. Always use this tool to output prompts — it makes them copyable and sends them to connected nodes.',
   inputSchema: z.object({
     prompt: z.string().describe('The full optimized prompt text'),
-    targetModel: z.string().describe('Target model label shown in UI. Default to "Auto (Image)" or "Auto (Video)" unless user explicitly requests a specific model. Auto maps to Nano Banana 2 for images and Seedance 2.0 Fast for video.'),
+    targetModel: z.string().describe('Target model label shown in UI. Default to "Auto (Image)" or "Auto (Video)" unless user explicitly requests a specific model. Auto maps to Nano Banana 2 for images and Kling 3.0 for video.'),
     label: z.string().optional().describe('Short label for the prompt card (e.g. "Main Shot", "Variation A", "Close-up")'),
     negativePrompt: z.string().optional().describe('Negative prompt (for models that support it like SD/SDXL)'),
     parameters: z.record(z.string(), z.string()).optional().describe('Model-specific parameters (e.g. {"--ar": "16:9", "--style": "raw"} for Midjourney)'),

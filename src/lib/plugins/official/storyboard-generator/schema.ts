@@ -14,6 +14,12 @@ import { z } from 'zod';
 export const VIDEO_MODEL_FAMILIES = ['veo', 'kling', 'seedance'] as const;
 export type VideoModelFamily = (typeof VIDEO_MODEL_FAMILIES)[number];
 
+export function normalizeStoryboardVideoModelFamily(
+  targetVideoModel: VideoModelFamily = 'veo'
+): VideoModelFamily {
+  return targetVideoModel === 'seedance' ? 'kling' : targetVideoModel;
+}
+
 // ============================================
 // INPUT SCHEMA (Client -> API)
 // ============================================
@@ -417,13 +423,14 @@ export function getSystemPrompt(
   mode: 'transition' | 'single-shot',
   targetVideoModel: VideoModelFamily = 'veo',
 ): string {
-  const profile = VIDEO_PROMPT_PROFILES[targetVideoModel];
+  const resolvedTargetVideoModel = normalizeStoryboardVideoModelFamily(targetVideoModel);
+  const profile = VIDEO_PROMPT_PROFILES[resolvedTargetVideoModel];
   const imageTips = profile.imagePromptTips.map((t) => `- ${t}`).join('\n');
   const modeTip = profile.modes.i2v;
   const r2vTip = profile.modes.r2v ? `\nR2V mode: ${profile.modes.r2v}` : '';
 
   const modelSection = `
-MODEL-SPECIFIC TIPS (optimized for ${targetVideoModel.toUpperCase()}):
+MODEL-SPECIFIC TIPS (optimized for ${resolvedTargetVideoModel.toUpperCase()}):
 
 Prompt Formula: ${profile.formula}
 Duration Range: ${profile.durationRange}
@@ -486,7 +493,7 @@ export const STORYBOARD_SYSTEM_PROMPT = STORYBOARD_TRANSITION_PROMPT;
  * Build the user prompt from input data
  */
 export function buildStoryboardPrompt(input: StoryboardInput): string {
-  const targetModel = input.targetVideoModel || 'veo';
+  const targetModel = normalizeStoryboardVideoModelFamily(input.targetVideoModel || 'veo');
   const profile = VIDEO_PROMPT_PROFILES[targetModel];
 
   const modeInstruction = input.mode === 'single-shot'

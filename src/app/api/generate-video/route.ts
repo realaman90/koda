@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server';
 import { fal } from '@fal-ai/client';
-import { FAL_VIDEO_MODELS, XSKILL_VIDEO_MODELS, VIDEO_MODEL_PROVIDERS, resolveAutoVideoModel, type VideoModelType } from '@/lib/types';
+import {
+  FAL_VIDEO_MODELS,
+  XSKILL_VIDEO_MODELS,
+  VIDEO_MODEL_PROVIDERS,
+  normalizeVideoModelOptions,
+  resolveVideoModel,
+  type VideoModelType,
+} from '@/lib/types';
 import { getVideoModelAdapter, type VideoGenerateRequest } from '@/lib/model-adapters';
 import { saveGeneratedVideo } from '@/lib/video-storage';
 import { getAssetStorageType, getExtensionFromUrl, type AssetStorageProvider } from '@/lib/assets';
@@ -13,15 +20,6 @@ fal.config({
   credentials: process.env.FAL_KEY,
 });
 
-const GOOGLE_VIDEO_MODELS = new Set<VideoModelType>([
-  'veo-3',
-  'veo-3.1-i2v',
-  'veo-3.1-fast-i2v',
-  'veo-3.1-ref',
-  'veo-3.1-flf',
-  'veo-3.1-fast-flf',
-]);
-
 interface XskillMediaInputs {
   referenceUrl?: string;
   firstFrameUrl?: string;
@@ -29,75 +27,6 @@ interface XskillMediaInputs {
   referenceUrls?: string[];
   videoUrl?: string;
   audioUrl?: string;
-}
-
-function toNumber(value: unknown): number | undefined {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string') {
-    const parsed = Number.parseInt(value, 10);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return undefined;
-}
-
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return String(error);
-}
-
-function getErrorStatus(error: unknown): number | undefined {
-  if (!error || typeof error !== 'object') return undefined;
-  const value = error as {
-    status?: unknown;
-    response?: { status?: unknown };
-    body?: { status?: unknown; status_code?: unknown };
-    cause?: { status?: unknown };
-    message?: string;
-  };
-
-  const fromObject =
-    toNumber(value.status)
-    ?? toNumber(value.response?.status)
-    ?? toNumber(value.body?.status)
-    ?? toNumber(value.body?.status_code)
-    ?? toNumber(value.cause?.status);
-
-  if (typeof fromObject === 'number') return fromObject;
-
-  const message = value.message || '';
-  const match = message.match(/\b([45]\d{2})\b/);
-  return match ? toNumber(match[1]) : undefined;
-}
-
-function isFalServiceFailure(error: unknown): boolean {
-  const status = getErrorStatus(error);
-  if (typeof status === 'number' && status >= 500) return true;
-
-  const message = getErrorMessage(error).toLowerCase();
-  return (
-    message.includes('internal server error') ||
-    message.includes('service unavailable') ||
-    message.includes('bad gateway') ||
-    message.includes('gateway timeout') ||
-    message.includes('upstream') ||
-    message.includes('fetch failed') ||
-    message.includes('network') ||
-    message.includes('timed out') ||
-    message.includes('timeout')
-  );
-}
-
-function resolveVeoXskillFallbackModel(modelType: VideoModelType, media: XskillMediaInputs): VideoModelType | undefined {
-  if (!GOOGLE_VIDEO_MODELS.has(modelType)) return undefined;
-
-  const hasImageContext = !!(
-    media.referenceUrl ||
-    media.firstFrameUrl ||
-    media.lastFrameUrl ||
-    media.referenceUrls?.length
-  );
-
-  return hasImageContext ? 'seedance-2.0-fast-i2v' : 'seedance-2.0-fast-t2v';
 }
 
 function normalizeMediaUrl(value: unknown, request: Request): string | undefined {
@@ -287,7 +216,17 @@ export const POST = withCredits(
     const normalizedHeygenVoice =
       typeof inputHeygenVoice === 'string' ? inputHeygenVoice.trim() || undefined : undefined;
 
-    const modelType = resolveAutoVideoModel(model as VideoModelType);
+    const modelType = resolveVideoModel(model as VideoModelType, {
+      referenceUrl: normalizedReferenceUrl,
+      firstFrameUrl: normalizedFirstFrameUrl,
+      lastFrameUrl: normalizedLastFrameUrl,
+      referenceUrls: normalizedReferenceUrls,
+    });
+    const normalizedOptions = normalizeVideoModelOptions(modelType, {
+      aspectRatio,
+      duration,
+      resolution,
+    });
     if (modelType === 'runway-gen3') {
       return NextResponse.json(
         { error: 'Runway Gen-3 is currently unavailable. Please select another video model.' },
@@ -348,9 +287,9 @@ export const POST = withCredits(
     const generateRequest: VideoGenerateRequest = {
       prompt: prompt || '',
       model: modelType,
-      aspectRatio,
-      duration,
-      resolution,
+      aspectRatio: normalizedOptions.aspectRatio,
+      duration: normalizedOptions.duration,
+      resolution: normalizedOptions.resolution,
       referenceUrl: finalReferenceUrl,
       firstFrameUrl: finalFirstFrameUrl,
       lastFrameUrl: finalLastFrameUrl,
@@ -377,6 +316,7 @@ export const POST = withCredits(
       hasVideoId: !!finalVideoId,
       hasAudioUrl: !!finalAudioUrl,
       hasHeygenVoice: !!normalizedHeygenVoice,
+      normalizedOptions,
       input,
     });
 
@@ -403,95 +343,23 @@ export const POST = withCredits(
       console.warn(`No Fal model ID for "${modelType}". Falling back to veo-3.`);
     }
     const modelLabel = falModelId || FAL_VIDEO_MODELS['veo-3']!;
-    try {
-      const { videoUrl, videoId } = await generateViaFal(modelLabel, input, adapter);
+    const { videoUrl, videoId } = await generateViaFal(modelLabel, input, adapter);
 
-      // Save video to configured asset storage (local filesystem, R2, or S3)
-      const savedUrl = await saveGeneratedVideo(videoUrl, {
-        prompt: prompt || '',
-        model: modelLabel,
-        canvasId,
-        nodeId,
-      });
+    // Save video to configured asset storage (local filesystem, R2, or S3)
+    const savedUrl = await saveGeneratedVideo(videoUrl, {
+      prompt: prompt || '',
+      model: modelLabel,
+      canvasId,
+      nodeId,
+    });
 
-      return NextResponse.json({
-        success: true,
-        videoUrl: savedUrl,
-        originalUrl: videoUrl,
-        videoId,
-        model: modelLabel,
-      });
-    } catch (falError) {
-      const fallbackModelType = resolveVeoXskillFallbackModel(modelType, {
-        referenceUrl: finalReferenceUrl,
-        firstFrameUrl: finalFirstFrameUrl,
-        lastFrameUrl: finalLastFrameUrl,
-        referenceUrls: finalReferenceUrls,
-        videoUrl: finalVideoUrl,
-        audioUrl: finalAudioUrl,
-      });
-
-      if (!fallbackModelType || !isFalServiceFailure(falError)) {
-        throw falError;
-      }
-
-      const fallbackOuterModelId = XSKILL_VIDEO_MODELS[fallbackModelType];
-      if (!fallbackOuterModelId) {
-        throw falError;
-      }
-
-      console.warn(
-        `[generate-video] Fal failed for ${modelLabel}, falling back to ${fallbackModelType} via xskill`,
-        falError
-      );
-
-      const fallbackRehosted = await rehostMediaInputsForXskill(
-        {
-          referenceUrl: finalReferenceUrl,
-          firstFrameUrl: finalFirstFrameUrl,
-          lastFrameUrl: finalLastFrameUrl,
-          referenceUrls: finalReferenceUrls,
-          videoUrl: finalVideoUrl,
-          audioUrl: finalAudioUrl,
-        },
-        request,
-        { model: String(fallbackModelType), nodeId, canvasId }
-      );
-
-      const fallbackGenerateRequest: VideoGenerateRequest = {
-        prompt: prompt || '',
-        model: fallbackModelType,
-        aspectRatio,
-        duration,
-        resolution,
-        referenceUrl: fallbackRehosted.referenceUrl,
-        firstFrameUrl: fallbackRehosted.firstFrameUrl,
-        lastFrameUrl: fallbackRehosted.lastFrameUrl,
-        referenceUrls: fallbackRehosted.referenceUrls,
-        videoUrl: fallbackRehosted.videoUrl,
-        videoId: finalVideoId,
-        audioUrl: fallbackRehosted.audioUrl,
-        generateAudio,
-        heygenVoice: normalizedHeygenVoice,
-      };
-
-      const fallbackAdapter = getVideoModelAdapter(fallbackModelType);
-      const fallbackInput = fallbackAdapter.buildInput(fallbackGenerateRequest);
-
-      const { xskillCreateTask } = await import('@/lib/xskill');
-      const { taskId } = await xskillCreateTask({
-        model: fallbackOuterModelId,
-        params: fallbackInput,
-      });
-
-      return NextResponse.json({
-        async: true,
-        taskId,
-        model: fallbackOuterModelId,
-        fallback: true,
-        fallbackFrom: modelLabel,
-      });
-    }
+    return NextResponse.json({
+      success: true,
+      videoUrl: savedUrl,
+      originalUrl: videoUrl,
+      videoId,
+      model: modelLabel,
+    });
   } catch (error) {
     console.error('Video generation error:', error);
 
