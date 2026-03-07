@@ -1033,7 +1033,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     defaultDuration: 5,
     aspectRatios: ['16:9', '9:16', '1:1'],
     supportsAudio: true,
-    description: 'Automatically picks Kling 3.0 Text or Kling 3.0 Image based on your inputs.',
+    description: 'Automatically picks Kling 3.0 Text-to-Video or Kling 3.0 Image-to-Video based on your inputs.',
   },
   'veo-3': {
     label: 'Veo 3',
@@ -1048,7 +1048,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     description: 'Google Veo 3 flagship text-to-video model with native sound generation.',
   },
   'veo-3.1-i2v': {
-    label: 'Veo 3.1 Image',
+    label: 'Veo 3.1 Image-to-Video',
     group: 'Google Veo',
     inputType: 'text-and-image',
     inputMode: 'single-image',
@@ -1060,7 +1060,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     description: 'Google Veo 3.1 image-to-video for high-fidelity motion from a single image.',
   },
   'veo-3.1-fast-i2v': {
-    label: 'Veo 3.1 Fast Image',
+    label: 'Veo 3.1 Fast Image-to-Video',
     group: 'Google Veo',
     inputType: 'text-and-image',
     inputMode: 'single-image',
@@ -1121,7 +1121,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     description: 'Vidu Q3 Pro text-to-video with high quality cinematic motion and audio.',
   },
   'vidu-q3-i2v': {
-    label: 'Vidu Q3 Image',
+    label: 'Vidu Q3 Image-to-Video',
     group: 'Vidu',
     inputType: 'text-and-image',
     inputMode: 'first-last-frame',
@@ -1146,7 +1146,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     description: 'Vidu Q3 Turbo text-to-video optimized for speed and cost efficiency.',
   },
   'vidu-q3-i2v-turbo': {
-    label: 'Vidu Q3 Turbo Image',
+    label: 'Vidu Q3 Turbo Image-to-Video',
     group: 'Vidu',
     inputType: 'text-and-image',
     inputMode: 'first-last-frame',
@@ -1170,7 +1170,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     description: 'OpenAI Sora 2 text-to-video for richly detailed, dynamic clips with audio.',
   },
   'sora-2-i2v': {
-    label: 'Sora 2 Image',
+    label: 'Sora 2 Image-to-Video',
     group: 'Sora 2',
     inputType: 'text-and-image',
     inputMode: 'single-image',
@@ -1183,7 +1183,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     description: 'OpenAI Sora 2 image-to-video for detailed motion and native audio.',
   },
   'sora-2-pro-i2v': {
-    label: 'Sora 2 Pro Image',
+    label: 'Sora 2 Pro Image-to-Video',
     group: 'Sora 2',
     inputType: 'text-and-image',
     inputMode: 'single-image',
@@ -1222,7 +1222,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     description: 'xAI Grok Imagine text-to-video with synchronized audio output.',
   },
   'grok-imagine-i2v': {
-    label: 'Grok Imagine Image',
+    label: 'Grok Imagine Image-to-Video',
     group: 'xAI Grok',
     inputType: 'text-and-image',
     inputMode: 'single-image',
@@ -1250,7 +1250,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     description: 'xAI Grok Imagine video editing/remix from existing video inputs.',
   },
   'ltx-2.3-i2v': {
-    label: 'LTX 2.3 Image',
+    label: 'LTX 2.3 Image-to-Video',
     group: 'LTX',
     inputType: 'text-and-image',
     inputMode: 'first-last-frame',
@@ -1278,7 +1278,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     description: 'LTX 2.3 Fast text-to-video at the 1080p tier with native audio generation.',
   },
   'ltx-2.3-fast-i2v': {
-    label: 'LTX 2.3 Fast Image',
+    label: 'LTX 2.3 Fast Image-to-Video',
     group: 'LTX',
     inputType: 'text-and-image',
     inputMode: 'first-last-frame',
@@ -1305,7 +1305,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     description: 'LTX-2 19B text-to-video with integrated audio generation.',
   },
   'ltx-2-19b-i2v': {
-    label: 'LTX 2 19B Image',
+    label: 'LTX 2 19B Image-to-Video',
     group: 'LTX',
     inputType: 'text-and-image',
     inputMode: 'first-last-frame',
@@ -1403,7 +1403,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     description: 'Kling 2.6 Pro text-to-video with cinematic visuals, fluid motion, and audio.',
   },
   'kling-2.6-i2v': {
-    label: 'Kling 2.6 Image',
+    label: 'Kling 2.6 Image-to-Video',
     group: 'Kling',
     inputType: 'text-and-image',
     inputMode: 'first-last-frame',
@@ -1426,7 +1426,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     description: 'Kling O3 Pro text-to-video for realistic motion and cinematic scene control.',
   },
   'kling-o3-i2v': {
-    label: 'Kling O3 Image',
+    label: 'Kling O3 Image-to-Video',
     group: 'Kling',
     inputType: 'text-and-image',
     inputMode: 'first-last-frame',
@@ -1438,7 +1438,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     description: 'Kling O3 Standard image-to-video with strong frame-to-frame transition control.',
   },
   'kling-o3-pro-i2v': {
-    label: 'Kling O3 Pro Image',
+    label: 'Kling O3 Pro Image-to-Video',
     group: 'Kling',
     inputType: 'text-and-image',
     inputMode: 'first-last-frame',
@@ -1461,7 +1461,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     description: 'Kling 3.0 Standard text-to-video with multi-shot support and native audio.',
   },
   'kling-3.0-i2v': {
-    label: 'Kling 3.0 Image',
+    label: 'Kling 3.0 Image-to-Video',
     group: 'Kling',
     inputType: 'text-and-image',
     inputMode: 'first-last-frame',
@@ -1484,7 +1484,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     description: 'Kling 3.0 Pro text-to-video for premium multi-shot cinematic generation.',
   },
   'kling-3.0-pro-i2v': {
-    label: 'Kling 3.0 Pro Image',
+    label: 'Kling 3.0 Pro Image-to-Video',
     group: 'Kling',
     inputType: 'text-and-image',
     inputMode: 'first-last-frame',
@@ -1509,7 +1509,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     description: 'ByteDance Seedance 1.5 Pro text-to-video with native audio generation.',
   },
   'seedance-1.5-i2v': {
-    label: 'Seedance 1.5 Image',
+    label: 'Seedance 1.5 Image-to-Video',
     group: 'Seedance',
     inputType: 'text-and-image',
     inputMode: 'first-last-frame',
@@ -1535,7 +1535,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     description: 'Seedance 1.0 Pro text-to-video with 1080p output and multi-shot storytelling.',
   },
   'seedance-1.0-pro-i2v': {
-    label: 'Seedance 1.0 Pro Image',
+    label: 'Seedance 1.0 Pro Image-to-Video',
     group: 'Seedance',
     inputType: 'text-and-image',
     inputMode: 'single-image',
@@ -1559,7 +1559,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     description: 'Seedance 2.0 multimodal text-to-video with director-level control and audio-video sync.',
   },
   'seedance-2.0-i2v': {
-    label: 'Seedance 2.0 Image',
+    label: 'Seedance 2.0 Image-to-Video',
     group: 'Seedance 2.0',
     inputType: 'text-and-image',
     inputMode: 'single-image',
@@ -1586,7 +1586,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     description: 'Faster Seedance 2.0 text-to-video variant for lower latency multimodal workflows.',
   },
   'seedance-2.0-fast-i2v': {
-    label: 'Seedance 2.0 Fast Image',
+    label: 'Seedance 2.0 Fast Image-to-Video',
     group: 'Seedance 2.0',
     inputType: 'text-and-image',
     inputMode: 'single-image',
@@ -1643,7 +1643,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     description: 'Wan 2.6 text-to-video with multi-shot generation, audio input, and 720p/1080p output.',
   },
   'wan-2.6-i2v': {
-    label: 'Wan 2.6 Image',
+    label: 'Wan 2.6 Image-to-Video',
     group: 'Wan',
     inputType: 'text-and-image',
     inputMode: 'single-image',
@@ -1664,7 +1664,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     description: 'MiniMax Hailuo 02 Pro text-to-video with advanced generation at 1080p.',
   },
   'hailuo-02-i2v': {
-    label: 'Hailuo 02 Image',
+    label: 'Hailuo 02 Image-to-Video',
     group: 'Hailuo',
     inputType: 'text-and-image',
     inputMode: 'single-image',
@@ -1684,7 +1684,7 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     description: 'MiniMax Hailuo 2.3 Pro text-to-video with 1080p output.',
   },
   'hailuo-2.3-i2v': {
-    label: 'Hailuo 2.3 Image',
+    label: 'Hailuo 2.3 Image-to-Video',
     group: 'Hailuo',
     inputType: 'text-and-image',
     inputMode: 'single-image',

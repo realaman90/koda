@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import {
+  ENABLED_IMAGE_MODELS,
   ENABLED_VIDEO_MODELS,
   resolveDeprecatedVideoModel,
   type ImageModelType,
@@ -113,8 +114,7 @@ const defaultApiKeys: ApiKeys = {
   openAi: '',
 };
 
-// Curated defaults — only the best models shown by default
-const DEFAULT_ENABLED_IMAGE: ImageModelType[] = [
+const LEGACY_DEFAULT_ENABLED_IMAGE: ImageModelType[] = [
   'nanobanana-2',
   'flux-2-pro',
   'flux-kontext',
@@ -123,7 +123,7 @@ const DEFAULT_ENABLED_IMAGE: ImageModelType[] = [
   'ideogram-v3',
 ];
 
-const DEFAULT_ENABLED_VIDEO: VideoModelType[] = [
+const LEGACY_DEFAULT_ENABLED_VIDEO: VideoModelType[] = [
   'kling-3.0-t2v',
   'kling-3.0-i2v',
   'kling-3.0-pro-t2v',
@@ -137,8 +137,30 @@ const DEFAULT_ENABLED_VIDEO: VideoModelType[] = [
   'hailuo-02-i2v',
 ];
 
+// Default to all shipped models.
+const DEFAULT_ENABLED_IMAGE: ImageModelType[] = [...ENABLED_IMAGE_MODELS];
+const DEFAULT_ENABLED_VIDEO: VideoModelType[] = [...ENABLED_VIDEO_MODELS];
+
+function matchesModelSet<T extends string>(actual: T[] | undefined, expected: readonly T[]): boolean {
+  if (!actual || actual.length !== expected.length) return false;
+  return expected.every((modelId) => actual.includes(modelId));
+}
+
+function sanitizeEnabledImageModels(models: ImageModelType[] | undefined): ImageModelType[] {
+  if (!models || matchesModelSet(models, LEGACY_DEFAULT_ENABLED_IMAGE)) {
+    return [...DEFAULT_ENABLED_IMAGE];
+  }
+
+  const next = ENABLED_IMAGE_MODELS.filter((modelId) => models.includes(modelId));
+  return next.length > 0 ? next : [...DEFAULT_ENABLED_IMAGE];
+}
+
 function sanitizeEnabledVideoModels(models: VideoModelType[] | undefined): VideoModelType[] {
-  const requested = (models || DEFAULT_ENABLED_VIDEO).map(resolveDeprecatedVideoModel);
+  if (!models || matchesModelSet(models, LEGACY_DEFAULT_ENABLED_VIDEO)) {
+    return [...DEFAULT_ENABLED_VIDEO];
+  }
+
+  const requested = models.map(resolveDeprecatedVideoModel);
   const next = ENABLED_VIDEO_MODELS.filter((modelId) => requested.includes(modelId));
   return next.length > 0 ? next : [...DEFAULT_ENABLED_VIDEO];
 }
@@ -152,7 +174,7 @@ function sanitizeDefaultSettings(
     videoModel: resolveDeprecatedVideoModel(
       (settings?.videoModel as VideoModelType | undefined) || defaultGenerationSettings.videoModel as VideoModelType
     ),
-    enabledImageModels: settings?.enabledImageModels || [...DEFAULT_ENABLED_IMAGE],
+    enabledImageModels: sanitizeEnabledImageModels(settings?.enabledImageModels),
     enabledVideoModels: sanitizeEnabledVideoModels(settings?.enabledVideoModels),
   };
 }
