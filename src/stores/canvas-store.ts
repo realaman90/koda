@@ -150,6 +150,24 @@ function createNode<T extends AppNode>(node: T): T {
   return normalizeAppNode(node);
 }
 
+/**
+ * Clear transient runtime state when duplicating nodes.
+ * Prevents cloned nodes from inheriting in-flight generation UI state.
+ */
+export const resetTransientNodeStateForDuplicate = (node: AppNode): AppNode => {
+  if (node.type !== 'imageGenerator') return node;
+
+  const data = node.data as ImageGeneratorNodeData;
+  return {
+    ...node,
+    data: {
+      ...data,
+      isGenerating: false,
+      error: undefined,
+    },
+  };
+};
+
 function cloneNodes(nodes: AppNode[]): AppNode[] {
   return normalizeAppNodes(deepCloneCanvasValue(nodes));
 }
