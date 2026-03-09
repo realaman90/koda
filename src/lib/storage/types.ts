@@ -102,12 +102,17 @@ export interface StorageProvider {
    * Optional sync method for cloud providers
    */
   sync?(): Promise<void>;
+
+  /**
+   * Optional one-time migration hook for legacy browser storage.
+   */
+  migrateLegacyData?(): Promise<string | null>;
 }
 
 /**
  * Storage provider type identifier
  */
-export type StorageProviderType = 'localStorage' | 'sqlite';
+export type StorageProviderType = 'indexeddb' | 'localStorage' | 'sqlite';
 
 /**
  * Generate a unique canvas ID

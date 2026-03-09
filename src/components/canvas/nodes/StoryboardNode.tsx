@@ -37,6 +37,10 @@ import { toast } from 'sonner';
 import { ThinkingBlock, UserBubble } from '@/lib/plugins/official/agents/animation-generator/components/ChatMessages';
 import { StoryboardDraftCard } from './storyboard/StoryboardDraftCard';
 import { ChatInput } from '@/lib/plugins/official/agents/animation-generator/components/ChatInput';
+import { useNodeDisplayMode } from './useNodeDisplayMode';
+import { NodeFloatingToolbar } from '@/components/canvas/nodes/chrome/NodeFloatingToolbar';
+import { useNodeChromeState } from '@/components/canvas/nodes/chrome/useNodeChromeState';
+import { getPromptHeavyInputHandleTop } from '@/components/canvas/nodes/chrome/handleLayout';
 // Video recipes available but not shown in UI — injected server-side if needed
 
 // Style options
@@ -123,22 +127,39 @@ type TimelineItem =
  */
 function useLocalField(
   storeValue: string,
-  onUpdate: (v: string) => void,
+  onUpdate: (value: string, options?: { final?: boolean }) => void,
 ) {
   const [local, setLocal] = useState(storeValue);
   const focused = useRef(false);
   const storeRef = useRef(storeValue);
-  storeRef.current = storeValue;
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Sync from store when not focused (handles undo, migration, external updates)
-  if (!focused.current && storeValue !== local) {
-    setLocal(storeValue);
-  }
+  useEffect(() => {
+    storeRef.current = storeValue;
+    if (!focused.current) {
+      setLocal(storeValue);
+    }
+  }, [storeValue]);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+    };
+  }, []);
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
-      setLocal(e.target.value);
-      onUpdate(e.target.value);
+      const nextValue = e.target.value;
+      setLocal(nextValue);
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+      timerRef.current = setTimeout(() => {
+        timerRef.current = null;
+        onUpdate(nextValue, { final: false });
+      }, 750);
     },
     [onUpdate],
   );
@@ -146,10 +167,12 @@ function useLocalField(
   const handleFocus = useCallback(() => { focused.current = true; }, []);
   const handleBlur = useCallback(() => {
     focused.current = false;
-    // Reconcile with store in case it drifted while focused (e.g. undo)
-    const sv = storeRef.current;
-    setLocal((cur) => (cur === sv ? cur : sv));
-  }, []);
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    onUpdate(local, { final: true });
+  }, [local, onUpdate]);
 
   return { value: local, onChange: handleChange, onFocus: handleFocus, onBlur: handleBlur };
 }
@@ -168,13 +191,13 @@ function ReferenceCard({
   index: number;
   isReadOnly: boolean;
   referenceImageUrls: Record<string, string>;
-  updateReference: (refId: string, field: keyof StoryboardReference, value: string) => void;
+  updateReference: (refId: string, field: keyof StoryboardReference, value: string, options?: { final?: boolean }) => void;
   removeReference: (refId: string) => void;
   setCardRef: (index: number, el: HTMLDivElement | null) => void;
   refsLength: number;
 }) {
-  const labelField = useLocalField(refData.label, (v) => updateReference(refData.id, 'label', v));
-  const descField = useLocalField(refData.description, (v) => updateReference(refData.id, 'description', v));
+  const labelField = useLocalField(refData.label, (v, options) => updateReference(refData.id, 'label', v, options));
+  const descField = useLocalField(refData.description, (v, options) => updateReference(refData.id, 'description', v, options));
   const handleCardRef = useCallback((el: HTMLDivElement | null) => {
     setCardRef(index, el);
   }, [index, setCardRef]);
@@ -242,6 +265,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
 
   const [isEditingName, setIsEditingName] = useState(false);
   const [nodeName, setNodeName] = useState(data.name || 'Storyboard');
+  const [isHovered, setIsHovered] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const rootNodeRef = useRef<HTMLDivElement>(null);
@@ -250,6 +274,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
     refCardRefs.current[index] = el;
   }, []);
   const [handleTops, setHandleTops] = useState<(number | null)[]>([]);
+  const { displayMode, focusedWithin, focusProps } = useNodeDisplayMode(selected);
 
   // Sequence counter for ordering timeline items
   const seqRef = useRef(0);
@@ -390,14 +415,22 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
 
   // Form field handlers
   const updateField = useCallback(
-    <K extends keyof StoryboardNodeData>(field: K, value: StoryboardNodeData[K]) => {
-      updateNodeData(id, { [field]: value });
+    <K extends keyof StoryboardNodeData>(field: K, value: StoryboardNodeData[K], options?: { final?: boolean }) => {
+      updateNodeData(
+        id,
+        { [field]: value },
+        options
+          ? (options.final
+            ? { history: 'push', save: 'schedule', preview: 'skip', kind: 'content' }
+            : { history: 'skip', save: 'skip', preview: 'skip', kind: 'typing' })
+          : undefined
+      );
     },
     [id, updateNodeData]
   );
 
   // Local field state to prevent cursor-jump in textareas
-  const conceptField = useLocalField(data.concept || '', (v) => updateField('concept', v));
+  const conceptField = useLocalField(data.concept || '', (v, options) => updateField('concept', v, options));
 
   // References helpers
   const refs = data.references || [];
@@ -462,13 +495,38 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
     updateNodeData(id, { references: reindexed.length > 0 ? reindexed : [{ id: `ref_${Date.now()}`, role: 'subject' as const, label: '', description: '', handleId: 'refImage_0' }] });
   }, [id, refs, updateNodeData]);
 
-  const updateReference = useCallback((refId: string, field: keyof StoryboardReference, value: string) => {
+  const updateReference = useCallback((refId: string, field: keyof StoryboardReference, value: string, options?: { final?: boolean }) => {
     const updated = refs.map(r => r.id === refId ? { ...r, [field]: value } : r);
-    updateNodeData(id, { references: updated });
+    updateNodeData(
+      id,
+      { references: updated },
+      options
+        ? (options.final
+          ? { history: 'push', save: 'schedule', preview: 'skip', kind: 'content' }
+          : { history: 'skip', save: 'skip', preview: 'skip', kind: 'typing' })
+        : undefined
+    );
   }, [id, refs, updateNodeData]);
 
   // Validation: at least one reference with a label + concept filled
   const isValid = refs.some(r => r.label.trim().length > 0) && (data.concept?.trim().length ?? 0) > 0;
+  const latestDraft = data.drafts?.[data.drafts.length - 1];
+  const storyboardSummary = useMemo(() => {
+    const concept = (data.concept || '').replace(/\s+/g, ' ').trim();
+    const latestUserMessage = [...(data.chatMessages || [])]
+      .reverse()
+      .find((message) => message.role === 'user' && message.content.trim())?.content;
+    return latestDraft?.summary || data.result?.summary || concept || latestUserMessage || 'Add references and a concept to generate a storyboard.';
+  }, [data.chatMessages, data.concept, data.result?.summary, latestDraft?.summary]);
+  const chromeState = useNodeChromeState({
+    isHovered,
+    focusedWithin,
+    selected,
+    displayMode,
+    hasOutput: data.viewState === 'chat' || data.viewState === 'preview',
+  });
+  const showTopToolbar = chromeState.showTopToolbar && !isReadOnly;
+  const showHandles = chromeState.showHandles;
 
   // Concept auto-generation
   const [isGeneratingConcept, setIsGeneratingConcept] = useState(false);
@@ -1615,10 +1673,16 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
   );
 
   return (
-    <div ref={rootNodeRef} className="relative">
+    <div
+      ref={rootNodeRef}
+      className="relative"
+      {...focusProps}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
       {/* Floating Toolbar - hidden in read-only mode */}
-      {selected && !isReadOnly && (
-        <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1 backdrop-blur rounded-lg px-2 py-1.5 border node-toolbar-floating shadow-xl z-10">
+      {showTopToolbar && (
+        <NodeFloatingToolbar className="absolute -top-12 left-1/2 -translate-x-1/2 z-10">
           <Button
             variant="ghost"
             size="icon-sm"
@@ -1627,11 +1691,11 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
           >
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
-        </div>
+        </NodeFloatingToolbar>
       )}
 
       {/* Node Title */}
-      <div className="flex items-center gap-2 mb-2 text-sm font-medium" style={{ color: 'var(--node-title-storyboard)' }}>
+      <div className="mb-2 rounded-xl px-3 py-2 text-sm font-medium" style={{ color: 'var(--node-title-storyboard)' }}>
         <Clapperboard className="h-4 w-4" />
         {isEditingName ? (
           <input
@@ -1663,7 +1727,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
       {/* Main Node Card */}
       <div
         className={`
-          animation-node w-[400px] rounded-2xl overflow-hidden flex flex-col
+          node-drag-handle node-drag-surface animation-node min-w-[400px] w-fit max-w-[760px] rounded-2xl overflow-hidden flex flex-col
           transition-[box-shadow,ring-color] duration-150
           ${selected
             ? 'ring-[2.5px] ring-blue-500 shadow-lg shadow-blue-500/10'
@@ -1695,7 +1759,25 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
         </div>
 
         {/* Content */}
-        {data.viewState === 'form' ? (
+        {displayMode !== 'full' ? (
+          <div className={`node-body flex-1 ${displayMode === 'compact' ? 'node-compact' : 'node-summary'}`}>
+            <div className="node-content-area rounded-xl p-3">
+              <p className="text-xs font-medium text-muted-foreground">
+                {data.viewState === 'chat' ? 'Latest storyboard' : 'Storyboard brief'}
+              </p>
+              <p className="mt-1 text-sm text-foreground/85 line-clamp-4">
+                {storyboardSummary}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+              <span>{refs.length} reference{refs.length === 1 ? '' : 's'}</span>
+              <span>{data.sceneCount} scenes</span>
+              <span>{data.style}</span>
+              <span>{targetVideoModel}</span>
+              <span>{data.mode || 'transition'}</span>
+            </div>
+          </div>
+        ) : data.viewState === 'form' ? (
           <div className="h-[580px] overflow-y-auto nowheel scrollbar-thin" onWheel={(e) => !e.ctrlKey && e.stopPropagation()}>
             {renderForm()}
           </div>
@@ -1749,7 +1831,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
             const isConnected = !!referenceImageUrls[ref.handleId];
             const label = ref.label?.trim() || `${ref.role} ${index + 1}`;
             return (
-              <div key={ref.handleId} className="absolute -left-3 group" style={{ top: `${handleTops[index] ?? (95 + index * 50)}px` }}>
+              <div key={ref.handleId} className={`absolute -left-3 z-10 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`} style={{ top: `${handleTops[index] ?? getPromptHeavyInputHandleTop(index, { start: 110, gap: 50 })}px` }}>
                 <div className="relative">
                   <Handle
                     type="target"
@@ -1757,7 +1839,7 @@ function StoryboardNodeComponent({ id, data, selected }: NodeProps<StoryboardNod
                     id={ref.handleId}
                     className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-zinc-400 !border-zinc-900 hover:!border-zinc-700"
                   />
-                  <RoleIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+                  <RoleIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-input-icon)]" />
                 </div>
                 <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
                   {isConnected ? `${label} (connected)` : label}

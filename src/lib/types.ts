@@ -483,6 +483,7 @@ export const ASPECT_RATIO_STRINGS = {
 // Model capabilities configuration
 export interface ModelCapabilities {
   label: string;
+  group: string; // Category for grouped dropdown display
   maxImages: number;
   inputType: ModelInputType; // Whether model accepts images
   supportsReferences: boolean;
@@ -503,6 +504,7 @@ export interface ModelCapabilities {
 export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
   'auto': {
     label: 'Auto',
+    group: 'Auto',
     maxImages: 4,
     inputType: 'text-and-image',
     supportsReferences: true,
@@ -513,6 +515,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
   },
   'flux-schnell': {
     label: 'Flux Schnell',
+    group: 'Flux',
     maxImages: 4,
     inputType: 'text-only',
     supportsReferences: false,
@@ -522,6 +525,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
   },
   'flux-pro': {
     label: 'Flux Pro',
+    group: 'Flux',
     maxImages: 4,
     inputType: 'text-and-image',
     supportsReferences: true,
@@ -532,6 +536,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
   },
   'nanobanana-pro': {
     label: 'Nano Banana Pro',
+    group: 'Google',
     maxImages: 4,
     inputType: 'text-and-image',
     supportsReferences: true,
@@ -542,6 +547,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
   },
   'nanobanana-2': {
     label: 'Nano Banana 2',
+    group: 'Google',
     maxImages: 4,
     inputType: 'text-and-image',
     supportsReferences: true,
@@ -552,6 +558,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
   },
   'qwen-image-2': {
     label: 'Qwen Image 2',
+    group: 'Qwen',
     maxImages: 4,
     inputType: 'text-and-image',
     supportsReferences: true,
@@ -562,6 +569,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
   },
   'qwen-image-2-pro': {
     label: 'Qwen Image 2 Pro',
+    group: 'Qwen',
     maxImages: 4,
     inputType: 'text-and-image',
     supportsReferences: true,
@@ -572,6 +580,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
   },
   'grok-imagine-image': {
     label: 'Grok Imagine Image',
+    group: 'xAI Grok',
     maxImages: 4,
     inputType: 'text-only',
     supportsReferences: false,
@@ -580,6 +589,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
   },
   'grok-imagine-image-edit': {
     label: 'Grok Imagine Edit',
+    group: 'xAI Grok',
     maxImages: 4,
     inputType: 'text-and-image',
     supportsReferences: true,
@@ -590,6 +600,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
   },
   'recraft-v3': {
     label: 'Recraft V3',
+    group: 'Recraft',
     maxImages: 4,
     inputType: 'text-only',
     supportsReferences: false,
@@ -599,6 +610,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
   },
   'ideogram-v3': {
     label: 'Ideogram V3',
+    group: 'Ideogram',
     maxImages: 4,
     inputType: 'text-only',
     supportsReferences: false,
@@ -609,6 +621,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
   },
   'sd-3.5': {
     label: 'SD 3.5 Large',
+    group: 'Stability AI',
     maxImages: 4,
     inputType: 'text-and-image',
     supportsReferences: true,
@@ -619,6 +632,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
   },
   'flux-2-pro': {
     label: 'FLUX.2 Pro',
+    group: 'Flux',
     maxImages: 1,
     inputType: 'text-and-image',
     supportsReferences: true,
@@ -629,6 +643,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
   },
   'flux-2-max': {
     label: 'FLUX.2 Max',
+    group: 'Flux',
     maxImages: 4,
     inputType: 'text-only',
     supportsReferences: false,
@@ -638,6 +653,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
   },
   'flux-kontext': {
     label: 'Flux Kontext',
+    group: 'Flux',
     maxImages: 4,
     inputType: 'text-and-image',
     supportsReferences: true,
@@ -647,6 +663,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
   },
   'seedream-5': {
     label: 'Seedream 5.0',
+    group: 'ByteDance',
     maxImages: 4,
     inputType: 'text-only',
     supportsReferences: false,
@@ -655,6 +672,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
   },
   'recraft-v4': {
     label: 'Recraft V4',
+    group: 'Recraft',
     maxImages: 4,
     inputType: 'text-only',
     supportsReferences: false,

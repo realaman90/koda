@@ -2,7 +2,6 @@ import { create } from 'zustand';
 import type { CanvasMetadata, StoredCanvas } from '@/lib/storage';
 import {
   getStorageProvider,
-  getLocalStorageProvider,
   createEmptyCanvas,
 } from '@/lib/storage';
 import {
@@ -20,8 +19,16 @@ import { useCanvasStore } from './canvas-store';
 import type { Template } from '@/lib/templates/types';
 import { parseSyncCapabilityProbe } from '@/lib/runtime/sync-capability';
 import type { AppNode, PluginNodeData } from '@/lib/types';
+import { resolveCanvasPersistencePlan } from '@/lib/canvas-persistence';
+import { createCanvasMutationRecord, type CanvasMutationKind, type CanvasMutationRecord } from './canvas-store-helpers';
 
 type SyncCapability = 'unknown' | 'db-sync-available' | 'local-only' | 'provisioning-blocked';
+type SaveScope = 'local' | 'server' | 'full';
+
+interface SaveCurrentCanvasOptions {
+  scope?: SaveScope;
+  triggerPreview?: boolean;
+}
 
 interface AppState {
   // Current canvas being edited
@@ -51,10 +58,12 @@ interface AppState {
   renameCanvas: (id: string, name: string) => Promise<void>;
   duplicateCanvas: (id: string) => Promise<string | null>;
   deleteCanvas: (id: string) => Promise<void>;
-  saveCurrentCanvas: () => Promise<void>;
+  saveCurrentCanvas: (options?: SaveCurrentCanvasOptions) => Promise<void>;
+  flushCanvasPersistence: (triggerPreview?: boolean) => Promise<void>;
+  scheduleCanvasPersistence: (mutation: CanvasMutationRecord) => void;
   clearCurrentCanvas: () => void;
   setCurrentCanvasName: (name: string) => void;
-  markUnsavedChanges: () => void;
+  markUnsavedChanges: (kind?: CanvasMutationKind) => void;
   updateCanvasThumbnail: (id: string, patch: Pick<StoredCanvas, 'thumbnail' | 'thumbnailUrl' | 'thumbnailStatus' | 'thumbnailUpdatedAt' | 'thumbnailVersion' | 'thumbnailErrorCode'>) => Promise<void>;
   requestPreviewRefresh: (id: string, force?: boolean) => Promise<void>;
 
@@ -65,14 +74,26 @@ interface AppState {
   initializeSync: () => Promise<void>;
 }
 
-// Debounce timer for auto-save
-let saveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-const SAVE_DEBOUNCE_MS = 1000;
+let localPersistTimer: ReturnType<typeof setTimeout> | null = null;
+let serverSyncTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingPreviewRefresh = false;
 const PREVIEW_DEBOUNCE_MS = 2000;
 const PREVIEW_SYSTEM_ENABLED = process.env.NEXT_PUBLIC_UX_PREVIEW_SYSTEM_V1 !== 'false';
 const PREVIEW_BUSY_RETRY_MS = 3000;
 let syncStatusUnsubscribe: (() => void) | null = null;
 const previewBusyRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function clearPersistenceTimers(): void {
+  if (localPersistTimer) {
+    clearTimeout(localPersistTimer);
+    localPersistTimer = null;
+  }
+
+  if (serverSyncTimer) {
+    clearTimeout(serverSyncTimer);
+    serverSyncTimer = null;
+  }
+}
 
 function buildGraphSignature(canvas: Pick<StoredCanvas, 'nodes' | 'edges'>): string {
   return JSON.stringify({ nodes: canvas.nodes, edges: canvas.edges });
@@ -260,21 +281,21 @@ export const useAppStore = create<AppState>()((set, get) => ({
     }
 
     // Perform initial sync
-    const localProvider = getLocalStorageProvider();
+    const provider = getStorageProvider();
 
     await performInitialSync(
       async () => {
-        const metaList = await localProvider.listCanvases();
+        const metaList = await provider.listCanvases();
         const canvases: StoredCanvas[] = [];
         for (const meta of metaList) {
-          const canvas = await localProvider.getCanvas(meta.id);
+          const canvas = await provider.getCanvas(meta.id);
           if (canvas) canvases.push(canvas);
         }
         return canvases;
       },
       async (canvases) => {
         for (const canvas of canvases) {
-          await localProvider.saveCanvas(canvas);
+          await provider.saveCanvas(canvas);
         }
       }
     );
@@ -309,6 +330,8 @@ export const useAppStore = create<AppState>()((set, get) => ({
 
       // Reset canvas store state and load the canvas
       canvasStore.loadCanvasData(canvas.nodes, canvas.edges);
+      clearPersistenceTimers();
+      pendingPreviewRefresh = false;
 
       set({
         currentCanvasId: canvas.id,
@@ -325,10 +348,8 @@ export const useAppStore = create<AppState>()((set, get) => ({
   },
 
   clearCurrentCanvas: () => {
-    if (saveDebounceTimer) {
-      clearTimeout(saveDebounceTimer);
-      saveDebounceTimer = null;
-    }
+    clearPersistenceTimers();
+    pendingPreviewRefresh = false;
 
     set({
       currentCanvasId: null,
@@ -465,6 +486,8 @@ export const useAppStore = create<AppState>()((set, get) => ({
 
     // Clear current canvas if it was deleted
     if (get().currentCanvasId === id) {
+      clearPersistenceTimers();
+      pendingPreviewRefresh = false;
       set({
         currentCanvasId: null,
         currentCanvasName: 'Untitled Canvas',
@@ -476,12 +499,14 @@ export const useAppStore = create<AppState>()((set, get) => ({
     await get().loadCanvasList();
   },
 
-  saveCurrentCanvas: async () => {
+  saveCurrentCanvas: async ({ scope = 'full', triggerPreview = false }: SaveCurrentCanvasOptions = {}) => {
     const { currentCanvasId, currentCanvasName, isSyncEnabled } = get();
     if (!currentCanvasId) return;
 
     const canvasStore = useCanvasStore.getState();
     const provider = getStorageProvider();
+    const shouldPersistLocal = scope === 'local' || scope === 'full';
+    const shouldSyncServer = isSyncEnabled && (scope === 'server' || scope === 'full');
 
     set({ isSaving: true });
 
@@ -502,23 +527,22 @@ export const useAppStore = create<AppState>()((set, get) => ({
         updatedAt: Date.now(),
       };
 
-      // Save to localStorage first (instant)
-      await provider.saveCanvas(canvas);
+      if (shouldPersistLocal) {
+        await provider.saveCanvas(canvas);
 
-      set({
-        hasUnsavedChanges: false,
-        lastSavedAt: canvas.updatedAt,
-      });
+        set({
+          hasUnsavedChanges: false,
+          lastSavedAt: canvas.updatedAt,
+        });
+      }
 
-      // Sync to SQLite in background (if enabled)
-      if (isSyncEnabled) {
-        // Don't await - let it run in background
-        syncCanvasToServer(canvas).catch((err) => {
+      if (shouldSyncServer) {
+        await syncCanvasToServer(canvas).catch((err) => {
           console.error('Background sync failed:', err);
         });
       }
 
-      if (PREVIEW_SYSTEM_ENABLED) {
+      if (triggerPreview && PREVIEW_SYSTEM_ENABLED) {
         get().requestPreviewRefresh(currentCanvasId).catch((err) => {
           console.error('Preview refresh failed:', err);
         });
@@ -530,24 +554,68 @@ export const useAppStore = create<AppState>()((set, get) => ({
     }
   },
 
-  setCurrentCanvasName: (name: string) => {
-    set({ currentCanvasName: name, hasUnsavedChanges: true });
-
-    // Trigger debounced save
-    get().markUnsavedChanges();
+  flushCanvasPersistence: async (triggerPreview = pendingPreviewRefresh) => {
+    clearPersistenceTimers();
+    pendingPreviewRefresh = false;
+    await get().saveCurrentCanvas({ scope: 'full', triggerPreview });
   },
 
-  markUnsavedChanges: () => {
-    set({ hasUnsavedChanges: true });
+  scheduleCanvasPersistence: (mutation) => {
+    const { currentCanvasId, isSyncEnabled } = get();
+    if (!currentCanvasId) return;
 
-    // Debounced auto-save
-    if (saveDebounceTimer) {
-      clearTimeout(saveDebounceTimer);
+    const plan = resolveCanvasPersistencePlan(mutation);
+    if (plan.localDelayMs === null && plan.serverDelayMs === null) {
+      return;
     }
 
-    saveDebounceTimer = setTimeout(() => {
-      get().saveCurrentCanvas();
-    }, SAVE_DEBOUNCE_MS);
+    set({ hasUnsavedChanges: true });
+
+    if (plan.previewEligible) {
+      pendingPreviewRefresh = true;
+    }
+
+    if (plan.localDelayMs !== null) {
+      if (localPersistTimer) {
+        clearTimeout(localPersistTimer);
+      }
+
+      localPersistTimer = setTimeout(() => {
+        localPersistTimer = null;
+        const shouldTriggerPreview = pendingPreviewRefresh;
+        pendingPreviewRefresh = false;
+        get().saveCurrentCanvas({ scope: 'local', triggerPreview: shouldTriggerPreview }).catch((error) => {
+          console.error('Local canvas save failed:', error);
+        });
+      }, plan.localDelayMs);
+    }
+
+    if (isSyncEnabled && plan.serverDelayMs !== null) {
+      if (serverSyncTimer) {
+        clearTimeout(serverSyncTimer);
+      }
+
+      serverSyncTimer = setTimeout(() => {
+        serverSyncTimer = null;
+        get().saveCurrentCanvas({ scope: 'server', triggerPreview: false }).catch((error) => {
+          console.error('Server canvas sync failed:', error);
+        });
+      }, plan.serverDelayMs);
+    }
+  },
+
+  setCurrentCanvasName: (name: string) => {
+    set({ currentCanvasName: name, hasUnsavedChanges: true });
+    get().markUnsavedChanges('content');
+  },
+
+  markUnsavedChanges: (kind = 'content') => {
+    get().scheduleCanvasPersistence(
+      createCanvasMutationRecord({
+        kind,
+        history: 'skip',
+      })
+    );
   },
 
   updateCanvasThumbnail: async (id, patch) => {
@@ -603,21 +671,21 @@ export const useAppStore = create<AppState>()((set, get) => ({
   },
 
   migrateLegacyData: async () => {
-    const localProvider = getLocalStorageProvider();
-    return localProvider.migrateLegacyData();
+    const provider = getStorageProvider();
+    return provider.migrateLegacyData ? provider.migrateLegacyData() : null;
   },
 }));
 
-// Subscribe to canvas store changes and trigger auto-save
-// This is done outside the store to avoid circular dependency issues
+// Subscribe to structured canvas mutations and schedule persistence.
 if (typeof window !== 'undefined') {
   useCanvasStore.subscribe((state, prevState) => {
-    // Only trigger save if nodes or edges changed
-    if (state.nodes !== prevState.nodes || state.edges !== prevState.edges) {
-      const appStore = useAppStore.getState();
-      if (appStore.currentCanvasId) {
-        appStore.markUnsavedChanges();
-      }
+    const nextMutation = state.lastMutation;
+    if (!nextMutation) return;
+    if (nextMutation === prevState.lastMutation || nextMutation.id === prevState.lastMutation?.id) return;
+
+    const appStore = useAppStore.getState();
+    if (appStore.currentCanvasId) {
+      appStore.scheduleCanvasPersistence(nextMutation);
     }
   });
 }

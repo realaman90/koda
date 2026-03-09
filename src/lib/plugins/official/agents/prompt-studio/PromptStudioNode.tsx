@@ -50,6 +50,8 @@ import type {
 } from './types';
 import { TOOL_DISPLAY_NAMES } from './events';
 import { usePromptStudioStream, type ConnectedNodeInfo } from './hooks';
+import { useNodeDisplayMode } from '@/components/canvas/nodes/useNodeDisplayMode';
+import { getPromptHeavyInputHandleTop } from '@/components/canvas/nodes/chrome/handleLayout';
 
 // ─── Constants ──────────────────────────────────────────────────────────
 function createDefaultState(nodeId: string): PromptStudioNodeState {
@@ -519,6 +521,7 @@ function PromptStudioNodeComponent({ id, data, selected }: NodeProps<PromptStudi
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const isReadOnly = useCanvasStore((s) => s.isReadOnly);
   const updateNodeInternals = useUpdateNodeInternals();
+  const { displayMode, focusProps } = useNodeDisplayMode(selected);
 
   // Rename state
   const [isEditingName, setIsEditingName] = useState(false);
@@ -574,10 +577,23 @@ function PromptStudioNodeComponent({ id, data, selected }: NodeProps<PromptStudi
     seqRef.current = Math.max(seqRef.current, getMaxSeqFromState(ls));
   }, [ls]);
 
-  // Persist Prompt Studio state to canvas store after commit (never during render).
+  const persistedState = useMemo(() => ({
+    ...ls,
+    streamingText: undefined,
+  }), [ls]);
+
   useEffect(() => {
-    updateNodeData(id, { state: ls }, true);
-  }, [id, ls, updateNodeData]);
+    const timer = setTimeout(() => {
+      updateNodeData(id, { state: persistedState }, {
+        history: 'skip',
+        save: 'schedule',
+        preview: 'skip',
+        kind: 'content',
+      });
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [id, persistedState, updateNodeData]);
 
   // Auto-scroll
   useEffect(() => {
@@ -670,7 +686,7 @@ function PromptStudioNodeComponent({ id, data, selected }: NodeProps<PromptStudi
 
   // ── Node styling (matches AnimationNode) ──
   const nodeClasses = useMemo(() => {
-    const base = 'animation-node w-[400px] min-h-[200px] max-h-[720px] rounded-xl overflow-hidden flex flex-col';
+    const base = 'node-drag-handle node-drag-surface animation-node w-[400px] min-h-[200px] max-h-[720px] rounded-xl overflow-hidden flex flex-col';
     if (selected) return `${base} ring-1 ring-[var(--an-accent)]/70`;
     return base;
   }, [selected]);
@@ -1039,11 +1055,71 @@ function PromptStudioNodeComponent({ id, data, selected }: NodeProps<PromptStudi
   }, [handleSendMessage]);
 
   const canSend = !isStreaming && inputValue.trim().length > 0;
+  const latestPrompt = ls.generatedPrompts[ls.generatedPrompts.length - 1];
+  const latestAssistantMessage = [...ls.messages]
+    .reverse()
+    .find((message) => message.role === 'assistant' && message.content.trim());
+  const promptStudioSummary = latestPrompt?.prompt
+    || latestAssistantMessage?.content
+    || 'Describe a visual direction and Prompt Studio will shape it into a production-ready prompt.';
+
+  if (displayMode !== 'full') {
+    return (
+      <div data-node-id={id} {...focusProps}>
+        <div className="mb-2 rounded-xl px-3 py-2 text-sm font-medium" style={{ color: 'var(--node-title-animation)' }}>
+          <Sparkles className="h-4 w-4" />
+          {data.name || 'Prompt Studio'}
+        </div>
+
+        <div className={nodeClasses}>
+          <div className={`node-body flex-1 ${displayMode === 'compact' ? 'node-compact' : 'node-summary'}`}>
+            <div className="node-content-area rounded-xl p-3">
+              <p className="text-xs font-medium text-[var(--an-text-muted)]">
+                {isStreaming ? (thinkingMsg || 'Generating...') : headerConfig.statusText}
+              </p>
+              <p className="mt-1 text-sm text-[var(--an-text)]/85 line-clamp-4">
+                {promptStudioSummary}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--an-text-dim)]">
+              <span>{ls.generatedPrompts.length} prompt{ls.generatedPrompts.length === 1 ? '' : 's'}</span>
+              <span>{ls.qnaSets.length} Q&A</span>
+              <span>{ls.searchResults.length} result{ls.searchResults.length === 1 ? '' : 's'}</span>
+            </div>
+          </div>
+
+          <div className="absolute -left-3 z-10 group" style={{ top: getPromptHeavyInputHandleTop(0) }}>
+            <div className="relative">
+              <Handle type="target" position={Position.Left} id="text"
+                className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle" />
+              <Type className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-input-icon)]" />
+            </div>
+          </div>
+
+          <div className="absolute -left-3 z-10 group" style={{ top: getPromptHeavyInputHandleTop(1) }}>
+            <div className="relative">
+              <Handle type="target" position={Position.Left} id="reference"
+                className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle" />
+              <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-input-icon)]" />
+            </div>
+          </div>
+
+          <div className="absolute -right-3 z-10 group" style={{ top: '40%', transform: 'translateY(-50%)' }}>
+            <div className="relative">
+              <Handle type="source" position={Position.Right} id="prompt-output"
+                className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle" />
+              <Type className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-output-icon)]" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div data-node-id={id}>
+    <div data-node-id={id} {...focusProps}>
       {/* Node Title — matches AnimationNode / SvgStudio */}
-      <div className="flex items-center gap-2 mb-2 text-sm font-medium" style={{ color: 'var(--node-title-animation)' }}>
+      <div className="mb-2 rounded-xl px-3 py-2 text-sm font-medium" style={{ color: 'var(--node-title-animation)' }}>
         <Sparkles className="h-4 w-4" />
         {isEditingName && !isReadOnly ? (
           <input
@@ -1264,31 +1340,31 @@ function PromptStudioNodeComponent({ id, data, selected }: NodeProps<PromptStudi
         </div>
 
         {/* ── Input Handle: Text (left top) ── */}
-        <div className="absolute -left-3 group" style={{ top: '25%', transform: 'translateY(-50%)' }}>
+        <div className="absolute -left-3 z-10 group" style={{ top: getPromptHeavyInputHandleTop(0) }}>
           <div className="relative">
             <Handle type="target" position={Position.Left} id="text"
               className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle" />
-            <Type className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+            <Type className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-input-icon)]" />
           </div>
           <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">Text input</span>
         </div>
 
         {/* ── Input Handle: Image reference (left bottom) ── */}
-        <div className="absolute -left-3 group" style={{ top: '55%', transform: 'translateY(-50%)' }}>
+        <div className="absolute -left-3 z-10 group" style={{ top: getPromptHeavyInputHandleTop(1) }}>
           <div className="relative">
             <Handle type="target" position={Position.Left} id="reference"
               className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle" />
-            <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+            <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-input-icon)]" />
           </div>
           <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">Image reference</span>
         </div>
 
         {/* ── Output Handle: Prompt text (right) ── */}
-        <div className="absolute -right-3 group" style={{ top: '40%', transform: 'translateY(-50%)' }}>
+        <div className="absolute -right-3 z-10 group" style={{ top: '40%', transform: 'translateY(-50%)' }}>
           <div className="relative">
             <Handle type="source" position={Position.Right} id="prompt-output"
               className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle" />
-            <Type className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+            <Type className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-output-icon)]" />
           </div>
           <span className="absolute right-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">Prompt output</span>
         </div>

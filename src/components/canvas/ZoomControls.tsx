@@ -6,11 +6,10 @@ import { ChevronUp, ZoomIn, ZoomOut, Maximize, Focus } from 'lucide-react';
 import { useCanvasStore } from '@/stores/canvas-store';
 
 export function ZoomControls() {
-  const { zoomIn, zoomOut, fitView, getZoom, setViewport, getViewport } = useReactFlow();
+  const { zoomIn, zoomOut, fitView, getZoom, setViewport, getViewport, getNodes } = useReactFlow();
   const [zoom, setZoom] = useState(100);
   const [isOpen, setIsOpen] = useState(false);
   const selectedNodeIds = useCanvasStore((state) => state.selectedNodeIds);
-  const nodes = useCanvasStore((state) => state.nodes);
 
   // Update zoom display without polling (viewport events)
   useOnViewportChange({
@@ -75,7 +74,7 @@ export function ZoomControls() {
       if (event.key === 'f' && !cmdOrCtrl) {
         event.preventDefault();
         if (selectedNodeIds.length > 0) {
-          const selectedNodes = nodes.filter((n) => selectedNodeIds.includes(n.id));
+          const selectedNodes = getNodes().filter((n) => selectedNodeIds.includes(n.id));
           fitView({ nodes: selectedNodes, padding: 0.3, duration: 200 });
         }
         return;
@@ -84,7 +83,7 @@ export function ZoomControls() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [zoomIn, zoomOut, fitView, selectedNodeIds, nodes]);
+  }, [fitView, getNodes, selectedNodeIds, zoomIn, zoomOut]);
 
   const handleZoomIn = useCallback(() => {
     zoomIn({ duration: 200 });
@@ -104,7 +103,7 @@ export function ZoomControls() {
   const handleZoomToSelection = useCallback(() => {
     if (selectedNodeIds.length === 0) return;
 
-    const selectedNodes = nodes.filter((n) => selectedNodeIds.includes(n.id));
+    const selectedNodes = getNodes().filter((n) => selectedNodeIds.includes(n.id));
     if (selectedNodes.length === 0) return;
 
     // Calculate bounding box
@@ -122,7 +121,7 @@ export function ZoomControls() {
       duration: 200,
     });
     setIsOpen(false);
-  }, [selectedNodeIds, nodes, fitView]);
+  }, [fitView, getNodes, selectedNodeIds]);
 
   const handleSetZoom = useCallback((newZoom: number) => {
     const viewport = getViewport();

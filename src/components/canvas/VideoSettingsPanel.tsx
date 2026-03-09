@@ -46,6 +46,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { getApiErrorMessage, normalizeApiErrorMessage } from '@/lib/client/api-error';
+import { useBufferedNodeField } from './nodes/useBufferedNodeField';
 
 const HEYGEN_AVATAR4_VOICE_OPTIONS = HEYGEN_AVATAR4_VOICES.map((voice) => ({
   value: voice,
@@ -67,6 +68,16 @@ export function VideoSettingsPanel() {
   const node = videoSettingsPanelNodeId ? getNode(videoSettingsPanelNodeId) : null;
   const data = node?.type === 'videoGenerator' ? node.data as VideoGeneratorNodeData : undefined;
   const resolvedModel = data ? resolveDeprecatedVideoModel(data.model) : undefined;
+  const {
+    draft: promptDraft,
+    handleChange: handlePromptChange,
+    handleBlur: handlePromptBlur,
+    commit: commitPrompt,
+  } = useBufferedNodeField({
+    nodeId: videoSettingsPanelNodeId || '',
+    value: data?.prompt || '',
+    field: 'prompt',
+  });
 
   const panelRef = useRef<HTMLDivElement>(null);
   const [compareEstimateError, setCompareEstimateError] = useState<string | null>(null);
@@ -195,27 +206,20 @@ export function VideoSettingsPanel() {
     }
   }, [videoSettingsPanelNodeId, data, updateNodeData]);
 
-  const handlePromptChange = useCallback(
-    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      if (videoSettingsPanelNodeId) {
-        updateNodeData(videoSettingsPanelNodeId, { prompt: e.target.value });
-      }
-    },
-    [videoSettingsPanelNodeId, updateNodeData]
-  );
-
   const handleGenerate = useCallback(async () => {
     if (!videoSettingsPanelNodeId || !data) return;
+    await commitPrompt(promptDraft, true);
 
     const connectedInputs = getConnectedInputs(videoSettingsPanelNodeId);
-    const resolvedGenerationModel = resolvedModel || data.model;
-    const validationError = validateVideoGenerationInputForModel(data, connectedInputs, resolvedGenerationModel);
+    const localData = { ...data, prompt: promptDraft };
+    const resolvedGenerationModel = resolvedModel || localData.model;
+    const validationError = validateVideoGenerationInputForModel(localData, connectedInputs, resolvedGenerationModel);
     if (validationError) {
       return;
     }
 
-    const finalPrompt = buildVideoPrompt(data, connectedInputs);
-    const requestBody = buildVideoGenerationRequest(data, connectedInputs, resolvedGenerationModel);
+    const finalPrompt = buildVideoPrompt(localData, connectedInputs);
+    const requestBody = buildVideoGenerationRequest(localData, connectedInputs, resolvedGenerationModel);
     updateNodeData(videoSettingsPanelNodeId, { isGenerating: true, error: undefined, progress: 0, outputVideoId: undefined });
 
     try {
@@ -254,15 +258,15 @@ export function VideoSettingsPanel() {
       addToHistory({
         type: 'video',
         mode: 'single',
-        prompt: finalPrompt || data.prompt || '(no prompt)',
+        prompt: finalPrompt || localData.prompt || '(no prompt)',
         model: resolvedGenerationModel,
         status: 'completed',
-        result: { urls: result.videoUrl ? [result.videoUrl] : [], duration: data.duration },
+        result: { urls: result.videoUrl ? [result.videoUrl] : [], duration: localData.duration },
         settings: {
-          aspectRatio: data.aspectRatio,
-          duration: data.duration,
-          resolution: data.resolution,
-          generateAudio: data.generateAudio,
+          aspectRatio: localData.aspectRatio,
+          duration: localData.duration,
+          resolution: localData.resolution,
+          generateAudio: localData.generateAudio,
         },
       });
     } catch (error) {
@@ -276,19 +280,19 @@ export function VideoSettingsPanel() {
       addToHistory({
         type: 'video',
         mode: 'single',
-        prompt: finalPrompt || data.prompt || '(no prompt)',
+        prompt: finalPrompt || localData.prompt || '(no prompt)',
         model: resolvedGenerationModel,
         status: 'failed',
         error: errorMessage,
         settings: {
-          aspectRatio: data.aspectRatio,
-          duration: data.duration,
-          resolution: data.resolution,
-          generateAudio: data.generateAudio,
+          aspectRatio: localData.aspectRatio,
+          duration: localData.duration,
+          resolution: localData.resolution,
+          generateAudio: localData.generateAudio,
         },
       });
     }
-  }, [videoSettingsPanelNodeId, data, resolvedModel, updateNodeData, getConnectedInputs, addToHistory]);
+  }, [addToHistory, commitPrompt, data, getConnectedInputs, promptDraft, resolvedModel, updateNodeData, videoSettingsPanelNodeId]);
 
   const handleCompareToggle = useCallback(() => {
     if (!videoSettingsPanelNodeId || !data) return;
@@ -651,8 +655,11 @@ export function VideoSettingsPanel() {
             </TooltipProvider>
           </div>
           <textarea
-            value={data.prompt}
+            value={promptDraft}
             onChange={handlePromptChange}
+            onBlur={() => {
+              void handlePromptBlur();
+            }}
             onPointerDown={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
             placeholder="Describe the video you want to generate..."

@@ -116,7 +116,7 @@ function StickerNodeComponent({ id, data, selected }: NodeProps<StickerNodeType>
     .join(' ');
 
   return (
-    <div className="relative" ref={pickerRef}>
+    <div className="node-drag-handle node-drag-surface relative" ref={pickerRef}>
       {/* Rich Toolbar - appears above node when selected */}
       {selected && (
         <div
@@ -253,7 +253,7 @@ function StickerNodeComponent({ id, data, selected }: NodeProps<StickerNodeType>
       {/* Sticker Display */}
       <div
         className={`
-          cursor-pointer select-none
+          cursor-grab select-none active:cursor-grabbing
           transition-[filter] duration-150
           ${selected ? 'drop-shadow-lg' : 'drop-shadow-md'}
         `}

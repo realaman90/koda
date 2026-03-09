@@ -143,13 +143,13 @@ export function CompareResultsSection<T extends CompareResult>({
                   isPromoted && 'border-emerald-500/50 ring-1 ring-emerald-500/30'
                 )}
               >
-                <div className="aspect-video overflow-hidden bg-muted/40">
+                <div className="min-h-[200px] overflow-hidden bg-muted/40">
                   {primaryUrl ? (
                     type === 'video' ? (
                       <video
                         src={primaryUrl}
                         poster={'thumbnailUrl' in result ? result.thumbnailUrl : undefined}
-                        className="h-full w-full object-cover"
+                        className="w-full object-contain"
                         muted
                         playsInline
                       />
@@ -158,7 +158,7 @@ export function CompareResultsSection<T extends CompareResult>({
                       <img
                         src={primaryUrl}
                         alt={getModelLabel(result.model)}
-                        className="h-full w-full object-cover"
+                        className="w-full object-contain"
                       />
                     )
                   ) : (

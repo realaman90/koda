@@ -25,6 +25,7 @@ import {
   Trash2,
   Upload,
 } from 'lucide-react';
+import { useNodeDisplayMode } from '@/components/canvas/nodes/useNodeDisplayMode';
 
 type PdfFitMode = 'contain' | 'cover';
 type PdfPageMode =
@@ -217,6 +218,7 @@ function ImageToPdfNodeComponent({ id, data, selected }: NodeProps<Node<PluginNo
   const isReadOnly = useCanvasStore((state) => state.isReadOnly);
   const [isHovered, setIsHovered] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { displayMode, focusProps } = useNodeDisplayMode(selected);
   const stopPointerDown = useCallback((event: React.MouseEvent | React.PointerEvent) => {
     event.stopPropagation();
   }, []);
@@ -408,6 +410,7 @@ function ImageToPdfNodeComponent({ id, data, selected }: NodeProps<Node<PluginNo
       className="relative"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      {...focusProps}
     >
       <input
         ref={fileInputRef}
@@ -431,18 +434,35 @@ function ImageToPdfNodeComponent({ id, data, selected }: NodeProps<Node<PluginNo
         </div>
       )}
 
-      <div className="flex items-center gap-2 mb-2 text-sm font-medium" style={{ color: 'var(--node-title-image)' }}>
+      <div className="mb-2 rounded-xl px-3 py-2 text-sm font-medium" style={{ color: 'var(--node-title-image)' }}>
         <FileOutput className="h-4 w-4" />
         <span>{(data.name as string) || 'Image to PDF'}</span>
       </div>
 
       <div
         className={`
-          w-[420px] rounded-2xl overflow-hidden
+          node-drag-handle node-drag-surface w-[420px] rounded-2xl overflow-hidden
           transition-all duration-150
           ${selected ? 'node-card node-card-selected' : 'node-card'}
         `}
       >
+        {displayMode !== 'full' ? (
+          <div className={`node-body min-h-[180px] ${displayMode === 'compact' ? 'node-compact' : 'node-summary'}`}>
+            <div className="node-content-area rounded-xl p-3">
+              <p className="text-xs font-medium text-muted-foreground">PDF export</p>
+              <p className="mt-1 text-sm text-foreground/85 line-clamp-4">
+                {state.images.length > 0
+                  ? `${state.images.length} image${state.images.length === 1 ? '' : 's'} queued for ${state.fileName || DEFAULT_FILE_NAME}.`
+                  : 'Load or connect images to export them as a PDF.'}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+              <span>{state.pageMode}</span>
+              <span>{state.fitMode}</span>
+              {state.images.length > 0 && <span>Ready to export</span>}
+            </div>
+          </div>
+        ) : (
         <div className="p-3 space-y-3">
           <input
             value={state.fileName}
@@ -588,10 +608,11 @@ function ImageToPdfNodeComponent({ id, data, selected }: NodeProps<Node<PluginNo
             {state.isGenerating ? 'Generating PDF...' : 'Generate PDF'}
           </Button>
         </div>
+        )}
       </div>
 
       <div
-        className={`absolute -left-3 top-[124px] group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
+        className={`absolute -left-3 top-[124px] z-10 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
       >
         <div className="relative">
           <Handle
@@ -600,7 +621,7 @@ function ImageToPdfNodeComponent({ id, data, selected }: NodeProps<Node<PluginNo
             id="reference"
             className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
           />
-          <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+          <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-input-icon)]" />
         </div>
         <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
           Image input

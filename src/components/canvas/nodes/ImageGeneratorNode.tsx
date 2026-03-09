@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useCallback, useMemo, useState, useRef, useEffect } from 'react';
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import { Handle, Position, useNodeConnections, type NodeProps } from '@xyflow/react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { CompareResultsSection } from '@/components/canvas/CompareResultsSection';
@@ -22,6 +22,15 @@ import { startImageCompare } from '@/lib/compare/controller';
 import { promoteImageCompareResult } from '@/lib/compare/run';
 import { buildInitialCompareSelection, pruneCompareSelection } from '@/lib/compare/utils';
 import { buildImageGenerationRequest, buildImagePrompt, getCompatibleImageCompareModels, hasValidImagePromptInput } from '@/lib/generation/client';
+import { useBufferedNodeField } from '@/components/canvas/nodes/useBufferedNodeField';
+import { useNodeDisplayMode } from '@/components/canvas/nodes/useNodeDisplayMode';
+import { CanvasNodeShell } from '@/components/canvas/nodes/chrome/CanvasNodeShell';
+import { NodeFloatingToolbar } from '@/components/canvas/nodes/chrome/NodeFloatingToolbar';
+import { NodeFooterRail } from '@/components/canvas/nodes/chrome/NodeFooterRail';
+import { NodeMediaBadge } from '@/components/canvas/nodes/chrome/NodeMediaBadge';
+import { NodeStagePrompt } from '@/components/canvas/nodes/chrome/NodeStagePrompt';
+import { useNodeChromeState } from '@/components/canvas/nodes/chrome/useNodeChromeState';
+import { getPromptHeavyInputHandleTop } from '@/components/canvas/nodes/chrome/handleLayout';
 import {
   ImageIcon,
   Play,
@@ -34,7 +43,6 @@ import {
   Download,
   Wand2,
   Sparkle,
-  ChevronRight,
   Images,
 } from 'lucide-react';
 
@@ -45,7 +53,6 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
   const getConnectedInputs = useCanvasStore((state) => state.getConnectedInputs);
   const addNode = useCanvasStore((state) => state.addNode);
   const isReadOnly = useCanvasStore((state) => state.isReadOnly);
-  const edges = useCanvasStore((state) => state.edges);
   const addToHistory = useSettingsStore((state) => state.addToHistory);
   const updateHistoryItem = useSettingsStore((state) => state.updateHistoryItem);
   const enabledImageModels = useSettingsStore((s) => s.defaultSettings.enabledImageModels) || [...ENABLED_IMAGE_MODELS];
@@ -54,17 +61,45 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
   const [nodeName, setNodeName] = useState(data.name || 'Image Generator');
   const [isHovered, setIsHovered] = useState(false);
   const [isPromptExpanded, setIsPromptExpanded] = useState(false);
+  const [isPromptFocused, setIsPromptFocused] = useState(false);
   const [isCompareTrayOpen, setIsCompareTrayOpen] = useState(!data.outputUrl);
   const nameInputRef = useRef<HTMLInputElement>(null);
+  const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const rollerWrapRef = useRef<HTMLDivElement>(null);
+  const connections = useNodeConnections({ id });
+  const { displayMode, focusedWithin, focusProps } = useNodeDisplayMode(selected);
+  const {
+    draft: promptDraft,
+    handleChange: handlePromptChange,
+    handleBlur: handlePromptBlur,
+    commit: commitPrompt,
+  } = useBufferedNodeField({
+    nodeId: id,
+    value: data.prompt || '',
+    field: 'prompt',
+    preview: 'skip',
+  });
 
-  // Check if this node has any connections
-  const isConnected = edges.some(edge => edge.source === id || edge.target === id);
-  const showHandles = selected || isHovered || isConnected;
+  const isConnected = connections.length > 0;
 
   const modelCapabilities = MODEL_CAPABILITIES[data.model];
   const maxRefs = Math.max(1, modelCapabilities.maxReferences || 1);
   const connectedInputs = getConnectedInputs(id);
-  const compatibleCompareModels = getCompatibleImageCompareModels(enabledImageModels, data, connectedInputs);
+  const liveData = useMemo(
+    () => ({ ...data, prompt: promptDraft }),
+    [data, promptDraft]
+  );
+  const compatibleCompareModels = getCompatibleImageCompareModels(enabledImageModels, liveData, connectedInputs);
+  const chromeState = useNodeChromeState({
+    isHovered,
+    focusedWithin,
+    isPromptFocused,
+    selected,
+    displayMode,
+    hasOutput: !!data.outputUrl,
+    expanded: isPromptExpanded,
+  });
+  const showHandles = chromeState.showHandles || isConnected;
 
   useEffect(() => {
     if (isEditingName && nameInputRef.current) {
@@ -72,6 +107,14 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
       nameInputRef.current.select();
     }
   }, [isEditingName]);
+
+  // Detect text overflow on prompt teaser to enable edge blur
+  useEffect(() => {
+    const el = rollerWrapRef.current;
+    if (!el) return;
+    const hasOverflow = el.scrollHeight > el.clientHeight + 2;
+    el.classList.toggle('has-overflow', hasOverflow);
+  }, [promptDraft, chromeState.showPromptTeaser]);
 
   useEffect(() => {
     if (!data.compareEnabled) return;
@@ -96,13 +139,6 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
     setIsEditingName(false);
     updateNodeData(id, { name: nodeName });
   }, [id, nodeName, updateNodeData]);
-
-  const handlePromptChange = useCallback(
-    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      updateNodeData(id, { prompt: e.target.value });
-    },
-    [id, updateNodeData]
-  );
 
   const handleModelChange = useCallback(
     (value: string) => {
@@ -144,13 +180,15 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
   }, [id, data.magicPrompt, updateNodeData]);
 
   const handleGenerate = useCallback(async () => {
-    const finalPrompt = buildImagePrompt(data, connectedInputs);
+    await commitPrompt(promptDraft, true);
+
+    const finalPrompt = buildImagePrompt(liveData, connectedInputs);
 
     if (!finalPrompt) {
       toast.error('Please enter a prompt, connect a text node, or select presets');
       return;
     }
-    const requestBody = buildImageGenerationRequest(data, connectedInputs);
+    const requestBody = buildImageGenerationRequest(liveData, connectedInputs);
     const imageCount = requestBody.imageCount;
     updateNodeData(id, { isGenerating: true, error: undefined });
 
@@ -194,15 +232,15 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
         type: 'image',
         mode: 'single',
         prompt: finalPrompt,
-        model: data.model,
+        model: liveData.model,
         status: 'completed',
         result: { urls: imageUrls },
         settings: {
-          aspectRatio: data.aspectRatio,
+          aspectRatio: liveData.aspectRatio,
           imageCount,
-          ...(data.style && { style: data.style }),
-          ...(data.resolution && { resolution: data.resolution }),
-          ...(data.imageSize && { imageSize: data.imageSize }),
+          ...(liveData.style && { style: liveData.style }),
+          ...(liveData.resolution && { resolution: liveData.resolution }),
+          ...(liveData.imageSize && { imageSize: liveData.imageSize }),
         },
       });
     } catch (error) {
@@ -216,14 +254,14 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
       addToHistory({
         type: 'image',
         mode: 'single',
-        prompt: finalPrompt || data.prompt || '(no prompt)',
-        model: data.model,
+        prompt: finalPrompt || promptDraft || '(no prompt)',
+        model: liveData.model,
         status: 'failed',
         error: errorMessage,
-        settings: { aspectRatio: data.aspectRatio, imageCount },
+        settings: { aspectRatio: liveData.aspectRatio, imageCount },
       });
     }
-  }, [id, data, connectedInputs, updateNodeData, addNode, addToHistory, positionAbsoluteX, positionAbsoluteY]);
+  }, [addNode, addToHistory, commitPrompt, connectedInputs, id, liveData, positionAbsoluteX, positionAbsoluteY, promptDraft, updateNodeData]);
 
   const openSettingsFromElement = useCallback((element: HTMLElement) => {
     const rect = element.closest('.react-flow__node')?.getBoundingClientRect();
@@ -234,18 +272,20 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
 
   const handleCompareAction = useCallback(async (event: React.MouseEvent) => {
     event.stopPropagation();
+    const triggerElement = event.currentTarget as HTMLElement;
+    await commitPrompt(promptDraft, true);
 
-    const selectedModels = (data.compareModels || []).filter((model) => compatibleCompareModels.includes(model));
-    if (!data.compareEnabled || selectedModels.length < 2) {
+    const selectedModels = (liveData.compareModels || []).filter((model) => compatibleCompareModels.includes(model));
+    if (!liveData.compareEnabled || selectedModels.length < 2) {
       const nextSelection = selectedModels.length > 0
         ? selectedModels
-        : buildInitialCompareSelection(data.model, compatibleCompareModels);
+        : buildInitialCompareSelection(liveData.model, compatibleCompareModels);
       updateNodeData(id, {
         compareEnabled: true,
         compareModels: nextSelection,
         compareEstimateCredits: undefined,
       }, true);
-      openSettingsFromElement(event.currentTarget as HTMLElement);
+      openSettingsFromElement(triggerElement);
       toast.info('Select at least 2 compare models to run a compare.');
       return;
     }
@@ -253,7 +293,7 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
     try {
       const result = await startImageCompare({
         nodeId: id,
-        data,
+        data: liveData,
         connectedInputs,
         updateNodeData,
         history: {
@@ -270,7 +310,7 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
       updateNodeData(id, { error: errorMessage, compareRunStatus: 'failed' }, true);
       toast.error(`Compare failed: ${errorMessage}`);
     }
-  }, [id, data, connectedInputs, compatibleCompareModels, updateNodeData, openSettingsFromElement, addToHistory, updateHistoryItem]);
+  }, [addToHistory, commitPrompt, compatibleCompareModels, connectedInputs, id, liveData, openSettingsFromElement, promptDraft, updateHistoryItem, updateNodeData]);
 
   const handleClearCompare = useCallback(() => {
     updateNodeData(id, {
@@ -322,10 +362,9 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
   // Get dimensions for badge
   const dimensions = getApproxDimensions(data.aspectRatio, data.model, data.resolution);
 
-  const hasValidPrompt = hasValidImagePromptInput(data, connectedInputs);
+  const hasValidPrompt = hasValidImagePromptInput(liveData, connectedInputs);
   const connectedReferenceCount = (connectedInputs.referenceUrl ? 1 : 0) + (connectedInputs.referenceUrls?.length || 0);
   const hasCompareResults = (data.compareResults?.length || 0) > 0;
-  const showCompareAsPrimary = !data.outputUrl && hasCompareResults;
 
   const activePresets = useMemo((): { key: string; label: string; preview: string }[] => {
     const pills: { key: string; label: string; preview: string }[] = [];
@@ -346,575 +385,430 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
     return pills;
   }, [data.selectedCharacter, data.selectedStyle, data.selectedCameraAngle, data.selectedCameraLens]);
 
-  return (
-    <div
-      className="relative"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
-      {/* Floating Toolbar - appears above node when selected (hidden in read-only except download) */}
-      {selected && (
-        <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1 rounded-lg px-2 py-1.5 z-10 node-toolbar-floating">
-          {!isReadOnly && (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
-              onClick={handleGenerate}
-              disabled={!hasValidPrompt || data.isGenerating}
-            >
-              <Play className="h-3.5 w-3.5" />
-            </Button>
-          )}
-          {!isReadOnly && (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
-              onClick={handleCompareAction}
-              disabled={!hasValidPrompt || data.compareRunStatus === 'running'}
-              title="Compare models"
-            >
-              <Images className="h-3.5 w-3.5" />
-            </Button>
-          )}
-          {data.outputUrl && (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
-              onClick={handleDownload}
-            >
-              <Download className="h-3.5 w-3.5" />
-            </Button>
-          )}
-          {!isReadOnly && (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="h-7 w-7 text-muted-foreground hover:text-red-400 hover:bg-muted/50"
-              onClick={handleDelete}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-          )}
-        </div>
-      )}
+  const promptPreview = useMemo(
+    () => promptDraft.replace(/\s+/g, ' ').trim(),
+    [promptDraft]
+  );
+  const promptPlaceholder = data.outputUrl
+    ? 'Add a follow-up prompt...'
+    : 'Describe the image you want to generate...';
 
-      {/* Node Title */}
-      <div className="flex items-center gap-2 mb-2 text-sm font-medium" style={{ color: 'var(--node-title-image)' }}>
-        <div className="relative h-4 w-4">
-          <ImageIcon className="h-4 w-4" />
-          <Sparkle className="h-2 w-2 absolute -top-0.5 -right-0.5 fill-current" />
-        </div>
-        {isEditingName && !isReadOnly ? (
+  const showTopToolbar = chromeState.showTopToolbar && (!isReadOnly || !!data.outputUrl);
+  const showFooterRail = chromeState.showFooterRail && (!isReadOnly || !!data.outputUrl);
+
+  const topToolbar = showTopToolbar ? (
+    <NodeFloatingToolbar>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+        onClick={handleGenerate}
+        disabled={!hasValidPrompt || data.isGenerating}
+        title={data.outputUrl ? 'Regenerate image' : 'Generate image'}
+      >
+        {data.outputUrl ? <RefreshCw className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+      </Button>
+      {!isReadOnly ? (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={handleCompareAction}
+          disabled={!hasValidPrompt || liveData.compareRunStatus === 'running'}
+          className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+          title="Compare models"
+        >
+          <Images className="h-3.5 w-3.5" />
+        </Button>
+      ) : null}
+      {data.outputUrl ? (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={handleDownload}
+          className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+          title="Download image"
+        >
+          <Download className="h-3.5 w-3.5" />
+        </Button>
+      ) : null}
+      {!isReadOnly ? (
+        <>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={handleDelete}
+            className="h-7 w-7 text-muted-foreground hover:text-red-400 hover:bg-muted/50"
+            title="Delete node"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={handleOpenSettings}
+            className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+            title="Settings"
+          >
+            <Settings className="h-3.5 w-3.5" />
+          </Button>
+        </>
+      ) : null}
+    </NodeFloatingToolbar>
+  ) : null;
+
+  const footerRail = showFooterRail ? (
+    <NodeFooterRail className="node-footer-rail-plain">
+      {!isReadOnly ? (
+        <>
+          <SearchableSelect
+            value={liveData.model}
+            onValueChange={handleModelChange}
+            options={visibleImageModels.map((key) => ({
+              value: key,
+              label: MODEL_CAPABILITIES[key].label,
+              description: MODEL_CAPABILITIES[key].description,
+              group: MODEL_CAPABILITIES[key].group,
+            }))}
+            placeholder="Select model"
+            searchPlaceholder="Search models..."
+            triggerClassName="max-w-[132px] nodrag nopan"
+          />
+          <Select value={liveData.aspectRatio} onValueChange={handleAspectRatioChange}>
+            <SelectTrigger className="h-8 w-auto rounded-xl border-0 bg-muted/80 px-2.5 text-xs nodrag nopan hover:bg-muted">
+              <span className="flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-[3px] border border-muted-foreground" />
+                <SelectValue />
+              </span>
+            </SelectTrigger>
+            <SelectContent className="bg-popover border-border">
+              {modelCapabilities.aspectRatios.map((ratio) => (
+                <SelectItem key={ratio} value={ratio} className="text-xs">
+                  {getAspectRatioLabel(ratio)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {modelCapabilities.resolutions ? (
+            <Select value={liveData.resolution || '1K'} onValueChange={handleResolutionChange}>
+              <SelectTrigger className="h-8 w-auto rounded-xl border-0 bg-muted/80 px-2.5 text-xs nodrag nopan hover:bg-muted">
+                <SelectValue>{liveData.resolution || '1K'}</SelectValue>
+              </SelectTrigger>
+              <SelectContent className="bg-popover border-border">
+                {modelCapabilities.resolutions.map((res) => (
+                  <SelectItem key={res} value={res} className="text-xs">
+                    {res}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
+          {modelCapabilities.imageSizes ? (
+            <Select value={liveData.imageSize || 'square_hd'} onValueChange={handleImageSizeChange}>
+              <SelectTrigger className="h-8 max-w-[102px] rounded-xl border-0 bg-muted/80 px-2.5 text-xs nodrag nopan hover:bg-muted [&>span]:truncate">
+                <SelectValue>{FLUX_IMAGE_SIZES[liveData.imageSize || 'square_hd'].label}</SelectValue>
+              </SelectTrigger>
+              <SelectContent className="bg-popover border-border">
+                {modelCapabilities.imageSizes.map((size) => (
+                  <SelectItem key={size} value={size} className="text-xs">
+                    {FLUX_IMAGE_SIZES[size].label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
+          {modelCapabilities.styles ? (
+            <Select
+              value={liveData.style || (modelCapabilities.styles[0] as string)}
+              onValueChange={handleStyleChange}
+            >
+              <SelectTrigger className="h-8 max-w-[110px] rounded-xl border-0 bg-muted/80 px-2.5 text-xs nodrag nopan hover:bg-muted [&>span]:truncate">
+                <SelectValue>
+                  {liveData.model === 'recraft-v3'
+                    ? RECRAFT_STYLE_LABELS[(liveData.style as RecraftStyle) || 'realistic_image']
+                    : IDEOGRAM_STYLE_LABELS[(liveData.style as IdeogramStyle) || 'auto']}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent className="bg-popover border-border">
+                {modelCapabilities.styles.map((style) => (
+                  <SelectItem key={style} value={style} className="text-xs">
+                    {liveData.model === 'recraft-v3'
+                      ? RECRAFT_STYLE_LABELS[style as RecraftStyle]
+                      : IDEOGRAM_STYLE_LABELS[style as IdeogramStyle]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
+          {modelCapabilities.supportsMagicPrompt ? (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={handleMagicPromptToggle}
+              className={`h-8 w-8 rounded-xl nodrag nopan ${
+                liveData.magicPrompt
+                  ? 'bg-muted text-foreground hover:bg-muted/80'
+                  : 'text-muted-foreground hover:bg-muted/70 hover:text-foreground'
+              }`}
+              title={liveData.magicPrompt ? 'Magic Prompt ON' : 'Magic Prompt OFF'}
+            >
+              <Wand2 className="h-3.5 w-3.5" />
+            </Button>
+          ) : null}
+          <div className="flex h-8 items-center rounded-xl bg-muted/80 px-1">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="h-7 w-6 p-0 text-muted-foreground nodrag nopan hover:bg-transparent hover:text-foreground"
+              onClick={() => updateNodeData(id, { imageCount: Math.max(1, (liveData.imageCount || 1) - 1) })}
+            >
+              <Minus className="h-3 w-3" />
+            </Button>
+            <span className="w-5 text-center text-xs text-foreground">{liveData.imageCount || 1}</span>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="h-7 w-6 p-0 text-muted-foreground nodrag nopan hover:bg-transparent hover:text-foreground"
+              onClick={() => updateNodeData(id, { imageCount: Math.min(modelCapabilities.maxImages, (liveData.imageCount || 1) + 1) })}
+            >
+              <Plus className="h-3 w-3" />
+            </Button>
+          </div>
+
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={handleOpenSettings}
+            className="h-8 w-8 rounded-xl nodrag nopan text-muted-foreground hover:bg-muted/70 hover:text-foreground ml-1"
+            title="Settings"
+          >
+            <Settings className="h-3.5 w-3.5" />
+          </Button>
+
+          <div className="min-w-0 flex-1" />
+          <Button
+            onClick={handleGenerate}
+            disabled={!hasValidPrompt || data.isGenerating}
+            size="icon-sm"
+            className="h-10 w-10 min-w-10 rounded-full nodrag nopan bg-primary text-primary-foreground hover:bg-primary/90"
+          >
+            {data.outputUrl ? <RefreshCw className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5 fill-current" />}
+          </Button>
+        </>
+      ) : null}
+    </NodeFooterRail>
+  ) : null;
+
+  const promptOverlay = displayMode === 'summary' ? null : (
+    <NodeStagePrompt
+      teaser={chromeState.showPromptTeaser ? (
+        data.outputUrl ? (
+          <div className="flex flex-col gap-2">
+            <p className={`node-prompt-teaser-clamp max-w-[78%] text-base leading-7 ${promptPreview ? 'text-foreground/82' : 'text-muted-foreground/85'}`}>
+              {promptPreview || promptPlaceholder}
+            </p>
+            {activePresets.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {activePresets.slice(0, 3).map((preset) => (
+                  <span
+                    key={preset.key}
+                    className="inline-flex items-center gap-1 rounded-full border border-border/50 bg-background/10 px-2 py-0.5 text-[10px] text-muted-foreground/85 backdrop-blur-sm"
+                  >
+                    <img src={preset.preview} alt="" className="h-4 w-4 rounded-full object-cover" />
+                    {preset.label}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <p ref={rollerWrapRef} className={`node-prompt-teaser-clamp text-[15px] leading-6 ${promptPreview ? 'text-foreground/82' : 'text-muted-foreground/82'}`}>
+            {promptPreview || promptPlaceholder}
+          </p>
+        )
+      ) : null}
+      expanded={chromeState.showPromptEditor}
+      teaserClassName={data.outputUrl ? 'pb-1' : ''}
+      editorClassName="pb-1"
+      onExpand={
+        isReadOnly
+          ? undefined
+          : () => {
+              setIsPromptExpanded(true);
+              requestAnimationFrame(() => promptTextareaRef.current?.focus());
+            }
+      }
+    >
+      <div
+        className="flex flex-col gap-3 nodrag nopan"
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <textarea
+          ref={promptTextareaRef}
+          value={promptDraft}
+          onChange={handlePromptChange}
+          onFocus={() => {
+            setIsPromptExpanded(true);
+            setIsPromptFocused(true);
+          }}
+          onBlur={async () => {
+            setIsPromptFocused(false);
+            setIsPromptExpanded(false);
+            await handlePromptBlur();
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              setIsPromptFocused(false);
+              setIsPromptExpanded(false);
+              event.currentTarget.blur();
+            }
+          }}
+          placeholder={isReadOnly ? '' : promptPlaceholder}
+          disabled={isReadOnly}
+          className={`node-stage-input nodrag nopan nowheel select-text w-full resize-none border-0 bg-transparent px-0 py-0 focus:outline-none ${data.outputUrl ? 'min-h-[96px] text-base leading-7' : 'min-h-[72px] text-[15px] leading-6'} ${isReadOnly ? 'cursor-default' : ''}`}
+          style={{
+            colorScheme: 'dark',
+            backgroundColor: 'transparent',
+            backgroundImage: 'none',
+            color: 'var(--text-secondary)',
+            caretColor: 'var(--text-primary)',
+            boxShadow: 'none',
+            borderColor: 'transparent',
+            WebkitAppearance: 'none',
+            appearance: 'none',
+          }}
+        />
+        {connectedReferenceCount > 0 ? (
+          <div className="flex flex-wrap gap-1.5">
+            <span className="inline-flex items-center rounded-full border border-border/70 bg-muted/50 px-2 py-0.5 text-[10px] text-muted-foreground">
+              {connectedReferenceCount} image{connectedReferenceCount > 1 ? 's' : ''} referenced
+            </span>
+            {!data.outputUrl && activePresets.length > 0 ? (
+              <span className="inline-flex items-center rounded-full border border-border/70 bg-muted/50 px-2 py-0.5 text-[10px] text-muted-foreground">
+                {activePresets.length} preset{activePresets.length > 1 ? 's' : ''}
+              </span>
+            ) : null}
+          </div>
+        ) : !data.outputUrl && activePresets.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5">
+            <span className="inline-flex items-center rounded-full border border-border/70 bg-muted/50 px-2 py-0.5 text-[10px] text-muted-foreground">
+              {activePresets.length} preset{activePresets.length > 1 ? 's' : ''}
+            </span>
+          </div>
+        ) : null}
+      </div>
+    </NodeStagePrompt>
+  );
+
+  const badges = (
+    <>
+      {data.outputUrl && chromeState.showTopBadges ? (
+        <NodeMediaBadge>{dimensions.width} × {dimensions.height}</NodeMediaBadge>
+      ) : null}
+    </>
+  );
+
+  const secondaryContent = (
+    <>
+      {data.error ? <p className="px-1 text-xs text-red-400">{data.error}</p> : null}
+      {hasCompareResults && chromeState.showSecondaryContent ? (
+        <CompareResultsSection
+          type="image"
+          results={data.compareResults || []}
+          runStatus={data.compareRunStatus}
+          promotedCompareResultId={data.promotedCompareResultId}
+          getModelLabel={(model) => MODEL_CAPABILITIES[model].label}
+          onPromote={handlePromoteCompare}
+          onClear={handleClearCompare}
+          collapsible
+          defaultOpen={isCompareTrayOpen}
+        />
+      ) : null}
+    </>
+  );
+
+  return (
+    <div className="relative">
+      <CanvasNodeShell
+        title={isEditingName && !isReadOnly ? (
           <input
             ref={nameInputRef}
             type="text"
             value={nodeName}
-            onChange={(e) => setNodeName(e.target.value)}
+            onChange={(event) => setNodeName(event.target.value)}
             onBlur={handleNameSubmit}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleNameSubmit();
-              if (e.key === 'Escape') {
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') handleNameSubmit();
+              if (event.key === 'Escape') {
                 setNodeName(data.name || 'Image Generator');
                 setIsEditingName(false);
               }
             }}
-            className="bg-transparent border-b outline-none px-0.5 min-w-[100px]"
-            style={{ borderColor: 'var(--input-border)', color: 'var(--text-secondary)' }}
+            className="node-input rounded-none border-0 border-b bg-transparent px-0.5 outline-none"
           />
         ) : (
           <span
             onDoubleClick={() => !isReadOnly && setIsEditingName(true)}
-            className={`transition-colors hover:opacity-80 ${isReadOnly ? 'cursor-default' : 'cursor-text'}`}
+            className={isReadOnly ? 'cursor-default' : 'cursor-text'}
           >
             {data.name || 'Image Generator'}
           </span>
         )}
-      </div>
-
-      {/* Main Node Card */}
-      <div
-        className={`
-          w-[420px] rounded-2xl overflow-hidden
-          transition-all duration-150
-          ${data.isGenerating ? 'animate-subtle-pulse generating-border-subtle' : ''}
-          ${!data.isGenerating && !data.outputUrl ? (selected ? 'node-card node-card-selected' : 'node-card') : ''}
-        `}
-        style={{ backgroundColor: data.outputUrl ? 'transparent' : undefined }}
+        icon={
+          <div className="relative h-4 w-4">
+            <ImageIcon className="h-4 w-4" />
+            <Sparkle className="absolute -right-0.5 -top-0.5 h-2 w-2 fill-current" />
+          </div>
+        }
+        selected={selected}
+        hovered={isHovered}
+        displayMode={displayMode}
+        hasOutput={!!data.outputUrl}
+        interactiveMode="visual"
+        stageMinHeight={data.outputUrl ? undefined : 360}
+        topToolbar={topToolbar}
+        footerRail={footerRail}
+        promptOverlay={promptOverlay}
+        shellMode="visual-stage"
+        badges={badges}
+        secondaryContent={secondaryContent}
+        titleClassName="text-[var(--node-title-image)]"
+        cardClassName={data.isGenerating ? 'animate-subtle-pulse generating-border-subtle' : undefined}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        focusProps={focusProps}
       >
-        {/* Content Area */}
-        <div className="relative">
-          {/* Loading State */}
-          {data.isGenerating ? (
-            <div className="p-4 min-h-[200px] flex flex-col items-center justify-center gap-4" style={{ backgroundColor: 'var(--node-card-bg)' }}>
-              {data.prompt && (
-                <p className="text-muted-foreground text-xs text-center line-clamp-2 max-w-[90%]">
-                  {data.prompt}
-                </p>
-              )}
-              {activePresets.length > 0 && (
-                <div className="flex flex-wrap justify-center gap-1.5">
-                  {activePresets.map(p => (
-                    <span key={p.key} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-muted/60 text-[10px] text-muted-foreground">
-                      <img src={p.preview} alt="" className="w-4 h-4 rounded-sm object-cover" />
-                      {p.label}
-                    </span>
-                  ))}
-                </div>
-              )}
-              <div className="text-center">
-                <p
-                  className="text-base font-semibold bg-clip-text text-transparent"
-                  style={{
-                    backgroundImage:
-                      'linear-gradient(90deg, hsl(var(--muted-foreground)/0.45) 0%, hsl(var(--foreground)/0.95) 45%, hsl(var(--muted-foreground)/0.45) 100%)',
-                    backgroundSize: '200% 100%',
-                    animation: 'shimmer-text 2s ease-in-out infinite',
-                  }}
-                >
-                  Generating image...
-                </p>
-                <p className="text-muted-foreground text-xs mt-1">This may take a moment</p>
-              </div>
-            </div>
-          ) : data.outputUrl ? (
-            /* Generated Image - Freepik Style with hover toolbar + collapsible prompt bar */
-            <>
-            <div
-              className={`group/image relative rounded-2xl overflow-hidden ${selected ? 'node-card-selected' : ''}`}
-              style={{
-                border: selected ? undefined : '1px solid var(--node-card-border)',
-                boxShadow: selected ? undefined : 'var(--node-card-shadow)',
-              }}
-            >
-              <img
-                src={data.outputUrl}
-                alt="Generated"
-                className="w-full h-auto"
-              />
-              {/* Dimension badge - visible on hover */}
-              <div className="absolute top-3 right-3 px-2 py-0.5 rounded text-xs font-medium opacity-0 group-hover/image:opacity-100 transition-opacity duration-200 border border-border/70 bg-white/85 text-foreground backdrop-blur-sm dark:border-white/10 dark:bg-black/50 dark:text-zinc-300">
-                {dimensions.width} × {dimensions.height}
-              </div>
-              {/* Download button - visible on hover */}
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={handleDownload}
-                className="absolute top-3 left-3 h-8 w-8 rounded-lg opacity-0 group-hover/image:opacity-100 transition-all duration-200 translate-y-1 group-hover/image:translate-y-0 border border-border/70 bg-white/85 text-foreground/80 hover:bg-white hover:text-foreground backdrop-blur-sm dark:border-white/10 dark:bg-black/50 dark:text-zinc-300 dark:hover:text-white dark:hover:bg-black/70"
+        {data.isGenerating ? (
+          <div className="flex min-h-[320px] flex-1 flex-col items-center justify-center gap-4 px-6 pb-[120px] text-center">
+            <div>
+              <p
+                className="bg-clip-text text-base font-semibold text-transparent"
+                style={{
+                  backgroundImage:
+                    'linear-gradient(90deg, hsl(var(--muted-foreground)/0.45) 0%, hsl(var(--foreground)/0.95) 45%, hsl(var(--muted-foreground)/0.45) 100%)',
+                  backgroundSize: '200% 100%',
+                  animation: 'shimmer-text 2s ease-in-out infinite',
+                }}
               >
-                <Download className="h-4 w-4" />
-              </Button>
-              {/* Preset pills - always visible on output */}
-              {activePresets.length > 0 && (
-                <div className="absolute top-3 left-3 flex flex-wrap gap-1 opacity-0 group-hover/image:opacity-100 transition-opacity duration-200">
-                  {activePresets.map(p => (
-                    <span key={p.key} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] border border-border/70 bg-white/85 text-foreground backdrop-blur-sm dark:border-white/10 dark:bg-black/50 dark:text-zinc-300">
-                      <img src={p.preview} alt="" className="w-3.5 h-3.5 rounded-sm object-cover" />
-                      {p.label}
-                    </span>
-                  ))}
-                </div>
-              )}
-              {/* Gradient overlay for better text visibility - visible on hover */}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent dark:from-black/60 opacity-0 group-hover/image:opacity-100 transition-opacity duration-300 pointer-events-none" />
-              {/* Floating Toolbar - visible on hover, hidden when prompt expanded */}
-              {!isReadOnly && !isPromptExpanded && (
-                <div className="absolute bottom-3 left-3 right-3 flex items-center gap-1.5 px-2.5 py-2 rounded-xl opacity-0 group-hover/image:opacity-100 transition-all duration-300 ease-out translate-y-2 group-hover/image:translate-y-0 shadow-xl border border-border/70 bg-white/85 backdrop-blur-xl dark:border-white/10 dark:bg-black/50">
-                  <SearchableSelect
-                    value={data.model}
-                    onValueChange={handleModelChange}
-                    options={Object.entries(MODEL_CAPABILITIES).map(([key, cap]) => ({
-                      value: key,
-                      label: cap.label,
-                      description: cap.description,
-                    }))}
-                    placeholder="Select model"
-                    searchPlaceholder="Search models..."
-                    triggerClassName="max-w-[120px] bg-white/70 hover:bg-white/95 border border-border/60 text-foreground dark:bg-white/10 dark:hover:bg-white/20 dark:border-0 dark:text-white"
-                  />
-                  <Select value={data.aspectRatio} onValueChange={handleAspectRatioChange}>
-                    <SelectTrigger className="h-7 w-auto bg-white/70 hover:bg-white/95 border border-border/60 text-xs text-foreground gap-1 px-2 rounded-md dark:bg-white/10 dark:hover:bg-white/20 dark:border-0 dark:text-white">
-                      <span className="flex items-center gap-1">
-                        <span className="w-2.5 h-2.5 border border-foreground/40 rounded-[2px] dark:border-white/50" />
-                        <SelectValue />
-                      </span>
-                    </SelectTrigger>
-                    <SelectContent className="bg-popover border-border">
-                      {modelCapabilities.aspectRatios.map((ratio) => (
-                        <SelectItem key={ratio} value={ratio} className="text-xs">{getAspectRatioLabel(ratio)}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {modelCapabilities.resolutions && (
-                    <Select value={data.resolution || '1K'} onValueChange={handleResolutionChange}>
-                      <SelectTrigger className="h-7 w-auto bg-white/70 hover:bg-white/95 border border-border/60 text-xs text-foreground gap-1 px-2 rounded-md dark:bg-white/10 dark:hover:bg-white/20 dark:border-0 dark:text-white">
-                        <SelectValue>{data.resolution || '1K'}</SelectValue>
-                      </SelectTrigger>
-                      <SelectContent className="bg-popover border-border">
-                        {modelCapabilities.resolutions.map((res) => (
-                          <SelectItem key={res} value={res} className="text-xs">{res}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                  <div className="flex items-center bg-white/70 dark:bg-white/10 rounded-md h-7">
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="h-7 w-5 text-foreground/70 hover:text-foreground hover:bg-transparent p-0 dark:text-white/70 dark:hover:text-white"
-                      onClick={() => updateNodeData(id, { imageCount: Math.max(1, (data.imageCount || 1) - 1) })}
-                    >
-                      <Minus className="h-3 w-3" />
-                    </Button>
-                    <span className="text-xs text-foreground dark:text-white w-3 text-center">{data.imageCount || 1}</span>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="h-7 w-5 text-foreground/70 hover:text-foreground hover:bg-transparent p-0 dark:text-white/70 dark:hover:text-white"
-                      onClick={() => updateNodeData(id, { imageCount: Math.min(modelCapabilities.maxImages, (data.imageCount || 1) + 1) })}
-                    >
-                      <Plus className="h-3 w-3" />
-                    </Button>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    onClick={handleOpenSettings}
-                    className="h-7 w-7 shrink-0 text-foreground/70 hover:text-foreground hover:bg-white/60 dark:text-white/70 dark:hover:text-white dark:hover:bg-white/10"
-                  >
-                    <Settings className="h-3.5 w-3.5" />
-                  </Button>
-                  <div className="flex-1" />
-                  <Button
-                    onClick={handleGenerate}
-                    disabled={!hasValidPrompt || data.isGenerating}
-                    size="icon-sm"
-                    className="h-8 w-8 min-w-8 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg disabled:opacity-40 shrink-0 transition-all duration-200 hover:scale-105"
-                  >
-                    <RefreshCw className="h-4 w-4" />
-                  </Button>
-                </div>
-              )}
+                Generating image...
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">This may take a moment</p>
             </div>
-            {/* Collapsible Prompt Bar */}
-            <div className="border-t border-border/50" style={{ backgroundColor: 'var(--node-card-bg)' }}>
-              <div
-                className="mx-1 my-1 flex items-center gap-2 rounded-md px-2 py-2 cursor-pointer nodrag hover:bg-muted/40 transition-colors"
-                onClick={() => setIsPromptExpanded(!isPromptExpanded)}
-              >
-                <ChevronRight className={`h-3 w-3 text-foreground/60 shrink-0 transition-transform duration-200 ${isPromptExpanded ? 'rotate-90' : ''}`} />
-                {!isPromptExpanded && (
-                  <p className={`text-xs truncate flex-1 ${data.prompt ? 'text-foreground/85' : 'text-muted-foreground'}`}>
-                    {data.prompt || 'No prompt'}
-                  </p>
-                )}
-              </div>
-              {isPromptExpanded && (
-                <div className="px-3 pb-3 nodrag nopan" onPointerDown={(e) => e.stopPropagation()}>
-                  <div className="rounded-xl border border-border/50 bg-muted/30 p-2 min-h-[100px]">
-                    <textarea
-                      value={data.prompt}
-                      onChange={handlePromptChange}
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      placeholder={isReadOnly ? '' : 'Edit your prompt...'}
-                      disabled={isReadOnly}
-                      className={`w-full h-[80px] bg-transparent border-none text-sm resize-none node-input nodrag nopan nowheel select-text focus:outline-none ${isReadOnly ? 'cursor-default' : ''}`}
-                      style={{ color: 'var(--text-secondary)' }}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-            {connectedReferenceCount > 0 && (
-              <div className="px-3 pb-2">
-                <span className="inline-flex items-center rounded-full border border-border/70 bg-muted/50 px-2 py-0.5 text-[10px] text-muted-foreground">
-                  {connectedReferenceCount} image{connectedReferenceCount > 1 ? 's' : ''} referenced
-                </span>
-              </div>
-            )}
-            {/* Bottom toolbar when prompt is expanded */}
-            {isPromptExpanded && !isReadOnly && (
-              <div className="flex items-center flex-wrap gap-1.5 px-3 py-2.5 node-bottom-toolbar">
-                <SearchableSelect
-                  value={data.model}
-                  onValueChange={handleModelChange}
-                  options={visibleImageModels.map(key => ({
-                    value: key,
-                    label: MODEL_CAPABILITIES[key].label,
-                    description: MODEL_CAPABILITIES[key].description,
-                  }))}
-                  placeholder="Select model"
-                  searchPlaceholder="Search models..."
-                  triggerClassName="max-w-[120px]"
-                />
-                <Select value={data.aspectRatio} onValueChange={handleAspectRatioChange}>
-                  <SelectTrigger className="h-7 w-auto bg-muted/80 border-0 text-xs text-foreground gap-1 px-2 rounded-md hover:bg-muted">
-                    <span className="flex items-center gap-1">
-                      <span className="w-2.5 h-2.5 border border-muted-foreground rounded-[2px]" />
-                      <SelectValue />
-                    </span>
-                  </SelectTrigger>
-                  <SelectContent className="bg-popover border-border">
-                    {modelCapabilities.aspectRatios.map((ratio) => (
-                      <SelectItem key={ratio} value={ratio} className="text-xs">{getAspectRatioLabel(ratio)}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {modelCapabilities.resolutions && (
-                  <Select value={data.resolution || '1K'} onValueChange={handleResolutionChange}>
-                    <SelectTrigger className="h-7 w-auto bg-muted/80 border-0 text-xs text-foreground gap-1 px-2 rounded-md hover:bg-muted">
-                      <SelectValue>{data.resolution || '1K'}</SelectValue>
-                    </SelectTrigger>
-                    <SelectContent className="bg-popover border-border">
-                      {modelCapabilities.resolutions.map((res) => (
-                        <SelectItem key={res} value={res} className="text-xs">{res}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-                <div className="flex items-center bg-muted/80 rounded-md h-7">
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="h-7 w-5 text-muted-foreground hover:text-foreground hover:bg-transparent p-0"
-                    onClick={() => updateNodeData(id, { imageCount: Math.max(1, (data.imageCount || 1) - 1) })}
-                  >
-                    <Minus className="h-3 w-3" />
-                  </Button>
-                  <span className="text-xs text-foreground w-3 text-center">{data.imageCount || 1}</span>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="h-7 w-5 text-muted-foreground hover:text-foreground hover:bg-transparent p-0"
-                    onClick={() => updateNodeData(id, { imageCount: Math.min(modelCapabilities.maxImages, (data.imageCount || 1) + 1) })}
-                  >
-                    <Plus className="h-3 w-3" />
-                  </Button>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={handleOpenSettings}
-                  className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50 shrink-0 cursor-pointer"
-                >
-                  <Settings className="h-3.5 w-3.5" />
-                </Button>
-                <div className="flex-1 min-w-0" />
-                <Button
-                  onClick={handleGenerate}
-                  disabled={!hasValidPrompt || data.isGenerating}
-                  size="icon-sm"
-                  className="h-8 w-8 min-w-8 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg disabled:opacity-40 shrink-0"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
-            {hasCompareResults && (
-              <CompareResultsSection
-                type="image"
-                results={data.compareResults || []}
-                runStatus={data.compareRunStatus}
-                promotedCompareResultId={data.promotedCompareResultId}
-                getModelLabel={(model) => MODEL_CAPABILITIES[model].label}
-                onPromote={handlePromoteCompare}
-                onClear={handleClearCompare}
-                collapsible
-                defaultOpen={isCompareTrayOpen}
-              />
-            )}
-            </>
-          ) : showCompareAsPrimary ? (
-            <CompareResultsSection
-              type="image"
-              results={data.compareResults || []}
-              runStatus={data.compareRunStatus}
-              promotedCompareResultId={data.promotedCompareResultId}
-              getModelLabel={(model) => MODEL_CAPABILITIES[model].label}
-              onPromote={handlePromoteCompare}
-              onClear={handleClearCompare}
-              defaultOpen
-            />
-          ) : (
-            /* Prompt Input - Freepik style with inner content area */
-            <>
-              <div className="p-3 nodrag nopan" onPointerDown={(e) => e.stopPropagation()}>
-                <div className="node-content-area p-3 min-h-[200px]">
-                  <textarea
-                    value={data.prompt}
-                    onChange={handlePromptChange}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    placeholder="Describe the image you want to generate..."
-                    className="w-full h-[170px] bg-transparent border-none text-sm resize-none node-input nodrag nopan nowheel select-text focus:outline-none"
-                    style={{ color: 'var(--text-secondary)' }}
-                    disabled={isReadOnly}
-                  />
-                </div>
-              </div>
-              {/* Active preset pills */}
-              {activePresets.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 px-4 pb-2">
-                  {activePresets.map(p => (
-                    <span key={p.key} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-muted/60 text-[10px] text-muted-foreground">
-                      <img src={p.preview} alt="" className="w-4 h-4 rounded-sm object-cover" />
-                      {p.label}
-                    </span>
-                  ))}
-                </div>
-              )}
-              {connectedReferenceCount > 0 && (
-                <div className="px-4 pb-2">
-                  <span className="inline-flex items-center rounded-full border border-border/70 bg-muted/50 px-2 py-0.5 text-[10px] text-muted-foreground">
-                    {connectedReferenceCount} image{connectedReferenceCount > 1 ? 's' : ''} referenced
-                  </span>
-                </div>
-              )}
-              {/* Error Display */}
-              {data.error && (
-                <p className="text-xs text-red-400 px-4 pb-2">{data.error}</p>
-              )}
-              {/* Bottom Toolbar - visible on hover or selected */}
-              {!isReadOnly && (selected || isHovered) && (
-              <div className="flex items-center flex-wrap gap-1.5 px-3 py-2.5 node-bottom-toolbar">
-                <SearchableSelect
-                  value={data.model}
-                  onValueChange={handleModelChange}
-                  options={visibleImageModels.map(key => ({
-                    value: key,
-                    label: MODEL_CAPABILITIES[key].label,
-                    description: MODEL_CAPABILITIES[key].description,
-                  }))}
-                  placeholder="Select model"
-                  searchPlaceholder="Search models..."
-                  triggerClassName="max-w-[120px]"
-                />
-                <Select value={data.aspectRatio} onValueChange={handleAspectRatioChange}>
-                  <SelectTrigger className="h-7 w-auto bg-muted/80 border-0 text-xs text-foreground gap-1 px-2 rounded-md hover:bg-muted">
-                    <span className="flex items-center gap-1">
-                      <span className="w-2.5 h-2.5 border border-muted-foreground rounded-[2px]" />
-                      <SelectValue />
-                    </span>
-                  </SelectTrigger>
-                  <SelectContent className="bg-popover border-border">
-                    {modelCapabilities.aspectRatios.map((ratio) => (
-                      <SelectItem key={ratio} value={ratio} className="text-xs">{getAspectRatioLabel(ratio)}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {modelCapabilities.resolutions && (
-                  <Select value={data.resolution || '1K'} onValueChange={handleResolutionChange}>
-                    <SelectTrigger className="h-7 w-auto bg-muted/80 border-0 text-xs text-foreground gap-1 px-2 rounded-md hover:bg-muted">
-                      <SelectValue>{data.resolution || '1K'}</SelectValue>
-                    </SelectTrigger>
-                    <SelectContent className="bg-popover border-border">
-                      {modelCapabilities.resolutions.map((res) => (
-                        <SelectItem key={res} value={res} className="text-xs">{res}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-                {modelCapabilities.imageSizes && (
-                  <Select value={data.imageSize || 'square_hd'} onValueChange={handleImageSizeChange}>
-                    <SelectTrigger className="h-7 w-auto max-w-[90px] bg-muted/80 border-0 text-xs text-foreground gap-1 px-2 rounded-md hover:bg-muted [&>span]:truncate">
-                      <SelectValue>{FLUX_IMAGE_SIZES[data.imageSize || 'square_hd'].label}</SelectValue>
-                    </SelectTrigger>
-                    <SelectContent className="bg-popover border-border">
-                      {modelCapabilities.imageSizes.map((size) => (
-                        <SelectItem key={size} value={size} className="text-xs">{FLUX_IMAGE_SIZES[size].label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-                {modelCapabilities.styles && (
-                  <Select value={data.style || (modelCapabilities.styles[0] as string)} onValueChange={handleStyleChange}>
-                    <SelectTrigger className="h-7 w-auto max-w-[90px] bg-muted/80 border-0 text-xs text-foreground gap-1 px-2 rounded-md hover:bg-muted [&>span]:truncate">
-                      <SelectValue>
-                        {data.model === 'recraft-v3'
-                          ? RECRAFT_STYLE_LABELS[(data.style as RecraftStyle) || 'realistic_image']
-                          : IDEOGRAM_STYLE_LABELS[(data.style as IdeogramStyle) || 'auto']
-                        }
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent className="bg-popover border-border">
-                      {modelCapabilities.styles.map((style) => (
-                        <SelectItem key={style} value={style} className="text-xs">
-                          {data.model === 'recraft-v3'
-                            ? RECRAFT_STYLE_LABELS[style as RecraftStyle]
-                            : IDEOGRAM_STYLE_LABELS[style as IdeogramStyle]
-                          }
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-                {modelCapabilities.supportsMagicPrompt && (
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    onClick={handleMagicPromptToggle}
-                    className={`h-7 w-7 shrink-0 ${
-                      data.magicPrompt
-                        ? 'text-foreground bg-muted/50 hover:bg-muted/80'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                    }`}
-                    title={data.magicPrompt ? 'Magic Prompt ON' : 'Magic Prompt OFF'}
-                  >
-                    <Wand2 className="h-3.5 w-3.5" />
-                  </Button>
-                )}
-                <div className="flex items-center bg-muted/80 rounded-md h-7">
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="h-7 w-5 text-muted-foreground hover:text-foreground hover:bg-transparent p-0"
-                    onClick={() => updateNodeData(id, { imageCount: Math.max(1, (data.imageCount || 1) - 1) })}
-                  >
-                    <Minus className="h-3 w-3" />
-                  </Button>
-                  <span className="text-xs text-foreground w-3 text-center">{data.imageCount || 1}</span>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="h-7 w-5 text-muted-foreground hover:text-foreground hover:bg-transparent p-0"
-                    onClick={() => updateNodeData(id, { imageCount: Math.min(modelCapabilities.maxImages, (data.imageCount || 1) + 1) })}
-                  >
-                    <Plus className="h-3 w-3" />
-                  </Button>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={handleOpenSettings}
-                  className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50 shrink-0 cursor-pointer"
-                >
-                  <Settings className="h-3.5 w-3.5" />
-                </Button>
-                <div className="flex-1 min-w-0" />
-                <Button
-                  onClick={handleGenerate}
-                  disabled={!hasValidPrompt || data.isGenerating}
-                  size="icon-sm"
-                  className="h-8 w-8 min-w-8 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg disabled:opacity-40 shrink-0"
-                >
-                  <Play className="h-4 w-4" />
-                </Button>
-              </div>
-              )}
-            </>
-          )}
-        </div>
-      </div>
+          </div>
+        ) : data.outputUrl ? (
+          <div className="flex min-h-[320px] items-center justify-center overflow-hidden rounded-[inherit] pb-[120px]">
+            <img src={data.outputUrl} alt="Generated" className="h-auto w-full object-cover" />
+          </div>
+        ) : (
+          <div className="min-h-[360px] flex-1" />
+        )}
+      </CanvasNodeShell>
 
       {/* Input Handles - Left side */}
       {/* Text Input */}
       <div
-        className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
-        style={{ top: modelCapabilities.inputType !== 'text-only' ? '110px' : '50%', transform: modelCapabilities.inputType === 'text-only' ? 'translateY(-50%)' : undefined }}
+        className={`absolute -left-3 z-10 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
+        style={{ top: getPromptHeavyInputHandleTop(0) }}
       >
         <div className="relative">
           <Handle
@@ -923,7 +817,7 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
             id="text"
             className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
           />
-          <Type className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+          <Type className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-input-icon)]" />
         </div>
         <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
           Text
@@ -934,8 +828,8 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
         <>
           {/* Single visible reference handle (supports multiple incoming edges). */}
           <div
-            className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
-            style={{ top: '160px' }}
+            className={`absolute -left-3 z-10 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
+            style={{ top: getPromptHeavyInputHandleTop(1) }}
           >
             <div className="relative">
               <Handle
@@ -944,7 +838,7 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
                 id="reference"
                 className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
               />
-              <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+              <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-input-icon)]" />
             </div>
             <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
               {maxRefs > 1 ? `Reference (${maxRefs} max)` : 'Reference'}
@@ -958,7 +852,7 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
               position={Position.Left}
               id={`ref${index + 1}`}
               className="!absolute !left-0 !w-0 !h-0 !border-0 opacity-0 pointer-events-none"
-              style={{ top: 160 }}
+              style={{ top: getPromptHeavyInputHandleTop(1) }}
             />
           ))}
         </>
@@ -966,7 +860,7 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
 
       {/* Output Handle - Right side */}
       <div
-        className={`absolute -right-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
+        className={`absolute -right-3 z-10 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
         style={{ top: '50%', transform: 'translateY(-50%)' }}
       >
         <div className="relative">
@@ -976,7 +870,7 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
             id="output"
             className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
           />
-          <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+          <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-output-icon)]" />
         </div>
         <span className="absolute right-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
           Generated image

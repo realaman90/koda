@@ -1,6 +1,6 @@
 'use client';
 
-import { forwardRef, useImperativeHandle } from 'react';
+import { forwardRef, useEffect, useImperativeHandle } from 'react';
 import { useEditor, EditorContent, type Editor } from '@tiptap/react';
 import { StarterKit } from '@tiptap/starter-kit';
 import { TextStyle } from '@tiptap/extension-text-style';
@@ -357,6 +357,7 @@ interface RichTextEditorProps {
   minHeight?: number;
   isExpanded?: boolean;
   editable?: boolean;
+  onBlur?: () => void;
 }
 
 export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
@@ -367,6 +368,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
     minHeight = 80,
     isExpanded = false,
     editable = true,
+    onBlur,
   }, ref) {
     const editor = useEditor({
       immediatelyRender: false,
@@ -399,6 +401,12 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
             'prose-hr:border-zinc-700'
           ),
         },
+        handleDOMEvents: {
+          blur: () => {
+            onBlur?.();
+            return false;
+          },
+        },
       },
       onUpdate: ({ editor }) => {
         onChange(editor.getHTML());
@@ -408,6 +416,12 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
     useImperativeHandle(ref, () => ({
       getEditor: () => editor,
     }));
+
+    useEffect(() => {
+      if (!editor) return;
+      if (content === editor.getHTML()) return;
+      editor.commands.setContent(content, { emitUpdate: false });
+    }, [content, editor]);
 
     if (!editor) {
       return null;

@@ -9,7 +9,7 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { remotionCodeGeneratorAgent } from '../../agents/remotion-code-generator-agent';
 import { getSandboxProvider } from '@/lib/sandbox/sandbox-factory';
-import { loadRecipes } from '../../recipes';
+import { loadRecipes, loadRemotionBestPractices } from '../../recipes';
 import {
   CODEGEN_ATTEMPT_TIMEOUT_MS,
   CODEGEN_MAX_GENERATE_ATTEMPTS,
@@ -27,7 +27,7 @@ import {
   truncateMiddle,
 } from './codegen-context';
 
-type ToolContext = { requestContext?: { get: (key: string) => any; set: (key: string, value: any) => void } };
+type ToolContext = { requestContext?: { get: (key: string) => unknown; set: (key: string, value: unknown) => void } };
 type GeneratedFile = { path: string; content: string };
 const CODEGEN_MOCK_MODE = process.env.KODA_ANIMATION_CODEGEN_MOCK === '1';
 const MAX_AUTO_CONTEXT_FILES = 4;
@@ -526,7 +526,6 @@ This injects recipe patterns (tested code snippets) directly into the code gener
         while ((match = localhostPattern.exec(file.content)) !== null) {
           const fullMatch = match[0];
           const mediaPath = match[1]; // e.g. "media/logo.png"
-          const quote = fullMatch[0]; // the opening quote character
           // Replace with {staticFile("media/...")} — the JSX expression form
           const replacement = `{staticFile("${mediaPath}")}`;
           fixedContent = fixedContent.replace(fullMatch, replacement);
@@ -729,7 +728,7 @@ function extractJSON(text: string): Record<string, unknown> | null {
 /**
  * Format the code generation prompt for the Remotion subagent
  */
-function formatRemotionCodeGenerationPrompt(params: z.infer<typeof GenerateRemotionCodeInputSchema>): string {
+export function formatRemotionCodeGenerationPrompt(params: z.infer<typeof GenerateRemotionCodeInputSchema>): string {
   const parts: string[] = [];
 
   // ── Header ──
@@ -746,6 +745,10 @@ function formatRemotionCodeGenerationPrompt(params: z.infer<typeof GenerateRemot
     parts.push(params.designSpec);
     parts.push(``);
   }
+
+  parts.push(`## REMOTION BEST PRACTICES — FOLLOW THESE RUNTIME RULES`);
+  parts.push(loadRemotionBestPractices());
+  parts.push(``);
 
   // ── Task-specific details ──
   switch (params.task) {

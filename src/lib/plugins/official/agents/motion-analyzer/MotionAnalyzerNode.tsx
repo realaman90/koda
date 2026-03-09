@@ -41,6 +41,7 @@ import { TOOL_DISPLAY_NAMES } from './events';
 import { useMotionAnalyzerStream } from './hooks';
 import { uploadVideoViaPresigned, uploadAsset } from '@/lib/assets/upload';
 import { cacheMediaData, getCached, loadFromDB } from '../animation-generator/media-cache';
+import { useNodeDisplayMode } from '@/components/canvas/nodes/useNodeDisplayMode';
 
 // ─── Constants ──────────────────────────────────────────────────────────
 const MAX_VIDEO_SIZE_MB = 50;
@@ -416,6 +417,7 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
   const nodeData = data as unknown as MotionAnalyzerNodeData;
   const updateNodeData = useCanvasStore(s => s.updateNodeData);
   const isReadOnly = useCanvasStore(s => s.isReadOnly);
+  const { displayMode, focusProps } = useNodeDisplayMode(selected);
 
   // Rename state
   const [isEditingName, setIsEditingName] = useState(false);
@@ -1022,15 +1024,52 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
       : hasVideo
         ? 'Video ready. You can analyze or ask follow-up questions.'
         : 'Upload a video to begin analysis.';
+  const latestGeneratedPrompt = state.generatedPrompts[state.generatedPrompts.length - 1]?.prompt;
+  const latestAssistantMessage = [...state.messages]
+    .reverse()
+    .find((message) => message.role === 'assistant' && message.content.trim())?.content;
+  const motionSummary = state.analysis?.summary
+    || latestGeneratedPrompt
+    || latestAssistantMessage
+    || 'Upload a video to analyze motion, timing, and prompt opportunities.';
 
   // ── Container class ───────────────────────
-  const base = 'animation-node w-[400px] rounded-xl overflow-hidden flex flex-col';
+  const base = 'node-drag-handle node-drag-surface animation-node w-[400px] rounded-xl overflow-hidden flex flex-col';
   const containerClass = selected ? `${base} ring-1 ring-[var(--an-accent)]/70` : base;
 
+  if (displayMode !== 'full') {
+    return (
+      <div {...focusProps}>
+        <div className="mb-2 rounded-xl px-3 py-2 text-sm font-medium" style={{ color: 'var(--node-title-motion)' }}>
+          <Eye className="h-4 w-4" />
+          {nodeData.name || 'Motion Analyzer'}
+        </div>
+
+        <div className={containerClass} style={{ minHeight: '200px' }}>
+          <div className={`node-body flex-1 ${displayMode === 'compact' ? 'node-compact' : 'node-summary'}`}>
+            <div className="node-content-area rounded-xl p-3">
+              <p className="text-xs font-medium text-[var(--an-text-muted)]">
+                {state.phase === 'idle' ? 'Ready' : liveStatus}
+              </p>
+              <p className="mt-1 text-sm text-[var(--an-text)]/85 line-clamp-4">
+                {motionSummary}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--an-text-dim)]">
+              <span>{hasVideo ? 'Video loaded' : 'No video'}</span>
+              <span>{state.generatedPrompts.length} prompt{state.generatedPrompts.length === 1 ? '' : 's'}</span>
+              {state.analysis && <span>Analysis ready</span>}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div>
+    <div {...focusProps}>
       {/* Node Title */}
-      <div className="flex items-center gap-2 mb-2 text-sm font-medium" style={{ color: 'var(--node-title-motion)' }}>
+      <div className="mb-2 rounded-xl px-3 py-2 text-sm font-medium" style={{ color: 'var(--node-title-motion)' }}>
         <Eye className="h-4 w-4" />
         {isEditingName && !isReadOnly ? (
           <input

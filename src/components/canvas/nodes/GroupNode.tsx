@@ -83,7 +83,7 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<GroupNodeType>) {
 
   return (
     <div
-      className="relative rounded-2xl"
+      className="node-drag-handle node-drag-surface relative rounded-2xl"
       style={containerStyle}
     >
       {/* Node Resizer - invisible handles, resize from edges */}
@@ -139,7 +139,7 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<GroupNodeType>) {
       )}
 
       {/* Title - Inside top-left of container */}
-      <div className="absolute top-3 left-4">
+      <div className="absolute top-3 left-4 rounded-lg px-2 py-1">
         {isEditingName ? (
           <input
             ref={nameInputRef}
@@ -168,7 +168,7 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<GroupNodeType>) {
       </div>
 
       {/* Content Area - centered placeholder text */}
-      <div className="flex items-center justify-center h-full text-zinc-500 text-sm">
+      <div className="pointer-events-none flex h-full items-center justify-center text-sm text-zinc-500">
         Drag elements here
       </div>
 

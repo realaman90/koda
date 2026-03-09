@@ -1,20 +1,23 @@
 'use client';
 
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   ReactFlow,
   Background,
   BackgroundVariant,
   MiniMap,
   ConnectionLineType,
+  PanOnScrollMode,
   SelectionMode,
+  useOnViewportChange,
   type OnSelectionChangeFunc,
   type IsValidConnection,
+  type ReactFlowInstance,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
 import { useCanvasStore, createStoryboardNode, createProductShotNode, createPluginNode, createMediaNode } from '@/stores/canvas-store';
-import type { AppNode, ImageGeneratorNodeData, ImageModelType, MediaNodeData, PluginNodeData } from '@/lib/types';
+import type { AppEdge, AppNode, ImageGeneratorNodeData, ImageModelType, MediaNodeData, PluginNodeData } from '@/lib/types';
 import { MODEL_CAPABILITIES } from '@/lib/types';
 import { useSettingsStore } from '@/stores/settings-store';
 import { useAppStore } from '@/stores/app-store';
@@ -34,6 +37,8 @@ import { pluginRegistry } from '@/lib/plugins/registry';
 import { evaluatePluginLaunchById, emitPluginPolicyAuditEvent } from '@/lib/plugins/launch-policy';
 import { toast } from 'sonner';
 import { uploadAsset } from '@/lib/assets/upload';
+import { useCanvasPersistenceController } from './useCanvasPersistenceController';
+import { resolveCanvasDetailLevelFromZoom } from './nodes/useNodeDisplayMode';
 import '@/lib/plugins/official/storyboard-generator';
 import '@/lib/plugins/official/product-shot';
 import '@/lib/plugins/official/agents/animation-generator';
@@ -45,6 +50,7 @@ import '@/lib/plugins/official/image-to-pdf';
 export function Canvas() {
   const nodes = useCanvasStore((state) => state.nodes);
   const edges = useCanvasStore((state) => state.edges);
+  const nodeCount = nodes.length;
   const onNodesChange = useCanvasStore((state) => state.onNodesChange);
   const onEdgesChange = useCanvasStore((state) => state.onEdgesChange);
   const onConnect = useCanvasStore((state) => state.onConnect);
@@ -59,7 +65,12 @@ export function Canvas() {
   const selectedEdgeIds = useCanvasStore((state) => state.selectedEdgeIds);
   const isReadOnly = useCanvasStore((state) => state.isReadOnly);
   const setReactFlowInstance = useCanvasStore((state) => state.setReactFlowInstance);
+  const setCanvasDetailLevel = useCanvasStore((state) => state.setCanvasDetailLevel);
+  const canvasDetailLevel = useCanvasStore((state) => state.canvasDetailLevel);
   const currentCanvasId = useAppStore((state) => state.currentCanvasId);
+  const gridSnap = useSettingsStore((state) => state.canvasPreferences.gridSnap);
+  const showMinimap = useSettingsStore((state) => state.canvasPreferences.showMinimap);
+  const theme = useSettingsStore((state) => state.theme);
 
   // Plugin sandbox state
   const { activePlugin, openSandbox, closeSandbox } = useAgentSandbox();
@@ -67,6 +78,95 @@ export function Canvas() {
   // Get addNode and reactFlowInstance for creating nodes
   const addNode = useCanvasStore((state) => state.addNode);
   const reactFlowInstance = useCanvasStore((state) => state.reactFlowInstance);
+  const detailLevelRef = useRef(canvasDetailLevel);
+  const maskFrameRef = useRef<number | null>(null);
+  const maskPointRef = useRef<{ clientX: number; clientY: number } | null>(null);
+  const viewportGestureRef = useRef(false);
+  const backgroundMaskEnabled = canvasDetailLevel !== 'summary' && nodeCount <= 120;
+
+  useCanvasPersistenceController();
+
+  useEffect(() => {
+    detailLevelRef.current = canvasDetailLevel;
+  }, [canvasDetailLevel]);
+
+  const applyBackgroundMask = useCallback((point?: { clientX: number; clientY: number } | null) => {
+    const backgroundEl = containerRef.current?.querySelector('.react-flow__background') as HTMLElement | null;
+    if (!backgroundEl) return;
+
+    if (!backgroundMaskEnabled) {
+      backgroundEl.style.maskImage = 'none';
+      backgroundEl.style.webkitMaskImage = 'none';
+      return;
+    }
+
+    if (!point) {
+      backgroundEl.style.maskImage = 'radial-gradient(circle at 50% 50%, black 15%, transparent 40%)';
+      backgroundEl.style.webkitMaskImage = 'radial-gradient(circle at 50% 50%, black 15%, transparent 40%)';
+      return;
+    }
+
+    const rect = backgroundEl.getBoundingClientRect();
+    const x = ((point.clientX - rect.left) / rect.width) * 100;
+    const y = ((point.clientY - rect.top) / rect.height) * 100;
+    const gradient = `radial-gradient(circle at ${x}% ${y}%, black 15%, transparent 40%)`;
+    backgroundEl.style.maskImage = gradient;
+    backgroundEl.style.webkitMaskImage = gradient;
+  }, [backgroundMaskEnabled]);
+
+  useOnViewportChange({
+    onStart: () => {
+      viewportGestureRef.current = true;
+
+      if (maskFrameRef.current !== null) {
+        cancelAnimationFrame(maskFrameRef.current);
+        maskFrameRef.current = null;
+      }
+
+      const backgroundEl = containerRef.current?.querySelector('.react-flow__background') as HTMLElement | null;
+      if (backgroundEl && backgroundMaskEnabled) {
+        backgroundEl.style.maskImage = 'none';
+        backgroundEl.style.webkitMaskImage = 'none';
+      }
+    },
+    onChange: (viewport) => {
+      const nextDetailLevel = resolveCanvasDetailLevelFromZoom(viewport.zoom);
+      if (detailLevelRef.current === nextDetailLevel) return;
+      detailLevelRef.current = nextDetailLevel;
+      setCanvasDetailLevel(nextDetailLevel);
+    },
+    onEnd: () => {
+      viewportGestureRef.current = false;
+      applyBackgroundMask(maskPointRef.current);
+    },
+  });
+
+  const nodeMap = useMemo(() => new Map(nodes.map((node) => [node.id, node] as const)), [nodes]);
+  const incomingEdgesByTarget = useMemo(() => {
+    const map = new Map<string, typeof edges>();
+    for (const edge of edges) {
+      const list = map.get(edge.target);
+      if (list) {
+        list.push(edge);
+      } else {
+        map.set(edge.target, [edge]);
+      }
+    }
+    return map;
+  }, [edges]);
+
+  const defaultEdgeOptions = useMemo(
+    () => ({
+      style: { stroke: '#6366f1', strokeWidth: 2 },
+      type: 'deletable' as const,
+    }),
+    []
+  );
+  const connectionLineStyle = useMemo(() => ({ stroke: '#6366f1', strokeWidth: 2 }), []);
+  const snapGrid = useMemo<[number, number]>(() => [20, 20], []);
+  const selectionKeyCode = useMemo(() => ['Shift'], []);
+  const deleteKeyCode = useMemo(() => (isReadOnly ? [] : ['Backspace', 'Delete']), [isReadOnly]);
+  const proOptions = useMemo(() => ({ hideAttribution: true }), []);
 
   const handleCanvasDragOver = useCallback(
     (event: React.DragEvent) => {
@@ -184,20 +284,45 @@ export function Canvas() {
   // Enable keyboard shortcuts
   useKeyboardShortcuts();
 
-  // Mouse-tracking mask on background dots
   const containerRef = useRef<HTMLDivElement>(null);
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    const el = containerRef.current?.querySelector('.react-flow__background') as HTMLElement | null;
-    if (el) {
-      const rect = el.getBoundingClientRect();
-      const x = ((e.clientX - rect.left) / rect.width) * 100;
-      const y = ((e.clientY - rect.top) / rect.height) * 100;
-      el.style.maskImage =
-        `radial-gradient(circle at ${x}% ${y}%, black 15%, transparent 40%)`;
-      el.style.webkitMaskImage =
-        `radial-gradient(circle at ${x}% ${y}%, black 15%, transparent 40%)`;
-    }
+
+  useEffect(() => {
+    return () => {
+      if (maskFrameRef.current !== null) {
+        cancelAnimationFrame(maskFrameRef.current);
+      }
+    };
   }, []);
+
+  useEffect(() => {
+    applyBackgroundMask(maskPointRef.current);
+  }, [applyBackgroundMask]);
+
+  const handleMouseMove = useCallback((event: React.MouseEvent) => {
+    if (!backgroundMaskEnabled || viewportGestureRef.current) {
+      return;
+    }
+
+    maskPointRef.current = { clientX: event.clientX, clientY: event.clientY };
+
+    if (maskFrameRef.current !== null) {
+      return;
+    }
+
+    maskFrameRef.current = requestAnimationFrame(() => {
+      maskFrameRef.current = null;
+      const point = maskPointRef.current;
+      if (!point) return;
+      applyBackgroundMask(point);
+    });
+  }, [applyBackgroundMask, backgroundMaskEnabled]);
+
+  const handleInit = useCallback((instance: ReactFlowInstance<AppNode, AppEdge>) => {
+    setReactFlowInstance(instance);
+    const nextDetailLevel = resolveCanvasDetailLevelFromZoom(instance.getZoom());
+    detailLevelRef.current = nextDetailLevel;
+    setCanvasDetailLevel(nextDetailLevel);
+  }, [setCanvasDetailLevel, setReactFlowInstance]);
 
   // Handle right-click context menu
   const handleContextMenu = useCallback(
@@ -249,9 +374,10 @@ export function Canvas() {
       }
 
       // Get source and target nodes
-      const sourceNode = nodes.find((n) => n.id === connection.source) as AppNode | undefined;
-      const targetNode = nodes.find((n) => n.id === connection.target) as AppNode | undefined;
+      const sourceNode = nodeMap.get(connection.source) as AppNode | undefined;
+      const targetNode = nodeMap.get(connection.target) as AppNode | undefined;
       if (!sourceNode || !targetNode) return false;
+      const targetIncomingEdges = incomingEdgesByTarget.get(targetNode.id) ?? [];
 
       const sourcePluginData = sourceNode.type === 'pluginNode'
         ? (sourceNode.data as PluginNodeData)
@@ -311,7 +437,7 @@ export function Canvas() {
 
           // Enforce per-model reference limits.
           const maxRefs = Math.max(1, capabilities.maxReferences || 1);
-          const existingReferenceEdges = edges.filter(
+          const existingReferenceEdges = targetIncomingEdges.filter(
             (e) =>
               e.target === targetNode.id
               && (
@@ -398,7 +524,7 @@ export function Canvas() {
 
       return true;
     },
-    [nodes, edges]
+    [incomingEdgesByTarget, nodeMap]
   );
 
   // Allow panning on empty canvas while Select tool is active.
@@ -422,6 +548,7 @@ export function Canvas() {
         <AgentSandbox plugin={activePlugin} onClose={closeSandbox} />
       )}
       <ReactFlow
+        colorMode={theme === 'system' ? 'system' : theme}
         nodes={nodes}
         edges={edges}
         onNodesChange={isReadOnly ? undefined : onNodesChange}
@@ -433,35 +560,35 @@ export function Canvas() {
         onContextMenu={isReadOnly ? undefined : handleContextMenu}
         onDragOver={isReadOnly ? undefined : handleCanvasDragOver}
         onDrop={isReadOnly ? undefined : handleCanvasDrop}
-        onInit={setReactFlowInstance}
+        onInit={handleInit}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         isValidConnection={isReadOnly ? undefined : isValidConnection}
         fitView
         className={`tool-${activeTool}`}
         style={{ backgroundColor: 'var(--canvas-bg)' }}
-        defaultEdgeOptions={{
-          style: { stroke: '#6366f1', strokeWidth: 2 },
-          type: 'deletable',
-        }}
+        defaultEdgeOptions={defaultEdgeOptions}
         connectionLineType={ConnectionLineType.Bezier}
-        connectionLineStyle={{ stroke: '#6366f1', strokeWidth: 2 }}
-        proOptions={{ hideAttribution: true }}
-        snapToGrid={useSettingsStore.getState().canvasPreferences.gridSnap}
-        snapGrid={[20, 20]}
+        connectionLineStyle={connectionLineStyle}
+        proOptions={proOptions}
+        snapToGrid={gridSnap}
+        snapGrid={snapGrid}
         panOnDrag={panEnabled}
         panActivationKeyCode={isReadOnly ? null : 'Space'}
-        panOnScroll={false}
-        zoomOnScroll
+        panOnScroll
+        panOnScrollSpeed={0.9}
+        panOnScrollMode={PanOnScrollMode.Free}
+        zoomOnScroll={false}
+        zoomOnPinch
         minZoom={0.25}
         nodesDraggable={!isReadOnly}
         nodesConnectable={!isReadOnly}
         edgesReconnectable={!isReadOnly}
         elevateNodesOnSelect={false}
         selectionOnDrag={selectionOnDragEnabled}
-        selectionKeyCode={['Shift']}
+        selectionKeyCode={selectionKeyCode}
         selectionMode={SelectionMode.Partial}
-        deleteKeyCode={isReadOnly ? [] : ['Backspace', 'Delete']}
+        deleteKeyCode={deleteKeyCode}
         connectionRadius={30}
         selectNodesOnDrag={isReadOnly ? false : activeTool === 'select'}
       >
@@ -470,8 +597,9 @@ export function Canvas() {
           gap={18}
           size={1.2}
           color="var(--canvas-dots)"
+          style={backgroundMaskEnabled ? undefined : { maskImage: 'none', WebkitMaskImage: 'none' }}
         />
-        {useSettingsStore.getState().canvasPreferences.showMinimap && (
+        {showMinimap && (
           <MiniMap
             nodeStrokeWidth={3}
             zoomable

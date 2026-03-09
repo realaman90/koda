@@ -9,6 +9,8 @@ import { PenTool, Play, RefreshCw, Type, ImageIcon, Code, Download, Copy, Check,
 import { useSettingsStore } from '@/stores/settings-store';
 import { getApiErrorMessage, normalizeApiErrorMessage } from '@/lib/client/api-error';
 import { createDefaultSvgStudioState, type SvgStudioNodeData, type SvgStudioState, type SvgStudioModel, type SvgStudioPhase } from './types';
+import { useNodeDisplayMode } from '@/components/canvas/nodes/useNodeDisplayMode';
+import { getPromptHeavyInputHandleTop } from '@/components/canvas/nodes/chrome/handleLayout';
 
 const QUIVER_ENABLED = process.env.NEXT_PUBLIC_QUIVER_ENABLED === 'true';
 
@@ -34,6 +36,7 @@ function SvgStudioNodeComponent({ id, data, selected }: NodeProps<Node<PluginNod
   const isReadOnly = useCanvasStore((s) => s.isReadOnly);
   const addToHistory = useSettingsStore((s) => s.addToHistory);
   const getConnectedInputs = useCanvasStore((s) => s.getConnectedInputs);
+  const { displayMode, focusProps } = useNodeDisplayMode(selected);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
   const [showCode, setShowCode] = useState(false);
@@ -90,6 +93,11 @@ function SvgStudioNodeComponent({ id, data, selected }: NodeProps<Node<PluginNod
     if (!nodeData.state) return base;
     return { ...base, ...nodeData.state };
   }, [nodeData.state]);
+  const [promptDraft, setPromptDraft] = useState(state.prompt);
+
+  useEffect(() => {
+    setPromptDraft(state.prompt);
+  }, [id, state.prompt]);
 
   // Re-sync handle positions when node content changes size
   useEffect(() => {
@@ -154,17 +162,18 @@ function SvgStudioNodeComponent({ id, data, selected }: NodeProps<Node<PluginNod
   }, []);
 
   const enhancePrompt = useCallback(async () => {
-    if (!state.prompt.trim() || isEnhancing || isSubmitting) return;
+    if (!promptDraft.trim() || isEnhancing || isSubmitting) return;
     setIsEnhancing(true);
     try {
       const res = await fetch('/api/agents/enhance-prompt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: state.prompt.trim(), type: 'svg' }),
+        body: JSON.stringify({ prompt: promptDraft.trim(), type: 'svg' }),
       });
       if (!res.ok) throw new Error('Enhancement failed');
       const data = await res.json();
       if (data.enhancedPrompt) {
+        setPromptDraft(data.enhancedPrompt);
         updateState({ prompt: data.enhancedPrompt });
       }
     } catch (err) {
@@ -172,10 +181,10 @@ function SvgStudioNodeComponent({ id, data, selected }: NodeProps<Node<PluginNod
     } finally {
       setIsEnhancing(false);
     }
-  }, [state.prompt, isEnhancing, isSubmitting, updateState]);
+  }, [isEnhancing, isSubmitting, promptDraft, updateState]);
 
   const submit = async () => {
-    if (!state.prompt.trim() || isSubmitting) return;
+    if (!promptDraft.trim() || isSubmitting) return;
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -183,6 +192,9 @@ function SvgStudioNodeComponent({ id, data, selected }: NodeProps<Node<PluginNod
     setIsSubmitting(true);
     setPartialSvg(null);
     setStreamPhase('generating');
+    if (promptDraft !== state.prompt) {
+      updateState({ prompt: promptDraft });
+    }
     updateState({ phase: 'generating', error: undefined, partialSvg: undefined });
 
     const modelName = state.model || 'gemini';
@@ -190,8 +202,8 @@ function SvgStudioNodeComponent({ id, data, selected }: NodeProps<Node<PluginNod
     // Resolve connected edge inputs
     const connectedInputs = getConnectedInputs(id);
     const prompt = connectedInputs.textContent
-      ? `${connectedInputs.textContent}\n\n${state.prompt.trim()}`
-      : state.prompt.trim();
+      ? `${connectedInputs.textContent}\n\n${promptDraft.trim()}`
+      : promptDraft.trim();
     const references = connectedInputs.referenceUrl ? [connectedInputs.referenceUrl] : undefined;
 
     try {
@@ -274,7 +286,7 @@ function SvgStudioNodeComponent({ id, data, selected }: NodeProps<Node<PluginNod
 
                   addToHistory({
                     type: 'svg',
-                    prompt: state.prompt.trim(),
+                    prompt: promptDraft.trim(),
                     model: modelName === 'quiver-arrow' ? 'quiver-arrow' : 'gemini-3.1-pro-preview',
                     status: 'completed',
                     result: { urls: asset?.url ? [asset.url] : [] },
@@ -308,7 +320,7 @@ function SvgStudioNodeComponent({ id, data, selected }: NodeProps<Node<PluginNod
 
         addToHistory({
           type: 'svg',
-          prompt: state.prompt.trim() || '(no prompt)',
+          prompt: promptDraft.trim() || '(no prompt)',
           model: modelName === 'quiver-arrow' ? 'quiver-arrow' : 'gemini-3.1-pro-preview',
           status: 'failed',
           error: errorMessage,
@@ -328,11 +340,70 @@ function SvgStudioNodeComponent({ id, data, selected }: NodeProps<Node<PluginNod
   const connectedInputs = getConnectedInputs(id);
   const hasReference = !!connectedInputs.referenceUrl;
   const hasTextInput = !!connectedInputs.textContent;
+  const svgSummary = promptDraft.replace(/\s+/g, ' ').trim() || 'Describe the SVG you want to create.';
+
+  if (displayMode !== 'full') {
+    return (
+      <div {...focusProps}>
+        <div className="mb-2 rounded-xl px-3 py-2 text-sm font-medium" style={{ color: 'var(--node-title-svg)' }}>
+          <PenTool className="h-4 w-4" />
+          {nodeData.name || 'SVG Studio'}
+        </div>
+
+        <div className={`node-drag-handle node-drag-surface ${selected ? 'node-card node-card-selected' : 'node-card'} relative w-[420px] rounded-2xl overflow-visible`}>
+          <div className={`node-body min-h-[180px] ${displayMode === 'compact' ? 'node-compact' : 'node-summary'}`}>
+            <div className="node-content-area rounded-xl p-3">
+              <p className="text-xs font-medium text-muted-foreground">
+                {state.phase === 'ready' ? 'SVG ready' : PHASE_LABELS[state.phase] || 'Ready'}
+              </p>
+              <p className="mt-1 text-sm text-foreground/85 line-clamp-4">
+                {svgSummary}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+              <span>{selectedModel.label}</span>
+              {hasTextInput && <span>Text connected</span>}
+              {hasReference && <span>Reference image</span>}
+              {state.svg && <span>Output ready</span>}
+            </div>
+          </div>
+
+          <div className="absolute -left-3 z-10 group" style={{ top: getPromptHeavyInputHandleTop(0) }}>
+            <div className="relative">
+              <Handle type="target" position={Position.Left} id="text" className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle" />
+              <Type className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-input-icon)]" />
+            </div>
+          </div>
+
+          <div className="absolute -left-3 z-10 group" style={{ top: getPromptHeavyInputHandleTop(1) }}>
+            <div className="relative">
+              <Handle type="target" position={Position.Left} id="reference" className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle" />
+              <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-input-icon)]" />
+            </div>
+          </div>
+
+          <div className="absolute -right-3 z-10 group" style={{ top: '30%', transform: 'translateY(-50%)' }}>
+            <div className="relative">
+              <Handle type="source" position={Position.Right} id="image-output" className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle" />
+              <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-output-icon)]" />
+            </div>
+          </div>
+
+          <div className="absolute -right-3 z-10 group" style={{ top: '70%', transform: 'translateY(-50%)' }}>
+            <div className="relative">
+              <Handle type="source" position={Position.Right} id="code-output" className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle" />
+              <Code className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-output-icon)]" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div>
+    <div {...focusProps}>
       {/* Node Title */}
-      <div className="flex items-center gap-2 mb-2 text-sm font-medium" style={{ color: 'var(--node-title-svg)' }}>
+      <div className="mb-2 rounded-xl px-3 py-2 text-sm font-medium" style={{ color: 'var(--node-title-svg)' }}>
         <PenTool className="h-4 w-4" />
         {isEditingName && !isReadOnly ? (
           <input
@@ -362,7 +433,7 @@ function SvgStudioNodeComponent({ id, data, selected }: NodeProps<Node<PluginNod
       </div>
 
       <div className={`
-        relative w-[420px] rounded-2xl overflow-visible
+        node-drag-handle node-drag-surface relative w-[420px] rounded-2xl overflow-visible
         transition-all duration-150
         ${isSubmitting ? 'node-card animate-subtle-pulse generating-border-subtle' : ''}
         ${!isSubmitting ? (selected ? 'node-card node-card-selected' : 'node-card') : ''}
@@ -374,7 +445,7 @@ function SvgStudioNodeComponent({ id, data, selected }: NodeProps<Node<PluginNod
             <div className="p-3">
               <div className="node-content-area p-3 rounded-xl">
                 <p className="text-sm line-clamp-3" style={{ color: 'var(--text-secondary)' }}>
-                  {state.prompt}
+                  {promptDraft}
                 </p>
               </div>
             </div>
@@ -434,8 +505,13 @@ function SvgStudioNodeComponent({ id, data, selected }: NodeProps<Node<PluginNod
         <div className="p-3">
           <div className="node-content-area p-3 min-h-[120px]">
             <textarea
-              value={state.prompt}
-              onChange={(e) => updateState({ prompt: e.target.value })}
+              value={promptDraft}
+              onChange={(e) => setPromptDraft(e.target.value)}
+              onBlur={() => {
+                if (promptDraft !== state.prompt) {
+                  updateState({ prompt: promptDraft });
+                }
+              }}
               placeholder="Describe the SVG you want to create..."
               className="w-full h-[90px] bg-transparent border-none text-sm resize-none focus:outline-none"
               style={{ color: 'var(--text-secondary)' }}
@@ -505,9 +581,9 @@ function SvgStudioNodeComponent({ id, data, selected }: NodeProps<Node<PluginNod
           )}
 
           <div className="flex-1" />
-          <button
-            onClick={enhancePrompt}
-            disabled={isEnhancing || isSubmitting || !state.prompt.trim()}
+            <button
+              onClick={enhancePrompt}
+            disabled={isEnhancing || isSubmitting || !promptDraft.trim()}
             className="h-7 flex items-center gap-1 px-2 rounded-md text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-40"
             title="Enhance prompt for better SVG results"
           >
@@ -516,11 +592,11 @@ function SvgStudioNodeComponent({ id, data, selected }: NodeProps<Node<PluginNod
           </button>
           <button
             onClick={submit}
-            disabled={isSubmitting || !state.prompt.trim()}
-            className="h-8 w-8 min-w-8 flex items-center justify-center bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg disabled:opacity-40 shrink-0 transition-all duration-200 hover:scale-105"
+            disabled={isSubmitting || !promptDraft.trim()}
+            className="h-10 w-10 min-w-10 flex items-center justify-center bg-primary hover:bg-primary/90 text-primary-foreground rounded-full disabled:opacity-40 shrink-0 transition-all duration-200 hover:scale-105"
             aria-label="Generate SVG"
           >
-            <Play className="h-4 w-4" />
+            <Play className="h-4 w-4 ml-0.5 fill-current" />
           </button>
         </div>
 
@@ -593,37 +669,37 @@ function SvgStudioNodeComponent({ id, data, selected }: NodeProps<Node<PluginNod
         )}
 
       {/* Input Handle - Text (left top) */}
-      <div className="absolute -left-3 group" style={{ top: '30%', transform: 'translateY(-50%)' }}>
+      <div className="absolute -left-3 z-10 group" style={{ top: getPromptHeavyInputHandleTop(0) }}>
         <div className="relative">
           <Handle type="target" position={Position.Left} id="text" className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle" />
-          <Type className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+          <Type className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-input-icon)]" />
         </div>
         <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">Text input</span>
       </div>
 
       {/* Input Handle - Image ref (left bottom) */}
-      <div className="absolute -left-3 group" style={{ top: '70%', transform: 'translateY(-50%)' }}>
+      <div className="absolute -left-3 z-10 group" style={{ top: getPromptHeavyInputHandleTop(1) }}>
         <div className="relative">
           <Handle type="target" position={Position.Left} id="reference" className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle" />
-          <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+          <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-input-icon)]" />
         </div>
         <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">Image reference</span>
       </div>
 
       {/* Output Handle - Image (right top) */}
-      <div className="absolute -right-3 group" style={{ top: '30%', transform: 'translateY(-50%)' }}>
+      <div className="absolute -right-3 z-10 group" style={{ top: '30%', transform: 'translateY(-50%)' }}>
         <div className="relative">
           <Handle type="source" position={Position.Right} id="image-output" className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle" />
-          <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+          <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-output-icon)]" />
         </div>
         <span className="absolute right-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">SVG image</span>
       </div>
 
       {/* Output Handle - Code (right bottom) */}
-      <div className="absolute -right-3 group" style={{ top: '70%', transform: 'translateY(-50%)' }}>
+      <div className="absolute -right-3 z-10 group" style={{ top: '70%', transform: 'translateY(-50%)' }}>
         <div className="relative">
           <Handle type="source" position={Position.Right} id="code-output" className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle" />
-          <Code className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+          <Code className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-output-icon)]" />
         </div>
         <span className="absolute right-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">SVG code</span>
       </div>

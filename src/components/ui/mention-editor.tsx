@@ -31,6 +31,7 @@ interface MentionEditorProps {
   placeholder?: string;
   disabled?: boolean;
   className?: string;
+  onBlur?: () => void;
 }
 
 // ==========================================
@@ -250,6 +251,7 @@ export function MentionEditor({
   placeholder: placeholderText,
   disabled,
   className,
+  onBlur,
 }: MentionEditorProps) {
   const itemsRef = useRef<MentionItem[]>(items);
   const isInternalUpdate = useRef(false);
@@ -344,6 +346,10 @@ export function MentionEditor({
       onKeyDown={(e) => e.stopPropagation()}
       onKeyUp={(e) => e.stopPropagation()}
       onFocus={(e) => e.stopPropagation()}
+      onBlur={(e) => {
+        e.stopPropagation();
+        onBlur?.();
+      }}
       style={{ cursor: 'text' }}
     >
       <EditorContent

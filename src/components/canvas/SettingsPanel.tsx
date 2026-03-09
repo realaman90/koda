@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useCanvasStore } from '@/stores/canvas-store';
-import type { ImageGeneratorNodeData, ImageReference, FluxImageSize, NanoBananaResolution, RecraftStyle, IdeogramStyle, CharacterPreset, StylePreset, CameraAnglePreset, CameraLensPreset, PresetOption, CharacterSelection } from '@/lib/types';
+import type { ImageGeneratorNodeData, ImageReference, FluxImageSize, NanoBananaResolution, RecraftStyle, IdeogramStyle, CharacterPreset, StylePreset, CameraAnglePreset, CameraLensPreset, PresetOption, CharacterSelection, MusicGeneratorNodeData, SpeechNodeData, VideoAudioNodeData, ProductShotNodeData, ProductShotBackground, ProductShotLighting } from '@/lib/types';
 import { MAX_COMPARE_MODELS } from '@/lib/types';
 import { MODEL_CAPABILITIES, ENABLED_IMAGE_MODELS, FLUX_IMAGE_SIZES, NANO_BANANA_RESOLUTIONS, RECRAFT_STYLE_LABELS, IDEOGRAM_STYLE_LABELS, getApproxDimensions, getAspectRatioLabel, type ImageModelType } from '@/lib/types';
 import { getApiErrorMessage, normalizeApiErrorMessage } from '@/lib/client/api-error';
@@ -39,6 +39,9 @@ import {
   Camera,
   Images,
   AlertCircle,
+  Music,
+  Mic,
+  Film,
 } from 'lucide-react';
 
 export function SettingsPanel() {
@@ -54,7 +57,13 @@ export function SettingsPanel() {
   const visibleImageModels: ImageModelType[] = ['auto' as ImageModelType, ...ENABLED_IMAGE_MODELS.filter((m) => enabledImageModels.includes(m))];
 
   const node = settingsPanelNodeId ? getNode(settingsPanelNodeId) : null;
+  const nodeType = node?.type as string | undefined;
   const data = node?.type === 'imageGenerator' ? node.data as ImageGeneratorNodeData : undefined;
+  const musicData = node?.type === 'musicGenerator' ? node.data as MusicGeneratorNodeData : undefined;
+  const speechData = node?.type === 'speech' ? node.data as SpeechNodeData : undefined;
+  const videoAudioData = node?.type === 'videoAudio' ? node.data as VideoAudioNodeData : undefined;
+  const productShotData = node?.type === 'productShot' ? node.data as ProductShotNodeData : undefined;
+  const anyData = data || musicData || speechData || videoAudioData || productShotData;
 
   const panelRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -445,6 +454,7 @@ export function SettingsPanel() {
           addToHistory,
           updateHistoryItem,
         },
+        confirmImpl: () => true,
       });
 
       if (!result.cancelled) {
@@ -518,7 +528,26 @@ export function SettingsPanel() {
     updateNodeData,
   ]);
 
-  if (!settingsPanelNodeId || !data) return null;
+  if (!settingsPanelNodeId || !anyData) return null;
+
+  // Non-image node types get their own simpler panel
+  if (nodeType && nodeType !== 'imageGenerator') {
+    return (
+      <GenericSettingsPanel
+        nodeId={settingsPanelNodeId}
+        nodeType={nodeType}
+        position={settingsPanelPosition}
+        musicData={musicData}
+        speechData={speechData}
+        videoAudioData={videoAudioData}
+        productShotData={productShotData}
+        updateNodeData={updateNodeData}
+        closeSettingsPanel={closeSettingsPanel}
+      />
+    );
+  }
+
+  if (!data) return null;
 
   // Check if we have a valid prompt (direct, connected, or from presets)
   const connectedInputs = getConnectedInputs(settingsPanelNodeId);
@@ -562,7 +591,7 @@ export function SettingsPanel() {
   return (
     <div
       ref={panelRef}
-      className="fixed w-[280px] max-h-[560px] bg-popover border border-border rounded-xl z-50 flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+      className="fixed w-[360px] max-h-[560px] bg-popover border border-border rounded-xl z-50 flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-150"
       style={{ left: position.left, top: position.top }}
     >
       {/* Header */}
@@ -1071,5 +1100,322 @@ export function SettingsPanel() {
           })()}
         </div>
       </div>
+  );
+}
+
+// Background options for ProductShot
+const BACKGROUND_OPTIONS: { value: ProductShotBackground; label: string }[] = [
+  { value: 'studio-white', label: 'Studio White' },
+  { value: 'gradient', label: 'Gradient' },
+  { value: 'lifestyle', label: 'Lifestyle' },
+  { value: 'outdoor', label: 'Outdoor' },
+  { value: 'dark-moody', label: 'Dark & Moody' },
+];
+
+const LIGHTING_OPTIONS: { value: ProductShotLighting; label: string }[] = [
+  { value: 'soft', label: 'Soft' },
+  { value: 'dramatic', label: 'Dramatic' },
+  { value: 'natural', label: 'Natural' },
+  { value: 'rim-light', label: 'Rim Light' },
+];
+
+const SHOT_COUNTS = [4, 6, 8] as const;
+
+// --- Generic Settings Panel for non-image node types ---
+
+function GenericSettingsPanel({
+  nodeId,
+  nodeType,
+  position,
+  musicData,
+  speechData,
+  videoAudioData,
+  productShotData,
+  updateNodeData,
+  closeSettingsPanel,
+}: {
+  nodeId: string;
+  nodeType: string;
+  position: { x: number; y: number } | null;
+  musicData?: MusicGeneratorNodeData;
+  speechData?: SpeechNodeData;
+  videoAudioData?: VideoAudioNodeData;
+  productShotData?: ProductShotNodeData;
+  updateNodeData: (nodeId: string, data: Record<string, unknown>, silent?: boolean) => void;
+  closeSettingsPanel: () => void;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (panelRef.current && panelRef.current.contains(target)) return;
+      if ((target as Element).closest?.('[data-radix-popper-content-wrapper], [data-slot="select-content"]')) return;
+      closeSettingsPanel();
+    };
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeSettingsPanel();
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [closeSettingsPanel]);
+
+  const getPosition = () => {
+    if (!position) return { left: 0, top: 0 };
+    const panelWidth = 280;
+    const panelHeight = 400;
+    const padding = 20;
+    let left = position.x;
+    let top = position.y;
+    if (left + panelWidth > window.innerWidth - padding) {
+      left = position.x - panelWidth - 360;
+    }
+    if (top + panelHeight > window.innerHeight - padding) {
+      top = window.innerHeight - panelHeight - padding;
+    }
+    return { left: Math.max(padding, left), top: Math.max(padding, top) };
+  };
+
+  const pos = getPosition();
+
+  const panelTitle = nodeType === 'musicGenerator' ? 'Music Settings'
+    : nodeType === 'speech' ? 'Speech Settings'
+    : nodeType === 'videoAudio' ? 'Video Audio Settings'
+    : nodeType === 'productShot' ? 'Product Shot Settings'
+    : 'Settings';
+
+  const panelIcon = nodeType === 'musicGenerator' ? <Music className="h-4 w-4 text-muted-foreground" />
+    : nodeType === 'speech' ? <Mic className="h-4 w-4 text-muted-foreground" />
+    : nodeType === 'videoAudio' ? <Film className="h-4 w-4 text-muted-foreground" />
+    : nodeType === 'productShot' ? <Camera className="h-4 w-4 text-muted-foreground" />
+    : null;
+
+  return (
+    <div
+      ref={panelRef}
+      className="fixed w-[300px] max-h-[480px] bg-popover border border-border rounded-xl z-50 flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+      style={{ left: pos.left, top: pos.top }}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between p-3 border-b border-border">
+        <div className="flex items-center gap-2">
+          {panelIcon}
+          <span className="text-foreground font-medium text-sm">{panelTitle}</span>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={closeSettingsPanel}
+          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {nodeType === 'musicGenerator' && musicData && (
+          <MusicSettingsContent nodeId={nodeId} data={musicData} updateNodeData={updateNodeData} />
+        )}
+        {nodeType === 'speech' && speechData && (
+          <SpeechSettingsContent nodeId={nodeId} data={speechData} updateNodeData={updateNodeData} />
+        )}
+        {nodeType === 'videoAudio' && videoAudioData && (
+          <VideoAudioSettingsContent nodeId={nodeId} data={videoAudioData} updateNodeData={updateNodeData} />
+        )}
+        {nodeType === 'productShot' && productShotData && (
+          <ProductShotSettingsContent nodeId={nodeId} data={productShotData} updateNodeData={updateNodeData} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// --- Music Settings ---
+function MusicSettingsContent({ nodeId, data, updateNodeData }: {
+  nodeId: string;
+  data: MusicGeneratorNodeData;
+  updateNodeData: (nodeId: string, data: Record<string, unknown>, silent?: boolean) => void;
+}) {
+  return (
+    <>
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs text-muted-foreground">Guidance Scale</span>
+          <span className="text-xs text-muted-foreground/70">{data.guidanceScale ?? 7}</span>
+        </div>
+        <Slider
+          value={[data.guidanceScale ?? 7]}
+          onValueChange={(v) => updateNodeData(nodeId, { guidanceScale: v[0] })}
+          min={1}
+          max={15}
+          step={0.5}
+          className="w-full"
+        />
+        <p className="text-[11px] text-muted-foreground mt-1.5">Higher values follow the prompt more closely</p>
+      </div>
+    </>
+  );
+}
+
+// --- Speech Settings ---
+function SpeechSettingsContent({ nodeId, data, updateNodeData }: {
+  nodeId: string;
+  data: SpeechNodeData;
+  updateNodeData: (nodeId: string, data: Record<string, unknown>, silent?: boolean) => void;
+}) {
+  return (
+    <>
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs text-muted-foreground">Speed</span>
+          <span className="text-xs text-muted-foreground/70">{(data.speed ?? 1).toFixed(1)}x</span>
+        </div>
+        <Slider
+          value={[data.speed ?? 1]}
+          onValueChange={(v) => updateNodeData(nodeId, { speed: v[0] })}
+          min={0.7}
+          max={1.2}
+          step={0.05}
+          className="w-full"
+        />
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs text-muted-foreground">Stability</span>
+          <span className="text-xs text-muted-foreground/70">{Math.round((data.stability ?? 0.5) * 100)}%</span>
+        </div>
+        <Slider
+          value={[data.stability ?? 0.5]}
+          onValueChange={(v) => updateNodeData(nodeId, { stability: v[0] })}
+          min={0}
+          max={1}
+          step={0.05}
+          className="w-full"
+        />
+        <p className="text-[11px] text-muted-foreground mt-1.5">Higher = more consistent, lower = more expressive</p>
+      </div>
+    </>
+  );
+}
+
+// --- Video Audio Settings ---
+function VideoAudioSettingsContent({ nodeId, data, updateNodeData }: {
+  nodeId: string;
+  data: VideoAudioNodeData;
+  updateNodeData: (nodeId: string, data: Record<string, unknown>, silent?: boolean) => void;
+}) {
+  return (
+    <>
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs text-muted-foreground">Duration</span>
+          <span className="text-xs text-muted-foreground/70">{data.duration ?? 8}s</span>
+        </div>
+        <Slider
+          value={[data.duration ?? 8]}
+          onValueChange={(v) => updateNodeData(nodeId, { duration: v[0] })}
+          min={1}
+          max={30}
+          step={1}
+          className="w-full"
+        />
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs text-muted-foreground">CFG Strength</span>
+          <span className="text-xs text-muted-foreground/70">{data.cfgStrength ?? 4.5}</span>
+        </div>
+        <Slider
+          value={[data.cfgStrength ?? 4.5]}
+          onValueChange={(v) => updateNodeData(nodeId, { cfgStrength: v[0] })}
+          min={1}
+          max={10}
+          step={0.5}
+          className="w-full"
+        />
+        <p className="text-[11px] text-muted-foreground mt-1.5">Higher values follow the prompt more closely</p>
+      </div>
+
+      <div>
+        <label className="text-xs text-muted-foreground mb-1.5 block">Negative Prompt</label>
+        <textarea
+          value={data.negativePrompt || ''}
+          onChange={(e) => updateNodeData(nodeId, { negativePrompt: e.target.value })}
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          placeholder="Sounds to avoid..."
+          className="w-full min-h-[80px] bg-muted border border-border rounded-lg p-3 text-foreground text-sm placeholder:text-muted-foreground/60 resize-y overflow-y-auto nodrag nopan nowheel select-text focus:outline-none focus:border-primary"
+        />
+      </div>
+    </>
+  );
+}
+
+// --- Product Shot Settings ---
+function ProductShotSettingsContent({ nodeId, data, updateNodeData }: {
+  nodeId: string;
+  data: ProductShotNodeData;
+  updateNodeData: (nodeId: string, data: Record<string, unknown>, silent?: boolean) => void;
+}) {
+  return (
+    <>
+      <div>
+        <label className="text-xs text-muted-foreground mb-1.5 block">Shot Count</label>
+        <Select
+          value={String(data.shotCount)}
+          onValueChange={(v) => updateNodeData(nodeId, { shotCount: Number(v) })}
+        >
+          <SelectTrigger className="w-full bg-muted border-border text-foreground">
+            <SelectValue>{data.shotCount} shots</SelectValue>
+          </SelectTrigger>
+          <SelectContent className="bg-popover border-border">
+            {SHOT_COUNTS.map((count) => (
+              <SelectItem key={count} value={String(count)}>{count} shots</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div>
+        <label className="text-xs text-muted-foreground mb-1.5 block">Background</label>
+        <Select
+          value={data.background}
+          onValueChange={(v) => updateNodeData(nodeId, { background: v as ProductShotBackground })}
+        >
+          <SelectTrigger className="w-full bg-muted border-border text-foreground">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="bg-popover border-border">
+            {BACKGROUND_OPTIONS.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div>
+        <label className="text-xs text-muted-foreground mb-1.5 block">Lighting</label>
+        <Select
+          value={data.lighting}
+          onValueChange={(v) => updateNodeData(nodeId, { lighting: v as ProductShotLighting })}
+        >
+          <SelectTrigger className="w-full bg-muted border-border text-foreground">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="bg-popover border-border">
+            {LIGHTING_OPTIONS.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </>
   );
 }

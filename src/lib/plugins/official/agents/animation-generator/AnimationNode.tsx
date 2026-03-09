@@ -159,6 +159,7 @@ import {
   makeMotionPresetName,
   seedMotionSpecFromReference,
 } from './motion-spec';
+import { useNodeDisplayMode } from '@/components/canvas/nodes/useNodeDisplayMode';
 
 // ─── Global sequence counter for stable chronological ordering ──────────
 // This ensures events are ordered correctly even when timestamps are identical
@@ -192,6 +193,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
   const isReadOnly = useCanvasStore((s) => s.isReadOnly);
   const addToHistory = useSettingsStore((s) => s.addToHistory);
   const updateNodeInternals = useUpdateNodeInternals();
+  const { displayMode, focusProps } = useNodeDisplayMode(selected);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsPosition, setSettingsPosition] = useState({ x: 0, y: 0 });
   const [settingsAnchorRect, setSettingsAnchorRect] = useState<{ left: number; right: number; top: number; bottom: number; width: number; height: number } | null>(null);
@@ -2396,10 +2398,25 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
 
   // ─── Node styling ──────────────────────────────────────────────────
   const nodeClasses = useMemo(() => {
-    const base = 'animation-node w-[400px] min-h-[520px] max-h-[720px] rounded-xl overflow-hidden flex flex-col';
+    const base = 'node-drag-handle node-drag-surface animation-node w-[400px] min-h-[520px] max-h-[720px] rounded-xl overflow-hidden flex flex-col';
     if (selected) return `${base} ring-1 ring-[var(--an-accent)]/70`;
     return base;
   }, [selected]);
+  const summaryContainerClass = useMemo(() => {
+    const base = 'node-drag-handle node-drag-surface animation-node w-[400px] rounded-xl overflow-hidden flex flex-col';
+    return selected ? `${base} ring-1 ring-[var(--an-accent)]/70` : base;
+  }, [selected]);
+  const latestVersion = state.versions?.[state.versions.length - 1];
+  const latestAssistantMessage = [...state.messages]
+    .reverse()
+    .find((message) => message.role === 'assistant' && message.content.trim())?.content;
+  const animationSummary = latestVersion?.videoUrl
+    ? 'Latest animation render is ready to review.'
+    : state.output?.videoUrl
+      ? 'Animation complete.'
+      : latestAssistantMessage
+        || data.prompt
+        || 'Describe an animation and attach media to start building.';
 
   const videoHandleStart = engine !== 'theatre'
     ? IMAGE_HANDLE_START + imageRefCount * HANDLE_SPACING + VIDEO_HANDLE_START_OFFSET
@@ -2413,12 +2430,101 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
   const minHeight = Math.max(200, lastVideoHandleBottom);
 
   // ─── Render ─────────────────────────────────────────────────────────
+  if (displayMode !== 'full') {
+    return (
+      <div className="relative" {...focusProps}>
+        <div className="mb-2 rounded-xl px-3 py-2 text-sm font-medium" style={{ color: 'var(--node-title-animation)' }}>
+          <Clapperboard className="h-4 w-4" />
+          {data.name || 'Animation Generator'}
+        </div>
+
+        <div className={summaryContainerClass} style={{ minHeight }}>
+          <div className={`node-body flex-1 ${displayMode === 'compact' ? 'node-compact' : 'node-summary'}`}>
+            <div className="node-content-area rounded-xl p-3">
+              <p className="text-xs font-medium text-[var(--an-text-muted)]">
+                {headerConfig.statusText}
+              </p>
+              <p className="mt-1 text-sm text-[var(--an-text)]/85 line-clamp-4">
+                {animationSummary}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--an-text-dim)]">
+              <span>{media.length} asset{media.length === 1 ? '' : 's'}</span>
+              <span>{engine}</span>
+              <span>{duration}s</span>
+              {latestVersion?.videoUrl && <span>Render ready</span>}
+            </div>
+          </div>
+        </div>
+
+        {Array.from({ length: imageRefCount }).map((_, i) => {
+          const top = IMAGE_HANDLE_START + i * HANDLE_SPACING;
+          return (
+            <div key={`img-ref-summary-${i}`} className="absolute -left-3 z-20" style={{ top }}>
+              <div className="relative">
+                <Handle
+                  type="target"
+                  position={Position.Left}
+                  id={`image-ref-${i}`}
+                  className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
+                />
+                <Image className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-white" />
+              </div>
+            </div>
+          );
+        })}
+
+        {engine !== 'theatre' && Array.from({ length: videoRefCount }).map((_, i) => {
+          const top = videoHandleStart + i * HANDLE_SPACING;
+          return (
+            <div key={`vid-ref-summary-${i}`} className="absolute -left-3 z-20" style={{ top }}>
+              <div className="relative">
+                <Handle
+                  type="target"
+                  position={Position.Left}
+                  id={`video-ref-${i}`}
+                  className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
+                />
+                <Video className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-white" />
+              </div>
+            </div>
+          );
+        })}
+
+        <div className="absolute -left-3 z-20" style={{ top: svgCodeHandleTop }}>
+          <div className="relative">
+            <Handle
+              type="target"
+              position={Position.Left}
+              id="svg-code"
+              className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
+            />
+            <Code className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-white" />
+          </div>
+        </div>
+
+        <div className="absolute -right-3 z-20" style={{ top: '50%', transform: 'translateY(-50%)' }}>
+          <div className="relative">
+            <Handle
+              type="source"
+              position={Position.Right}
+              id="video"
+              className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
+            />
+            <Video className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-white" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className="relative"
+      {...focusProps}
     >
       {/* Node Title */}
-      <div className="flex items-center gap-2 mb-2 text-sm font-medium" style={{ color: 'var(--node-title-animation)' }}>
+      <div className="mb-2 rounded-xl px-3 py-2 text-sm font-medium" style={{ color: 'var(--node-title-animation)' }}>
         <Clapperboard className="h-4 w-4" />
         {isEditingName && !isReadOnly ? (
           <input

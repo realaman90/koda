@@ -23,7 +23,7 @@ interface WelcomeOverlayProps {
 
 export function WelcomeOverlay({ onPluginLaunch }: WelcomeOverlayProps) {
   const addNode = useCanvasStore((state) => state.addNode);
-  const nodes = useCanvasStore((state) => state.nodes);
+  const nodeCount = useCanvasStore((state) => state.nodes.length);
 
   const getCenterPosition = useCallback(() => ({
     x: window.innerWidth / 2 - 140,
@@ -47,7 +47,7 @@ export function WelcomeOverlay({ onPluginLaunch }: WelcomeOverlayProps) {
   }, [addNode, getCenterPosition]);
 
   // Don't show if there are nodes
-  if (nodes.length > 0) return null;
+  if (nodeCount > 0) return null;
 
   const nodeTypes: NodeTypeCard[] = [
     {

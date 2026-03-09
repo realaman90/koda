@@ -34,6 +34,15 @@ import { startVideoCompare } from '@/lib/compare/controller';
 import { promoteVideoCompareResult } from '@/lib/compare/run';
 import { buildInitialCompareSelection, pruneCompareSelection } from '@/lib/compare/utils';
 import { buildVideoGenerationRequest, buildVideoPrompt, getCompatibleVideoCompareModels, validateVideoGenerationInputForModel } from '@/lib/generation/client';
+import { useBufferedNodeField } from '@/components/canvas/nodes/useBufferedNodeField';
+import { useNodeDisplayMode } from '@/components/canvas/nodes/useNodeDisplayMode';
+import { CanvasNodeShell } from '@/components/canvas/nodes/chrome/CanvasNodeShell';
+import { NodeFloatingToolbar } from '@/components/canvas/nodes/chrome/NodeFloatingToolbar';
+import { NodeFooterRail } from '@/components/canvas/nodes/chrome/NodeFooterRail';
+import { NodeMediaBadge } from '@/components/canvas/nodes/chrome/NodeMediaBadge';
+import { NodeStagePrompt } from '@/components/canvas/nodes/chrome/NodeStagePrompt';
+import { useNodeChromeState } from '@/components/canvas/nodes/chrome/useNodeChromeState';
+import { getPromptHeavyInputHandleTop } from '@/components/canvas/nodes/chrome/handleLayout';
 import {
   Video,
   Play,
@@ -91,10 +100,26 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
   const [isImproving, setIsImproving] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
   const [isPromptExpanded, setIsPromptExpanded] = useState(false);
+  const [isPromptFocused, setIsPromptFocused] = useState(false);
+  const { displayMode, focusedWithin, focusProps } = useNodeDisplayMode(selected);
+  const {
+    draft: promptDraft,
+    handleChange: handlePromptInputChange,
+    handleBlur: handlePromptBlur,
+    commit: commitPrompt,
+    updateDraft: updatePromptDraft,
+  } = useBufferedNodeField({
+    nodeId: id,
+    value: data.prompt || '',
+    field: 'prompt',
+    preview: 'skip',
+  });
+
   const originalPromptRef = useRef<string>('');
   const [isHovered, setIsHovered] = useState(false);
   const [isCompareTrayOpen, setIsCompareTrayOpen] = useState(!data.outputUrl);
   const nameInputRef = useRef<HTMLInputElement>(null);
+  const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const resolvedModel = resolveDeprecatedVideoModel(data.model);
@@ -103,7 +128,6 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
 
   // Check if this node has any connections
   const isConnected = edges.some(edge => edge.source === id || edge.target === id);
-  const showHandles = selected || isHovered || isConnected;
 
   // Get model capabilities
   const modelCapabilities = VIDEO_MODEL_CAPABILITIES[resolvedModel];
@@ -309,22 +333,15 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
     updateNodeData(id, { name: nodeName });
   }, [id, nodeName, updateNodeData]);
 
-  const handlePromptChange = useCallback(
-    (value: string) => {
-      updateNodeData(id, { prompt: value });
-    },
-    [id, updateNodeData]
-  );
-
   const handlePromptAction = useCallback(
     async (action: 'improve' | 'translate') => {
-      const currentPrompt = data.prompt?.trim();
+      const currentPrompt = promptDraft.trim();
       if (!currentPrompt) return;
 
       const setLoading = action === 'improve' ? setIsImproving : setIsTranslating;
       originalPromptRef.current = currentPrompt;
       setLoading(true);
-      updateNodeData(id, { prompt: '' });
+      updatePromptDraft('');
 
       try {
         const res = await fetch('/api/plugins/video/prompt-tools', {
@@ -356,7 +373,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
               const event = JSON.parse(line.slice(6));
               if (event.type === 'text-delta') {
                 accumulated += event.text;
-                updateNodeData(id, { prompt: accumulated });
+                updatePromptDraft(accumulated);
               } else if (event.type === 'error') {
                 throw new Error(event.error);
               }
@@ -367,13 +384,13 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
           }
         }
       } catch (err) {
-        updateNodeData(id, { prompt: originalPromptRef.current });
+        updatePromptDraft(originalPromptRef.current);
         toast.error(`Failed to ${action} prompt: ${err instanceof Error ? err.message : 'Unknown error'}`);
       } finally {
         setLoading(false);
       }
     },
-    [id, data.prompt, updateNodeData],
+    [promptDraft, updatePromptDraft],
   );
 
   const handleModelChange = useCallback(
@@ -459,7 +476,9 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
       return;
     }
 
-    const finalPrompt = buildVideoPrompt(data, connectedInputs);
+    await commitPrompt(promptDraft, true);
+    const finalData = { ...data, prompt: promptDraft };
+    const finalPrompt = buildVideoPrompt(finalData, connectedInputs);
     const requestBody = buildVideoGenerationRequest(data, connectedInputs, resolvedModel);
     updateNodeData(id, { isGenerating: true, error: undefined, progress: 0, outputVideoId: undefined });
 
@@ -629,6 +648,19 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
     }
   }, [data.outputUrl]);
 
+  
+  const liveData = useMemo(() => ({ ...data, prompt: promptDraft }), [data, promptDraft]);
+  const chromeState = useNodeChromeState({
+    isHovered,
+    focusedWithin,
+    isPromptFocused,
+    selected,
+    displayMode,
+    hasOutput: !!data.outputUrl,
+    expanded: isPromptExpanded,
+  });
+  const showHandles = chromeState.showHandles || isConnected;
+
   const hasValidInput = validateVideoGenerationInputForModel(data, connectedInputs, resolvedModel) === null;
   const hasCompareResults = (data.compareResults?.length || 0) > 0;
   const showCompareAsPrimary = !data.outputUrl && hasCompareResults;
@@ -671,122 +703,380 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
     return specs;
   }, [imageRefHandleCount, supportsVideoRef, supportsAudioRef]);
 
-  return (
-    <div
-      className="relative"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
-      {/* Floating Toolbar - hidden in read-only mode */}
-      {selected && !isReadOnly && !data.isGenerating && (
-        <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1 rounded-lg px-2 py-1.5 node-toolbar-floating z-10">
+  const promptPlaceholder = data.outputUrl 
+    ? 'Add a follow-up prompt...' 
+    : 'Describe the video you want to generate...';
+
+  const showTopToolbar = chromeState.showTopToolbar && (!isReadOnly || !!data.outputUrl);
+  const showFooterRail = chromeState.showFooterRail && (!isReadOnly || !!data.outputUrl);
+
+  const topToolbar = showTopToolbar ? (
+    <NodeFloatingToolbar>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+        onClick={handleGenerate}
+        disabled={!hasValidInput || data.isGenerating}
+        title={data.outputUrl ? 'Regenerate video' : 'Generate video'}
+      >
+        {data.outputUrl ? <RefreshCw className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+      </Button>
+      {!isReadOnly ? (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={handleCompareAction}
+          disabled={!hasValidInput || data.compareRunStatus === 'running'}
+          className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+          title="Compare models"
+        >
+          <Images className="h-3.5 w-3.5" />
+        </Button>
+      ) : null}
+      {data.outputUrl ? (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={handleDownload}
+          className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+          title="Download video"
+        >
+          <Download className="h-3.5 w-3.5" />
+        </Button>
+      ) : null}
+      {!isReadOnly ? (
+        <>
           <Button
             variant="ghost"
             size="icon-sm"
-            className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
-            onClick={handleGenerate}
-            disabled={!hasValidInput || data.isGenerating}
-          >
-            <Play className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
-            onClick={handleCompareAction}
-            disabled={!hasValidInput || data.compareRunStatus === 'running'}
-            title="Compare models"
-          >
-            <Images className="h-3.5 w-3.5" />
-          </Button>
-          {data.outputUrl && (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
-              onClick={handleDownload}
-            >
-              <Download className="h-3.5 w-3.5" />
-            </Button>
-          )}
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="h-7 w-7 text-muted-foreground hover:text-red-400 hover:bg-muted/50"
             onClick={handleDelete}
+            className="h-7 w-7 text-muted-foreground hover:text-red-400 hover:bg-muted/50"
+            title="Delete node"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
-        </div>
-      )}
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={handleOpenSettings}
+            className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+            title="Settings"
+          >
+            <Settings className="h-3.5 w-3.5" />
+          </Button>
+        </>
+      ) : null}
+    </NodeFloatingToolbar>
+  ) : null;
 
-      {/* Node Title */}
-      <div className="flex items-center gap-2 mb-2 text-sm font-medium" style={{ color: 'var(--node-title-video)' }}>
-        <Video className="h-4 w-4" />
-        {isEditingName ? (
+  const footerRail = showFooterRail ? (
+    <NodeFooterRail className="node-footer-rail-plain">
+      {!isReadOnly ? (
+        <>
+          <SearchableSelect
+            value={resolvedModel}
+            onValueChange={handleModelChange}
+            options={visibleVideoModels.map((key) => ({
+              value: key,
+              label: VIDEO_MODEL_CAPABILITIES[key].label,
+              description: VIDEO_MODEL_CAPABILITIES[key].description,
+              group: VIDEO_MODEL_CAPABILITIES[key].group,
+            }))}
+            placeholder="Select model"
+            searchPlaceholder="Search models..."
+            triggerClassName="max-w-[132px] nodrag nopan"
+          />
+          {isHeygenAvatarModel ? (
+            <SearchableSelect
+              value={selectedHeygenVoice}
+              onValueChange={handleHeygenVoiceChange}
+              options={heygenVoiceOptions}
+              placeholder="Voice"
+              searchPlaceholder="Search voices..."
+              triggerClassName="max-w-[150px] nodrag nopan"
+            />
+          ) : null}
+
+          <Select value={liveData.aspectRatio} onValueChange={handleAspectRatioChange}>
+            <SelectTrigger className="h-8 w-auto rounded-xl border-0 bg-muted/80 px-2.5 text-xs nodrag nopan hover:bg-muted">
+              <span className="flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-[3px] border border-muted-foreground" />
+                <SelectValue />
+              </span>
+            </SelectTrigger>
+            <SelectContent className="bg-popover border-border">
+              {modelCapabilities.aspectRatios.map((ratio) => (
+                <SelectItem key={ratio} value={ratio} className="text-xs">
+                  {ratio}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={String(liveData.duration)} onValueChange={handleDurationChange}>
+            <SelectTrigger className="h-8 w-auto rounded-xl border-0 bg-muted/80 px-2.5 text-xs nodrag nopan hover:bg-muted">
+              <SelectValue>{liveData.duration}s</SelectValue>
+            </SelectTrigger>
+            <SelectContent className="bg-popover border-border">
+              {modelCapabilities.durations.map((dur) => (
+                <SelectItem key={dur} value={String(dur)} className="text-xs">
+                  {dur}s
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {modelCapabilities.resolutions ? (
+            <Select value={liveData.resolution || '720p'} onValueChange={handleResolutionChange}>
+              <SelectTrigger className="h-8 w-auto rounded-xl border-0 bg-muted/80 px-2.5 text-xs nodrag nopan hover:bg-muted">
+                <SelectValue>{liveData.resolution || '720p'}</SelectValue>
+              </SelectTrigger>
+              <SelectContent className="bg-popover border-border">
+                {modelCapabilities.resolutions.map((res) => (
+                  <SelectItem key={res} value={res} className="text-xs">
+                    {res}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
+
+          {modelCapabilities.supportsAudio ? (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={handleAudioToggle}
+              className={`h-8 w-auto rounded-xl nodrag nopan px-2 text-[11px] flex items-center gap-1.5 ${
+                liveData.generateAudio !== false
+                  ? 'bg-muted text-foreground hover:bg-muted/80 border border-muted'
+                  : 'text-muted-foreground hover:bg-muted/70 hover:text-foreground'
+              }`}
+            >
+              <div
+                className={`w-[26px] h-[14px] rounded-full flex items-center p-[2px] cursor-pointer transition-colors opacity-90 ${liveData.generateAudio !== false ? 'bg-zinc-100 dark:bg-zinc-800' : 'bg-muted-foreground/40 dark:bg-zinc-700/60'}`}
+              >
+                <div
+                  className={`w-[10px] h-[10px] rounded-full bg-background dark:bg-white transition-all shadow-sm ${liveData.generateAudio !== false ? 'translate-x-[12px]' : 'translate-x-[0px]'}`}
+                />
+              </div>
+              <span className="leading-none pt-[1px]">Sound Effects</span>
+            </Button>
+          ) : null}
+
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={handleOpenSettings}
+            className="h-8 w-8 rounded-xl nodrag nopan text-muted-foreground hover:bg-muted/70 hover:text-foreground ml-1"
+            title="Settings"
+          >
+            <Settings className="h-3.5 w-3.5" />
+          </Button>
+
+          <div className="min-w-0 flex-1" />
+
+          <Button
+            onClick={handleGenerate}
+            disabled={!hasValidInput || data.isGenerating}
+            size="icon-sm"
+            className="h-10 w-10 min-w-10 rounded-full nodrag nopan bg-primary text-primary-foreground hover:bg-primary/90 ml-auto"
+          >
+            {data.outputUrl ? <RefreshCw className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5 fill-current" />}
+          </Button>
+        </>
+      ) : null}
+    </NodeFooterRail>
+  ) : null;
+
+  const promptOverlay = displayMode === 'summary' ? null : (
+    <NodeStagePrompt
+      teaser={chromeState.showPromptTeaser ? (
+        data.outputUrl ? (
+          <div className="flex flex-col gap-2">
+            <p className={`max-w-[78%] text-base leading-7 line-clamp-3 ${promptDraft ? 'text-foreground/82' : 'text-muted-foreground/85'}`}>
+              {promptDraft || promptPlaceholder}
+            </p>
+          </div>
+        ) : (
+          <div className="flex min-w-0 items-center">
+            <p className={`block w-full node-prompt-teaser-clamp text-[15px] leading-6 ${promptDraft ? 'text-foreground/82' : 'text-muted-foreground/82'}`}>
+              {promptDraft || promptPlaceholder}
+            </p>
+          </div>
+        )
+      ) : null}
+      expanded={chromeState.showPromptEditor}
+      teaserClassName={data.outputUrl ? 'pb-1' : ''}
+      editorClassName="pb-1"
+      onExpand={
+        isReadOnly
+          ? undefined
+          : () => {
+              setIsPromptExpanded(true);
+              if (!hasAdvancedHandles) {
+                requestAnimationFrame(() => promptTextareaRef.current?.focus());
+              }
+            }
+      }
+    >
+      <div
+        className="flex flex-col gap-3 nodrag nopan"
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        {hasAdvancedHandles ? (
+          <div className="bg-transparent text-[14px]">
+            <MentionEditor
+              content={promptDraft}
+              onChange={updatePromptDraft}
+              items={mentionItems}
+              placeholder={isReadOnly ? '' : promptPlaceholder}
+              disabled={isReadOnly || isImproving || isTranslating}
+            />
+          </div>
+        ) : (
+          <textarea
+            ref={promptTextareaRef}
+            value={promptDraft}
+            onChange={handlePromptInputChange}
+            onFocus={() => {
+              setIsPromptExpanded(true);
+              setIsPromptFocused(true);
+            }}
+            onBlur={async () => {
+              setIsPromptFocused(false);
+              setIsPromptExpanded(false);
+              await handlePromptBlur();
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                event.preventDefault();
+                setIsPromptFocused(false);
+                setIsPromptExpanded(false);
+                event.currentTarget.blur();
+              }
+            }}
+            placeholder={isReadOnly ? '' : promptPlaceholder}
+            disabled={isReadOnly || isImproving || isTranslating}
+            className={`node-stage-input nodrag nopan nowheel select-text w-full resize-none border-0 bg-transparent px-0 py-0 focus:outline-none ${data.outputUrl ? 'min-h-[96px] text-base leading-7' : 'min-h-[72px] text-[15px] leading-6'} ${isReadOnly ? 'cursor-default' : ''}`}
+            style={{
+              colorScheme: 'dark',
+              backgroundColor: 'transparent',
+              backgroundImage: 'none',
+              color: 'var(--text-secondary)',
+              caretColor: 'var(--text-primary)',
+              boxShadow: 'none',
+              borderColor: 'transparent',
+              WebkitAppearance: 'none',
+              appearance: 'none',
+            }}
+          />
+        )}
+      </div>
+    </NodeStagePrompt>
+  );
+
+  const badges = (
+    <>
+      {data.outputUrl && chromeState.showTopBadges ? (
+        <NodeMediaBadge>{data.duration}s</NodeMediaBadge>
+      ) : null}
+    </>
+  );
+
+  const secondaryContent = (
+    <>
+      {data.error ? <p className="px-1 text-xs text-red-400">{data.error}</p> : null}
+      {hasCompareResults && chromeState.showSecondaryContent ? (
+        <CompareResultsSection
+          type="video"
+          results={data.compareResults || []}
+          runStatus={data.compareRunStatus}
+          promotedCompareResultId={data.promotedCompareResultId}
+          getModelLabel={(model) => VIDEO_MODEL_CAPABILITIES[model].label}
+          onPromote={handlePromoteCompare}
+          onClear={handleClearCompare}
+          collapsible
+          defaultOpen={isCompareTrayOpen}
+        />
+      ) : null}
+    </>
+  );
+
+  return (
+    <div className="relative">
+      <CanvasNodeShell
+        title={isEditingName && !isReadOnly ? (
           <input
             ref={nameInputRef}
             type="text"
             value={nodeName}
-            onChange={(e) => setNodeName(e.target.value)}
+            onChange={(event) => setNodeName(event.target.value)}
             onBlur={handleNameSubmit}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleNameSubmit();
-              if (e.key === 'Escape') {
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') handleNameSubmit();
+              if (event.key === 'Escape') {
                 setNodeName(data.name || 'Video Generator');
                 setIsEditingName(false);
               }
             }}
-            className="bg-transparent border-b outline-none px-0.5 min-w-[100px]"
-            style={{ borderColor: 'var(--input-border)', color: 'var(--text-secondary)' }}
+            className="node-input rounded-none border-0 border-b bg-transparent px-0.5 outline-none"
           />
         ) : (
           <span
             onDoubleClick={() => !isReadOnly && setIsEditingName(true)}
-            className={`transition-colors hover:opacity-80 ${isReadOnly ? 'cursor-default' : 'cursor-text'}`}
+            className={isReadOnly ? 'cursor-default' : 'cursor-text'}
           >
             {data.name || 'Video Generator'}
           </span>
         )}
-      </div>
-
-      {/* Main Node Card */}
-      <div
-        className={`
-          w-[420px] rounded-2xl overflow-hidden
-          transition-all duration-150
-          ${data.isGenerating ? 'animate-subtle-pulse generating-border-subtle' : ''}
-          ${!data.isGenerating ? (selected ? 'node-card node-card-selected' : 'node-card') : ''}
-        `}
+        icon={
+          <div className="relative h-4 w-4">
+            <Video className="h-4 w-4" />
+          </div>
+        }
+        selected={selected}
+        hovered={isHovered}
+        displayMode={displayMode}
+        hasOutput={!!data.outputUrl}
+        interactiveMode="visual"
+        stageMinHeight={data.outputUrl ? undefined : 360}
+        topToolbar={topToolbar}
+        footerRail={footerRail}
+        promptOverlay={promptOverlay}
+        shellMode="visual-stage"
+        badges={badges}
+        secondaryContent={secondaryContent}
+        titleClassName="text-[var(--node-title-video)]"
+        cardClassName={data.isGenerating ? 'animate-subtle-pulse generating-border-subtle' : undefined}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        focusProps={focusProps}
       >
-        {/* Content Area */}
-        <div className="relative">
-          {/* Loading State */}
-          {data.isGenerating ? (
-            <div className="p-4 min-h-[200px] flex flex-col items-center justify-center gap-4">
-              <div className="text-center">
-                <p
-                  className="text-base font-semibold bg-clip-text text-transparent"
-                  style={{
-                    backgroundImage:
-                      'linear-gradient(90deg, hsl(var(--muted-foreground)/0.45) 0%, hsl(var(--foreground)/0.95) 45%, hsl(var(--muted-foreground)/0.45) 100%)',
-                    backgroundSize: '200% 100%',
-                    animation: 'shimmer-text 2s ease-in-out infinite',
-                  }}
-                >
-                  {data.xskillTaskId
-                    ? data.xskillStatus === 'processing' ? 'Rendering video...' : 'Queued...'
-                    : 'Generating video...'}
-                </p>
-                <p className="text-muted-foreground text-xs mt-1">
-                  {data.xskillTaskId ? 'Typically 2-5 minutes' : 'This may take a few minutes'}
-                </p>
-              </div>
-              {/* Elapsed timer for xskill */}
-              {data.xskillStartedAt && <ElapsedTimer startedAt={data.xskillStartedAt} />}
-              {/* Progress bar */}
+        {data.isGenerating ? (
+          <div className="flex min-h-[320px] flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
+            {promptDraft ? (
+              <p className="max-w-[90%] text-xs text-muted-foreground line-clamp-2">{promptDraft}</p>
+            ) : null}
+            <div>
+              <p
+                className="bg-clip-text text-base font-semibold text-transparent"
+                style={{
+                  backgroundImage:
+                    'linear-gradient(90deg, hsl(var(--muted-foreground)/0.45) 0%, hsl(var(--foreground)/0.95) 45%, hsl(var(--muted-foreground)/0.45) 100%)',
+                  backgroundSize: '200% 100%',
+                  animation: 'shimmer-text 2s ease-in-out infinite',
+                }}
+              >
+                {data.xskillTaskId
+                  ? data.xskillStatus === 'processing' ? 'Rendering video...' : 'Queued...'
+                  : 'Generating video...'}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {data.xskillTaskId ? <ElapsedTimer startedAt={data.xskillStartedAt ?? Date.now()} /> : 'This may take a moment'}
+              </p>
               {!data.xskillTaskId && data.progress !== undefined && data.progress > 0 && (
-                <div className="w-full max-w-[200px] h-1.5 bg-muted rounded-full overflow-hidden">
+                <div className="w-full max-w-[200px] h-1.5 bg-muted rounded-full overflow-hidden mt-2 mx-auto">
                   <div
                     className="h-full bg-muted-foreground transition-all duration-300"
                     style={{ width: `${data.progress}%` }}
@@ -794,10 +1084,9 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
                 </div>
               )}
             </div>
-          ) : data.outputUrl ? (
-            /* Video Preview - with hover controls + collapsible prompt bar */
-            <>
-            <div className="group/video relative overflow-hidden rounded-2xl">
+          </div>
+        ) : data.outputUrl ? (
+          <div className="flex min-h-[320px] items-center justify-center overflow-hidden rounded-[inherit] relative group/video">
               <video
                 ref={videoRef}
                 src={data.outputUrl}
@@ -813,11 +1102,6 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
                   }
                 }}
               />
-              {/* Duration badge - visible on hover */}
-              <div className="absolute top-3 right-3 px-2 py-0.5 rounded text-xs font-medium opacity-0 group-hover/video:opacity-100 transition-opacity duration-200 border border-border/70 bg-white/85 text-foreground backdrop-blur-sm dark:border-white/10 dark:bg-black/50 dark:text-zinc-300">
-                {data.duration}s
-              </div>
-              {/* Download button - visible on hover */}
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -826,470 +1110,18 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
               >
                 <Download className="h-4 w-4" />
               </Button>
-              {/* Gradient overlay for better visibility - visible on hover */}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent dark:from-black/60 opacity-0 group-hover/video:opacity-100 transition-opacity duration-300 pointer-events-none" />
-              {/* Floating Toolbar - visible on hover, hidden when prompt expanded */}
-              {!isReadOnly && !isPromptExpanded && (
-                <div className="absolute bottom-3 left-3 right-3 flex items-center gap-1.5 px-2.5 py-2 rounded-xl opacity-0 group-hover/video:opacity-100 transition-all duration-300 ease-out translate-y-2 group-hover/video:translate-y-0 shadow-xl border border-border/70 bg-white/85 backdrop-blur-xl dark:border-white/10 dark:bg-black/50">
-                  <SearchableSelect
-                    value={resolvedModel}
-                    onValueChange={handleModelChange}
-                    options={visibleVideoModels.map((key) => ({
-                      value: key,
-                      label: VIDEO_MODEL_CAPABILITIES[key].label,
-                      description: VIDEO_MODEL_CAPABILITIES[key].description,
-                      group: VIDEO_MODEL_CAPABILITIES[key].group,
-                    }))}
-                    placeholder="Select model"
-                    searchPlaceholder="Search models..."
-                    triggerClassName="max-w-[100px] bg-white/70 hover:bg-white/95 border border-border/60 text-foreground dark:bg-white/10 dark:hover:bg-white/20 dark:border-0 dark:text-white"
-                  />
-                  {isHeygenAvatarModel && (
-                    <SearchableSelect
-                      value={selectedHeygenVoice}
-                      onValueChange={handleHeygenVoiceChange}
-                      options={heygenVoiceOptions}
-                      placeholder="Voice"
-                      searchPlaceholder="Search voices..."
-                      triggerClassName="max-w-[160px] bg-white/70 hover:bg-white/95 border border-border/60 text-foreground dark:bg-white/10 dark:hover:bg-white/20 dark:border-0 dark:text-white"
-                    />
-                  )}
-                  <Select value={data.aspectRatio} onValueChange={handleAspectRatioChange}>
-                    <SelectTrigger className="h-7 w-auto bg-white/70 hover:bg-white/95 border border-border/60 text-xs text-foreground gap-1 px-2 rounded-md dark:bg-white/10 dark:hover:bg-white/20 dark:border-0 dark:text-white">
-                      <span className="flex items-center gap-1">
-                        <span className="w-2.5 h-2.5 border border-foreground/40 rounded-[2px] dark:border-white/50" />
-                        <SelectValue />
-                      </span>
-                    </SelectTrigger>
-                    <SelectContent className="bg-popover border-border">
-                      {modelCapabilities.aspectRatios.map((ratio) => (
-                        <SelectItem key={ratio} value={ratio} className="text-xs">{ratio}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select value={String(data.duration)} onValueChange={handleDurationChange}>
-                    <SelectTrigger className="h-7 w-auto bg-white/70 hover:bg-white/95 border border-border/60 text-xs text-foreground gap-1 px-2 rounded-md dark:bg-white/10 dark:hover:bg-white/20 dark:border-0 dark:text-white">
-                      <SelectValue>{data.duration}s</SelectValue>
-                    </SelectTrigger>
-                    <SelectContent className="bg-popover border-border">
-                      {modelCapabilities.durations.map((dur) => (
-                        <SelectItem key={dur} value={String(dur)} className="text-xs">{dur}s</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {modelCapabilities.supportsAudio && (
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={handleAudioToggle}
-                      className={`h-7 w-7 shrink-0 ${
-                        data.generateAudio !== false
-                          ? 'text-foreground bg-white/70 hover:bg-white dark:text-foreground dark:bg-muted/50 dark:hover:bg-muted/80'
-                          : 'text-foreground/70 hover:text-foreground hover:bg-white/60 dark:text-white/70 dark:hover:text-white dark:hover:bg-white/10'
-                      }`}
-                      title={data.generateAudio !== false ? 'Audio ON' : 'Audio OFF'}
-                    >
-                      {data.generateAudio !== false ? (
-                        <Volume2 className="h-3.5 w-3.5" />
-                      ) : (
-                        <VolumeX className="h-3.5 w-3.5" />
-                      )}
-                    </Button>
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    onClick={handleOpenSettings}
-                    className="h-7 w-7 shrink-0 text-foreground/70 hover:text-foreground hover:bg-white/60 dark:text-white/70 dark:hover:text-white dark:hover:bg-white/10"
-                  >
-                    <Settings className="h-3.5 w-3.5" />
-                  </Button>
-                  <div className="flex-1" />
-                  <Button
-                    onClick={handleGenerate}
-                    disabled={!hasValidInput || data.isGenerating}
-                    size="icon-sm"
-                    className="h-8 w-8 min-w-8 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg disabled:opacity-40 shrink-0 transition-all duration-200 hover:scale-105"
-                  >
-                    <RefreshCw className="h-4 w-4" />
-                  </Button>
-                </div>
-              )}
-            </div>
-            {/* Collapsible Prompt Bar */}
-            <div className="border-t border-border/50">
-              <div
-                className="mx-1 my-1 flex items-center gap-2 rounded-md px-2 py-2 cursor-pointer nodrag hover:bg-muted/40 transition-colors"
-                onClick={() => setIsPromptExpanded(!isPromptExpanded)}
-              >
-                <ChevronRight className={`h-3 w-3 text-foreground/60 shrink-0 transition-transform duration-200 ${isPromptExpanded ? 'rotate-90' : ''}`} />
-                {!isPromptExpanded && (
-                  <p className={`text-xs truncate flex-1 ${data.prompt ? 'text-foreground/85' : 'text-muted-foreground'}`}>
-                    {data.prompt || 'No prompt'}
-                  </p>
-                )}
-              </div>
-              {isPromptExpanded && (
-                <div className="px-3 pb-3 nodrag nopan" onPointerDown={(e) => e.stopPropagation()}>
-                  <div className="rounded-xl border border-border/50 bg-muted/30 p-2 min-h-[100px] relative">
-                    {hasAdvancedHandles ? (
-                      <MentionEditor
-                        content={data.prompt}
-                        onChange={handlePromptChange}
-                        items={mentionItems}
-                        placeholder="Type @ to reference connected images/videos..."
-                        disabled={isReadOnly || isImproving || isTranslating}
-                      />
-                    ) : (
-                      <textarea
-                        value={data.prompt}
-                        onChange={(e) => handlePromptChange(e.target.value)}
-                        onPointerDown={(e) => e.stopPropagation()}
-                        onMouseDown={(e) => e.stopPropagation()}
-                        placeholder={isReadOnly ? '' : 'Edit your prompt...'}
-                        disabled={isReadOnly || isImproving || isTranslating}
-                        className={`w-full h-[80px] bg-transparent border-none text-sm resize-none node-text-secondary nodrag nopan nowheel select-text focus:outline-none ${isReadOnly ? 'cursor-default' : ''}`}
-                      />
-                    )}
-                    {/* Prompt tools in expanded bar */}
-                    {!isReadOnly && data.prompt?.trim() && modelCapabilities.promptTools?.length && (
-                      <div className="absolute bottom-2 right-2 flex gap-1.5 nodrag">
-                        {modelCapabilities.promptTools.includes('improve') && (
-                          <button
-                            onClick={() => handlePromptAction('improve')}
-                            disabled={isImproving || isTranslating}
-                            className={`text-[10px] font-medium px-2 py-1 rounded-md transition-colors nodrag ${
-                              isImproving || isTranslating
-                                ? 'opacity-60 cursor-not-allowed'
-                                : 'hover:bg-primary/30'
-                            } bg-primary/20 text-primary`}
-                          >
-                            {isImproving ? 'Improving...' : '✦ Improve'}
-                          </button>
-                        )}
-                        {modelCapabilities.promptTools.includes('translate') && (
-                          <button
-                            onClick={() => handlePromptAction('translate')}
-                            disabled={isImproving || isTranslating}
-                            className={`text-[10px] font-medium px-2 py-1 rounded-md transition-colors nodrag ${
-                              isImproving || isTranslating
-                                ? 'opacity-60 cursor-not-allowed'
-                                : 'hover:bg-muted dark:hover:bg-zinc-600/50'
-                            } bg-muted/80 text-foreground/80 dark:bg-zinc-700/50 dark:text-zinc-300`}
-                          >
-                            {isTranslating ? 'Translating...' : '中 Translate'}
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-            {/* Bottom toolbar when prompt is expanded */}
-            {isPromptExpanded && !isReadOnly && (
-              <div className="flex items-center flex-wrap gap-1.5 px-3 py-2.5 node-bottom-toolbar">
-                <SearchableSelect
-                  value={resolvedModel}
-                  onValueChange={handleModelChange}
-                  options={visibleVideoModels.map(key => ({
-                    value: key,
-                    label: VIDEO_MODEL_CAPABILITIES[key].label,
-                    description: VIDEO_MODEL_CAPABILITIES[key].description,
-                    group: VIDEO_MODEL_CAPABILITIES[key].group,
-                  }))}
-                  placeholder="Select model"
-                  searchPlaceholder="Search models..."
-                  triggerClassName="max-w-[110px]"
-                />
-                {isHeygenAvatarModel && (
-                  <SearchableSelect
-                    value={selectedHeygenVoice}
-                    onValueChange={handleHeygenVoiceChange}
-                    options={heygenVoiceOptions}
-                    placeholder="Voice"
-                    searchPlaceholder="Search voices..."
-                    triggerClassName="max-w-[150px]"
-                  />
-                )}
-                <Select value={data.aspectRatio} onValueChange={handleAspectRatioChange}>
-                  <SelectTrigger className="h-7 w-auto bg-muted/80 border-0 text-xs text-foreground gap-1 px-2 rounded-md hover:bg-muted">
-                    <span className="flex items-center gap-1">
-                      <span className="w-2.5 h-2.5 border border-muted-foreground rounded-[2px]" />
-                      <SelectValue />
-                    </span>
-                  </SelectTrigger>
-                  <SelectContent className="bg-popover border-border">
-                    {modelCapabilities.aspectRatios.map((ratio) => (
-                      <SelectItem key={ratio} value={ratio} className="text-xs">{ratio}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select value={String(data.duration)} onValueChange={handleDurationChange}>
-                  <SelectTrigger className="h-7 w-auto bg-muted/80 border-0 text-xs text-foreground gap-1 px-2 rounded-md hover:bg-muted">
-                    <SelectValue>{data.duration}s</SelectValue>
-                  </SelectTrigger>
-                  <SelectContent className="bg-popover border-border">
-                    {modelCapabilities.durations.map((dur) => (
-                      <SelectItem key={dur} value={String(dur)} className="text-xs">{dur}s</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {modelCapabilities.supportsAudio && (
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    onClick={handleAudioToggle}
-                    className={`h-7 w-7 shrink-0 ${
-                      data.generateAudio !== false
-                        ? 'text-foreground bg-muted hover:bg-muted/80'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                    }`}
-                    title={data.generateAudio !== false ? 'Audio ON' : 'Audio OFF'}
-                  >
-                    {data.generateAudio !== false ? (
-                      <Volume2 className="h-3.5 w-3.5" />
-                    ) : (
-                      <VolumeX className="h-3.5 w-3.5" />
-                    )}
-                  </Button>
-                )}
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={handleOpenSettings}
-                  className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50 shrink-0 cursor-pointer"
-                >
-                  <Settings className="h-3.5 w-3.5" />
-                </Button>
-                <div className="flex-1 min-w-0" />
-                <Button
-                  onClick={handleGenerate}
-                  disabled={!hasValidInput || data.isGenerating}
-                  size="icon-sm"
-                  className="h-8 w-8 min-w-8 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg disabled:opacity-40 shrink-0"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
-            {hasCompareResults && (
-              <CompareResultsSection
-                type="video"
-                results={data.compareResults || []}
-                runStatus={data.compareRunStatus}
-                promotedCompareResultId={data.promotedCompareResultId}
-                getModelLabel={(model) => VIDEO_MODEL_CAPABILITIES[model].label}
-                onPromote={handlePromoteCompare}
-                onClear={handleClearCompare}
-                collapsible
-                defaultOpen={isCompareTrayOpen}
-              />
-            )}
-            </>
-          ) : showCompareAsPrimary ? (
-            <CompareResultsSection
-              type="video"
-              results={data.compareResults || []}
-              runStatus={data.compareRunStatus}
-              promotedCompareResultId={data.promotedCompareResultId}
-              getModelLabel={(model) => VIDEO_MODEL_CAPABILITIES[model].label}
-              onPromote={handlePromoteCompare}
-              onClear={handleClearCompare}
-              defaultOpen
-            />
-          ) : (
-            /* Prompt Input - Freepik style with inner content area */
-            <div className="p-3 nodrag nopan" onPointerDown={(e) => e.stopPropagation()}>
-              <div className="node-content-area p-3 min-h-[160px] relative">
-                {hasAdvancedHandles ? (
-                  <MentionEditor
-                    content={data.prompt}
-                    onChange={handlePromptChange}
-                    items={mentionItems}
-                    placeholder="Type @ to reference connected images/videos..."
-                    disabled={isReadOnly || isImproving || isTranslating}
-                  />
-                ) : (
-                  <textarea
-                    value={data.prompt}
-                    onChange={(e) => handlePromptChange(e.target.value)}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    placeholder={isReadOnly ? '' : 'Describe the video you want to generate...'}
-                    disabled={isReadOnly || isImproving || isTranslating}
-                    className={`w-full h-[130px] bg-transparent border-none text-sm resize-none node-text-secondary nodrag nopan nowheel select-text focus:outline-none ${isReadOnly ? 'cursor-default' : ''}`}
-                  />
-                )}
-                {/* Improve & Translate buttons — gated by model's promptTools config */}
-                {!isReadOnly && data.prompt?.trim() && (selected || isHovered) && modelCapabilities.promptTools?.length && (
-                  <div className="absolute bottom-2 right-2 flex gap-1.5 nodrag">
-                    {modelCapabilities.promptTools.includes('improve') && (
-                      <button
-                        onClick={() => handlePromptAction('improve')}
-                        disabled={isImproving || isTranslating}
-                        className={`text-[10px] font-medium px-2 py-1 rounded-md transition-colors nodrag ${
-                          isImproving || isTranslating
-                            ? 'opacity-60 cursor-not-allowed'
-                            : 'hover:bg-primary/30'
-                        } bg-primary/20 text-primary`}
-                      >
-                        {isImproving ? 'Improving...' : '✦ Improve'}
-                      </button>
-                    )}
-                    {modelCapabilities.promptTools.includes('translate') && (
-                      <button
-                        onClick={() => handlePromptAction('translate')}
-                        disabled={isImproving || isTranslating}
-                        className={`text-[10px] font-medium px-2 py-1 rounded-md transition-colors nodrag ${
-                          isImproving || isTranslating
-                            ? 'opacity-60 cursor-not-allowed'
-                            : 'hover:bg-muted dark:hover:bg-zinc-600/50'
-                        } bg-muted/80 text-foreground/80 dark:bg-zinc-700/50 dark:text-zinc-300`}
-                      >
-                        {isTranslating ? 'Translating...' : '中 Translate'}
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Error Display */}
-          {data.error && (
-            <p className="text-xs text-red-400 px-4 pb-2">{data.error}</p>
-          )}
-        </div>
-
-        {/* Bottom Toolbar - visible on hover or selected, only when no output */}
-        {!isReadOnly && !data.outputUrl && !data.isGenerating && (selected || isHovered) && (
-        <div className="flex items-center flex-wrap gap-1.5 px-3 py-2.5 node-bottom-toolbar">
-          {/* Model Selector */}
-          <SearchableSelect
-            value={resolvedModel}
-            onValueChange={handleModelChange}
-            options={visibleVideoModels.map(key => ({
-              value: key,
-              label: VIDEO_MODEL_CAPABILITIES[key].label,
-              description: VIDEO_MODEL_CAPABILITIES[key].description,
-              group: VIDEO_MODEL_CAPABILITIES[key].group,
-            }))}
-            placeholder="Select model"
-            searchPlaceholder="Search models..."
-            triggerClassName="max-w-[110px]"
-          />
-          {isHeygenAvatarModel && (
-            <SearchableSelect
-              value={selectedHeygenVoice}
-              onValueChange={handleHeygenVoiceChange}
-              options={heygenVoiceOptions}
-              placeholder="Voice"
-              searchPlaceholder="Search voices..."
-              triggerClassName="max-w-[150px]"
-            />
-          )}
-
-          {/* Aspect Ratio */}
-          <Select value={data.aspectRatio} onValueChange={handleAspectRatioChange}>
-            <SelectTrigger className="h-7 w-auto bg-muted/80 border-0 text-xs text-foreground gap-1 px-2 rounded-md hover:bg-muted">
-              <span className="flex items-center gap-1">
-                <span className="w-2.5 h-2.5 border border-muted-foreground rounded-[2px]" />
-                <SelectValue />
-              </span>
-            </SelectTrigger>
-            <SelectContent className="bg-popover border-border">
-              {modelCapabilities.aspectRatios.map((ratio) => (
-                <SelectItem key={ratio} value={ratio} className="text-xs">{ratio}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {/* Duration */}
-          <Select value={String(data.duration)} onValueChange={handleDurationChange}>
-            <SelectTrigger className="h-7 w-auto bg-muted/80 border-0 text-xs text-foreground gap-1 px-2 rounded-md hover:bg-muted">
-              <SelectValue>{data.duration}s</SelectValue>
-            </SelectTrigger>
-            <SelectContent className="bg-popover border-border">
-              {modelCapabilities.durations.map((dur) => (
-                <SelectItem key={dur} value={String(dur)} className="text-xs">{dur}s</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {/* Resolution - for models that support it */}
-          {modelCapabilities.resolutions && (
-            <Select value={data.resolution || '720p'} onValueChange={handleResolutionChange}>
-              <SelectTrigger className="h-7 w-auto bg-muted/80 border-0 text-xs text-foreground gap-1 px-2 rounded-md hover:bg-muted">
-                <SelectValue>{data.resolution || '720p'}</SelectValue>
-              </SelectTrigger>
-              <SelectContent className="bg-popover border-border">
-                {modelCapabilities.resolutions.map((res) => (
-                  <SelectItem key={res} value={res} className="text-xs">{res}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-
-          {/* Audio Toggle - for models that support audio */}
-          {modelCapabilities.supportsAudio && (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={handleAudioToggle}
-              className={`h-7 w-7 shrink-0 ${
-                data.generateAudio !== false
-                  ? 'text-foreground bg-muted hover:bg-muted/80'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-              }`}
-              title={data.generateAudio !== false ? 'Audio ON' : 'Audio OFF'}
-            >
-              {data.generateAudio !== false ? (
-                <Volume2 className="h-3.5 w-3.5" />
-              ) : (
-                <VolumeX className="h-3.5 w-3.5" />
-              )}
-            </Button>
-          )}
-
-          {/* Settings */}
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={handleOpenSettings}
-            className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50 shrink-0 cursor-pointer"
-          >
-            <Settings className="h-3.5 w-3.5" />
-          </Button>
-
-          {/* Spacer */}
-          <div className="flex-1 min-w-0" />
-
-          {/* Generate/Refresh Button */}
-          <Button
-            onClick={handleGenerate}
-            disabled={!hasValidInput || data.isGenerating}
-            size="icon-sm"
-            className="h-8 w-8 min-w-8 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg disabled:opacity-40 shrink-0"
-          >
-            {data.isGenerating ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : data.outputUrl ? (
-              <RefreshCw className="h-4 w-4" />
-            ) : (
-              <Play className="h-4 w-4" />
-            )}
-          </Button>
-        </div>
+          </div>
+        ) : (
+          <div className="min-h-[360px] flex-1" />
         )}
-      </div>
+      </CanvasNodeShell>
 
       {/* Input Handles - Left side */}
       {/* Text Input - always shown except for first-last-frame which is image-only */}
       {inputMode !== 'first-last-frame' && (
         <div
-          className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
-          style={{ top: inputMode === 'text' ? '50%' : hasAdvancedHandles ? '18%' : '30%', transform: 'translateY(-50%)' }}
+          className={`absolute -left-3 z-10 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
+          style={{ top: getPromptHeavyInputHandleTop(0) }}
         >
           <div className="relative">
             <Handle
@@ -1298,7 +1130,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
               id="text"
               className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
             />
-            <Type className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+            <Type className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-input-icon)]" />
           </div>
           <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
             Text Prompt
@@ -1309,8 +1141,8 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
       {/* Single Image Reference - for single-image mode without multi-ref */}
       {inputMode === 'single-image' && !hasAdvancedHandles && (
         <div
-          className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
-          style={{ top: '60%', transform: 'translateY(-50%)' }}
+          className={`absolute -left-3 z-10 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
+          style={{ top: getPromptHeavyInputHandleTop(1) }}
         >
           <div className="relative">
             <Handle
@@ -1319,7 +1151,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
               id="reference"
               className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
             />
-            <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+            <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-input-icon)]" />
           </div>
           <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
             Reference Image
@@ -1331,16 +1163,11 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
       {advancedHandleSpecs.length > 0 && (
         <>
           {advancedHandleSpecs.map((spec, idx) => {
-            const start = 34;
-            const end = 95;
-            const top = advancedHandleSpecs.length === 1
-              ? 64
-              : start + ((end - start) * idx) / (advancedHandleSpecs.length - 1);
             return (
             <div
               key={spec.id}
-              className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
-              style={{ top: `${top}%`, transform: 'translateY(-50%)' }}
+              className={`absolute -left-3 z-10 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
+              style={{ top: getPromptHeavyInputHandleTop(idx + 1) }}
             >
               <div className="relative">
                 <Handle
@@ -1350,15 +1177,15 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
                   className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
                 />
                 {spec.icon === 'image' && (
-                  <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+                  <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-input-icon)]" />
                 )}
                 {spec.icon === 'video' && (
-                  <Video className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+                  <Video className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-input-icon)]" />
                 )}
                 {spec.icon === 'audio' && (
-                  <Music className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+                  <Music className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-input-icon)]" />
                 )}
-                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-zinc-900 text-[9px] text-zinc-400 font-bold rounded-full flex items-center justify-center border border-zinc-500/60">{spec.badge}</span>
+                {spec.badge && <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-zinc-900 text-[9px] text-zinc-400 font-bold rounded-full flex items-center justify-center border border-zinc-500/60">{spec.badge}</span>}
               </div>
               <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
                 {spec.label}
@@ -1373,8 +1200,8 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
       {inputMode === 'first-last-frame' && (
         <>
           <div
-            className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
-            style={{ top: '35%', transform: 'translateY(-50%)' }}
+            className={`absolute -left-3 z-10 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
+            style={{ top: getPromptHeavyInputHandleTop(0) }}
           >
             <div className="relative">
               <Handle
@@ -1383,15 +1210,15 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
                 id="firstFrame"
                 className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
               />
-              <ArrowRightFromLine className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+              <ArrowRightFromLine className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-input-icon)]" />
             </div>
             <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
               First Frame
             </span>
           </div>
           <div
-            className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
-            style={{ top: '55%', transform: 'translateY(-50%)' }}
+            className={`absolute -left-3 z-10 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
+            style={{ top: getPromptHeavyInputHandleTop(1) }}
           >
             <div className="relative">
               <Handle
@@ -1400,7 +1227,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
                 id="lastFrame"
                 className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
               />
-              <ArrowLeftFromLine className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+              <ArrowLeftFromLine className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-input-icon)]" />
             </div>
             <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
               Last Frame
@@ -1408,8 +1235,8 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
           </div>
           {/* Text handle for prompt */}
           <div
-            className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
-            style={{ top: '75%', transform: 'translateY(-50%)' }}
+            className={`absolute -left-3 z-10 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
+            style={{ top: getPromptHeavyInputHandleTop(2) }}
           >
             <div className="relative">
               <Handle
@@ -1418,7 +1245,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
                 id="text"
                 className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
               />
-              <Type className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+              <Type className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-input-icon)]" />
             </div>
             <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
               Text Prompt
@@ -1433,8 +1260,8 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
           {[1, 2, 3].map((num, idx) => (
             <div
               key={num}
-              className={`absolute -left-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
-              style={{ top: `${45 + idx * 15}%`, transform: 'translateY(-50%)' }}
+              className={`absolute -left-3 z-10 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
+              style={{ top: getPromptHeavyInputHandleTop(idx + 1) }}
             >
               <div className="relative">
                 <Handle
@@ -1443,7 +1270,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
                   id={`ref${num}`}
                   className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
                 />
-                <Images className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+                <Images className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-input-icon)]" />
               </div>
               <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
                 Reference {num}
@@ -1455,7 +1282,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
 
       {/* Output Handle - Right side */}
       <div
-        className={`absolute -right-3 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
+        className={`absolute -right-3 z-10 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`}
         style={{ top: '50%', transform: 'translateY(-50%)' }}
       >
         <div className="relative">
@@ -1465,14 +1292,13 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
             id="output"
             className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
           />
-          <Video className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+          <Video className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-output-icon)]" />
         </div>
         <span className="absolute right-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
           Generated video
         </span>
       </div>
-    </div>
-  );
+    </div>  );
 }
 
 export const VideoGeneratorNode = memo(VideoGeneratorNodeComponent);

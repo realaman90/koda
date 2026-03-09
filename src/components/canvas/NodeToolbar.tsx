@@ -66,7 +66,6 @@ interface NodeToolbarProps {
 }
 
 export function NodeToolbar({ onPluginLaunch }: NodeToolbarProps) {
-  const nodes = useCanvasStore((state) => state.nodes);
   const addNode = useCanvasStore((state) => state.addNode);
   const undo = useCanvasStore((state) => state.undo);
   const redo = useCanvasStore((state) => state.redo);
@@ -82,12 +81,6 @@ export function NodeToolbar({ onPluginLaunch }: NodeToolbarProps) {
   const [showPluginLauncher, setShowPluginLauncher] = useState(false);
   const pluginButtonRef = useRef<HTMLButtonElement>(null);
 
-  // Check if there are any generators with prompts
-  const hasRunnableGenerators = nodes.some((n) => {
-    if (n.type !== 'imageGenerator') return false;
-    const data = n.data as { prompt?: string };
-    return !!data.prompt;
-  });
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [utilitiesExpanded, setUtilitiesExpanded] = useState(false);
@@ -120,7 +113,8 @@ export function NodeToolbar({ onPluginLaunch }: NodeToolbarProps) {
   ) => {
     const position = getViewportCenter();
     const nodeType = creator({ x: 0, y: 0 }).type;
-    const count = nodes.filter((n) => n.type === nodeType).length + 1;
+    const currentNodes = useCanvasStore.getState().nodes;
+    const count = currentNodes.filter((n) => n.type === nodeType).length + 1;
     const node = baseName ? creator(position, `${baseName} ${count}`) : creator(position);
     addNode(node);
     setShowAddMenu(false);

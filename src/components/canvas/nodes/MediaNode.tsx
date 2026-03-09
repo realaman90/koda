@@ -174,7 +174,7 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
       )}
 
       {/* Node Title */}
-      <div className="flex items-center gap-2 mb-2 text-sm font-medium" style={{ color: 'var(--node-title-media)' }}>
+      <div className="node-drag-handle mb-2 rounded-xl px-3 py-2 text-sm font-medium" style={{ color: 'var(--node-title-media)' }}>
         <ImageIcon className="h-4 w-4" />
         {isEditingName ? (
           <input
@@ -318,7 +318,7 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
 
       {/* Output Handle - Right side */}
       <div
-        className={`absolute -right-3 group transition-opacity duration-200 ${selected || isHovered || data.url ? 'opacity-100' : 'opacity-0'}`}
+        className={`absolute -right-3 z-10 group transition-opacity duration-200 ${selected || isHovered || data.url ? 'opacity-100' : 'opacity-0'}`}
         style={{ top: '50%', transform: 'translateY(-50%)' }}
       >
         <div className="relative">
@@ -329,11 +329,11 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
             className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
           />
           {data.type === 'audio' ? (
-            <Volume2 className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+            <Volume2 className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-output-icon)]" />
           ) : data.type === 'video' ? (
-            <Film className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+            <Film className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-output-icon)]" />
           ) : (
-            <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+            <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-output-icon)]" />
           )}
         </div>
         <span className="absolute right-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">

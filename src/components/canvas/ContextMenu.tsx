@@ -75,7 +75,14 @@ export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
   const addNode = useCanvasStore((state) => state.addNode);
   const groupSelected = useCanvasStore((state) => state.groupSelected);
   const clipboard = useCanvasStore((state) => state.clipboard);
-  const nodes = useCanvasStore((state) => state.nodes);
+  const selectedNodeId = useCanvasStore((state) => state.selectedNodeIds.length === 1 ? state.selectedNodeIds[0] : null);
+  const selectedNodeType = useCanvasStore((state) => {
+    if (state.selectedNodeIds.length !== 1) return null;
+    return state.nodes.find((node) => node.id === state.selectedNodeIds[0])?.type ?? null;
+  });
+  const selectedNonGroupNodeCount = useCanvasStore((state) =>
+    state.nodes.filter((node) => state.selectedNodeIds.includes(node.id) && node.type !== 'group').length
+  );
 
   const { screenToFlowPosition } = useReactFlow();
   const menuRef = useRef<HTMLDivElement>(null);
@@ -83,14 +90,6 @@ export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [utilitiesExpanded, setUtilitiesExpanded] = useState(false);
   const [pluginsExpanded, setPluginsExpanded] = useState(false);
-  const selectedNode = useMemo(
-    () => (selectedNodeIds.length === 1 ? nodes.find((node) => node.id === selectedNodeIds[0]) : undefined),
-    [nodes, selectedNodeIds]
-  );
-  const selectedNonGroupNodeCount = useMemo(
-    () => nodes.filter((node) => selectedNodeIds.includes(node.id) && node.type !== 'group').length,
-    [nodes, selectedNodeIds]
-  );
 
   // Clamp menu position so it doesn't overflow the viewport
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
@@ -152,7 +151,8 @@ export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
 
   const handleAddNode = (creator: (pos: { x: number; y: number }, name?: string) => ReturnType<typeof createImageGeneratorNode>, baseName: string) => {
     const position = getNodePosition();
-    const count = nodes.filter((n) => n.type === creator({x:0,y:0}).type).length + 1;
+    const currentNodes = useCanvasStore.getState().nodes;
+    const count = currentNodes.filter((n) => n.type === creator({x:0,y:0}).type).length + 1;
     const node = creator(position, `${baseName} ${count}`);
     addNode(node);
     hideContextMenu();
@@ -212,23 +212,22 @@ export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
       icon: <Settings className="h-4 w-4" />,
       label: 'Settings',
       action: () => {
-        if (!selectedNode) return;
         const panelPosition = { x: contextMenu.x + 10, y: contextMenu.y };
-        if (selectedNode.type === 'imageGenerator') {
-          openSettingsPanel(selectedNode.id, panelPosition);
+        if (selectedNodeType === 'imageGenerator' && selectedNodeId) {
+          openSettingsPanel(selectedNodeId, panelPosition);
           hideContextMenu();
           return;
         }
-        if (selectedNode.type === 'videoGenerator') {
-          openVideoSettingsPanel(selectedNode.id, panelPosition);
+        if (selectedNodeType === 'videoGenerator' && selectedNodeId) {
+          openVideoSettingsPanel(selectedNodeId, panelPosition);
           hideContextMenu();
         }
       },
-      disabled: selectedNodeIds.length !== 1 || !selectedNode || (selectedNode.type !== 'imageGenerator' && selectedNode.type !== 'videoGenerator'),
+      disabled: selectedNodeIds.length !== 1 || !selectedNodeType || (selectedNodeType !== 'imageGenerator' && selectedNodeType !== 'videoGenerator'),
     },
     { id: 'divider2', divider: true },
     { id: 'delete', icon: <Trash2 className="h-4 w-4" />, label: 'Delete', shortcut: '⌫', action: deleteSelected, disabled: selectedNodeIds.length === 0, danger: true },
-  ] : [], [contextMenu, copySelected, cutSelected, duplicateSelected, groupSelected, deleteSelected, hideContextMenu, openSettingsPanel, openVideoSettingsPanel, selectedNodeIds, selectedNode, selectedNonGroupNodeCount]);
+  ] : [], [contextMenu, copySelected, cutSelected, deleteSelected, duplicateSelected, groupSelected, hideContextMenu, openSettingsPanel, openVideoSettingsPanel, selectedNodeId, selectedNodeIds, selectedNodeType, selectedNonGroupNodeCount]);
 
   // Canvas menu sections
   const canvasMenuSections: MenuSection[] = useMemo(() => [
@@ -383,7 +382,7 @@ export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
           label: 'Group',
           action: () => {
             const position = getNodePosition();
-            const count = nodes.filter((n) => n.type === 'group').length + 1;
+            const count = useCanvasStore.getState().nodes.filter((n) => n.type === 'group').length + 1;
             addNode(createGroupNode(position, `Group ${count}`));
             hideContextMenu();
           },
@@ -421,7 +420,7 @@ export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
         };
       }),
     },
-  ], [addNode, guardPluginLaunch, hideContextMenu, handleUpload, nodes, onPluginLaunch]);
+  ], [addNode, guardPluginLaunch, hideContextMenu, handleUpload, onPluginLaunch]);
 
   // Filter sections based on search query
   const filteredSections = useMemo(() => {
