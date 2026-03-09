@@ -3,7 +3,6 @@
 import { motion } from 'framer-motion';
 import { Plus, Command } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { SyncStatusIndicator } from './SyncStatusIndicator';
 
 interface DashboardHeaderProps {
   onCreateCanvas: () => void;
@@ -28,7 +27,6 @@ export function DashboardHeader({ onCreateCanvas, memberships }: DashboardHeader
               ))}
             </select>
           )}
-          <SyncStatusIndicator />
         </div>
       </div>
 

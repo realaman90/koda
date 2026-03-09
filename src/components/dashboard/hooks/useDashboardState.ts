@@ -51,8 +51,9 @@ export function useDashboardState(): DashboardState {
   const [isCreating, setIsCreating] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [loadErrorTitle, setLoadErrorTitle] = useState('Couldn’t load your projects');
+  const [loadErrorTitle, setLoadErrorTitle] = useState("Couldn't load your projects");
   const [loadFailureStage, setLoadFailureStage] = useState<DashboardLoadFailureStage>(null);
+  const [hasInitiallyLoaded, setHasInitiallyLoaded] = useState(false);
   const bootstrapAttemptRef = useRef(0);
 
   // Read tab from URL params
@@ -104,7 +105,7 @@ export function useDashboardState(): DashboardState {
 
   const clearLoadError = useCallback(() => {
     setLoadError(null);
-    setLoadErrorTitle('Couldn’t load your projects');
+    setLoadErrorTitle("Couldn't load your projects");
     setLoadFailureStage(null);
   }, []);
 
@@ -115,7 +116,7 @@ export function useDashboardState(): DashboardState {
       return true;
     } catch (error) {
       setLoadFailureStage('canvases');
-      setLoadErrorTitle('Couldn’t load your projects');
+      setLoadErrorTitle("Couldn't load your projects");
       setLoadError(error instanceof Error ? error.message : 'Unknown error');
       return false;
     }
@@ -176,27 +177,36 @@ export function useDashboardState(): DashboardState {
     clearLoadError();
 
     try {
+      // Fire-and-forget: sync + migration run in background, don't block UI
       if (options?.runSetup !== false) {
-        // Initialize sync with SQLite (if configured)
-        await initializeSync();
-
-        // Migrate legacy localStorage data
-        const migratedId = await migrateLegacyData();
-        if (migratedId) {
-          toast.success('Migrated your existing canvas');
-        }
+        (async () => {
+          try {
+            await initializeSync();
+            const migratedId = await migrateLegacyData();
+            if (migratedId) {
+              toast.success('Migrated your existing canvas');
+              // Refresh canvas list after migration
+              loadCanvasesWithHandling().catch(() => {});
+            }
+          } catch (e) {
+            console.error('Background sync/migration failed:', e);
+          }
+        })();
       }
 
-      const bootstrapped = await runWorkspaceBootstrap();
-      if (!bootstrapped) {
-        return;
-      }
+      // Bootstrap and canvas load run in parallel — UI unblocks as soon as canvases load
+      const [bootstrapped] = await Promise.all([
+        runWorkspaceBootstrap(),
+        loadCanvasesWithHandling(),
+      ]);
 
-      await loadCanvasesWithHandling();
+      if (!bootstrapped) return;
     } catch (error) {
       setLoadFailureStage('canvases');
-      setLoadErrorTitle('Couldn’t load your projects');
+      setLoadErrorTitle("Couldn't load your projects");
       setLoadError(error instanceof Error ? error.message : 'Unknown error');
+    } finally {
+      setHasInitiallyLoaded(true);
     }
   }, [clearLoadError, initializeSync, loadCanvasesWithHandling, migrateLegacyData, runWorkspaceBootstrap]);
 
@@ -318,7 +328,7 @@ export function useDashboardState(): DashboardState {
     isCreating,
     activeTab,
     searchQuery,
-    isLoadingList,
+    isLoadingList: isLoadingList || !hasInitiallyLoaded,
     loadError,
     loadErrorTitle,
     retryActionLabel,

@@ -236,27 +236,28 @@ export function mergeCanvases(
  */
 export async function performInitialSync(
   getLocalCanvases: () => Promise<StoredCanvas[]>,
-  saveLocalCanvases: (canvases: StoredCanvas[]) => Promise<void>
+  saveLocalCanvases: (canvases: StoredCanvas[]) => Promise<void>,
+  options?: { skipCapabilityCheck?: boolean }
 ): Promise<StoredCanvas[]> {
-  // Check if SQLite is enabled
-  const sqliteEnabled = await isSQLiteEnabled();
-  
-  if (!sqliteEnabled) {
-    // No SQLite - just return local canvases
-    return getLocalCanvases();
+  // Check if SQLite is enabled (skip if caller already verified)
+  if (!options?.skipCapabilityCheck) {
+    const sqliteEnabled = await isSQLiteEnabled();
+    if (!sqliteEnabled) {
+      return getLocalCanvases();
+    }
   }
 
   syncState.status = 'syncing';
   notifyListeners();
 
   try {
-    // Fetch from both sources
+    // Fetch from both sources in parallel
     const [localCanvases, serverCanvasMetadata] = await Promise.all([
       getLocalCanvases(),
       fetchCanvasesFromServer(),
     ]);
 
-    // Fetch full canvas data from server
+    // Fetch full canvas data from server (parallel, not sequential)
     const serverCanvases = await Promise.all(
       serverCanvasMetadata.map((meta) => fetchCanvasFromServer(meta.id))
     );
@@ -271,13 +272,11 @@ export async function performInitialSync(
     // Save merged result to localStorage
     await saveLocalCanvases(merged);
 
-    // Sync any local-only canvases to server
+    // Sync any local-only canvases to server (parallel, not sequential)
     const serverIds = new Set(validServerCanvases.map((c) => c.id));
     const localOnlyCanvases = localCanvases.filter((c) => !serverIds.has(c.id));
-    
-    for (const canvas of localOnlyCanvases) {
-      await createCanvasOnServer(canvas);
-    }
+
+    await Promise.all(localOnlyCanvases.map((canvas) => createCanvasOnServer(canvas)));
 
     syncState.status = 'synced';
     syncState.lastSyncedAt = Date.now();

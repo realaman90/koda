@@ -286,18 +286,15 @@ export const useAppStore = create<AppState>()((set, get) => ({
     await performInitialSync(
       async () => {
         const metaList = await provider.listCanvases();
-        const canvases: StoredCanvas[] = [];
-        for (const meta of metaList) {
-          const canvas = await provider.getCanvas(meta.id);
-          if (canvas) canvases.push(canvas);
-        }
-        return canvases;
+        const canvases = await Promise.all(
+          metaList.map((meta) => provider.getCanvas(meta.id))
+        );
+        return canvases.filter((c): c is StoredCanvas => c !== null);
       },
       async (canvases) => {
-        for (const canvas of canvases) {
-          await provider.saveCanvas(canvas);
-        }
-      }
+        await Promise.all(canvases.map((canvas) => provider.saveCanvas(canvas)));
+      },
+      { skipCapabilityCheck: true }
     );
 
   },
