@@ -1,12 +1,15 @@
 'use client';
 
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
-import { MoreHorizontal, Pencil, Copy, Trash2, Calendar, AlertCircle, Loader2, ImageOff } from 'lucide-react';
+import { MoreHorizontal, Pencil, Copy, Trash2, Calendar, AlertCircle, Loader2, ImageOff, ImagePlus } from 'lucide-react';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import type { CanvasMetadata } from '@/lib/storage';
 import { withThumbnailVersion } from '@/lib/preview-utils';
 import { deriveCanvasPreviewState } from './canvas-preview-state';
+import { uploadAsset } from '@/lib/assets/upload';
+import { useAppStore } from '@/stores/app-store';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -84,11 +87,33 @@ export function CanvasCard({ canvas, onRename, onDuplicate, onDelete }: CanvasCa
   const isReadOnly = canvas.accessRole === 'viewer';
   const surfaceBadge = canvas.workspaceType === 'team' ? 'Team' : 'Personal';
 
-  const handleMenuAction = (action: 'rename' | 'duplicate' | 'delete') => {
+  const thumbnailInputRef = useRef<HTMLInputElement>(null);
+  const updateCanvasThumbnail = useAppStore((state) => state.updateCanvasThumbnail);
+
+  const handleSetThumbnail = useCallback(async (file: File) => {
+    try {
+      const result = await uploadAsset(file, { canvasId: canvas.id });
+      await updateCanvasThumbnail(canvas.id, {
+        thumbnailUrl: result.url,
+        thumbnailStatus: 'ready',
+        thumbnailVersion: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        thumbnailUpdatedAt: Date.now(),
+        thumbnailErrorCode: undefined,
+        thumbnailCustom: true,
+      });
+      toast.success('Thumbnail updated');
+    } catch {
+      toast.error('Failed to upload thumbnail');
+    }
+  }, [canvas.id, updateCanvasThumbnail]);
+
+  const handleMenuAction = (action: 'rename' | 'duplicate' | 'delete' | 'set-thumbnail') => {
     if (action === 'rename') {
       setIsRenaming(true);
     } else if (action === 'duplicate') {
       onDuplicate(canvas.id);
+    } else if (action === 'set-thumbnail') {
+      thumbnailInputRef.current?.click();
     } else {
       onDelete(canvas.id);
     }
@@ -201,6 +226,17 @@ export function CanvasCard({ canvas, onRename, onDuplicate, onDelete }: CanvasCa
                 <Copy className="h-3.5 w-3.5" />
                 Duplicate
               </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault();
+                  if (!isReadOnly) handleMenuAction('set-thumbnail');
+                }}
+                disabled={isReadOnly}
+                className="rounded-lg px-3 py-2 focus:bg-muted focus:text-foreground"
+              >
+                <ImagePlus className="h-3.5 w-3.5" />
+                Set thumbnail
+              </DropdownMenuItem>
               {isReadOnly && (
                 <p className="px-3 py-2 text-xs text-muted-foreground">View-only access: editing is disabled.</p>
               )}
@@ -220,6 +256,17 @@ export function CanvasCard({ canvas, onRename, onDuplicate, onDelete }: CanvasCa
           </DropdownMenu>
         </div>
       </div>
+      <input
+        ref={thumbnailInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) handleSetThumbnail(file);
+          e.target.value = '';
+        }}
+      />
     </article>
   );
 }

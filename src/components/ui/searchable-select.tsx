@@ -220,7 +220,7 @@ export function SearchableSelect({
         type="button"
         onClick={() => setOpen(!open)}
         className={cn(
-          'flex items-center justify-between gap-1 h-7 px-2 rounded-md text-xs',
+          'flex items-center justify-between gap-1 h-8 px-2.5 rounded-xl text-xs',
           'bg-muted/80 text-foreground hover:bg-muted transition-colors',
           triggerClassName
         )}

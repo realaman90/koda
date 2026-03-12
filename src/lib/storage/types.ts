@@ -37,6 +37,8 @@ export interface StoredCanvas {
   thumbnailUpdatedAt?: number;
   thumbnailVersion?: string;
   thumbnailErrorCode?: ThumbnailErrorCode;
+  /** When true, auto-capture will not overwrite this thumbnail. */
+  thumbnailCustom?: boolean;
 
   createdAt: number;
   updatedAt: number;
@@ -63,6 +65,7 @@ export interface CanvasMetadata {
   thumbnailUpdatedAt?: number;
   thumbnailVersion?: string;
   thumbnailErrorCode?: ThumbnailErrorCode;
+  thumbnailCustom?: boolean;
 
   createdAt: number;
   updatedAt: number;

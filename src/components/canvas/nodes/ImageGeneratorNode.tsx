@@ -395,6 +395,7 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
 
   const showTopToolbar = chromeState.showTopToolbar && (!isReadOnly || !!data.outputUrl);
   const showFooterRail = chromeState.showFooterRail && (!isReadOnly || !!data.outputUrl);
+  const showOutputOverlay = !data.outputUrl || chromeState.showPromptTeaser || chromeState.showPromptEditor || showFooterRail;
 
   const topToolbar = showTopToolbar ? (
     <NodeFloatingToolbar>
@@ -598,7 +599,7 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
     </NodeFooterRail>
   ) : null;
 
-  const promptOverlay = displayMode === 'summary' ? null : (
+  const promptOverlay = displayMode === 'summary' || (data.outputUrl && !showOutputOverlay) ? null : (
     <NodeStagePrompt
       teaser={chromeState.showPromptTeaser ? (
         data.outputUrl ? (
@@ -796,7 +797,7 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
             </div>
           </div>
         ) : data.outputUrl ? (
-          <div className="flex min-h-[320px] items-center justify-center overflow-hidden rounded-[inherit] pb-[120px]">
+          <div className={`flex min-h-[320px] items-center justify-center overflow-hidden rounded-[inherit] transition-[padding] duration-200 ${showOutputOverlay ? 'pb-[120px]' : 'pb-0'}`}>
             <img src={data.outputUrl} alt="Generated" className="h-auto w-full object-cover" />
           </div>
         ) : (

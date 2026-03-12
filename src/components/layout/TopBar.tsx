@@ -6,6 +6,13 @@ import { Button } from '@/components/ui/button';
 import { KodaLogo } from '@/components/ui/KodaLogo';
 import { Breadcrumbs, BreadcrumbItem } from './Breadcrumbs';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
   Search,
   ArrowLeft,
   Download,
@@ -30,6 +37,8 @@ interface TopBarProps {
   lastSavedAt?: number | null;
   onExportJSON?: () => void;
   onExportPNG?: () => void;
+  onExportAllAssets?: () => void;
+  onExportSelectedAssets?: () => void;
   // Dashboard mode props
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
@@ -46,6 +55,8 @@ export function TopBar({
   lastSavedAt,
   onExportJSON,
   onExportPNG,
+  onExportAllAssets,
+  onExportSelectedAssets,
   searchQuery,
   onSearchChange,
   className,
@@ -54,7 +65,6 @@ export function TopBar({
   const [editValue, setEditValue] = useState('');
   const [showExportMenu, setShowExportMenu] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const exportMenuRef = useRef<HTMLDivElement>(null);
 
   // Focus input when editing starts
   useEffect(() => {
@@ -63,17 +73,6 @@ export function TopBar({
       inputRef.current.select();
     }
   }, [isEditingName]);
-
-  // Close export menu on outside click
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
-        setShowExportMenu(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
 
   const handleNameSubmit = useCallback(() => {
     setIsEditingName(false);
@@ -227,47 +226,67 @@ export function TopBar({
         {mode === 'canvas' && (
           <>
             {/* Export Dropdown */}
-            <div className="relative" ref={exportMenuRef}>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowExportMenu(!showExportMenu)}
-                className="h-9 rounded-xl border-border/70 bg-muted/40 text-muted-foreground hover:bg-accent hover:text-foreground gap-1.5"
-              >
-                <Download className="h-3.5 w-3.5" />
-                Export
-                <ChevronDown
-                  className={`h-3 w-3 transition-transform ${
-                    showExportMenu ? 'rotate-180' : ''
-                  }`}
-                />
-              </Button>
+            <DropdownMenu onOpenChange={setShowExportMenu}>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 rounded-xl border-border/70 bg-muted/40 text-muted-foreground hover:bg-accent hover:text-foreground gap-1.5"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Export
+                  <ChevronDown
+                    className={`h-3 w-3 transition-transform ${
+                      showExportMenu ? 'rotate-180' : ''
+                    }`}
+                  />
+                </Button>
+              </DropdownMenuTrigger>
 
-              {showExportMenu && (
-                <div className="absolute right-0 top-full z-50 mt-1 min-w-[180px] rounded-xl border border-border bg-popover py-1 shadow-xl">
-                  <button
-                    onClick={() => {
-                      onExportJSON?.();
-                      setShowExportMenu(false);
-                    }}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-popover-foreground transition-colors hover:bg-muted"
-                  >
-                    <FileJson className="h-4 w-4" />
-                    Export as JSON
-                  </button>
-                  <button
-                    onClick={() => {
-                      onExportPNG?.();
-                      setShowExportMenu(false);
-                    }}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-popover-foreground transition-colors hover:bg-muted"
-                  >
-                    <ImageIcon className="h-4 w-4" />
-                    Export as PNG
-                  </button>
-                </div>
-              )}
-            </div>
+              <DropdownMenuContent
+                align="end"
+                sideOffset={6}
+                className="min-w-[180px] rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-xl"
+              >
+                <DropdownMenuItem
+                  onSelect={() => {
+                    onExportAllAssets?.();
+                  }}
+                  className="rounded-lg px-3 py-2 focus:bg-muted focus:text-popover-foreground"
+                >
+                  <Download className="h-4 w-4" />
+                  Export all assets
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => {
+                    onExportSelectedAssets?.();
+                  }}
+                  className="rounded-lg px-3 py-2 focus:bg-muted focus:text-popover-foreground"
+                >
+                  <Download className="h-4 w-4" />
+                  Export selected assets
+                </DropdownMenuItem>
+                <DropdownMenuSeparator className="bg-border" />
+                <DropdownMenuItem
+                  onSelect={() => {
+                    onExportJSON?.();
+                  }}
+                  className="rounded-lg px-3 py-2 focus:bg-muted focus:text-popover-foreground"
+                >
+                  <FileJson className="h-4 w-4" />
+                  Export as JSON
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => {
+                    onExportPNG?.();
+                  }}
+                  className="rounded-lg px-3 py-2 focus:bg-muted focus:text-popover-foreground"
+                >
+                  <ImageIcon className="h-4 w-4" />
+                  Export as PNG
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
 {/* TODO: Share button hidden until sharing is implemented */}
           </>

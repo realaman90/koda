@@ -147,6 +147,7 @@ export const canvases = sqliteTable(
     thumbnailUpdatedAt: integer('thumbnail_updated_at', { mode: 'timestamp_ms' }),
     thumbnailVersion: text('thumbnail_version'),
     thumbnailErrorCode: text('thumbnail_error_code'),
+    thumbnailCustom: integer('thumbnail_custom', { mode: 'boolean' }),
     // Timestamps stored as Unix milliseconds
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
@@ -310,3 +311,366 @@ export const creditTransactions = sqliteTable(
 
 export type NewCreditTransaction = typeof creditTransactions.$inferInsert;
 export type CreditTransaction = typeof creditTransactions.$inferSelect;
+
+// ============================================
+// BILLING TABLES
+// ============================================
+
+export const billingAccounts = sqliteTable(
+  'billing_accounts',
+  {
+    id: text('id').primaryKey(),
+    ownerType: text('owner_type').notNull().default('workspace'),
+    ownerId: text('owner_id').notNull(),
+    clerkCustomerId: text('clerk_customer_id'),
+    stripeCustomerId: text('stripe_customer_id'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (table) => ({
+    ownerUnique: uniqueIndex('billing_accounts_owner_unique').on(table.ownerType, table.ownerId),
+    clerkCustomerIdx: index('idx_billing_accounts_clerk_customer').on(table.clerkCustomerId),
+    stripeCustomerIdx: index('idx_billing_accounts_stripe_customer').on(table.stripeCustomerId),
+  })
+);
+
+export type NewBillingAccount = typeof billingAccounts.$inferInsert;
+export type BillingAccount = typeof billingAccounts.$inferSelect;
+
+export const plans = sqliteTable(
+  'plans',
+  {
+    id: text('id').primaryKey(),
+    planCode: text('plan_code').notNull(),
+    displayName: text('display_name').notNull(),
+    billingInterval: text('billing_interval').notNull().default('month'),
+    priceMinor: integer('price_minor').notNull().default(0),
+    currency: text('currency').notNull().default('USD'),
+    monthlyCredits: integer('monthly_credits').notNull().default(0),
+    active: integer('active', { mode: 'boolean' }).notNull().default(true),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (table) => ({
+    planCodeUnique: uniqueIndex('plans_plan_code_unique').on(table.planCode),
+  })
+);
+
+export type NewPlan = typeof plans.$inferInsert;
+export type Plan = typeof plans.$inferSelect;
+
+export const entitlementPolicies = sqliteTable(
+  'entitlement_policies',
+  {
+    id: text('id').primaryKey(),
+    planId: text('plan_id').notNull(),
+    version: integer('version').notNull(),
+    effectiveFrom: integer('effective_from', { mode: 'timestamp_ms' }).notNull(),
+    effectiveTo: integer('effective_to', { mode: 'timestamp_ms' }),
+    policyJson: text('policy_json').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (table) => ({
+    planVersionUnique: uniqueIndex('entitlement_policies_plan_version_unique').on(table.planId, table.version),
+  })
+);
+
+export type NewEntitlementPolicy = typeof entitlementPolicies.$inferInsert;
+export type EntitlementPolicy = typeof entitlementPolicies.$inferSelect;
+
+export const subscriptions = sqliteTable(
+  'subscriptions',
+  {
+    id: text('id').primaryKey(),
+    billingAccountId: text('billing_account_id').notNull(),
+    planId: text('plan_id').notNull(),
+    authority: text('authority').notNull().default('clerk'),
+    authoritySubscriptionId: text('authority_subscription_id').notNull(),
+    status: text('status').notNull().default('active'),
+    currentPeriodStart: integer('current_period_start', { mode: 'timestamp_ms' }).notNull(),
+    currentPeriodEnd: integer('current_period_end', { mode: 'timestamp_ms' }).notNull(),
+    cancelAtPeriodEnd: integer('cancel_at_period_end', { mode: 'boolean' }).notNull().default(false),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (table) => ({
+    authorityRefUnique: uniqueIndex('subscriptions_authority_ref_unique').on(
+      table.authority,
+      table.authoritySubscriptionId
+    ),
+    accountStatusIdx: index('idx_subscriptions_account_status').on(table.billingAccountId, table.status),
+  })
+);
+
+export type NewSubscription = typeof subscriptions.$inferInsert;
+export type Subscription = typeof subscriptions.$inferSelect;
+
+export const subscriptionCycleGrants = sqliteTable(
+  'subscription_cycle_grants',
+  {
+    id: text('id').primaryKey(),
+    subscriptionId: text('subscription_id').notNull(),
+    cycleStart: integer('cycle_start', { mode: 'timestamp_ms' }).notNull(),
+    cycleEnd: integer('cycle_end', { mode: 'timestamp_ms' }).notNull(),
+    grantedCredits: integer('granted_credits').notNull(),
+    grantLedgerTxnId: text('grant_ledger_txn_id'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (table) => ({
+    cycleUnique: uniqueIndex('subscription_cycle_grants_cycle_unique').on(
+      table.subscriptionId,
+      table.cycleStart,
+      table.cycleEnd
+    ),
+  })
+);
+
+export type NewSubscriptionCycleGrant = typeof subscriptionCycleGrants.$inferInsert;
+export type SubscriptionCycleGrant = typeof subscriptionCycleGrants.$inferSelect;
+
+export const billingInvoices = sqliteTable(
+  'billing_invoices',
+  {
+    id: text('id').primaryKey(),
+    authority: text('authority').notNull(),
+    authorityInvoiceId: text('authority_invoice_id').notNull(),
+    billingAccountId: text('billing_account_id').notNull(),
+    invoiceNumber: text('invoice_number').notNull(),
+    amountMinor: integer('amount_minor').notNull(),
+    currency: text('currency').notNull(),
+    status: text('status').notNull(),
+    invoiceDate: integer('invoice_date', { mode: 'timestamp_ms' }).notNull(),
+    receiptUrl: text('receipt_url'),
+    payloadJson: text('payload_json').notNull().default('{}'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (table) => ({
+    authorityInvoiceUnique: uniqueIndex('billing_invoices_authority_invoice_unique').on(
+      table.authority,
+      table.authorityInvoiceId
+    ),
+    accountDateIdx: index('idx_billing_invoices_account_date').on(table.billingAccountId, table.invoiceDate),
+  })
+);
+
+export type NewBillingInvoice = typeof billingInvoices.$inferInsert;
+export type BillingInvoice = typeof billingInvoices.$inferSelect;
+
+export const externalBillingEvents = sqliteTable(
+  'external_billing_events',
+  {
+    id: text('id').primaryKey(),
+    authority: text('authority').notNull(),
+    authorityEventId: text('authority_event_id').notNull(),
+    eventType: text('event_type').notNull(),
+    billingAccountId: text('billing_account_id'),
+    payloadHash: text('payload_hash').notNull(),
+    payloadJson: text('payload_json').notNull(),
+    status: text('status').notNull().default('received'),
+    errorCode: text('error_code'),
+    receivedAt: integer('received_at', { mode: 'timestamp_ms' }).notNull(),
+    processedAt: integer('processed_at', { mode: 'timestamp_ms' }),
+  },
+  (table) => ({
+    authorityEventUnique: uniqueIndex('external_billing_events_authority_event_unique').on(
+      table.authority,
+      table.authorityEventId
+    ),
+  })
+);
+
+export type NewExternalBillingEvent = typeof externalBillingEvents.$inferInsert;
+export type ExternalBillingEvent = typeof externalBillingEvents.$inferSelect;
+
+export const billingAdminAuditLogs = sqliteTable(
+  'billing_admin_audit_logs',
+  {
+    id: text('id').primaryKey(),
+    actorUserId: text('actor_user_id').notNull(),
+    action: text('action').notNull(),
+    workspaceId: text('workspace_id'),
+    requestId: text('request_id'),
+    metadataJson: text('metadata_json').notNull().default('{}'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (table) => ({
+    actionIdx: index('idx_billing_admin_audit_action').on(table.action),
+    createdIdx: index('idx_billing_admin_audit_created').on(table.createdAt),
+  })
+);
+
+export type NewBillingAdminAuditLog = typeof billingAdminAuditLogs.$inferInsert;
+export type BillingAdminAuditLog = typeof billingAdminAuditLogs.$inferSelect;
+
+// ============================================
+// BILLING LEDGER TABLES
+// ============================================
+
+export const pricingVersions = sqliteTable(
+  'pricing_versions',
+  {
+    id: text('id').primaryKey(),
+    versionCode: text('version_code').notNull(),
+    status: text('status').notNull().default('draft'),
+    effectiveFrom: integer('effective_from', { mode: 'timestamp_ms' }).notNull(),
+    effectiveTo: integer('effective_to', { mode: 'timestamp_ms' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (table) => ({
+    versionCodeUnique: uniqueIndex('pricing_versions_version_code_unique').on(table.versionCode),
+  })
+);
+
+export type NewPricingVersion = typeof pricingVersions.$inferInsert;
+export type PricingVersion = typeof pricingVersions.$inferSelect;
+
+export const costRules = sqliteTable('cost_rules', {
+  id: text('id').primaryKey(),
+  pricingVersionId: text('pricing_version_id').notNull(),
+  provider: text('provider').notNull(),
+  operationType: text('operation_type').notNull(),
+  modelRef: text('model_ref').notNull(),
+  ruleJson: text('rule_json').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export type NewCostRule = typeof costRules.$inferInsert;
+export type CostRule = typeof costRules.$inferSelect;
+
+export const creditBuckets = sqliteTable('credit_buckets', {
+  id: text('id').primaryKey(),
+  billingAccountId: text('billing_account_id').notNull(),
+  bucketType: text('bucket_type').notNull(),
+  label: text('label'),
+  expiresAt: integer('expires_at', { mode: 'timestamp_ms' }),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export type NewCreditBucket = typeof creditBuckets.$inferInsert;
+export type CreditBucket = typeof creditBuckets.$inferSelect;
+
+export const creditLedgerEntries = sqliteTable(
+  'credit_ledger_entries',
+  {
+    id: text('id').primaryKey(),
+    billingAccountId: text('billing_account_id').notNull(),
+    bucketId: text('bucket_id'),
+    txnType: text('txn_type').notNull(),
+    amountCredits: integer('amount_credits').notNull(),
+    idempotencyKey: text('idempotency_key').notNull(),
+    referenceType: text('reference_type').notNull(),
+    referenceId: text('reference_id').notNull(),
+    requestId: text('request_id'),
+    reasonCode: text('reason_code'),
+    metadataJson: text('metadata_json').notNull().default('{}'),
+    occurredAt: integer('occurred_at', { mode: 'timestamp_ms' }).notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (table) => ({
+    idempotencyUnique: uniqueIndex('credit_ledger_entries_idempotency_unique').on(
+      table.idempotencyKey,
+      table.referenceType,
+      table.referenceId
+    ),
+    accountOccurredIdx: index('idx_credit_ledger_entries_account_occurred').on(
+      table.billingAccountId,
+      table.occurredAt
+    ),
+  })
+);
+
+export type NewCreditLedgerEntry = typeof creditLedgerEntries.$inferInsert;
+export type CreditLedgerEntry = typeof creditLedgerEntries.$inferSelect;
+
+export const creditReservations = sqliteTable(
+  'credit_reservations',
+  {
+    id: text('id').primaryKey(),
+    billingAccountId: text('billing_account_id').notNull(),
+    jobId: text('job_id').notNull(),
+    pricingVersionId: text('pricing_version_id').notNull(),
+    reservedCredits: integer('reserved_credits').notNull(),
+    capturedCredits: integer('captured_credits').notNull().default(0),
+    releasedCredits: integer('released_credits').notNull().default(0),
+    status: text('status').notNull().default('active'),
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (table) => ({
+    jobUnique: uniqueIndex('credit_reservations_job_unique').on(table.jobId),
+  })
+);
+
+export type NewCreditReservation = typeof creditReservations.$inferInsert;
+export type CreditReservation = typeof creditReservations.$inferSelect;
+
+export const asyncCreditSettlements = sqliteTable(
+  'async_credit_settlements',
+  {
+    id: text('id').primaryKey(),
+    provider: text('provider').notNull(),
+    externalTaskId: text('external_task_id').notNull(),
+    billingAccountId: text('billing_account_id').notNull(),
+    reservationJobId: text('reservation_job_id').notNull(),
+    idempotencyKeyPrefix: text('idempotency_key_prefix').notNull(),
+    estimatedCredits: integer('estimated_credits').notNull(),
+    status: text('status').notNull().default('pending'),
+    failureReason: text('failure_reason'),
+    metadataJson: text('metadata_json').notNull().default('{}'),
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+    settledAt: integer('settled_at', { mode: 'timestamp_ms' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (table) => ({
+    providerTaskUnique: uniqueIndex('async_credit_settlements_provider_task_unique').on(
+      table.provider,
+      table.externalTaskId
+    ),
+    statusExpiresIdx: index('idx_async_credit_settlements_status_expires').on(table.status, table.expiresAt),
+  })
+);
+
+export type NewAsyncCreditSettlement = typeof asyncCreditSettlements.$inferInsert;
+export type AsyncCreditSettlement = typeof asyncCreditSettlements.$inferSelect;
+
+// ============================================
+// RECONCILIATION TABLES
+// ============================================
+
+export const reconciliationRuns = sqliteTable('reconciliation_runs', {
+  id: text('id').primaryKey(),
+  jobName: text('job_name').notNull(),
+  windowStart: integer('window_start', { mode: 'timestamp_ms' }).notNull(),
+  windowEnd: integer('window_end', { mode: 'timestamp_ms' }).notNull(),
+  status: text('status').notNull(),
+  mismatchCount: integer('mismatch_count').notNull().default(0),
+  repairCount: integer('repair_count').notNull().default(0),
+  startedAt: integer('started_at', { mode: 'timestamp_ms' }).notNull(),
+  finishedAt: integer('finished_at', { mode: 'timestamp_ms' }),
+});
+
+export type NewReconciliationRun = typeof reconciliationRuns.$inferInsert;
+export type ReconciliationRun = typeof reconciliationRuns.$inferSelect;
+
+export const reconciliationItems = sqliteTable(
+  'reconciliation_items',
+  {
+    id: text('id').primaryKey(),
+    runId: text('run_id').notNull(),
+    itemKey: text('item_key').notNull(),
+    severity: text('severity').notNull(),
+    category: text('category').notNull(),
+    detailsJson: text('details_json').notNull(),
+    repairAction: text('repair_action'),
+    repairStatus: text('repair_status'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (table) => ({
+    runItemUnique: uniqueIndex('reconciliation_items_run_item_unique').on(table.runId, table.itemKey),
+  })
+);
+
+export type NewReconciliationItem = typeof reconciliationItems.$inferInsert;
+export type ReconciliationItem = typeof reconciliationItems.$inferSelect;

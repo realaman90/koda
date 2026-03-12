@@ -709,6 +709,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
 
   const showTopToolbar = chromeState.showTopToolbar && (!isReadOnly || !!data.outputUrl);
   const showFooterRail = chromeState.showFooterRail && (!isReadOnly || !!data.outputUrl);
+  const showOutputOverlay = !data.outputUrl || chromeState.showPromptTeaser || chromeState.showPromptEditor || showFooterRail;
 
   const topToolbar = showTopToolbar ? (
     <NodeFloatingToolbar>
@@ -889,7 +890,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
     </NodeFooterRail>
   ) : null;
 
-  const promptOverlay = displayMode === 'summary' ? null : (
+  const promptOverlay = displayMode === 'summary' || (data.outputUrl && !showOutputOverlay) ? null : (
     <NodeStagePrompt
       teaser={chromeState.showPromptTeaser ? (
         data.outputUrl ? (
@@ -1054,7 +1055,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
         focusProps={focusProps}
       >
         {data.isGenerating ? (
-          <div className="flex min-h-[320px] flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
+          <div className="flex min-h-[320px] flex-1 flex-col items-center justify-center gap-4 px-6 pb-[120px] text-center">
             {promptDraft ? (
               <p className="max-w-[90%] text-xs text-muted-foreground line-clamp-2">{promptDraft}</p>
             ) : null}
@@ -1086,7 +1087,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
             </div>
           </div>
         ) : data.outputUrl ? (
-          <div className="flex min-h-[320px] items-center justify-center overflow-hidden rounded-[inherit] relative group/video">
+          <div className={`relative flex min-h-[320px] items-center justify-center overflow-hidden rounded-[inherit] transition-[padding] duration-200 group/video ${showOutputOverlay ? 'pb-[120px]' : 'pb-0'}`}>
               <video
                 ref={videoRef}
                 src={data.outputUrl}

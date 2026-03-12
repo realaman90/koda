@@ -545,7 +545,7 @@ function PromptStudioNodeComponent({ id, data, selected }: NodeProps<PromptStudi
   // ── Local state ──
   const [ls, setLs] = useState<PromptStudioNodeState>(() => {
     const persisted = data.state as unknown as PromptStudioNodeState | undefined;
-    if (persisted?.nodeId) return { ...persisted, qnaSets: persisted.qnaSets || [], searchResults: persisted.searchResults || [] };
+    if (persisted?.nodeId) return { ...createDefaultState(id), ...persisted };
     return createDefaultState(id);
   });
   const seqRef = useRef(getMaxSeqFromState(ls));

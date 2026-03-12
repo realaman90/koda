@@ -43,6 +43,7 @@ export async function listCanvasesForWorkspaces(workspaceIds: string[]): Promise
         : canvas.thumbnailUpdatedAt || undefined,
       thumbnailVersion: canvas.thumbnailVersion || undefined,
       thumbnailErrorCode: canvas.thumbnailErrorCode || undefined,
+      thumbnailCustom: canvas.thumbnailCustom || undefined,
       createdAt: canvas.createdAt instanceof Date ? canvas.createdAt.getTime() : canvas.createdAt,
       updatedAt: canvas.updatedAt instanceof Date ? canvas.updatedAt.getTime() : canvas.updatedAt,
       nodeCount: nodes.length,
@@ -72,6 +73,7 @@ export async function getCanvasByIdForWorkspaces(id: string, workspaceIds: strin
       : canvas.thumbnailUpdatedAt || undefined,
     thumbnailVersion: canvas.thumbnailVersion || undefined,
     thumbnailErrorCode: canvas.thumbnailErrorCode || undefined,
+    thumbnailCustom: canvas.thumbnailCustom || undefined,
     createdAt: canvas.createdAt instanceof Date ? canvas.createdAt.getTime() : canvas.createdAt,
     updatedAt: canvas.updatedAt instanceof Date ? canvas.updatedAt.getTime() : canvas.updatedAt,
     nodes: parseJsonArray(canvas.nodes ?? null) as StoredCanvas['nodes'],
@@ -104,6 +106,7 @@ export async function upsertWorkspaceCanvas(
       thumbnailUpdatedAt: normalized.thumbnailUpdatedAt ? new Date(normalized.thumbnailUpdatedAt) : null,
       thumbnailVersion: normalized.thumbnailVersion || null,
       thumbnailErrorCode: normalized.thumbnailErrorCode || null,
+      thumbnailCustom: normalized.thumbnailCustom ? 1 : null,
       createdAt: new Date(normalized.createdAt),
       updatedAt: now,
     })
@@ -122,6 +125,7 @@ export async function upsertWorkspaceCanvas(
         thumbnailUpdatedAt: normalized.thumbnailUpdatedAt ? new Date(normalized.thumbnailUpdatedAt) : null,
         thumbnailVersion: normalized.thumbnailVersion || null,
         thumbnailErrorCode: normalized.thumbnailErrorCode || null,
+        thumbnailCustom: normalized.thumbnailCustom ? 1 : null,
         updatedAt: now,
       },
     });

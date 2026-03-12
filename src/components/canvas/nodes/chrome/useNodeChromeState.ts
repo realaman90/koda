@@ -40,12 +40,15 @@ export function resolveNodeChromeState({
   const showTopToolbar = allowHoverChrome && (isHovered || isActive);
   const showFooterRail = allowHoverChrome && (isHovered || isActive);
   const showHandles = isHovered || isActive;
+  const showPromptTeaser = displayMode !== 'summary'
+    && !showPromptEditor
+    && (!hasOutput || isHovered || isActive);
 
   return {
     isActive,
     showTopToolbar,
     showFooterRail,
-    showPromptTeaser: displayMode !== 'summary' && !showPromptEditor,
+    showPromptTeaser,
     showPromptEditor,
     showHandles,
     showTopBadges: hasOutput && (selected || focusedWithin || isHovered || displayMode !== 'summary'),

@@ -8,7 +8,7 @@ import { AppShell } from '@/components/layout';
 import { useAppStore } from '@/stores/app-store';
 import { useCanvasStore } from '@/stores/canvas-store';
 import { Loader2 } from 'lucide-react';
-import { exportAsJSON, exportAsPNG } from '@/lib/export-utils';
+import { exportAsJSON, exportAsPNG, exportNodeAssets } from '@/lib/export-utils';
 import { toast } from 'sonner';
 
 interface CanvasPageProps {
@@ -30,6 +30,7 @@ export default function CanvasPage({ params }: CanvasPageProps) {
 
   const nodes = useCanvasStore((state) => state.nodes);
   const edges = useCanvasStore((state) => state.edges);
+  const selectedNodeIds = useCanvasStore((state) => state.selectedNodeIds);
   const setReadOnly = useCanvasStore((state) => state.setReadOnly);
 
   useEffect(() => {
@@ -86,6 +87,45 @@ export default function CanvasPage({ params }: CanvasPageProps) {
     }
   }, [currentCanvasName]);
 
+  const handleExportAllAssets = useCallback(async () => {
+    try {
+      const count = await exportNodeAssets(nodes, currentCanvasName);
+      if (count === 0) {
+        toast.error('No downloadable assets found on this canvas');
+        return;
+      }
+
+      if (count > 1) {
+        toast.info('Your browser may ask for permission to download multiple files');
+      }
+      toast.success(`Started downloading ${count} asset${count === 1 ? '' : 's'}`);
+    } catch {
+      toast.error('Failed to export canvas assets');
+    }
+  }, [nodes, currentCanvasName]);
+
+  const handleExportSelectedAssets = useCallback(async () => {
+    if (selectedNodeIds.length === 0) {
+      toast.error('Select one or more nodes with assets first');
+      return;
+    }
+
+    try {
+      const count = await exportNodeAssets(nodes, currentCanvasName, { selectedNodeIds });
+      if (count === 0) {
+        toast.error('No downloadable assets found in the current selection');
+        return;
+      }
+
+      if (count > 1) {
+        toast.info('Your browser may ask for permission to download multiple files');
+      }
+      toast.success(`Started downloading ${count} selected asset${count === 1 ? '' : 's'}`);
+    } catch {
+      toast.error('Failed to export selected assets');
+    }
+  }, [nodes, currentCanvasName, selectedNodeIds]);
+
   if (isLoading) {
     return (
       <div className="flex flex-col h-screen bg-background">
@@ -132,6 +172,8 @@ export default function CanvasPage({ params }: CanvasPageProps) {
         lastSavedAt={lastSavedAt}
         onExportJSON={handleExportJSON}
         onExportPNG={handleExportPNG}
+        onExportAllAssets={handleExportAllAssets}
+        onExportSelectedAssets={handleExportSelectedAssets}
         showSidebar={false}
       >
         {accessRole === 'viewer' && (

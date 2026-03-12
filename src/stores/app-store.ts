@@ -64,7 +64,7 @@ interface AppState {
   clearCurrentCanvas: () => void;
   setCurrentCanvasName: (name: string) => void;
   markUnsavedChanges: (kind?: CanvasMutationKind) => void;
-  updateCanvasThumbnail: (id: string, patch: Pick<StoredCanvas, 'thumbnail' | 'thumbnailUrl' | 'thumbnailStatus' | 'thumbnailUpdatedAt' | 'thumbnailVersion' | 'thumbnailErrorCode'>) => Promise<void>;
+  updateCanvasThumbnail: (id: string, patch: Pick<StoredCanvas, 'thumbnail' | 'thumbnailUrl' | 'thumbnailStatus' | 'thumbnailUpdatedAt' | 'thumbnailVersion' | 'thumbnailErrorCode' | 'thumbnailCustom'>) => Promise<void>;
   requestPreviewRefresh: (id: string, force?: boolean) => Promise<void>;
 
   // Migration
@@ -146,6 +146,10 @@ const previewQueue = new PreviewLifecycleQueue({
     const provider = getStorageProvider();
 
     try {
+      // Skip auto-capture if user set a custom thumbnail
+      const existing = await provider.getCanvas(id);
+      if (existing?.thumbnailCustom) return;
+
       await updateCanvasThumbnail(id, {
         thumbnailStatus: 'processing',
         thumbnailErrorCode: undefined,
@@ -447,6 +451,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
       thumbnailUpdatedAt: original.thumbnailUpdatedAt,
       thumbnailVersion: original.thumbnailVersion,
       thumbnailErrorCode: original.thumbnailErrorCode,
+      thumbnailCustom: original.thumbnailCustom,
       createdAt: now,
       updatedAt: now,
     };
@@ -520,6 +525,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
         thumbnailUpdatedAt: existing?.thumbnailUpdatedAt,
         thumbnailVersion: existing?.thumbnailVersion,
         thumbnailErrorCode: existing?.thumbnailErrorCode,
+        thumbnailCustom: existing?.thumbnailCustom,
         createdAt: existing?.createdAt ?? Date.now(),
         updatedAt: Date.now(),
       };

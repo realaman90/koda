@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useCanvasStore } from '@/stores/canvas-store';
 import type { MediaNode as MediaNodeType } from '@/lib/types';
-import { Image as ImageIcon, Upload, Trash2, X, Link, Volume2, Film, RefreshCw } from 'lucide-react';
+import { getExtensionFromUrl } from '@/lib/assets/types';
+import { Image as ImageIcon, Upload, Trash2, X, Link, Volume2, Film, RefreshCw, Download } from 'lucide-react';
 import { uploadAsset } from '@/lib/assets/upload';
 
 function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
@@ -122,6 +123,33 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
     }
   }, [id, urlInput, updateNodeData]);
 
+  const handleDownload = useCallback(async () => {
+    if (!data.url || data.url.startsWith('cached:')) return;
+
+    try {
+      const urlExtension = getExtensionFromUrl(data.url);
+      const extension = urlExtension !== 'bin'
+        ? urlExtension
+        : data.type === 'video'
+          ? 'mp4'
+          : data.type === 'audio'
+            ? 'mp3'
+            : 'png';
+      const filename = `${data.type || 'media'}-${Date.now()}.${extension}`;
+      const proxyUrl = `/api/download?url=${encodeURIComponent(data.url)}&filename=${encodeURIComponent(filename)}`;
+      const a = document.createElement('a');
+      a.href = proxyUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      toast.success(`${data.type === 'audio' ? 'Audio' : data.type === 'video' ? 'Video' : 'Image'} downloaded`);
+    } catch (error) {
+      console.error('[MediaNode] Download failed:', error);
+      toast.error('Failed to download media');
+    }
+  }, [data.type, data.url]);
+
   return (
     <div
       className="relative"
@@ -137,39 +165,54 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
         className="hidden"
       />
 
-      {/* Floating Toolbar - appears above node when selected (hidden in read-only) */}
-      {selected && !isReadOnly && (
+      {/* Floating Toolbar - appears above node when selected */}
+      {selected && (!isReadOnly || !!data.url) && (
         <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1 rounded-lg px-2 py-1.5 node-toolbar-floating z-10">
           {data.url && (
             <>
+              {!isReadOnly ? (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                    onClick={() => fileInputRef.current?.click()}
+                    title="Replace media"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                    onClick={handleClear}
+                    title="Clear media"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </>
+              ) : null}
               <Button
                 variant="ghost"
                 size="icon-sm"
                 className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                onClick={() => fileInputRef.current?.click()}
-                title="Replace media"
+                onClick={handleDownload}
+                title="Download media"
               >
-                <RefreshCw className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                onClick={handleClear}
-                title="Clear media"
-              >
-                <X className="h-3.5 w-3.5" />
+                <Download className="h-3.5 w-3.5" />
               </Button>
             </>
           )}
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="h-7 w-7 text-muted-foreground hover:text-red-400 hover:bg-muted/50"
-            onClick={handleDelete}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          {!isReadOnly ? (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="h-7 w-7 text-muted-foreground hover:text-red-400 hover:bg-muted/50"
+              onClick={handleDelete}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          ) : null}
         </div>
       )}
 
@@ -206,7 +249,7 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
       {/* Main Node Card */}
       <div
         className={`
-          w-[280px] rounded-2xl overflow-hidden
+          node-drag-handle node-drag-surface w-[280px] rounded-2xl overflow-hidden
           transition-all duration-150
           ${selected ? 'node-card node-card-selected' : 'node-card'}
         `}
@@ -218,7 +261,7 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
               /* Audio Player */
               <div className="p-4 flex flex-col items-center justify-center gap-3 min-h-[160px]">
                 <Volume2 className="h-8 w-8 text-muted-foreground" />
-                <audio src={data.url} controls className="w-full max-w-[240px]" />
+                <audio src={data.url} controls className="w-full max-w-[240px] nodrag nopan" />
               </div>
             ) : data.type === 'video' ? (
               /* Video Preview */
@@ -226,7 +269,7 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
                 <video
                   src={data.url}
                   controls
-                  className="w-full h-auto"
+                  className="w-full h-auto nodrag nopan"
                   style={{ maxHeight: '300px' }}
                   onLoadedData={() => updateNodeInternals(id)}
                 />
@@ -238,6 +281,7 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
                   src={data.url}
                   alt="Media"
                   className="w-full h-auto"
+                  draggable={false}
                   onLoad={() => updateNodeInternals(id)}
                 />
               </div>
@@ -250,7 +294,7 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
               onDragLeave={!isReadOnly ? handleDragLeave : undefined}
               onClick={!isReadOnly ? handleClick : undefined}
               className={`
-                min-h-[160px] flex flex-col items-center justify-center p-4
+                nodrag nopan min-h-[160px] flex flex-col items-center justify-center p-4
                 transition-colors
                 ${isReadOnly ? 'cursor-default' : 'cursor-pointer'}
                 ${isDragging
@@ -275,7 +319,7 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
                       e.stopPropagation();
                       setShowUrlInput(true);
                     }}
-                    className="mt-4 flex items-center gap-1.5 text-xs transition-colors hover:opacity-80"
+                    className="mt-4 flex items-center gap-1.5 text-xs transition-colors hover:opacity-80 nodrag nopan"
                     style={{ color: 'var(--text-muted)' }}
                   >
                     <Link className="h-3 w-3" />
@@ -283,7 +327,7 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
                   </button>
                 ) : (
                   <div
-                    className="mt-4 flex items-center gap-2 w-full"
+                    className="mt-4 flex items-center gap-2 w-full nodrag nopan"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <input
@@ -295,7 +339,7 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
                         if (e.key === 'Escape') setShowUrlInput(false);
                       }}
                       placeholder="Media URL..."
-                      className="flex-1 rounded px-2 py-1 text-xs outline-none focus:border-blue-500 node-input"
+                      className="flex-1 rounded px-2 py-1 text-xs outline-none focus:border-blue-500 node-input nodrag nopan"
                       style={{ borderWidth: '1px' }}
                       autoFocus
                     />
@@ -303,7 +347,7 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
                       size="icon-sm"
                       variant="ghost"
                       onClick={handleUrlSubmit}
-                      className="h-6 w-6"
+                      className="h-6 w-6 nodrag nopan"
                       style={{ color: 'var(--text-muted)' }}
                     >
                       <Link className="h-3 w-3" />
