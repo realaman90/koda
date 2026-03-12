@@ -6,6 +6,7 @@ import {
   isDevAuthBypassEnabled,
   warnDevAuthBypassEnabled,
 } from '@/lib/auth/dev-bypass';
+import { isPublicAssetReadRequest } from '@/lib/auth/public-asset-route';
 
 const isPublicRoute = createRouteMatcher([
   '/sign-in(.*)',
@@ -29,6 +30,10 @@ export default clerkMiddleware(async (auth, req) => {
 
   if (isAuthRoute(req) && userId) {
     return NextResponse.redirect(new URL('/', req.url));
+  }
+
+  if (isPublicAssetReadRequest(req.nextUrl.pathname, req.method)) {
+    return NextResponse.next();
   }
 
   if (!isPublicRoute(req) && !userId) {
