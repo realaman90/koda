@@ -18,6 +18,7 @@ import { CanvasNodeShell } from '@/components/canvas/nodes/chrome/CanvasNodeShel
 import { AnimationNode } from '@/lib/plugins/official/agents/animation-generator';
 import { MotionAnalyzerNode } from '@/lib/plugins/official/agents/motion-analyzer';
 import { SvgStudioNode } from '@/lib/plugins/official/agents/svg-studio';
+import { GlyphNode } from '@/lib/plugins/official/agents/glyph';
 import { PromptStudioNode } from '@/lib/plugins/official/agents/prompt-studio';
 import { ImageToPdfNode } from '@/lib/plugins/official/image-to-pdf';
 
@@ -26,6 +27,7 @@ const PLUGIN_COMPONENTS: Record<string, React.ComponentType<NodeProps<Node<Plugi
   'animation-generator': AnimationNode as unknown as React.ComponentType<NodeProps<Node<PluginNodeData, 'pluginNode'>>>,
   'motion-analyzer': MotionAnalyzerNode as unknown as React.ComponentType<NodeProps<Node<PluginNodeData, 'pluginNode'>>>,
   'svg-studio': SvgStudioNode as unknown as React.ComponentType<NodeProps<Node<PluginNodeData, 'pluginNode'>>>,
+  'glyph': GlyphNode as unknown as React.ComponentType<NodeProps<Node<PluginNodeData, 'pluginNode'>>>,
   'prompt-studio': PromptStudioNode as unknown as React.ComponentType<NodeProps<Node<PluginNodeData, 'pluginNode'>>>,
   'image-to-pdf': ImageToPdfNode as unknown as React.ComponentType<NodeProps<Node<PluginNodeData, 'pluginNode'>>>,
 };

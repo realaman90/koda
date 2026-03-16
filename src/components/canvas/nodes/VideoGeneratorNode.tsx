@@ -131,12 +131,13 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
 
   // Get model capabilities
   const modelCapabilities = VIDEO_MODEL_CAPABILITIES[resolvedModel];
-  const { inputMode, supportsVideoRef, supportsAudioRef } = modelCapabilities;
+  const { inputMode, supportsVideoRef, supportsAudioRef, supportsCharacterRef, maxCharacters } = modelCapabilities;
   const imageRefHandleCount = Math.min(
     14,
     Math.max(0, modelCapabilities.maxReferences ?? (inputMode === 'multi-reference' ? 3 : 0))
   );
-  const hasAdvancedHandles = imageRefHandleCount > 0 || !!supportsVideoRef || !!supportsAudioRef;
+  const characterRefCount = supportsCharacterRef ? (maxCharacters || 2) : 0;
+  const hasAdvancedHandles = imageRefHandleCount > 0 || !!supportsVideoRef || !!supportsAudioRef || characterRefCount > 0;
 
   // Build mention items from connected handles (for Tiptap @ autocomplete)
   const mentionItems = useMemo((): MentionItem[] => {
@@ -157,8 +158,14 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
     if (supportsAudioRef && connectedHandles.includes('audio')) {
       items.push({ id: 'audio1', label: 'audio1', type: 'audio' });
     }
+    for (let i = 1; i <= characterRefCount; i++) {
+      if (connectedHandles.includes(`char${i}`)) {
+        const charName = data.characterNames?.[`char${i}`] || `character${i}`;
+        items.push({ id: `char${i}`, label: charName, type: 'video' });
+      }
+    }
     return items;
-  }, [hasAdvancedHandles, imageRefHandleCount, supportsVideoRef, supportsAudioRef, edges, id]);
+  }, [hasAdvancedHandles, imageRefHandleCount, supportsVideoRef, supportsAudioRef, characterRefCount, data.characterNames, edges, id]);
 
   const isHeygenAvatarModel = resolvedModel === 'heygen-avatar4-i2v';
   const selectedHeygenVoice = data.heygenVoice || DEFAULT_HEYGEN_AVATAR4_VOICE;
@@ -174,7 +181,7 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
   // Update node internals when input mode changes (handles change)
   useEffect(() => {
     updateNodeInternals(id);
-  }, [id, inputMode, supportsVideoRef, supportsAudioRef, imageRefHandleCount, updateNodeInternals]);
+  }, [id, inputMode, supportsVideoRef, supportsAudioRef, imageRefHandleCount, characterRefCount, updateNodeInternals]);
 
   useEffect(() => {
     if (resolvedModel === data.model) return;
@@ -700,8 +707,18 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
       });
     }
 
+    for (let i = 1; i <= characterRefCount; i++) {
+      const charName = data.characterNames?.[`char${i}`] || `character${i}`;
+      specs.push({
+        id: `char${i}`,
+        label: `Character: ${charName}`,
+        icon: 'video',
+        badge: `C${i}`,
+      });
+    }
+
     return specs;
-  }, [imageRefHandleCount, supportsVideoRef, supportsAudioRef]);
+  }, [imageRefHandleCount, supportsVideoRef, supportsAudioRef, characterRefCount, data.characterNames]);
 
   const promptPlaceholder = data.outputUrl 
     ? 'Add a follow-up prompt...' 
@@ -864,6 +881,29 @@ function VideoGeneratorNodeComponent({ id, data, selected }: NodeProps<VideoGene
               <span className="leading-none pt-[1px]">Sound Effects</span>
             </Button>
           ) : null}
+
+          {characterRefCount > 0 && Array.from({ length: characterRefCount }, (_, i) => {
+            const handleId = `char${i + 1}`;
+            const isConnected = edges.some(e => e.target === id && e.targetHandle === handleId);
+            if (!isConnected) return null;
+            return (
+              <input
+                key={handleId}
+                className="h-8 w-24 rounded-xl border-0 bg-muted/80 px-2.5 text-xs nodrag nopan placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary/40"
+                placeholder={`Char ${i + 1} name`}
+                defaultValue={data.characterNames?.[handleId] || ''}
+                onBlur={(e) => {
+                  const val = e.target.value.trim();
+                  updateNodeData(id, {
+                    characterNames: { ...data.characterNames, [handleId]: val || `character${i + 1}` },
+                  });
+                }}
+                onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                onPointerDown={(e) => e.stopPropagation()}
+                title="Character name — use this name in your prompt"
+              />
+            );
+          })}
 
           <Button
             variant="ghost"

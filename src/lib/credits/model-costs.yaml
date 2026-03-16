@@ -65,6 +65,9 @@ image:
   recraft-v4:
     fal_cost: 0.04
     credits: 2
+  physic-edit:
+    fal_cost: 0.10
+    credits: 3
 
 video:
   # Per-second models — fal_cost is per second, credits are for 5s base duration
@@ -320,9 +323,18 @@ audio:
   elevenlabs-tts:
     fal_cost: 0.05
     credits: 2
+  lux-tts:
+    fal_cost: 0.0014
+    credits: 1
+  tada-3b-tts:
+    fal_cost: 0.08
+    credits: 3
   mmaudio-v2:
     fal_cost: 0.01
     credits: 1
+  sync-lipsync-v2-pro:
+    fal_cost: 0.42
+    credits: 13
 
 svg:
   gemini-3.1-pro-preview:
@@ -331,6 +343,12 @@ svg:
   quiver-arrow:
     fal_cost: 0.30
     credits: 10
+  vecglypher:
+    fal_cost: 0.005
+    credits: 1
+  vecglypher-image-to-svg:
+    fal_cost: 0.005
+    credits: 1
 
 animation:
   remotion:

@@ -7,8 +7,8 @@ import { Button } from '@/components/ui/button';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useCanvasStore } from '@/stores/canvas-store';
 import { getApiErrorMessage, normalizeApiErrorMessage } from '@/lib/client/api-error';
-import type { SpeechNode as SpeechNodeType, ElevenLabsVoice } from '@/lib/types';
-import { ELEVENLABS_VOICE_LABELS } from '@/lib/types';
+import type { SpeechNode as SpeechNodeType, ElevenLabsVoice, SpeechModelType } from '@/lib/types';
+import { ELEVENLABS_VOICE_LABELS, SPEECH_MODEL_CAPABILITIES } from '@/lib/types';
 import {
   Mic,
   Play,
@@ -60,6 +60,10 @@ function normalizeSpeechMode(mode: unknown): SpeechMode {
   return mode === 'dialogue' ? 'dialogue' : 'single';
 }
 
+function normalizeSpeechModel(model: unknown): SpeechModelType {
+  return model === 'lux-tts' || model === 'tada-3b-tts' ? model : 'elevenlabs-tts';
+}
+
 function normalizeDialogueLines(value: unknown, fallbackVoice: string): DialogueLine[] {
   if (!Array.isArray(value)) return [];
   return value
@@ -93,7 +97,7 @@ function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) 
   const [nodeName, setNodeName] = useState(data.name || 'Speech');
   const [isHovered, setIsHovered] = useState(false);
   const [isPromptFocused, setIsPromptFocused] = useState(false);
-  const [isPromptExpanded, setIsPromptExpanded] = useState(false);
+  const [, setIsPromptExpanded] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const singleTextareaRef = useRef<HTMLTextAreaElement>(null);
   const firstDialogueTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -116,8 +120,10 @@ function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) 
     field: 'text',
     preview: 'skip',
   });
+  const speechModel = normalizeSpeechModel(data.model);
+  const speechCapabilities = SPEECH_MODEL_CAPABILITIES[speechModel];
   const selectedVoice = typeof data.voice === 'string' && data.voice.trim() ? data.voice : 'rachel';
-  const mode = normalizeSpeechMode(data.mode);
+  const mode = speechCapabilities.supportsDialogue ? normalizeSpeechMode(data.mode) : 'single';
   const dialogueLines = normalizeDialogueLines(data.dialogueLines, selectedVoice);
   const hydratedDialogueLines = dialogueLines.length > 0 ? dialogueLines : createDefaultDialogueLines();
   const dialogueSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -182,6 +188,12 @@ function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) 
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!speechCapabilities.supportsDialogue && data.mode === 'dialogue') {
+      updateNodeData(id, { mode: 'single' });
+    }
+  }, [data.mode, id, speechCapabilities.supportsDialogue, updateNodeData]);
 
   const effectiveDialogueLines = useMemo(
     () => hydratedDialogueLines.map((line) => ({
@@ -292,6 +304,7 @@ function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) 
 
   const handleModeChange = useCallback(
     (nextMode: SpeechMode) => {
+      if (!speechCapabilities.supportsDialogue) return;
       if (nextMode === mode) return;
       updateNodeData(id, {
         mode: nextMode,
@@ -300,7 +313,7 @@ function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) 
         dialogueLines: nextMode === 'dialogue' ? effectiveDialogueLines : data.dialogueLines,
       });
     },
-    [data.dialogueLines, effectiveDialogueLines, id, mode, updateNodeData]
+    [data.dialogueLines, effectiveDialogueLines, id, mode, speechCapabilities.supportsDialogue, updateNodeData]
   );
 
   const handleVoiceChange = useCallback(
@@ -411,12 +424,20 @@ function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) 
         toast.error('Please enter text or connect a text node');
         return;
       }
+      if (speechCapabilities.requiresAudioReference && !connectedInputs.audioUrl) {
+        toast.error('Connect a reference audio clip for this speech model');
+        return;
+      }
       payload = {
+        model: speechModel,
         mode: 'single',
         text: finalText.trim(),
         voice: selectedVoice,
         speed: data.speed,
         stability: data.stability,
+        audioUrl: connectedInputs.audioUrl,
+        language: data.language,
+        referenceTranscript: data.referenceTranscript,
       };
     } else {
       commitDialogueDrafts(true);
@@ -433,6 +454,7 @@ function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) 
         return;
       }
       payload = {
+        model: speechModel,
         mode: 'dialogue',
         stability: data.stability,
         dialogueLines: filledLines.map((line) => ({ text: line.text, voice: line.voice })),
@@ -481,6 +503,10 @@ function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) 
     textDraft,
     updateNodeData,
     getConnectedInputs,
+    speechCapabilities.requiresAudioReference,
+    speechModel,
+    data.language,
+    data.referenceTranscript,
   ]);
 
   const handleDelete = useCallback(() => {
@@ -532,8 +558,9 @@ function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) 
   const connectedInputs = getConnectedInputs(id);
   const connectedHasText = !!connectedInputs.textContent?.trim();
   const filledDialogueLines = effectiveDialogueLines.filter((line) => line.text.trim().length > 0);
+  const hasRequiredAudioReference = !speechCapabilities.requiresAudioReference || !!connectedInputs.audioUrl;
   const hasValidInput = mode === 'single'
-    ? !!(textDraft || connectedInputs.textContent)
+    ? !!(textDraft || connectedInputs.textContent) && hasRequiredAudioReference
     : connectedHasText
       ? filledDialogueLines.length >= 1
       : filledDialogueLines.length >= 2;
@@ -544,7 +571,9 @@ function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) 
         .map((line) => `${getVoiceShortLabel(line.voice)}: ${line.text}`)
         .join(' / ');
   const promptPlaceholder = mode === 'single'
-    ? (data.outputUrl ? 'Enter new text...' : 'Enter text to convert to speech...')
+    ? speechCapabilities.requiresAudioReference
+      ? (data.outputUrl ? 'Enter new text and keep the voice reference connected...' : 'Enter text and connect a reference audio clip...')
+      : (data.outputUrl ? 'Enter new text...' : 'Enter text to convert to speech...')
     : 'Add dialogue lines...';
   const chromeState = useNodeChromeState({
     isHovered,
@@ -555,9 +584,10 @@ function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) 
     hasOutput: !!data.outputUrl,
   });
   const showHandles = chromeState.showHandles;
-  const isConnected = !!connectedInputs.textContent;
+  const isConnected = !!connectedInputs.textContent || !!connectedInputs.audioUrl;
   const showTopToolbar = chromeState.showTopToolbar && (!isReadOnly || !!data.outputUrl);
   const showFooterRail = chromeState.showFooterRail && (!isReadOnly || !!data.outputUrl);
+  const showAudioInputHandle = speechCapabilities.requiresAudioReference || !!connectedInputs.audioUrl;
 
   // --- Chrome elements ---
 
@@ -613,26 +643,32 @@ function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) 
     <NodeFooterRail className="node-footer-rail-plain">
       {!isReadOnly ? (
         <>
-          <div className="inline-flex items-center rounded-xl bg-muted/80 p-0.5">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => handleModeChange('single')}
-              className={`h-7 px-2.5 text-xs rounded-lg ${mode === 'single' ? 'bg-primary/20 text-primary' : 'text-muted-foreground'}`}
-            >
-              Single
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => handleModeChange('dialogue')}
-              className={`h-7 px-2.5 text-xs rounded-lg ${mode === 'dialogue' ? 'bg-primary/20 text-primary' : 'text-muted-foreground'}`}
-            >
-              Dialogue
-            </Button>
-          </div>
+          {speechCapabilities.supportsDialogue ? (
+            <div className="inline-flex items-center rounded-xl bg-muted/80 p-0.5">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => handleModeChange('single')}
+                className={`h-7 px-2.5 text-xs rounded-lg ${mode === 'single' ? 'bg-primary/20 text-primary' : 'text-muted-foreground'}`}
+              >
+                Single
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => handleModeChange('dialogue')}
+                className={`h-7 px-2.5 text-xs rounded-lg ${mode === 'dialogue' ? 'bg-primary/20 text-primary' : 'text-muted-foreground'}`}
+              >
+                Dialogue
+              </Button>
+            </div>
+          ) : (
+            <div className="h-8 flex items-center rounded-xl bg-muted/80 px-2.5 text-xs text-foreground whitespace-nowrap">
+              {speechCapabilities.label}
+            </div>
+          )}
 
-          {mode === 'single' ? (
+          {mode === 'single' && speechCapabilities.supportsVoiceSelection ? (
             <>
               <SearchableSelect
                 value={selectedVoice}
@@ -657,6 +693,10 @@ function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) 
                 )}
               </Button>
             </>
+          ) : mode === 'single' ? (
+            <span className="px-2 text-xs text-muted-foreground whitespace-nowrap">
+              {speechCapabilities.requiresAudioReference ? 'Voice clone' : speechCapabilities.label}
+            </span>
           ) : (
             <span className="px-2 text-xs text-muted-foreground whitespace-nowrap">
               {filledDialogueLines.length} line{filledDialogueLines.length === 1 ? '' : 's'}
@@ -708,6 +748,16 @@ function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) 
         className="flex flex-col gap-3 nodrag nopan"
         onPointerDown={(event) => event.stopPropagation()}
       >
+        {speechCapabilities.requiresAudioReference ? (
+          <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs ${
+            connectedInputs.audioUrl
+              ? 'bg-green-500/10 text-green-500 dark:text-green-400'
+              : 'bg-muted/50 text-muted-foreground'
+          }`}>
+            <Volume2 className="h-3.5 w-3.5" />
+            <span>{connectedInputs.audioUrl ? 'Reference audio connected' : 'Connect a reference audio clip'}</span>
+          </div>
+        ) : null}
         <textarea
           ref={singleTextareaRef}
           value={textDraft}
@@ -767,7 +817,6 @@ function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) 
         className="flex flex-col gap-2.5 nodrag nopan"
         onPointerDown={(event) => event.stopPropagation()}
       >
-        <audio ref={previewAudioRef} src={previewAudioUrl} className="hidden" />
         {effectiveDialogueLines.map((line, index) => {
           const linePreviewKey = `line:${line.id}`;
           const isPreviewingLine = previewingKey === linePreviewKey;
@@ -852,6 +901,7 @@ function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) 
 
   return (
     <div className="relative">
+      <audio ref={previewAudioRef} src={previewAudioUrl} className="hidden" />
       <CanvasNodeShell
         title={isEditingName && !isReadOnly ? (
           <input
@@ -930,11 +980,17 @@ function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) 
                   <span className="text-sm text-foreground font-medium">
                     {mode === 'dialogue'
                       ? `Dialogue mix (${filledDialogueLines.length} lines)`
-                      : getVoiceLabel(selectedVoice)}
+                      : speechCapabilities.supportsVoiceSelection
+                        ? getVoiceLabel(selectedVoice)
+                        : speechCapabilities.label}
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  {mode === 'dialogue' ? `Stability: ${data.stability.toFixed(1)}` : `Speed: ${data.speed}x`}
+                  {mode === 'dialogue'
+                    ? `Stability: ${data.stability.toFixed(1)}`
+                    : speechCapabilities.requiresAudioReference
+                      ? `${speechCapabilities.label} voice clone`
+                      : `Speed: ${data.speed}x`}
                 </p>
               </div>
             </div>
@@ -957,6 +1013,21 @@ function SpeechNodeComponent({ id, data, selected }: NodeProps<SpeechNodeType>) 
         </div>
         <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
           Text Input
+        </span>
+      </div>
+
+      <div className={`absolute -left-3 z-10 group transition-opacity duration-200 ${showHandles || showAudioInputHandle ? 'opacity-100' : 'opacity-0'}`} style={{ top: getPromptHeavyInputHandleTop(1) }}>
+        <div className="relative">
+          <Handle
+            type="target"
+            position={Position.Left}
+            id="audio"
+            className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
+          />
+          <Volume2 className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-input-icon)]" />
+        </div>
+        <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
+          Audio Reference
         </span>
       </div>
 

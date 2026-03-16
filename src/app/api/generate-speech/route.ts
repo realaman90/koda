@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { fal } from '@fal-ai/client';
-import { FAL_AUDIO_MODELS } from '@/lib/types';
+import { FAL_AUDIO_MODELS, type SpeechModelType, type TadaLanguage } from '@/lib/types';
 import { getAssetStorageType, getExtensionFromUrl, type AssetStorageProvider } from '@/lib/assets';
 import { withCredits } from '@/lib/credits/with-credits';
 
@@ -44,6 +44,7 @@ const ELEVEN_V3_VOICE_MAP: Record<string, string> = {
 };
 const ELEVEN_DIALOGUE_MODEL = 'fal-ai/elevenlabs/text-to-dialogue/eleven-v3';
 const DIALOGUE_STABILITY_VALUES = [0, 0.5, 1] as const;
+const TADA_LANGUAGES = new Set<TadaLanguage>(['en', 'ar', 'ch', 'de', 'es', 'fr', 'it', 'ja', 'pl', 'pt']);
 
 function clamp(value: unknown, min: number, max: number, fallback: number): number {
   if (typeof value !== 'number' || Number.isNaN(value)) return fallback;
@@ -76,6 +77,16 @@ function normalizeDialogueLines(value: unknown): Array<{ text: string; voice: st
       return { text, voice };
     })
     .filter((line): line is { text: string; voice: string } => !!line);
+}
+
+function normalizeSpeechModel(value: unknown): SpeechModelType {
+  return value === 'lux-tts' || value === 'tada-3b-tts' ? value : 'elevenlabs-tts';
+}
+
+function normalizeLanguage(value: unknown): TadaLanguage {
+  return typeof value === 'string' && TADA_LANGUAGES.has(value as TadaLanguage)
+    ? (value as TadaLanguage)
+    : 'en';
 }
 
 function parseFalError(error: unknown): { message: string; status: number } {
@@ -150,18 +161,26 @@ async function saveGeneratedAudio(
 }
 
 export const POST = withCredits(
-  { type: 'audio', getCostParams: () => ({ model: 'elevenlabs-tts' }) },
+  {
+    type: 'audio',
+    getCostParams: (body) => ({ model: normalizeSpeechModel(body.model) }),
+  },
   async (request) => {
     try {
       const body = await request.json();
       const {
+        model,
         mode,
         text,
         voice,
         speed,
         stability,
         dialogueLines,
+        audioUrl,
+        language,
+        referenceTranscript,
       } = body;
+      const selectedModel = normalizeSpeechModel(model);
       const selectedMode = mode === 'dialogue' ? 'dialogue' : 'single';
 
       const runSpeech = async (speechModelId: string, input: Record<string, unknown>) => {
@@ -195,6 +214,13 @@ export const POST = withCredits(
       let metadataText: string;
       let mappedVoice: string | undefined;
 
+      if (selectedMode === 'dialogue' && selectedModel !== 'elevenlabs-tts') {
+        return NextResponse.json(
+          { error: 'Dialogue mode is only available for ElevenLabs TTS' },
+          { status: 400 }
+        );
+      }
+
       if (selectedMode === 'dialogue') {
         const lines = normalizeDialogueLines(dialogueLines);
         if (lines.length < 2) {
@@ -224,32 +250,67 @@ export const POST = withCredits(
           );
         }
 
-        mappedVoice = normalizeVoice(voice);
-        modelId = FAL_AUDIO_MODELS['elevenlabs-tts'];
-        input = {
-          text: finalText,
-          voice: mappedVoice,
-          speed: clamp(speed, 0.7, 1.2, 1.0),
-          stability: clamp(stability, 0, 1, 0.5),
-          apply_text_normalization: 'auto' as const,
-        };
+        if (selectedModel === 'elevenlabs-tts') {
+          mappedVoice = normalizeVoice(voice);
+          modelId = FAL_AUDIO_MODELS['elevenlabs-tts'];
+          input = {
+            text: finalText,
+            voice: mappedVoice,
+            speed: clamp(speed, 0.7, 1.2, 1.0),
+            stability: clamp(stability, 0, 1, 0.5),
+            apply_text_normalization: 'auto' as const,
+          };
+        } else {
+          const normalizedAudioUrl = typeof audioUrl === 'string' ? audioUrl.trim() : '';
+          if (!normalizedAudioUrl) {
+            return NextResponse.json(
+              { error: 'A reference audio input is required for voice cloning models' },
+              { status: 400 }
+            );
+          }
+
+          modelId = FAL_AUDIO_MODELS[selectedModel];
+          if (selectedModel === 'lux-tts') {
+            input = {
+              prompt: finalText,
+              audio_url: normalizedAudioUrl,
+            };
+          } else {
+            input = {
+              prompt: finalText,
+              audio_url: normalizedAudioUrl,
+              language: normalizeLanguage(language),
+              speed_up_factor: clamp(speed, 0.5, 2, 1),
+              output_format: 'mp3',
+              ...(typeof referenceTranscript === 'string' && referenceTranscript.trim()
+                ? { transcript: referenceTranscript.trim() }
+                : {}),
+            };
+          }
+        }
         metadataText = finalText;
       }
 
       console.log('Speech generation request:', { mode: selectedMode, modelId, input });
 
-      let audioUrl: string;
+      let generatedAudioUrl: string;
       try {
-        audioUrl = await runSpeech(modelId, input);
+        generatedAudioUrl = await runSpeech(modelId, input);
       } catch (error) {
         const parsed = parseFalError(error);
-        if (parsed.status === 422 && selectedMode === 'single' && mappedVoice && mappedVoice !== 'Rachel') {
+        if (
+          parsed.status === 422
+          && selectedMode === 'single'
+          && selectedModel === 'elevenlabs-tts'
+          && mappedVoice
+          && mappedVoice !== 'Rachel'
+        ) {
           console.warn('Speech generation 422, retrying with Rachel voice:', parsed.message);
-          audioUrl = await runSpeech(modelId, { ...input, voice: 'Rachel' });
-        } else if (parsed.status === 422 && selectedMode === 'dialogue') {
+          generatedAudioUrl = await runSpeech(modelId, { ...input, voice: 'Rachel' });
+        } else if (parsed.status === 422 && selectedMode === 'dialogue' && selectedModel === 'elevenlabs-tts') {
           console.warn('Dialogue generation 422, retrying with Rachel voices:', parsed.message);
           const dialogueInput = input as { inputs?: Array<{ text: string; voice: string }>; stability?: number };
-          audioUrl = await runSpeech(modelId, {
+          generatedAudioUrl = await runSpeech(modelId, {
             inputs: (dialogueInput.inputs || []).map((entry) => ({ ...entry, voice: 'Rachel' })),
             stability: dialogueInput.stability ?? 0.5,
           });
@@ -260,7 +321,7 @@ export const POST = withCredits(
 
       // Save audio to configured asset storage
       const { canvasId, nodeId } = body;
-      const savedUrl = await saveGeneratedAudio(audioUrl, {
+      const savedUrl = await saveGeneratedAudio(generatedAudioUrl, {
         text: metadataText,
         model: modelId,
         canvasId,
@@ -270,7 +331,7 @@ export const POST = withCredits(
       return NextResponse.json({
         success: true,
         audioUrl: savedUrl,
-        originalUrl: audioUrl,
+        originalUrl: generatedAudioUrl,
         model: modelId,
         mode: selectedMode,
         ...(mappedVoice ? { voice: mappedVoice } : {}),

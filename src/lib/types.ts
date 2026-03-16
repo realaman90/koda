@@ -73,6 +73,8 @@ export interface ConnectedNodeInputs {
   audioUrl?: string;
   // Structured image inputs keyed by label (for named port routing)
   imageInputs?: Record<string, ImageInput>;
+  // Sora 2 character video references
+  characterVideos?: Array<{ name: string; videoUrl: string }>;
 }
 
 // Resolution options per model type
@@ -173,7 +175,13 @@ export function extractExplicitAspectRatioFromPrompt(prompt: string): FixedAspec
 }
 
 // Model input type - determines if model accepts text only, image input, or both
-export type ModelInputType = 'text-only' | 'text-and-image' | 'image-only';
+export type ModelInputType =
+  | 'text-only'
+  | 'text-and-image'
+  | 'image-only'
+  | 'text-and-audio'
+  | 'video-and-text'
+  | 'video-and-audio';
 
 // Style types for different models
 export type RecraftStyle = 'realistic_image' | 'digital_illustration' | 'vector_illustration';
@@ -213,6 +221,8 @@ export type ImageModelType =
   | 'recraft-v4'
   | 'seedream-5'
   | 'ideogram-v3'
+  | 'physic-edit'
+  | 'firered-edit'
   | 'sd-3.5';
 
 export type CompareRunStatus =
@@ -272,6 +282,8 @@ export const ENABLED_IMAGE_MODELS: ImageModelType[] = [
   'recraft-v4',
   'seedream-5',
   'ideogram-v3',
+  'physic-edit',
+  'firered-edit',
 ];
 
 // Image Generator Node
@@ -485,6 +497,8 @@ export const FAL_MODELS: Record<ImageModelType, string> = {
   'recraft-v4': 'fal-ai/recraft/v4/text-to-image',
   'seedream-5': 'fal-ai/bytedance/seedream/v5/lite/text-to-image',
   'ideogram-v3': 'fal-ai/ideogram/v3',
+  'physic-edit': 'fal-ai/physic-edit',
+  'firered-edit': 'fal-ai/firered-image-edit-v1.1',
   'sd-3.5': 'fal-ai/stable-diffusion-v35-large',
 } as const;
 
@@ -514,6 +528,7 @@ export interface ModelCapabilities {
   // Special features
   supportsMagicPrompt?: boolean; // Ideogram
   supportsAdvancedParams?: boolean; // SD 3.5 (CFG, steps, strength)
+  supportsStrength?: boolean; // Image-to-image strength control when supported
   // Named image port roles (for structured model routing)
   supportedRoles?: ImagePortRole[];       // default ['reference']
   defaultRole?: ImagePortRole;            // default 'reference'
@@ -618,6 +633,30 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
     aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3'],
     description: 'xAI Grok Imagine edit endpoint for prompt-guided image transformations with up to 3 references.',
   },
+  'physic-edit': {
+    label: 'Physic Edit',
+    group: 'Fal Edit',
+    maxImages: 1,
+    inputType: 'text-and-image',
+    supportsReferences: true,
+    requiresReferenceForGeneration: true,
+    maxReferences: 1,
+    aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9', '5:4', '4:5'],
+    supportsAdvancedParams: true,
+    description: 'Physics-aware image editing for realistic material, deformation, and refraction changes.',
+  },
+  'firered-edit': {
+    label: 'FireRed Edit',
+    group: 'Fal Edit',
+    maxImages: 4,
+    inputType: 'text-and-image',
+    supportsReferences: true,
+    requiresReferenceForGeneration: true,
+    maxReferences: 4,
+    aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9', '5:4', '4:5'],
+    supportsAdvancedParams: true,
+    description: 'FireRed multi-image editing with English and Chinese instructions. Supports multiple reference images.',
+  },
   'recraft-v3': {
     label: 'Recraft V3',
     group: 'Recraft',
@@ -648,6 +687,7 @@ export const MODEL_CAPABILITIES: Record<ImageModelType, ModelCapabilities> = {
     maxReferences: 1,
     aspectRatios: ['auto', '1:1', '4:3', '3:4', '16:9', '9:16'],
     supportsAdvancedParams: true,
+    supportsStrength: true,
     description: 'Open Stable Diffusion 3.5 Large with strong prompt following and text rendering.',
   },
   'flux-2-pro': {
@@ -729,6 +769,9 @@ export type VideoModelType =
   | 'ltx-2.3-i2v'
   | 'ltx-2.3-fast-t2v'
   | 'ltx-2.3-fast-i2v'
+  | 'ltx-2.3-retake-v2v'
+  | 'ltx-2.3-a2v'
+  | 'ltx-2.3-extend'
   | 'ltx-2-19b-t2v'
   | 'ltx-2-19b-i2v'
   | 'ltx-2-19b-v2v'
@@ -745,6 +788,8 @@ export type VideoModelType =
   | 'kling-3.0-i2v'
   | 'kling-3.0-pro-t2v'
   | 'kling-3.0-pro-i2v'
+  | 'kling-3.0-mc'
+  | 'kling-3.0-pro-mc'
   | 'seedance-1.5-t2v'
   | 'seedance-1.5-i2v'
   | 'seedance-1.0-pro-t2v'
@@ -958,6 +1003,8 @@ export interface VideoGeneratorNodeData extends Record<string, unknown> {
   // Model-specific options
   generateAudio?: boolean; // For Veo 3, Kling 2.6
   heygenVoice?: HeygenAvatar4Voice; // For Heygen Avatar 4
+  // Sora 2 character references
+  characterNames?: Record<string, string>; // handle id → character name
   // Output
   outputUrl?: string;
   outputVideoId?: string; // For models that return reusable video IDs (e.g. Sora remix)
@@ -1004,6 +1051,8 @@ export interface VideoModelCapabilities {
   requiresVideoRef?: boolean; // Requires a connected video input URL
   requiresAudioRef?: boolean; // Requires a connected audio input URL
   requiresVideoId?: boolean; // Requires a reusable video ID (not just URL)
+  supportsCharacterRef?: boolean; // Supports character video references (Sora 2)
+  maxCharacters?: number; // Max character video references (default 2)
   promptTools?: readonly ('improve' | 'translate')[]; // Which prompt tool actions are available for this model
   description: string;
 }
@@ -1031,6 +1080,9 @@ export const ENABLED_VIDEO_MODELS: VideoModelType[] = [
   'ltx-2.3-i2v',
   'ltx-2.3-fast-t2v',
   'ltx-2.3-fast-i2v',
+  'ltx-2.3-retake-v2v',
+  'ltx-2.3-a2v',
+  'ltx-2.3-extend',
   'ltx-2-19b-t2v',
   'ltx-2-19b-i2v',
   'ltx-2-19b-v2v',
@@ -1047,6 +1099,8 @@ export const ENABLED_VIDEO_MODELS: VideoModelType[] = [
   'kling-3.0-i2v',
   'kling-3.0-pro-t2v',
   'kling-3.0-pro-i2v',
+  'kling-3.0-mc',
+  'kling-3.0-pro-mc',
   'seedance-1.5-t2v',
   'seedance-1.5-i2v',
   'seedance-1.0-pro-t2v',
@@ -1205,6 +1259,8 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     defaultDuration: 4,
     aspectRatios: ['16:9', '9:16', '1:1'],
     resolutions: ['480p', '720p', '1080p'],
+    supportsCharacterRef: true,
+    maxCharacters: 2,
     description: 'OpenAI Sora 2 text-to-video for richly detailed, dynamic clips with audio.',
   },
   'sora-2-i2v': {
@@ -1218,6 +1274,8 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     resolutions: ['480p', '720p', '1080p'],
     requiresPrompt: true,
     requiresImageRef: true,
+    supportsCharacterRef: true,
+    maxCharacters: 2,
     description: 'OpenAI Sora 2 image-to-video for detailed motion and native audio.',
   },
   'sora-2-pro-i2v': {
@@ -1231,6 +1289,8 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     resolutions: ['480p', '720p', '1080p'],
     requiresPrompt: true,
     requiresImageRef: true,
+    supportsCharacterRef: true,
+    maxCharacters: 2,
     description: 'OpenAI Sora 2 Pro image-to-video for highest fidelity and motion quality.',
   },
   'sora-2-remix-v2v': {
@@ -1329,6 +1389,44 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     requiresImageRef: true,
     lastFrameOptional: true,
     description: 'LTX 2.3 Fast image-to-video at the 1080p tier with optional end-frame guidance and audio.',
+  },
+  'ltx-2.3-retake-v2v': {
+    label: 'LTX 2.3 Retake',
+    group: 'LTX',
+    inputType: 'text-only',
+    inputMode: 'text',
+    durations: [5, 6, 8, 10, 15],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    supportsVideoRef: true,
+    requiresPrompt: true,
+    requiresVideoRef: true,
+    description: 'LTX 2.3 Pro video retake — reshoot a video with a new prompt while preserving structure.',
+  },
+  'ltx-2.3-a2v': {
+    label: 'LTX 2.3 Audio-to-Video',
+    group: 'LTX',
+    inputType: 'text-and-image',
+    inputMode: 'single-image',
+    durations: [5, 6, 8, 10, 15],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    supportsAudioRef: true,
+    requiresAudioRef: true,
+    lastFrameOptional: true,
+    description: 'LTX 2.3 Pro audio-to-video — generate video driven by an audio track with optional image guidance.',
+  },
+  'ltx-2.3-extend': {
+    label: 'LTX 2.3 Extend',
+    group: 'LTX',
+    inputType: 'text-only',
+    inputMode: 'text',
+    durations: [5, 6, 8, 10, 15],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    supportsVideoRef: true,
+    requiresVideoRef: true,
+    description: 'LTX 2.3 Pro video extension — extend a video from start or end with coherent continuation.',
   },
   'ltx-2-19b-t2v': {
     label: 'LTX 2 19B Text',
@@ -1532,6 +1630,32 @@ export const VIDEO_MODEL_CAPABILITIES: Record<VideoModelType, VideoModelCapabili
     supportsAudio: true,
     lastFrameOptional: true,
     description: 'Kling 3.0 Pro image-to-video for highest quality custom-element animation.',
+  },
+  'kling-3.0-mc': {
+    label: 'Kling 3.0 Motion Control',
+    group: 'Kling',
+    inputType: 'text-and-image',
+    inputMode: 'single-image',
+    durations: [5, 10],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    supportsVideoRef: true,
+    requiresImageRef: true,
+    requiresVideoRef: true,
+    description: 'Kling 3.0 Standard motion control — transfer actions from a reference video onto a reference image.',
+  },
+  'kling-3.0-pro-mc': {
+    label: 'Kling 3.0 Pro Motion Control',
+    group: 'Kling',
+    inputType: 'text-and-image',
+    inputMode: 'single-image',
+    durations: [5, 10],
+    defaultDuration: 5,
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    supportsVideoRef: true,
+    requiresImageRef: true,
+    requiresVideoRef: true,
+    description: 'Kling 3.0 Pro motion control — premium quality action transfer from video to image.',
   },
   'seedance-1.5-t2v': {
     label: 'Seedance 1.5 Text',
@@ -1809,6 +1933,9 @@ export const VIDEO_MODEL_PROVIDERS: Record<VideoModelType, VideoModelProvider> =
   'ltx-2.3-i2v': 'fal',
   'ltx-2.3-fast-t2v': 'fal',
   'ltx-2.3-fast-i2v': 'fal',
+  'ltx-2.3-retake-v2v': 'fal',
+  'ltx-2.3-a2v': 'fal',
+  'ltx-2.3-extend': 'fal',
   'ltx-2-19b-t2v': 'fal',
   'ltx-2-19b-i2v': 'fal',
   'ltx-2-19b-v2v': 'fal',
@@ -1825,6 +1952,8 @@ export const VIDEO_MODEL_PROVIDERS: Record<VideoModelType, VideoModelProvider> =
   'kling-3.0-i2v': 'fal',
   'kling-3.0-pro-t2v': 'fal',
   'kling-3.0-pro-i2v': 'fal',
+  'kling-3.0-mc': 'fal',
+  'kling-3.0-pro-mc': 'fal',
   'seedance-1.5-t2v': 'fal',
   'seedance-1.5-i2v': 'fal',
   'seedance-1.0-pro-t2v': 'fal',
@@ -1866,6 +1995,9 @@ export const FAL_VIDEO_MODELS: Partial<Record<VideoModelType, string>> = {
   'ltx-2.3-i2v': 'fal-ai/ltx-2.3/image-to-video',
   'ltx-2.3-fast-t2v': 'fal-ai/ltx-2.3/text-to-video/fast',
   'ltx-2.3-fast-i2v': 'fal-ai/ltx-2.3/image-to-video/fast',
+  'ltx-2.3-retake-v2v': 'fal-ai/ltx-2.3/retake-video',
+  'ltx-2.3-a2v': 'fal-ai/ltx-2.3/audio-to-video',
+  'ltx-2.3-extend': 'fal-ai/ltx-2.3/extend-video',
   'ltx-2-19b-t2v': 'fal-ai/ltx-2-19b/text-to-video',
   'ltx-2-19b-i2v': 'fal-ai/ltx-2-19b/image-to-video',
   'ltx-2-19b-v2v': 'fal-ai/ltx-2-19b/video-to-video',
@@ -1882,6 +2014,8 @@ export const FAL_VIDEO_MODELS: Partial<Record<VideoModelType, string>> = {
   'kling-3.0-i2v': 'fal-ai/kling-video/v3/standard/image-to-video',
   'kling-3.0-pro-t2v': 'fal-ai/kling-video/v3/pro/text-to-video',
   'kling-3.0-pro-i2v': 'fal-ai/kling-video/v3/pro/image-to-video',
+  'kling-3.0-mc': 'fal-ai/kling-video/v3/standard/motion-control',
+  'kling-3.0-pro-mc': 'fal-ai/kling-video/v3/pro/motion-control',
   'seedance-1.5-t2v': 'fal-ai/bytedance/seedance/v1.5/pro/text-to-video',
   'seedance-1.5-i2v': 'fal-ai/bytedance/seedance/v1.5/pro/image-to-video',
   'seedance-1.0-pro-t2v': 'fal-ai/bytedance/seedance/v1/pro/text-to-video',
@@ -2089,7 +2223,43 @@ export type ProductShotNode = Node<ProductShotNodeData, 'productShot'>;
 // ============================================
 
 // Audio model types
-export type AudioModelType = 'ace-step' | 'elevenlabs-tts' | 'mmaudio-v2';
+export type SpeechModelType = 'elevenlabs-tts' | 'lux-tts' | 'tada-3b-tts';
+export const SPEECH_MODEL_OPTIONS: readonly SpeechModelType[] = [
+  'elevenlabs-tts',
+  'lux-tts',
+  'tada-3b-tts',
+] as const;
+
+export type VideoAudioModelType = 'mmaudio-v2' | 'sync-lipsync-v2-pro';
+export const VIDEO_AUDIO_MODEL_OPTIONS: readonly VideoAudioModelType[] = [
+  'mmaudio-v2',
+  'sync-lipsync-v2-pro',
+] as const;
+
+export type AudioModelType = 'ace-step' | SpeechModelType | VideoAudioModelType;
+export type TadaLanguage = 'en' | 'ar' | 'ch' | 'de' | 'es' | 'fr' | 'it' | 'ja' | 'pl' | 'pt';
+export type SyncLipsyncMode = 'cut_off' | 'loop' | 'bounce' | 'silence' | 'remap';
+
+export const TADA_LANGUAGE_LABELS: Record<TadaLanguage, string> = {
+  en: 'English',
+  ar: 'Arabic',
+  ch: 'Chinese',
+  de: 'German',
+  es: 'Spanish',
+  fr: 'French',
+  it: 'Italian',
+  ja: 'Japanese',
+  pl: 'Polish',
+  pt: 'Portuguese',
+} as const;
+
+export const SYNC_LIPSYNC_MODE_LABELS: Record<SyncLipsyncMode, string> = {
+  cut_off: 'Cut Off',
+  loop: 'Loop',
+  bounce: 'Bounce',
+  silence: 'Silence',
+  remap: 'Remap',
+} as const;
 
 // Music duration options (in seconds)
 export type MusicDuration = 5 | 15 | 30 | 60 | 120 | 180 | 240;
@@ -2144,11 +2314,14 @@ export type MusicGeneratorNode = Node<MusicGeneratorNodeData, 'musicGenerator'>;
 // Speech Node Data
 export interface SpeechNodeData extends Record<string, unknown> {
   name?: string;
+  model?: SpeechModelType;
   mode?: 'single' | 'dialogue';
   text: string;
   voice: ElevenLabsVoice;
   speed: number; // 0.7-1.2
   stability: number; // 0-1
+  language?: TadaLanguage;
+  referenceTranscript?: string;
   dialogueLines?: Array<{
     id: string;
     text: string;
@@ -2165,10 +2338,12 @@ export type SpeechNode = Node<SpeechNodeData, 'speech'>;
 // Video Audio Node Data
 export interface VideoAudioNodeData extends Record<string, unknown> {
   name?: string;
+  model?: VideoAudioModelType;
   prompt: string;
   duration: number; // 1-30 seconds
   cfgStrength: number; // 1-10, default 4.5
   negativePrompt?: string;
+  syncMode?: SyncLipsyncMode;
   // Output
   outputUrl?: string;
   isGenerating?: boolean;
@@ -2180,33 +2355,94 @@ export type VideoAudioNode = Node<VideoAudioNodeData, 'videoAudio'>;
 // Audio model capabilities
 export interface AudioModelCapabilities {
   label: string;
+  category: 'music' | 'speech' | 'video-audio';
   inputType: ModelInputType;
   description: string;
+  requiresAudioReference?: boolean;
+  requiresVideoInput?: boolean;
+  requiresAudioInput?: boolean;
+  supportsDialogue?: boolean;
+  supportsVoiceSelection?: boolean;
+  supportsPrompt?: boolean;
+  supportsNegativePrompt?: boolean;
+  supportsDuration?: boolean;
+  supportsCfgStrength?: boolean;
+  supportsSyncMode?: boolean;
 }
 
 export const AUDIO_MODEL_CAPABILITIES: Record<AudioModelType, AudioModelCapabilities> = {
   'ace-step': {
     label: 'ACE-Step',
+    category: 'music',
     inputType: 'text-only',
     description: 'Music generation (5-240s)',
   },
   'elevenlabs-tts': {
     label: 'ElevenLabs TTS',
+    category: 'speech',
     inputType: 'text-only',
     description: 'Text-to-speech (20+ voices)',
+    supportsDialogue: true,
+    supportsVoiceSelection: true,
+    supportsPrompt: true,
+  },
+  'lux-tts': {
+    label: 'Lux TTS',
+    category: 'speech',
+    inputType: 'text-and-audio',
+    description: 'Fast 48kHz voice-cloning TTS from text plus a reference audio clip.',
+    requiresAudioReference: true,
+    supportsPrompt: true,
+  },
+  'tada-3b-tts': {
+    label: 'Tada 3B',
+    category: 'speech',
+    inputType: 'text-and-audio',
+    description: 'Voice-cloning speech model with text/audio alignment and optional language control.',
+    requiresAudioReference: true,
+    supportsPrompt: true,
   },
   'mmaudio-v2': {
     label: 'MMAudio V2',
-    inputType: 'text-and-image',
-    description: 'Video-synced audio generation',
+    category: 'video-audio',
+    inputType: 'video-and-text',
+    description: 'Generate synced audio for a video from a text prompt.',
+    requiresVideoInput: true,
+    supportsPrompt: true,
+    supportsNegativePrompt: true,
+    supportsDuration: true,
+    supportsCfgStrength: true,
   },
+  'sync-lipsync-v2-pro': {
+    label: 'Sync Lipsync 2 Pro',
+    category: 'video-audio',
+    inputType: 'video-and-audio',
+    description: 'Lip-sync a face video to a connected audio track.',
+    requiresVideoInput: true,
+    requiresAudioInput: true,
+    supportsSyncMode: true,
+  },
+} as const;
+
+export const SPEECH_MODEL_CAPABILITIES: Record<SpeechModelType, AudioModelCapabilities> = {
+  'elevenlabs-tts': AUDIO_MODEL_CAPABILITIES['elevenlabs-tts'],
+  'lux-tts': AUDIO_MODEL_CAPABILITIES['lux-tts'],
+  'tada-3b-tts': AUDIO_MODEL_CAPABILITIES['tada-3b-tts'],
+} as const;
+
+export const VIDEO_AUDIO_MODEL_CAPABILITIES: Record<VideoAudioModelType, AudioModelCapabilities> = {
+  'mmaudio-v2': AUDIO_MODEL_CAPABILITIES['mmaudio-v2'],
+  'sync-lipsync-v2-pro': AUDIO_MODEL_CAPABILITIES['sync-lipsync-v2-pro'],
 } as const;
 
 // Fal model IDs for audio
 export const FAL_AUDIO_MODELS: Record<AudioModelType, string> = {
   'ace-step': 'fal-ai/ace-step/prompt-to-audio',
   'elevenlabs-tts': 'fal-ai/elevenlabs/tts/eleven-v3',
+  'lux-tts': 'fal-ai/lux-tts',
+  'tada-3b-tts': 'fal-ai/tada/3b/text-to-speech',
   'mmaudio-v2': 'fal-ai/mmaudio/v2',
+  'sync-lipsync-v2-pro': 'fal-ai/sync-lipsync/v2/pro',
 } as const;
 
 // ============================================
@@ -2229,6 +2465,8 @@ export const IMAGE_MODEL_CREDITS: Partial<Record<ImageModelType, number>> = {
   'recraft-v4': 2,
   'seedream-5': 2,
   'ideogram-v3': 2,
+  'physic-edit': 3,
+  'firered-edit': 3,
   'sd-3.5': 2,
 };
 
@@ -2253,6 +2491,9 @@ export const VIDEO_MODEL_CREDITS: Partial<Record<VideoModelType, number>> = {
   'ltx-2.3-i2v': 9,
   'ltx-2.3-fast-t2v': 6,
   'ltx-2.3-fast-i2v': 6,
+  'ltx-2.3-retake-v2v': 9,
+  'ltx-2.3-a2v': 9,
+  'ltx-2.3-extend': 9,
   'ltx-2-19b-t2v': 7,
   'ltx-2-19b-i2v': 7,
   'ltx-2-19b-v2v': 7,
@@ -2269,6 +2510,8 @@ export const VIDEO_MODEL_CREDITS: Partial<Record<VideoModelType, number>> = {
   'kling-3.0-i2v': 26,
   'kling-3.0-pro-t2v': 34,
   'kling-3.0-pro-i2v': 34,
+  'kling-3.0-mc': 26,
+  'kling-3.0-pro-mc': 34,
   'seedance-1.5-t2v': 4,
   'seedance-1.5-i2v': 4,
   'seedance-1.0-pro-t2v': 19,

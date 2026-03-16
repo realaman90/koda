@@ -20,7 +20,7 @@ const IMAGE_MODEL_GROUPS: { label: string; models: ImageModelType[] }[] = [
   { label: 'Nano Banana', models: ['nanobanana-pro', 'nanobanana-2'] },
   { label: 'Qwen', models: ['qwen-image-2', 'qwen-image-2-pro'] },
   { label: 'xAI Grok', models: ['grok-imagine-image', 'grok-imagine-image-edit'] },
-  { label: 'Other', models: ['seedream-5', 'recraft-v3', 'recraft-v4', 'ideogram-v3', 'sd-3.5'] },
+  { label: 'Other', models: ['seedream-5', 'recraft-v3', 'recraft-v4', 'ideogram-v3', 'physic-edit', 'sd-3.5'] },
 ];
 
 // Group definitions for video models

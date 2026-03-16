@@ -23,9 +23,28 @@ Guidelines:
 
 Output ONLY the enhanced prompt, nothing else.`;
 
+const VECGLYPHER_ENHANCER_INSTRUCTIONS = `You are an expert prompt engineer for VecGlypher, a vector text/glyph rendering model.
+VecGlypher renders TEXT as styled SVG vector glyphs. It takes two inputs:
+- "prompt": the literal text to render (e.g., "KODA", "Hello", "A")
+- "style_description": typography style (e.g., "bold, sans-serif, modern, geometric")
+
+The user's input to you is their raw prompt. Your job is to rewrite it in this format:
+"TEXT" STYLE_DESCRIPTION
+
+Rules:
+1. If the user provides a word/text to render, keep it as-is and add typography styling
+   - Example: "KODA" → "KODA" bold, geometric sans-serif, modern tech style, clean edges
+   - Example: "Hello World" → "Hello World" elegant serif, italic style, 300 weight, flowing
+2. If the user describes a style without specific text, keep the description as style terms
+   - Example: "modern logo text" → "Logo" bold, sans-serif, modern, minimalist, 700 weight
+3. Style terms should use typography language: weight (100-900, bold, light), style (italic, regular), category (serif, sans-serif, display, monospace), characteristics (elegant, geometric, rounded, angular, condensed)
+4. Keep it concise — under 50 words total
+
+Output ONLY the enhanced prompt, nothing else.`;
+
 export async function POST(request: Request) {
   try {
-    const { prompt, type } = await request.json();
+    const { prompt, type, model } = await request.json();
 
     if (!prompt) {
       return NextResponse.json(
@@ -36,7 +55,15 @@ export async function POST(request: Request) {
 
     let response;
 
-    if (type === 'svg') {
+    if (type === 'glyph') {
+      const glyphEnhancer = new Agent({
+        id: 'vecglypher-prompt-enhancer',
+        name: 'VecGlypher Prompt Enhancer',
+        instructions: VECGLYPHER_ENHANCER_INSTRUCTIONS,
+        model: PROMPT_ENHANCER_MODEL,
+      });
+      response = await glyphEnhancer.generate(prompt);
+    } else if (type === 'svg') {
       const svgEnhancer = new Agent({
         id: 'svg-prompt-enhancer',
         name: 'SVG Prompt Enhancer',

@@ -36,6 +36,11 @@ const MODEL_COST_MAP: Record<string, string> = {
   'quiver-arrow': 'quiver-arrow',
 };
 
+function getExecutionModelLabel(model: string, costModel: string): string {
+  if (model === 'quiver-arrow') return `quiver/${costModel}`;
+  return `google/${costModel}`;
+}
+
 async function getProvider(): Promise<AssetStorageProvider> {
   const storageType = getAssetStorageType();
   if (storageType === 'r2' || storageType === 's3') {
@@ -166,7 +171,6 @@ export async function POST(request: Request) {
       }
     }
 
-
     creditCost = getCreditCost('svg', { model: costModel });
 
     const deductResult = await deductCredits(userId!, creditCost, `svg:${costModel}`, { model: costModel });
@@ -223,7 +227,7 @@ export async function POST(request: Request) {
                 nodeId: input.nodeId,
                 canvasId: input.canvasId,
                 prompt: input.prompt,
-                model: `${model === 'quiver-arrow' ? 'quiver' : 'google'}/${costModel}`,
+                model: getExecutionModelLabel(model, costModel),
               },
             });
 

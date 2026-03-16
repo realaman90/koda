@@ -10,6 +10,8 @@ import type {
   VideoAspectRatio,
   VideoDuration,
   VideoResolution,
+  SyncLipsyncMode,
+  TadaLanguage,
 } from './types';
 import {
   ASPECT_TO_FLUX_SIZE,
@@ -284,6 +286,53 @@ class GrokImagineImageAdapter implements ModelAdapter {
   }
 }
 
+// Physic Edit (physics-aware image editing)
+class PhysicEditAdapter implements ModelAdapter {
+  buildInput(request: GenerateRequest): Record<string, unknown> {
+    const imageUrls = getImageInputUrls(request);
+    if (imageUrls.length === 0) {
+      throw new Error('Physic Edit requires a reference image');
+    }
+
+    return {
+      image_url: imageUrls[0],
+      prompt: request.prompt,
+      guidance_scale: request.cfgScale || 4,
+      num_inference_steps: request.steps || 40,
+      enable_safety_checker: true,
+      output_format: 'png',
+    };
+  }
+
+  extractImageUrls(result: { data?: { images?: Array<{ url: string }> } }): string[] {
+    return result.data?.images?.map((img) => img.url) || [];
+  }
+}
+
+// FireRed Image Edit V1.1
+class FireRedEditAdapter implements ModelAdapter {
+  buildInput(request: GenerateRequest): Record<string, unknown> {
+    const imageUrls = getImageInputUrls(request);
+    if (imageUrls.length === 0) {
+      throw new Error('FireRed Edit requires at least one reference image');
+    }
+
+    return {
+      image_urls: imageUrls,
+      prompt: request.prompt,
+      guidance_scale: request.cfgScale || 4,
+      num_inference_steps: request.steps || 30,
+      num_images: request.numImages || 1,
+      enable_safety_checker: true,
+      output_format: 'png',
+    };
+  }
+
+  extractImageUrls(result: { data?: { images?: Array<{ url: string }> } }): string[] {
+    return result.data?.images?.map((img) => img.url) || [];
+  }
+}
+
 // Recraft V3
 class RecraftAdapter implements ModelAdapter {
   // Map aspect ratio to Recraft size format
@@ -416,6 +465,8 @@ const adapters: Record<ImageModelType, ModelAdapter> = {
   'qwen-image-2-pro': new QwenImage2Adapter('pro'),
   'grok-imagine-image': new GrokImagineImageAdapter('generate'),
   'grok-imagine-image-edit': new GrokImagineImageAdapter('edit'),
+  'physic-edit': new PhysicEditAdapter(),
+  'firered-edit': new FireRedEditAdapter(),
   'recraft-v3': new RecraftAdapter(),
   'recraft-v4': new RecraftAdapter(), // same API shape as V3
   'seedream-5': new Seedream5Adapter(),
@@ -454,6 +505,8 @@ export interface VideoGenerateRequest {
   generateAudio?: boolean;
   // Heygen Avatar 4 specific
   heygenVoice?: string;
+  // Sora 2 character IDs (registered via /characters endpoint)
+  characterIds?: string[];
 }
 
 // Common interface for video adapters
@@ -609,6 +662,7 @@ class Sora2T2VAdapter implements VideoModelAdapter {
       aspect_ratio: request.aspectRatio,
       resolution: request.resolution || '720p',
       enable_safety_checker: true,
+      ...(request.characterIds?.length && { character_ids: request.characterIds }),
     };
   }
 
@@ -637,6 +691,7 @@ class Sora2I2VAdapter implements VideoModelAdapter {
       aspect_ratio: request.aspectRatio,
       resolution: request.resolution || '720p',
       enable_safety_checker: true,
+      ...(request.characterIds?.length && { character_ids: request.characterIds }),
     };
   }
 
@@ -774,6 +829,65 @@ class Ltx23I2VAdapter implements VideoModelAdapter {
       aspect_ratio: request.aspectRatio,
       fps: 25,
       generate_audio: request.generateAudio !== false,
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+}
+
+// LTX 2.3 Retake Video (video-to-video with new prompt)
+class Ltx23RetakeAdapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    if (!request.videoUrl) {
+      throw new Error('LTX 2.3 retake-video requires a video input');
+    }
+    return {
+      video_url: request.videoUrl,
+      prompt: request.prompt,
+      duration: request.duration,
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+}
+
+// LTX 2.3 Audio-to-Video
+class Ltx23A2VAdapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    if (!request.audioUrl) {
+      throw new Error('LTX 2.3 audio-to-video requires an audio input');
+    }
+    const imageUrl = request.referenceUrls?.[0] || request.referenceUrl || request.firstFrameUrl;
+    return {
+      audio_url: request.audioUrl,
+      ...(imageUrl && { image_url: imageUrl }),
+      ...(request.prompt && { prompt: request.prompt }),
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+}
+
+// LTX 2.3 Extend Video
+class Ltx23ExtendAdapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    if (!request.videoUrl) {
+      throw new Error('LTX 2.3 extend-video requires a video input');
+    }
+    return {
+      video_url: request.videoUrl,
+      ...(request.prompt && { prompt: request.prompt }),
+      duration: request.duration,
+      mode: 'end',
     };
   }
 
@@ -1056,6 +1170,31 @@ class Kling3I2VAdapter implements VideoModelAdapter {
       ...(startImage && { start_image_url: startImage }),
       ...(endImage && { end_image_url: endImage }),
       generate_audio: request.generateAudio !== false,
+    };
+  }
+
+  extractVideoUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url: string } } | undefined;
+    return data?.video?.url;
+  }
+}
+
+// Kling 3.0 Motion Control (Standard & Pro)
+class KlingMotionControlAdapter implements VideoModelAdapter {
+  buildInput(request: VideoGenerateRequest): Record<string, unknown> {
+    const imageUrl = request.firstFrameUrl || request.referenceUrl;
+    if (!imageUrl) {
+      throw new Error('Kling motion control requires a reference image');
+    }
+    if (!request.videoUrl) {
+      throw new Error('Kling motion control requires a reference video');
+    }
+    return {
+      image_url: imageUrl,
+      video_url: request.videoUrl,
+      character_orientation: 'image',
+      ...(request.prompt && { prompt: request.prompt }),
+      keep_original_sound: true,
     };
   }
 
@@ -1383,6 +1522,9 @@ const videoAdapters: Record<VideoModelType, VideoModelAdapter> = {
   'ltx-2.3-i2v': new Ltx23I2VAdapter(),
   'ltx-2.3-fast-t2v': new Ltx23T2VAdapter(),
   'ltx-2.3-fast-i2v': new Ltx23I2VAdapter(),
+  'ltx-2.3-retake-v2v': new Ltx23RetakeAdapter(),
+  'ltx-2.3-a2v': new Ltx23A2VAdapter(),
+  'ltx-2.3-extend': new Ltx23ExtendAdapter(),
   'ltx-2-19b-t2v': new LtxT2VAdapter(),
   'ltx-2-19b-i2v': new LtxI2VAdapter(),
   'ltx-2-19b-v2v': new LtxV2VAdapter(),
@@ -1399,6 +1541,8 @@ const videoAdapters: Record<VideoModelType, VideoModelAdapter> = {
   'kling-3.0-i2v': new Kling3I2VAdapter(),           // Uses start_image_url (not image_url like O3)
   'kling-3.0-pro-t2v': new KlingO3T2VAdapter(),    // Same API shape as O3
   'kling-3.0-pro-i2v': new Kling3I2VAdapter(),     // Uses start_image_url (not image_url like O3)
+  'kling-3.0-mc': new KlingMotionControlAdapter(),
+  'kling-3.0-pro-mc': new KlingMotionControlAdapter(), // Same API shape, different model ID
   'seedance-1.5-t2v': new Seedance15T2VAdapter(),
   'seedance-1.5-i2v': new Seedance15I2VAdapter(),
   'seedance-1.0-pro-t2v': new Seedance10T2VAdapter(),
@@ -1443,18 +1587,23 @@ export interface MusicGenerateRequest {
 // Request data for speech generation
 export interface SpeechGenerateRequest {
   text: string;
-  voice: ElevenLabsVoice;
-  speed: number;
-  stability: number;
+  voice?: ElevenLabsVoice;
+  speed?: number;
+  stability?: number;
+  audioUrl?: string;
+  language?: TadaLanguage;
+  referenceTranscript?: string;
 }
 
 // Request data for video audio generation
 export interface VideoAudioGenerateRequest {
-  prompt: string;
+  prompt?: string;
   videoUrl: string;
-  duration: number;
-  cfgStrength: number;
+  audioUrl?: string;
+  duration?: number;
+  cfgStrength?: number;
   negativePrompt?: string;
+  syncMode?: SyncLipsyncMode;
 }
 
 // Common interface for audio adapters
@@ -1497,14 +1646,56 @@ class ElevenLabsTTSAdapter implements AudioModelAdapter {
   }
 }
 
+// Lux TTS Adapter (voice cloning)
+class LuxTTSAdapter implements AudioModelAdapter {
+  buildInput(request: SpeechGenerateRequest): Record<string, unknown> {
+    if (!request.audioUrl) {
+      throw new Error('Lux TTS requires a reference audio clip');
+    }
+
+    return {
+      prompt: request.text,
+      audio_url: request.audioUrl,
+    };
+  }
+
+  extractAudioUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { audio?: { url?: string } } | undefined;
+    return data?.audio?.url;
+  }
+}
+
+// Tada 3B Adapter (voice cloning)
+class TadaTTSAdapter implements AudioModelAdapter {
+  buildInput(request: SpeechGenerateRequest): Record<string, unknown> {
+    if (!request.audioUrl) {
+      throw new Error('Tada requires a reference audio clip');
+    }
+
+    return {
+      prompt: request.text,
+      audio_url: request.audioUrl,
+      language: request.language || 'en',
+      speed_up_factor: request.speed || 1,
+      output_format: 'mp3',
+      ...(request.referenceTranscript?.trim() && { transcript: request.referenceTranscript.trim() }),
+    };
+  }
+
+  extractAudioUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { audio?: { url?: string } } | undefined;
+    return data?.audio?.url;
+  }
+}
+
 // MMAudio V2 Adapter (Video Audio Sync)
 class MMAudioV2Adapter implements AudioModelAdapter {
   buildInput(request: VideoAudioGenerateRequest): Record<string, unknown> {
     return {
-      prompt: request.prompt,
+      prompt: request.prompt || '',
       video_url: request.videoUrl,
-      duration: request.duration,
-      cfg_strength: request.cfgStrength,
+      duration: request.duration || 10,
+      cfg_strength: request.cfgStrength || 4.5,
       ...(request.negativePrompt && { negative_prompt: request.negativePrompt }),
     };
   }
@@ -1516,11 +1707,34 @@ class MMAudioV2Adapter implements AudioModelAdapter {
   }
 }
 
+// Sync Lipsync Adapter
+class SyncLipsyncAdapter implements AudioModelAdapter {
+  buildInput(request: VideoAudioGenerateRequest): Record<string, unknown> {
+    if (!request.audioUrl) {
+      throw new Error('Sync Lipsync requires a connected audio track');
+    }
+
+    return {
+      video_url: request.videoUrl,
+      audio_url: request.audioUrl,
+      sync_mode: request.syncMode || 'cut_off',
+    };
+  }
+
+  extractAudioUrl(result: Record<string, unknown>): string | undefined {
+    const data = result.data as { video?: { url?: string } } | undefined;
+    return data?.video?.url;
+  }
+}
+
 // Audio adapter factory
 const audioAdapters: Record<AudioModelType, AudioModelAdapter> = {
   'ace-step': new AceStepAdapter(),
   'elevenlabs-tts': new ElevenLabsTTSAdapter(),
+  'lux-tts': new LuxTTSAdapter(),
+  'tada-3b-tts': new TadaTTSAdapter(),
   'mmaudio-v2': new MMAudioV2Adapter(),
+  'sync-lipsync-v2-pro': new SyncLipsyncAdapter(),
 };
 
 export function getAudioModelAdapter(model: AudioModelType): AudioModelAdapter {

@@ -6,7 +6,8 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { useCanvasStore } from '@/stores/canvas-store';
 import { getApiErrorMessage, normalizeApiErrorMessage } from '@/lib/client/api-error';
-import type { VideoAudioNode as VideoAudioNodeType } from '@/lib/types';
+import type { VideoAudioNode as VideoAudioNodeType, VideoAudioModelType } from '@/lib/types';
+import { SYNC_LIPSYNC_MODE_LABELS, VIDEO_AUDIO_MODEL_CAPABILITIES } from '@/lib/types';
 import {
   Video,
   Play,
@@ -27,6 +28,10 @@ import { NodeStagePrompt } from '@/components/canvas/nodes/chrome/NodeStagePromp
 import { useNodeChromeState } from '@/components/canvas/nodes/chrome/useNodeChromeState';
 import { getPromptHeavyInputHandleTop } from '@/components/canvas/nodes/chrome/handleLayout';
 
+function normalizeVideoAudioModel(model: unknown): VideoAudioModelType {
+  return model === 'sync-lipsync-v2-pro' ? model : 'mmaudio-v2';
+}
+
 function VideoAudioNodeComponent({ id, data, selected }: NodeProps<VideoAudioNodeType>) {
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
   const deleteNode = useCanvasStore((state) => state.deleteNode);
@@ -37,7 +42,7 @@ function VideoAudioNodeComponent({ id, data, selected }: NodeProps<VideoAudioNod
   const [nodeName, setNodeName] = useState(data.name || 'Video Audio');
   const [isHovered, setIsHovered] = useState(false);
   const [isPromptFocused, setIsPromptFocused] = useState(false);
-  const [isPromptExpanded, setIsPromptExpanded] = useState(false);
+  const [, setIsPromptExpanded] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -61,13 +66,18 @@ function VideoAudioNodeComponent({ id, data, selected }: NodeProps<VideoAudioNod
     field: 'negativePrompt',
     preview: 'skip',
   });
+  const videoAudioModel = normalizeVideoAudioModel(data.model);
+  const videoAudioCapabilities = VIDEO_AUDIO_MODEL_CAPABILITIES[videoAudioModel];
   const promptPreview = useMemo(
-    () => promptDraft.replace(/\s+/g, ' ').trim(),
-    [promptDraft]
+    () =>
+      videoAudioCapabilities.supportsPrompt
+        ? promptDraft.replace(/\s+/g, ' ').trim()
+        : 'Sync connected audio to the connected video',
+    [promptDraft, videoAudioCapabilities.supportsPrompt]
   );
   const promptPlaceholder = data.outputUrl
-    ? 'Describe new audio...'
-    : 'Describe the audio you want (optional)...';
+    ? (videoAudioCapabilities.supportsPrompt ? 'Describe new audio...' : 'Keep syncing to a connected audio track...')
+    : (videoAudioCapabilities.supportsPrompt ? 'Describe the audio you want (optional)...' : 'Connect a video and audio track to lip-sync');
 
   useEffect(() => {
     if (isEditingName && nameInputRef.current) {
@@ -103,9 +113,13 @@ function VideoAudioNodeComponent({ id, data, selected }: NodeProps<VideoAudioNod
       toast.error('Please connect a video input');
       return;
     }
+    if (videoAudioCapabilities.requiresAudioInput && !connectedInputs.audioUrl) {
+      toast.error('Please connect an audio input');
+      return;
+    }
 
     let finalPrompt = promptDraft || '';
-    if (connectedInputs.textContent) {
+    if (videoAudioCapabilities.supportsPrompt && connectedInputs.textContent) {
       finalPrompt = connectedInputs.textContent + (promptDraft ? `\n${promptDraft}` : '');
     }
 
@@ -116,11 +130,14 @@ function VideoAudioNodeComponent({ id, data, selected }: NodeProps<VideoAudioNod
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          model: videoAudioModel,
           prompt: finalPrompt,
           videoUrl: connectedInputs.videoUrl,
+          audioUrl: connectedInputs.audioUrl,
           duration: data.duration,
           cfgStrength: data.cfgStrength,
           negativePrompt: data.negativePrompt,
+          syncMode: data.syncMode,
         }),
       });
 
@@ -136,7 +153,11 @@ function VideoAudioNodeComponent({ id, data, selected }: NodeProps<VideoAudioNod
         isGenerating: false,
       });
 
-      toast.success('Video with audio generated successfully');
+      toast.success(
+        videoAudioModel === 'sync-lipsync-v2-pro'
+          ? 'Lip-synced video generated successfully'
+          : 'Video with audio generated successfully'
+      );
     } catch (error) {
       const errorMessage = normalizeApiErrorMessage(error, 'Video audio generation failed');
       updateNodeData(id, {
@@ -145,7 +166,21 @@ function VideoAudioNodeComponent({ id, data, selected }: NodeProps<VideoAudioNod
       });
       toast.error(`Generation failed: ${errorMessage}`);
     }
-  }, [commitNegativePrompt, commitPrompt, data.cfgStrength, data.duration, data.negativePrompt, getConnectedInputs, id, promptDraft, updateNodeData]);
+  }, [
+    commitNegativePrompt,
+    commitPrompt,
+    data.cfgStrength,
+    data.duration,
+    data.negativePrompt,
+    data.syncMode,
+    getConnectedInputs,
+    id,
+    promptDraft,
+    updateNodeData,
+    videoAudioCapabilities.requiresAudioInput,
+    videoAudioCapabilities.supportsPrompt,
+    videoAudioModel,
+  ]);
 
   const handleDelete = useCallback(() => {
     deleteNode(id);
@@ -175,7 +210,8 @@ function VideoAudioNodeComponent({ id, data, selected }: NodeProps<VideoAudioNod
 
   const connectedInputs = getConnectedInputs(id);
   const hasVideoInput = !!connectedInputs.videoUrl;
-  const isConnected = hasVideoInput || !!connectedInputs.textContent;
+  const hasAudioInput = !!connectedInputs.audioUrl;
+  const isConnected = hasVideoInput || !!connectedInputs.textContent || hasAudioInput;
   const chromeState = useNodeChromeState({
     isHovered,
     focusedWithin,
@@ -187,6 +223,7 @@ function VideoAudioNodeComponent({ id, data, selected }: NodeProps<VideoAudioNod
   const showHandles = chromeState.showHandles;
   const showTopToolbar = chromeState.showTopToolbar && (!isReadOnly || !!data.outputUrl);
   const showFooterRail = chromeState.showFooterRail && (!isReadOnly || !!data.outputUrl);
+  const showTextInputHandle = videoAudioCapabilities.supportsPrompt || !!connectedInputs.textContent;
 
   // --- Chrome elements ---
 
@@ -243,12 +280,24 @@ function VideoAudioNodeComponent({ id, data, selected }: NodeProps<VideoAudioNod
       {!isReadOnly ? (
         <>
           <div className="h-8 flex items-center rounded-xl bg-muted/80 px-2.5 text-xs text-foreground">
-            {data.duration}s
+            {videoAudioCapabilities.label}
           </div>
 
-          <div className="h-8 flex items-center rounded-xl bg-muted/80 px-2.5 text-xs text-foreground">
-            CFG: {data.cfgStrength}
-          </div>
+          {videoAudioModel === 'mmaudio-v2' ? (
+            <>
+              <div className="h-8 flex items-center rounded-xl bg-muted/80 px-2.5 text-xs text-foreground">
+                {data.duration}s
+              </div>
+
+              <div className="h-8 flex items-center rounded-xl bg-muted/80 px-2.5 text-xs text-foreground">
+                CFG: {data.cfgStrength}
+              </div>
+            </>
+          ) : (
+            <div className="h-8 flex items-center rounded-xl bg-muted/80 px-2.5 text-xs text-foreground">
+              {SYNC_LIPSYNC_MODE_LABELS[data.syncMode || 'cut_off']}
+            </div>
+          )}
 
           <Button
             variant="ghost"
@@ -274,7 +323,7 @@ function VideoAudioNodeComponent({ id, data, selected }: NodeProps<VideoAudioNod
     </NodeFooterRail>
   ) : null;
 
-  const promptOverlay = displayMode === 'summary' ? null : (
+  const promptOverlay = displayMode === 'summary' ? null : videoAudioCapabilities.supportsPrompt ? (
     <NodeStagePrompt
       teaser={chromeState.showPromptTeaser ? (
         <p className={`node-prompt-teaser-clamp text-[15px] leading-6 ${promptPreview ? 'text-foreground/82' : 'text-muted-foreground/82'}`}>
@@ -304,6 +353,17 @@ function VideoAudioNodeComponent({ id, data, selected }: NodeProps<VideoAudioNod
           <Video className="h-3.5 w-3.5" />
           <span>{hasVideoInput ? 'Video connected' : 'Connect a video input'}</span>
         </div>
+
+        {videoAudioCapabilities.requiresAudioInput ? (
+          <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs ${
+            hasAudioInput
+              ? 'bg-green-500/10 text-green-500 dark:text-green-400'
+              : 'bg-muted/50 text-muted-foreground'
+          }`}>
+            <Music2 className="h-3.5 w-3.5" />
+            <span>{hasAudioInput ? 'Audio connected' : 'Connect an audio input'}</span>
+          </div>
+        ) : null}
 
         <textarea
           ref={promptTextareaRef}
@@ -341,6 +401,42 @@ function VideoAudioNodeComponent({ id, data, selected }: NodeProps<VideoAudioNod
             appearance: 'none',
           }}
         />
+      </div>
+    </NodeStagePrompt>
+  ) : (
+    <NodeStagePrompt
+      teaser={chromeState.showPromptTeaser ? (
+        <p className={`node-prompt-teaser-clamp text-[15px] leading-6 ${promptPreview ? 'text-foreground/82' : 'text-muted-foreground/82'}`}>
+          {promptPreview || promptPlaceholder}
+        </p>
+      ) : null}
+      expanded={chromeState.showPromptEditor}
+    >
+      <div
+        className="flex flex-col gap-3 nodrag nopan"
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs ${
+          hasVideoInput
+            ? 'bg-green-500/10 text-green-500 dark:text-green-400'
+            : 'bg-muted/50 text-muted-foreground'
+        }`}>
+          <Video className="h-3.5 w-3.5" />
+          <span>{hasVideoInput ? 'Video connected' : 'Connect a video input'}</span>
+        </div>
+
+        <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs ${
+          hasAudioInput
+            ? 'bg-green-500/10 text-green-500 dark:text-green-400'
+            : 'bg-muted/50 text-muted-foreground'
+        }`}>
+          <Music2 className="h-3.5 w-3.5" />
+          <span>{hasAudioInput ? 'Audio connected' : 'Connect an audio input'}</span>
+        </div>
+
+        <div className="rounded-xl border border-border/60 bg-muted/30 p-3 text-sm text-muted-foreground">
+          Sync Lipsync uses the incoming audio track directly and ignores prompt guidance. Choose the sync mode in settings, then run the node.
+        </div>
       </div>
     </NodeStagePrompt>
   );
@@ -406,7 +502,7 @@ function VideoAudioNodeComponent({ id, data, selected }: NodeProps<VideoAudioNod
                   animation: 'shimmer-text 2s ease-in-out infinite',
                 }}
               >
-                Adding audio to video...
+                {videoAudioModel === 'sync-lipsync-v2-pro' ? 'Syncing lips to audio...' : 'Adding audio to video...'}
               </p>
               <p className="text-muted-foreground text-xs mt-1">This may take a few minutes</p>
             </div>
@@ -422,7 +518,7 @@ function VideoAudioNodeComponent({ id, data, selected }: NodeProps<VideoAudioNod
             />
             <div className="absolute top-2 right-2 flex items-center gap-1.5 px-2 py-1 bg-black/60 backdrop-blur-sm rounded text-xs text-zinc-300">
               <Music2 className="h-3 w-3 text-primary/80" />
-              <span>Audio synced</span>
+              <span>{videoAudioModel === 'sync-lipsync-v2-pro' ? 'Lip sync ready' : 'Audio synced'}</span>
             </div>
           </div>
         ) : (
@@ -446,7 +542,22 @@ function VideoAudioNodeComponent({ id, data, selected }: NodeProps<VideoAudioNod
         </span>
       </div>
 
-      <div className={`absolute -left-3 z-10 group transition-opacity duration-200 ${showHandles || isConnected ? 'opacity-100' : 'opacity-0'}`} style={{ top: getPromptHeavyInputHandleTop(1) }}>
+      <div className={`absolute -left-3 z-10 group transition-opacity duration-200 ${showHandles || hasAudioInput || videoAudioCapabilities.requiresAudioInput ? 'opacity-100' : 'opacity-0'}`} style={{ top: getPromptHeavyInputHandleTop(1) }}>
+        <div className="relative">
+          <Handle
+            type="target"
+            position={Position.Left}
+            id="audio"
+            className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
+          />
+          <Music2 className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-input-icon)]" />
+        </div>
+        <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
+          Audio Input
+        </span>
+      </div>
+
+      <div className={`absolute -left-3 z-10 group transition-opacity duration-200 ${showTextInputHandle && (showHandles || isConnected) ? 'opacity-100' : 'opacity-0'}`} style={{ top: getPromptHeavyInputHandleTop(2) }}>
         <div className="relative">
           <Handle
             type="target"
@@ -457,7 +568,7 @@ function VideoAudioNodeComponent({ id, data, selected }: NodeProps<VideoAudioNod
           <Type className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-input-icon)]" />
         </div>
         <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
-          Audio Description
+          Prompt Input
         </span>
       </div>
 

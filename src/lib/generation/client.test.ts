@@ -16,7 +16,7 @@ test('getCompatibleImageCompareModels excludes auto and reference-required model
   } as ImageGeneratorNodeData;
 
   const models = getCompatibleImageCompareModels(
-    ['auto', 'flux-pro', 'grok-imagine-image-edit'],
+    ['auto', 'flux-pro', 'grok-imagine-image-edit', 'physic-edit'],
     data,
     { textContent: 'Studio lighting' }
   );
@@ -32,12 +32,12 @@ test('getCompatibleImageCompareModels includes edit models once references are c
   } as ImageGeneratorNodeData;
 
   const models = getCompatibleImageCompareModels(
-    ['flux-pro', 'grok-imagine-image-edit'],
+    ['flux-pro', 'grok-imagine-image-edit', 'physic-edit'],
     data,
     { referenceUrl: 'https://cdn.example.com/ref.png' }
   );
 
-  assert.deepEqual(models, ['flux-pro', 'grok-imagine-image-edit']);
+  assert.deepEqual(models, ['flux-pro', 'grok-imagine-image-edit', 'physic-edit']);
 });
 
 test('getCompatibleVideoCompareModels enforces input and setting compatibility', () => {

@@ -7,7 +7,9 @@ export type SvgStudioPhase =
   | 'ready'
   | 'error';
 
-export type SvgStudioModel = 'gemini' | 'quiver-arrow';
+export type SvgStudioModel =
+  | 'gemini'
+  | 'quiver-arrow';
 
 export interface SvgStudioAsset {
   id: string;

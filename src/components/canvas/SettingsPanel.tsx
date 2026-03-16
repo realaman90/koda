@@ -11,9 +11,47 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useCanvasStore } from '@/stores/canvas-store';
-import type { ImageGeneratorNodeData, ImageReference, FluxImageSize, NanoBananaResolution, RecraftStyle, IdeogramStyle, CharacterPreset, StylePreset, CameraAnglePreset, CameraLensPreset, PresetOption, CharacterSelection, MusicGeneratorNodeData, SpeechNodeData, VideoAudioNodeData, ProductShotNodeData, ProductShotBackground, ProductShotLighting } from '@/lib/types';
+import type {
+  ImageGeneratorNodeData,
+  ImageReference,
+  FluxImageSize,
+  NanoBananaResolution,
+  RecraftStyle,
+  IdeogramStyle,
+  CharacterPreset,
+  StylePreset,
+  CameraAnglePreset,
+  CameraLensPreset,
+  PresetOption,
+  MusicGeneratorNodeData,
+  SpeechNodeData,
+  VideoAudioNodeData,
+  ProductShotNodeData,
+  ProductShotBackground,
+  ProductShotLighting,
+  SpeechModelType,
+  TadaLanguage,
+  VideoAudioModelType,
+  SyncLipsyncMode,
+} from '@/lib/types';
 import { MAX_COMPARE_MODELS } from '@/lib/types';
-import { MODEL_CAPABILITIES, ENABLED_IMAGE_MODELS, FLUX_IMAGE_SIZES, NANO_BANANA_RESOLUTIONS, RECRAFT_STYLE_LABELS, IDEOGRAM_STYLE_LABELS, getApproxDimensions, getAspectRatioLabel, type ImageModelType } from '@/lib/types';
+import {
+  MODEL_CAPABILITIES,
+  ENABLED_IMAGE_MODELS,
+  FLUX_IMAGE_SIZES,
+  NANO_BANANA_RESOLUTIONS,
+  RECRAFT_STYLE_LABELS,
+  IDEOGRAM_STYLE_LABELS,
+  SPEECH_MODEL_CAPABILITIES,
+  SPEECH_MODEL_OPTIONS,
+  TADA_LANGUAGE_LABELS,
+  VIDEO_AUDIO_MODEL_CAPABILITIES,
+  VIDEO_AUDIO_MODEL_OPTIONS,
+  SYNC_LIPSYNC_MODE_LABELS,
+  getApproxDimensions,
+  getAspectRatioLabel,
+  type ImageModelType,
+} from '@/lib/types';
 import { getApiErrorMessage, normalizeApiErrorMessage } from '@/lib/client/api-error';
 import { useSettingsStore } from '@/stores/settings-store';
 import { fetchImageCompareEstimate } from '@/lib/compare/run';
@@ -786,7 +824,7 @@ export function SettingsPanel() {
               </div>
 
               {/* Strength - only shown when reference is connected */}
-              {connectedInputs.referenceUrl && (
+              {connectedInputs.referenceUrl && modelCapabilities.supportsStrength && (
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs text-muted-foreground">Strength</span>
@@ -1268,38 +1306,109 @@ function SpeechSettingsContent({ nodeId, data, updateNodeData }: {
   data: SpeechNodeData;
   updateNodeData: (nodeId: string, data: Record<string, unknown>, silent?: boolean) => void;
 }) {
+  const model = (data.model || 'elevenlabs-tts') as SpeechModelType;
+  const capabilities = SPEECH_MODEL_CAPABILITIES[model];
+
   return (
     <>
       <div>
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-muted-foreground">Speed</span>
-          <span className="text-xs text-muted-foreground/70">{(data.speed ?? 1).toFixed(1)}x</span>
-        </div>
-        <Slider
-          value={[data.speed ?? 1]}
-          onValueChange={(v) => updateNodeData(nodeId, { speed: v[0] })}
-          min={0.7}
-          max={1.2}
-          step={0.05}
-          className="w-full"
-        />
+        <label className="text-xs text-muted-foreground mb-1.5 block">Model</label>
+        <Select
+          value={model}
+          onValueChange={(value) =>
+            updateNodeData(nodeId, {
+              model: value as SpeechModelType,
+              ...(value === 'elevenlabs-tts' ? {} : { mode: 'single' }),
+            })
+          }
+        >
+          <SelectTrigger className="w-full bg-muted border-border text-foreground">
+            <SelectValue>{capabilities.label}</SelectValue>
+          </SelectTrigger>
+          <SelectContent className="bg-popover border-border">
+            {SPEECH_MODEL_OPTIONS.map((option) => (
+              <SelectItem key={option} value={option}>
+                {SPEECH_MODEL_CAPABILITIES[option].label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-[11px] text-muted-foreground mt-1.5">{capabilities.description}</p>
       </div>
 
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-muted-foreground">Stability</span>
-          <span className="text-xs text-muted-foreground/70">{Math.round((data.stability ?? 0.5) * 100)}%</span>
+      {model === 'tada-3b-tts' && (
+        <div>
+          <label className="text-xs text-muted-foreground mb-1.5 block">Language</label>
+          <Select
+            value={data.language || 'en'}
+            onValueChange={(value) => updateNodeData(nodeId, { language: value as TadaLanguage })}
+          >
+            <SelectTrigger className="w-full bg-muted border-border text-foreground">
+              <SelectValue>{TADA_LANGUAGE_LABELS[(data.language || 'en') as TadaLanguage]}</SelectValue>
+            </SelectTrigger>
+            <SelectContent className="bg-popover border-border">
+              {Object.entries(TADA_LANGUAGE_LABELS).map(([value, label]) => (
+                <SelectItem key={value} value={value}>{label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-        <Slider
-          value={[data.stability ?? 0.5]}
-          onValueChange={(v) => updateNodeData(nodeId, { stability: v[0] })}
-          min={0}
-          max={1}
-          step={0.05}
-          className="w-full"
-        />
-        <p className="text-[11px] text-muted-foreground mt-1.5">Higher = more consistent, lower = more expressive</p>
-      </div>
+      )}
+
+      {capabilities.requiresAudioReference && (
+        <div>
+          <label className="text-xs text-muted-foreground mb-1.5 block">Reference Transcript</label>
+          <textarea
+            value={data.referenceTranscript || ''}
+            onChange={(e) => updateNodeData(nodeId, { referenceTranscript: e.target.value })}
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            placeholder={model === 'tada-3b-tts' ? 'Optional. Useful for non-English reference audio.' : 'Optional transcript for the reference audio clip.'}
+            className="w-full min-h-[72px] bg-muted border border-border rounded-lg p-3 text-foreground text-sm placeholder:text-muted-foreground/60 resize-y overflow-y-auto nodrag nopan nowheel select-text focus:outline-none focus:border-primary"
+          />
+          <p className="text-[11px] text-muted-foreground mt-1.5">Connect an audio node or uploaded audio clip to the Speech node to use voice cloning.</p>
+        </div>
+      )}
+
+      {model !== 'lux-tts' && (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-muted-foreground">Speed</span>
+            <span className="text-xs text-muted-foreground/70">{(data.speed ?? 1).toFixed(1)}x</span>
+          </div>
+          <Slider
+            value={[data.speed ?? 1]}
+            onValueChange={(v) => updateNodeData(nodeId, { speed: v[0] })}
+            min={model === 'tada-3b-tts' ? 0.5 : 0.7}
+            max={model === 'tada-3b-tts' ? 2 : 1.2}
+            step={0.05}
+            className="w-full"
+          />
+          <p className="text-[11px] text-muted-foreground mt-1.5">
+            {model === 'tada-3b-tts'
+              ? 'Controls the output speaking rate.'
+              : 'Higher values read the text faster.'}
+          </p>
+        </div>
+      )}
+
+      {model === 'elevenlabs-tts' && (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-muted-foreground">Stability</span>
+            <span className="text-xs text-muted-foreground/70">{Math.round((data.stability ?? 0.5) * 100)}%</span>
+          </div>
+          <Slider
+            value={[data.stability ?? 0.5]}
+            onValueChange={(v) => updateNodeData(nodeId, { stability: v[0] })}
+            min={0}
+            max={1}
+            step={0.05}
+            className="w-full"
+          />
+          <p className="text-[11px] text-muted-foreground mt-1.5">Higher = more consistent, lower = more expressive</p>
+        </div>
+      )}
     </>
   );
 }
@@ -1310,50 +1419,99 @@ function VideoAudioSettingsContent({ nodeId, data, updateNodeData }: {
   data: VideoAudioNodeData;
   updateNodeData: (nodeId: string, data: Record<string, unknown>, silent?: boolean) => void;
 }) {
+  const model = (data.model || 'mmaudio-v2') as VideoAudioModelType;
+  const capabilities = VIDEO_AUDIO_MODEL_CAPABILITIES[model];
+
   return (
     <>
       <div>
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-muted-foreground">Duration</span>
-          <span className="text-xs text-muted-foreground/70">{data.duration ?? 8}s</span>
-        </div>
-        <Slider
-          value={[data.duration ?? 8]}
-          onValueChange={(v) => updateNodeData(nodeId, { duration: v[0] })}
-          min={1}
-          max={30}
-          step={1}
-          className="w-full"
-        />
+        <label className="text-xs text-muted-foreground mb-1.5 block">Model</label>
+        <Select
+          value={model}
+          onValueChange={(value) => updateNodeData(nodeId, { model: value as VideoAudioModelType })}
+        >
+          <SelectTrigger className="w-full bg-muted border-border text-foreground">
+            <SelectValue>{capabilities.label}</SelectValue>
+          </SelectTrigger>
+          <SelectContent className="bg-popover border-border">
+            {VIDEO_AUDIO_MODEL_OPTIONS.map((option) => (
+              <SelectItem key={option} value={option}>
+                {VIDEO_AUDIO_MODEL_CAPABILITIES[option].label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-[11px] text-muted-foreground mt-1.5">{capabilities.description}</p>
       </div>
 
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-muted-foreground">CFG Strength</span>
-          <span className="text-xs text-muted-foreground/70">{data.cfgStrength ?? 4.5}</span>
-        </div>
-        <Slider
-          value={[data.cfgStrength ?? 4.5]}
-          onValueChange={(v) => updateNodeData(nodeId, { cfgStrength: v[0] })}
-          min={1}
-          max={10}
-          step={0.5}
-          className="w-full"
-        />
-        <p className="text-[11px] text-muted-foreground mt-1.5">Higher values follow the prompt more closely</p>
-      </div>
+      {model === 'mmaudio-v2' ? (
+        <>
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-muted-foreground">Duration</span>
+              <span className="text-xs text-muted-foreground/70">{data.duration ?? 8}s</span>
+            </div>
+            <Slider
+              value={[data.duration ?? 8]}
+              onValueChange={(v) => updateNodeData(nodeId, { duration: v[0] })}
+              min={1}
+              max={30}
+              step={1}
+              className="w-full"
+            />
+          </div>
 
-      <div>
-        <label className="text-xs text-muted-foreground mb-1.5 block">Negative Prompt</label>
-        <textarea
-          value={data.negativePrompt || ''}
-          onChange={(e) => updateNodeData(nodeId, { negativePrompt: e.target.value })}
-          onPointerDown={(e) => e.stopPropagation()}
-          onMouseDown={(e) => e.stopPropagation()}
-          placeholder="Sounds to avoid..."
-          className="w-full min-h-[80px] bg-muted border border-border rounded-lg p-3 text-foreground text-sm placeholder:text-muted-foreground/60 resize-y overflow-y-auto nodrag nopan nowheel select-text focus:outline-none focus:border-primary"
-        />
-      </div>
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-muted-foreground">CFG Strength</span>
+              <span className="text-xs text-muted-foreground/70">{data.cfgStrength ?? 4.5}</span>
+            </div>
+            <Slider
+              value={[data.cfgStrength ?? 4.5]}
+              onValueChange={(v) => updateNodeData(nodeId, { cfgStrength: v[0] })}
+              min={1}
+              max={10}
+              step={0.5}
+              className="w-full"
+            />
+            <p className="text-[11px] text-muted-foreground mt-1.5">Higher values follow the prompt more closely</p>
+          </div>
+
+          <div>
+            <label className="text-xs text-muted-foreground mb-1.5 block">Negative Prompt</label>
+            <textarea
+              value={data.negativePrompt || ''}
+              onChange={(e) => updateNodeData(nodeId, { negativePrompt: e.target.value })}
+              onPointerDown={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              placeholder="Sounds to avoid..."
+              className="w-full min-h-[80px] bg-muted border border-border rounded-lg p-3 text-foreground text-sm placeholder:text-muted-foreground/60 resize-y overflow-y-auto nodrag nopan nowheel select-text focus:outline-none focus:border-primary"
+            />
+          </div>
+        </>
+      ) : (
+        <>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1.5 block">Sync Mode</label>
+            <Select
+              value={data.syncMode || 'cut_off'}
+              onValueChange={(value) => updateNodeData(nodeId, { syncMode: value as SyncLipsyncMode })}
+            >
+              <SelectTrigger className="w-full bg-muted border-border text-foreground">
+                <SelectValue>{SYNC_LIPSYNC_MODE_LABELS[(data.syncMode || 'cut_off') as SyncLipsyncMode]}</SelectValue>
+              </SelectTrigger>
+              <SelectContent className="bg-popover border-border">
+                {Object.entries(SYNC_LIPSYNC_MODE_LABELS).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>{label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Connect a video node and an audio node. Sync Lipsync uses the incoming audio directly and ignores prompt tuning.
+          </p>
+        </>
+      )}
     </>
   );
 }

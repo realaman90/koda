@@ -52,6 +52,7 @@ import '@/lib/plugins/official/product-shot';
 import '@/lib/plugins/official/agents/animation-generator';
 import '@/lib/plugins/official/agents/motion-analyzer';
 import '@/lib/plugins/official/agents/svg-studio';
+import '@/lib/plugins/official/agents/glyph';
 import '@/lib/plugins/official/agents/prompt-studio';
 import '@/lib/plugins/official/image-to-pdf';
 import {
@@ -237,6 +238,19 @@ export function NodeToolbar({ onPluginLaunch }: NodeToolbarProps) {
             );
           },
           keywords: ['svg', 'vector', 'icon', 'logo'],
+        },
+        {
+          id: 'glyph',
+          icon: <Type className="h-4 w-4 text-violet-400" />,
+          label: 'Glyph',
+          action: () => {
+            if (!guardPluginLaunch('glyph')) return;
+            handleAddNode(
+              (pos, name) => createPluginNode(pos, 'glyph', name),
+              'Glyph'
+            );
+          },
+          keywords: ['glyph', 'text', 'typography', 'font', 'letter'],
         },
         {
           id: 'promptStudio',

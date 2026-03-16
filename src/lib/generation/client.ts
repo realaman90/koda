@@ -45,6 +45,7 @@ export interface VideoGenerationRequestBody {
   audioUrl?: string;
   generateAudio?: boolean;
   heygenVoice?: VideoGeneratorNodeData['heygenVoice'];
+  characterVideos?: Array<{ name: string; videoUrl: string }>;
 }
 
 interface ImagePromptSourceData {
@@ -371,6 +372,9 @@ export function buildVideoGenerationRequest(
     generateAudio: data.generateAudio,
     heygenVoice: resolvedModel === 'heygen-avatar4-i2v'
       ? (data.heygenVoice || DEFAULT_HEYGEN_AVATAR4_VOICE)
+      : undefined,
+    characterVideos: connectedInputs.characterVideos?.length
+      ? connectedInputs.characterVideos
       : undefined,
   };
 }

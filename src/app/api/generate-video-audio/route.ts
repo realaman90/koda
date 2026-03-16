@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { fal } from '@fal-ai/client';
-import { FAL_AUDIO_MODELS } from '@/lib/types';
+import { FAL_AUDIO_MODELS, type VideoAudioModelType } from '@/lib/types';
 import { withCredits } from '@/lib/credits/with-credits';
 
 export const maxDuration = 300;
@@ -10,20 +10,31 @@ fal.config({
   credentials: process.env.FAL_KEY,
 });
 
+function normalizeVideoAudioModel(value: unknown): VideoAudioModelType {
+  return value === 'sync-lipsync-v2-pro' ? value : 'mmaudio-v2';
+}
+
 export const POST = withCredits(
-  { type: 'audio', getCostParams: () => ({ model: 'mmaudio-v2' }) },
+  {
+    type: 'audio',
+    getCostParams: (body) => ({ model: normalizeVideoAudioModel(body.model) }),
+  },
   async (request) => {
     try {
       const body = await request.json();
       const {
+        model,
         prompt,
         videoUrl,
+        audioUrl,
         duration,
         cfgStrength,
         negativePrompt,
+        syncMode,
       } = body;
 
-      const modelId = FAL_AUDIO_MODELS['mmaudio-v2'];
+      const selectedModel = normalizeVideoAudioModel(model);
+      const modelId = FAL_AUDIO_MODELS[selectedModel];
 
       // Validate input
       if (!videoUrl) {
@@ -33,19 +44,31 @@ export const POST = withCredits(
         );
       }
 
-      // Build input for MMAudio V2
       const input: Record<string, unknown> = {
-        prompt: prompt || '',
         video_url: videoUrl,
-        duration: duration || 10,
-        cfg_strength: cfgStrength || 4.5,
       };
 
-      if (negativePrompt) {
-        input.negative_prompt = negativePrompt;
+      if (selectedModel === 'sync-lipsync-v2-pro') {
+        if (!audioUrl) {
+          return NextResponse.json(
+            { error: 'Audio URL is required for Sync Lipsync' },
+            { status: 400 }
+          );
+        }
+
+        input.audio_url = audioUrl;
+        input.sync_mode = syncMode || 'cut_off';
+      } else {
+        input.prompt = prompt || '';
+        input.duration = duration || 10;
+        input.cfg_strength = cfgStrength || 4.5;
+
+        if (negativePrompt) {
+          input.negative_prompt = negativePrompt;
+        }
       }
 
-      console.log('Video audio generation request:', { modelId, input });
+      console.log('Video audio generation request:', { selectedModel, modelId, input });
 
       // Call Fal API with queue subscription
       const result = await fal.subscribe(modelId, {
@@ -69,6 +92,7 @@ export const POST = withCredits(
       return NextResponse.json({
         success: true,
         videoUrl: outputUrl,
+        selectedModel,
         model: modelId,
       });
     } catch (error) {

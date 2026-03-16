@@ -100,7 +100,11 @@ export const POST = withCredits(
         temperature: 0.2,
       });
 
-      const sanitized = sanitizeSvg(result.svg, input.constraints?.maxPaths ?? 300);
+      const rawSvg = result.svg;
+      const warnings = result.warnings || [];
+      const executionModel = `google/${SVG_MODEL}`;
+
+      const sanitized = sanitizeSvg(rawSvg, input.constraints?.maxPaths ?? 300);
 
       let asset: { id: string; url: string; mimeType: 'image/svg+xml'; sizeBytes: number } | undefined;
 
@@ -116,7 +120,7 @@ export const POST = withCredits(
             nodeId: input.nodeId,
             canvasId: input.canvasId,
             prompt: input.prompt,
-            model: `google/${SVG_MODEL}`,
+            model: executionModel,
           },
         });
 
@@ -140,7 +144,7 @@ export const POST = withCredits(
         svg: sanitized.svg,
         metadata: {
           ...sanitized.metadata,
-          warnings: [...sanitized.metadata.warnings, ...(result.warnings || [])],
+          warnings: [...sanitized.metadata.warnings, ...warnings],
         },
         asset,
       });

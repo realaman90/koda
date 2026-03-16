@@ -8,13 +8,13 @@ export const SVG_STUDIO_MAX_DIMENSION = 4096;
 
 export const SvgStudioRequestSchema = z.object({
   action: z.enum(['generate', 'edit']),
-  prompt: z.string().min(3).max(4000),
+  prompt: z.string().min(1).max(4000),
   model: z.enum(['gemini', 'quiver-arrow']).default('gemini'),
   svg: z.string().max(SVG_STUDIO_MAX_RAW_SIZE).optional(),
   /** Quiver-specific: additional instructions for Arrow model */
   instructions: z.string().max(2000).optional(),
   /** Reference image URLs (relative or absolute) */
-  references: z.array(z.string().min(1)).max(4).optional(),
+  references: z.array(z.string().min(1)).max(8).optional(),
   constraints: z.object({
     width: z.number().int().min(16).max(SVG_STUDIO_MAX_DIMENSION).optional(),
     height: z.number().int().min(16).max(SVG_STUDIO_MAX_DIMENSION).optional(),

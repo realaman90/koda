@@ -323,11 +323,13 @@ export const createSpeechNode = (position: { x: number; y: number }, name?: stri
     position,
     data: {
       name: name || 'Speech',
+      model: 'elevenlabs-tts',
       mode: 'single',
       text: '',
       voice: 'rachel',
       speed: 1,
       stability: 0.5,
+      language: 'en',
       dialogueLines: [
         { id: generateId(), voice: 'rachel', text: '' },
         { id: generateId(), voice: 'drew', text: '' },
@@ -343,9 +345,11 @@ export const createVideoAudioNode = (position: { x: number; y: number }, name?: 
     position,
     data: {
       name: name || 'Video Audio',
+      model: 'mmaudio-v2',
       prompt: '',
       duration: 10,
       cfgStrength: 4.5,
+      syncMode: 'cut_off',
       isGenerating: false,
     } as VideoAudioNodeData,
   } as AppNode);
@@ -1227,6 +1231,20 @@ export const useCanvasStore = create<CanvasState>()((set, get) => ({
       }
     }
 
+    // Build character video references (Sora 2)
+    const characterVideos: Array<{ name: string; videoUrl: string }> = [];
+    const videoTargetData = targetNode?.data as VideoGeneratorNodeData | undefined;
+    const charNames = videoTargetData?.characterNames || {};
+    for (let i = 1; i <= 2; i++) {
+      const charEdge = incomingEdges.find((edge) => edge.targetHandle === `char${i}`);
+      if (!charEdge) continue;
+      const charNode = nodes.find((n) => n.id === charEdge.source);
+      const charVideoUrl = getVideoUrl(charNode, charEdge.sourceHandle);
+      if (!charVideoUrl) continue;
+      const name = charNames[`char${i}`] || `character${i}`;
+      characterVideos.push({ name, videoUrl: charVideoUrl });
+    }
+
     return {
       textContent: resolvedTextContent,
       referenceUrl: dedupedReferenceUrls[0],
@@ -1240,6 +1258,7 @@ export const useCanvasStore = create<CanvasState>()((set, get) => ({
       videoId: getVideoId(videoNode),
       audioUrl: getAudioUrl(audioNode),
       imageInputs: Object.keys(imageInputs).length > 0 ? imageInputs : undefined,
+      characterVideos: characterVideos.length > 0 ? characterVideos : undefined,
     };
   },
 

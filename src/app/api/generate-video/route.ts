@@ -204,6 +204,7 @@ export const POST = withCredits(
       audioUrl: inputAudioUrl,
       generateAudio,
       heygenVoice: inputHeygenVoice,
+      characterVideos: rawCharacterVideos,
     } = body;
 
     const normalizedReferenceUrl = normalizeMediaUrl(referenceUrl, request);
@@ -283,6 +284,34 @@ export const POST = withCredits(
       );
     }
 
+    // Register Sora 2 characters if provided
+    let characterIds: string[] | undefined;
+    if (
+      Array.isArray(rawCharacterVideos) &&
+      rawCharacterVideos.length > 0 &&
+      (modelType.startsWith('sora-2'))
+    ) {
+      characterIds = [];
+      for (const charVideo of rawCharacterVideos.slice(0, 2)) {
+        const charName = typeof charVideo?.name === 'string' ? charVideo.name.trim() : undefined;
+        const charUrl = normalizeMediaUrl(charVideo?.videoUrl, request);
+        if (!charName || !charUrl) continue;
+        try {
+          const charResult = await fal.subscribe('fal-ai/sora-2/characters', {
+            input: { video_url: charUrl, name: charName },
+          });
+          const charData = charResult.data as { id?: string } | undefined;
+          if (charData?.id) {
+            characterIds.push(charData.id);
+            console.log(`[generate-video] Registered Sora 2 character "${charName}" → ${charData.id}`);
+          }
+        } catch (charErr) {
+          console.warn(`[generate-video] Failed to register character "${charName}":`, charErr);
+        }
+      }
+      if (characterIds.length === 0) characterIds = undefined;
+    }
+
     // Build request for adapter
     const generateRequest: VideoGenerateRequest = {
       prompt: prompt || '',
@@ -299,6 +328,7 @@ export const POST = withCredits(
       audioUrl: finalAudioUrl,
       generateAudio,
       heygenVoice: normalizedHeygenVoice,
+      characterIds,
     };
 
     // Get adapter and build input
