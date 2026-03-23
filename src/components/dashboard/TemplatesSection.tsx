@@ -6,7 +6,6 @@ import type { TemplateMetadata } from '@/lib/templates/types';
 interface TemplatesSectionProps {
   templates: TemplateMetadata[];
   onSelectTemplate: (templateId: string) => void;
-  onRemixTemplate?: (templateId: string) => void;
   showViewAll?: boolean;
   onViewAll?: () => void;
 }
@@ -14,7 +13,6 @@ interface TemplatesSectionProps {
 export function TemplatesSection({
   templates,
   onSelectTemplate,
-  onRemixTemplate,
   showViewAll = false,
   onViewAll,
 }: TemplatesSectionProps) {
@@ -39,7 +37,6 @@ export function TemplatesSection({
             key={template.id}
             template={template}
             onSelect={onSelectTemplate}
-            onRemix={onRemixTemplate}
           />
         ))}
       </div>

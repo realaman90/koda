@@ -10,18 +10,10 @@
  */
 
 import { useState, useCallback, useRef } from 'react';
-import type {
-  AnimationPlan,
-  AnimationTodo,
-  AnimationAttachment,
-  MediaEntry,
-  MotionSpec,
-} from '../types';
+import type { AnimationPlan, AnimationTodo, AnimationAttachment, MediaEntry } from '../types';
 import type { AnimationStreamEvent, AnimationAppEvent } from '../events';
 import { toolCallToAppEvent, toolResultToAppEvent } from '../events';
 import { resolveMediaCache } from '../media-cache';
-import { animationDebugLog } from '../debug';
-import { getApiErrorMessage, normalizeApiErrorMessage } from '@/lib/client/api-error';
 
 // ============================================
 // Types
@@ -31,7 +23,6 @@ interface StreamContext {
   nodeId?: string;
   phase?: string;
   plan?: AnimationPlan;
-  planAccepted?: boolean;
   todos?: AnimationTodo[];
   attachments?: AnimationAttachment[];
   media?: MediaEntry[];
@@ -46,7 +37,6 @@ interface StreamContext {
     colors?: { primary: string; secondary: string; accent?: string };
     fonts?: { title: string; body: string };
   };
-  motionSpec?: MotionSpec;
   logo?: { url: string; name?: string };
   fps?: number;
   resolution?: string;
@@ -113,10 +103,6 @@ export function useAnimationStream(): UseAnimationStreamReturn {
     }
   }, []);
 
-  const isTransientTransportError = useCallback((message: string): boolean => {
-    return /network error|failed to fetch|fetch failed|load failed|stream failed|stream request failed \(5\d\d\)|connection|timed out|timeout|terminated/i.test(message.toLowerCase());
-  }, []);
-
   const stream = useCallback(
     async (input: StreamInput, context?: StreamContext, callbacks?: AnimationStreamCallbacks): Promise<string> => {
       // Abort any existing stream
@@ -151,7 +137,7 @@ export function useAnimationStream(): UseAnimationStreamReturn {
                 reader.onerror = () => reject(reader.error);
                 reader.readAsDataURL(blob);
               });
-              animationDebugLog(`[useAnimationStream] Converted blob: → data: for ${m.name} (${Math.round(dataUrl.length / 1024)}KB)`);
+              console.log(`[useAnimationStream] Converted blob: → data: for ${m.name} (${Math.round(dataUrl.length / 1024)}KB)`);
               return { ...m, dataUrl };
             } catch (err) {
               console.warn(`[useAnimationStream] Failed to convert blob: URL for ${m.name}:`, err);
@@ -166,7 +152,7 @@ export function useAnimationStream(): UseAnimationStreamReturn {
         }));
         const filteredMedia = processedMedia.filter(Boolean) as typeof resolvedMedia;
 
-        animationDebugLog(`[useAnimationStream] Media: ${rawMedia.length} raw → ${resolvedMedia.length} resolved → ${filteredMedia.length} sent`,
+        console.log(`[useAnimationStream] Media: ${rawMedia.length} raw → ${resolvedMedia.length} resolved → ${filteredMedia.length} sent`,
           rawMedia.map(m => ({ name: m.name, source: m.source, urlPrefix: m.dataUrl?.slice(0, 30) })));
 
         const cleanContext = context ? {
@@ -187,8 +173,8 @@ export function useAnimationStream(): UseAnimationStreamReturn {
         });
 
         if (!response.ok) {
-          const message = await getApiErrorMessage(response, `Stream request failed (${response.status})`);
-          throw new Error(message);
+          const errorData = await response.json().catch(() => ({ error: 'Stream request failed' }));
+          throw new Error(errorData.error || `Stream request failed (${response.status})`);
         }
 
         if (!response.body) {
@@ -283,26 +269,15 @@ export function useAnimationStream(): UseAnimationStreamReturn {
                 case 'complete': {
                   fullText = data.text || fullText;
                   setStreamedText(fullText);
-                  if (!completeFiredRef.current) {
-                    completeFiredRef.current = true;
-                    callbacks?.onComplete?.(fullText);
-                  }
+                  completeFiredRef.current = true;
+                  callbacks?.onComplete?.(fullText);
                   break;
                 }
 
                 case 'error': {
                   const errMsg = data.error || 'Unknown stream error';
-                  if (isTransientTransportError(errMsg)) {
-                    // Treat transport-level drops/timeouts as recoverable:
-                    // finalize this stream so the UI can continue from current state.
-                    if (!completeFiredRef.current) {
-                      completeFiredRef.current = true;
-                      callbacks?.onComplete?.(fullText);
-                    }
-                  } else {
-                    setError(errMsg);
-                    callbacks?.onError?.(errMsg);
-                  }
+                  setError(errMsg);
+                  callbacks?.onError?.(errMsg);
                   break;
                 }
 
@@ -312,7 +287,7 @@ export function useAnimationStream(): UseAnimationStreamReturn {
                 case 'sandbox-created': {
                   const sandboxData = data as { type: 'sandbox-created'; sandboxId: string };
                   if (sandboxData.sandboxId) {
-                    animationDebugLog(`[useAnimationStream] sandbox-created SSE: ${sandboxData.sandboxId}`);
+                    console.log(`[useAnimationStream] sandbox-created SSE: ${sandboxData.sandboxId}`);
                     callbacks?.onToolResult?.({
                       toolCallId: `sse_sandbox_${Date.now()}`,
                       toolName: 'sandbox_create',
@@ -328,7 +303,7 @@ export function useAnimationStream(): UseAnimationStreamReturn {
                 case 'video-ready': {
                   const videoData = data as { type: 'video-ready'; videoUrl: string; duration: number; versionId?: string };
                   if (videoData.videoUrl) {
-                    animationDebugLog(`[useAnimationStream] video-ready recovery SSE: ${videoData.videoUrl} (versionId=${videoData.versionId})`);
+                    console.log(`[useAnimationStream] video-ready recovery SSE: ${videoData.videoUrl} (versionId=${videoData.versionId})`);
                     callbacks?.onToolResult?.({
                       toolCallId: `sse_video_recovery_${Date.now()}`,
                       toolName: 'render_final',
@@ -371,17 +346,7 @@ export function useAnimationStream(): UseAnimationStreamReturn {
           return fullText;
         }
 
-        const errorMessage = normalizeApiErrorMessage(err, 'Stream failed');
-        if (isTransientTransportError(errorMessage)) {
-          console.warn('[useAnimationStream] Transient stream transport error, finalizing gracefully:', errorMessage);
-          if (!completeFiredRef.current) {
-            completeFiredRef.current = true;
-            callbacks?.onComplete?.(fullText);
-          }
-          setIsStreaming(false);
-          return fullText;
-        }
-
+        const errorMessage = err instanceof Error ? err.message : 'Stream failed';
         console.error('[useAnimationStream] Stream error:', errorMessage);
         setError(errorMessage);
         setIsStreaming(false);
@@ -389,7 +354,7 @@ export function useAnimationStream(): UseAnimationStreamReturn {
         return fullText;
       }
     },
-    [abort, isTransientTransportError]
+    [abort]
   );
 
   return {

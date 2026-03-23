@@ -23,11 +23,6 @@ export const motionAnalyzerPlugin: AgentPlugin = {
     verified: true,
   },
   visibility: 'public',
-  policy: {
-    capabilityDeclarations: ['canvas:read'],
-    distributionVisibility: ['oss', 'hosted'],
-    trustTier: 'official',
-  },
 
   rendering: {
     mode: 'node',
@@ -35,11 +30,6 @@ export const motionAnalyzerPlugin: AgentPlugin = {
     defaultSize: { width: 400, height: 'auto' },
     resizable: true,
     collapsible: true,
-  },
-
-  launcherHints: {
-    input: 'Upload video inside node',
-    output: 'Animation prompt text',
   },
 
   capabilities: [
@@ -59,8 +49,12 @@ export const motionAnalyzerPlugin: AgentPlugin = {
   ],
 
   handles: {
-    inputs: [],
-    outputs: [],
+    inputs: [
+      { id: 'video', name: 'Video', type: 'video', required: true },
+    ],
+    outputs: [
+      { id: 'prompt-output', name: 'Animation Prompt', type: 'text' },
+    ],
   },
 };
 

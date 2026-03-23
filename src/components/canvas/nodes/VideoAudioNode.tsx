@@ -1,83 +1,34 @@
 'use client';
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useState, useRef, useEffect } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { Slider } from '@/components/ui/slider';
 import { useCanvasStore } from '@/stores/canvas-store';
-import { getApiErrorMessage, normalizeApiErrorMessage } from '@/lib/client/api-error';
-import type { VideoAudioNode as VideoAudioNodeType, VideoAudioModelType } from '@/lib/types';
-import { SYNC_LIPSYNC_MODE_LABELS, VIDEO_AUDIO_MODEL_CAPABILITIES } from '@/lib/types';
+import type { VideoAudioNode as VideoAudioNodeType } from '@/lib/types';
 import {
   Video,
   Play,
   Trash2,
   Download,
+  Loader2,
   Type,
   RefreshCw,
   Settings,
   Music2,
   Film,
 } from 'lucide-react';
-import { useBufferedNodeField } from './useBufferedNodeField';
-import { useNodeDisplayMode } from './useNodeDisplayMode';
-import { CanvasNodeShell } from '@/components/canvas/nodes/chrome/CanvasNodeShell';
-import { NodeFloatingToolbar } from '@/components/canvas/nodes/chrome/NodeFloatingToolbar';
-import { NodeFooterRail } from '@/components/canvas/nodes/chrome/NodeFooterRail';
-import { NodeStagePrompt } from '@/components/canvas/nodes/chrome/NodeStagePrompt';
-import { useNodeChromeState } from '@/components/canvas/nodes/chrome/useNodeChromeState';
-import { getPromptHeavyInputHandleTop } from '@/components/canvas/nodes/chrome/handleLayout';
-
-function normalizeVideoAudioModel(model: unknown): VideoAudioModelType {
-  return model === 'sync-lipsync-v2-pro' ? model : 'mmaudio-v2';
-}
 
 function VideoAudioNodeComponent({ id, data, selected }: NodeProps<VideoAudioNodeType>) {
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
   const deleteNode = useCanvasStore((state) => state.deleteNode);
-  const openSettingsPanel = useCanvasStore((state) => state.openSettingsPanel);
   const getConnectedInputs = useCanvasStore((state) => state.getConnectedInputs);
-  const isReadOnly = useCanvasStore((state) => state.isReadOnly);
   const [isEditingName, setIsEditingName] = useState(false);
   const [nodeName, setNodeName] = useState(data.name || 'Video Audio');
-  const [isHovered, setIsHovered] = useState(false);
-  const [isPromptFocused, setIsPromptFocused] = useState(false);
-  const [, setIsPromptExpanded] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
-  const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const { displayMode, focusedWithin, focusProps } = useNodeDisplayMode(selected);
-  const {
-    draft: promptDraft,
-    handleChange: handlePromptChange,
-    handleBlur: handlePromptBlur,
-    commit: commitPrompt,
-  } = useBufferedNodeField({
-    nodeId: id,
-    value: data.prompt || '',
-    field: 'prompt',
-    preview: 'skip',
-  });
-  const {
-    commit: commitNegativePrompt,
-  } = useBufferedNodeField({
-    nodeId: id,
-    value: data.negativePrompt || '',
-    field: 'negativePrompt',
-    preview: 'skip',
-  });
-  const videoAudioModel = normalizeVideoAudioModel(data.model);
-  const videoAudioCapabilities = VIDEO_AUDIO_MODEL_CAPABILITIES[videoAudioModel];
-  const promptPreview = useMemo(
-    () =>
-      videoAudioCapabilities.supportsPrompt
-        ? promptDraft.replace(/\s+/g, ' ').trim()
-        : 'Sync connected audio to the connected video',
-    [promptDraft, videoAudioCapabilities.supportsPrompt]
-  );
-  const promptPlaceholder = data.outputUrl
-    ? (videoAudioCapabilities.supportsPrompt ? 'Describe new audio...' : 'Keep syncing to a connected audio track...')
-    : (videoAudioCapabilities.supportsPrompt ? 'Describe the audio you want (optional)...' : 'Connect a video and audio track to lip-sync');
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     if (isEditingName && nameInputRef.current) {
@@ -91,36 +42,46 @@ function VideoAudioNodeComponent({ id, data, selected }: NodeProps<VideoAudioNod
     updateNodeData(id, { name: nodeName });
   }, [id, nodeName, updateNodeData]);
 
-  const openSettingsFromElement = useCallback((element: HTMLElement) => {
-    const rect = element.closest('.react-flow__node')?.getBoundingClientRect();
-    if (rect) {
-      openSettingsPanel(id, { x: rect.right + 10, y: rect.top });
-    }
-  }, [id, openSettingsPanel]);
+  const handlePromptChange = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      updateNodeData(id, { prompt: e.target.value });
+    },
+    [id, updateNodeData]
+  );
 
-  const handleOpenSettings = useCallback((event: React.MouseEvent) => {
-    openSettingsFromElement(event.currentTarget as HTMLElement);
-  }, [openSettingsFromElement]);
+  const handleNegativePromptChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      updateNodeData(id, { negativePrompt: e.target.value });
+    },
+    [id, updateNodeData]
+  );
+
+  const handleDurationChange = useCallback(
+    (value: number[]) => {
+      updateNodeData(id, { duration: value[0] });
+    },
+    [id, updateNodeData]
+  );
+
+  const handleCfgStrengthChange = useCallback(
+    (value: number[]) => {
+      updateNodeData(id, { cfgStrength: value[0] });
+    },
+    [id, updateNodeData]
+  );
 
   const handleGenerate = useCallback(async () => {
-    await Promise.all([
-      commitPrompt(promptDraft, true),
-      commitNegativePrompt(data.negativePrompt || '', true),
-    ]);
     const connectedInputs = getConnectedInputs(id);
 
+    // Check for video connection
     if (!connectedInputs.videoUrl) {
       toast.error('Please connect a video input');
       return;
     }
-    if (videoAudioCapabilities.requiresAudioInput && !connectedInputs.audioUrl) {
-      toast.error('Please connect an audio input');
-      return;
-    }
 
-    let finalPrompt = promptDraft || '';
-    if (videoAudioCapabilities.supportsPrompt && connectedInputs.textContent) {
-      finalPrompt = connectedInputs.textContent + (promptDraft ? `\n${promptDraft}` : '');
+    let finalPrompt = data.prompt || '';
+    if (connectedInputs.textContent) {
+      finalPrompt = connectedInputs.textContent + (data.prompt ? `\n${data.prompt}` : '');
     }
 
     updateNodeData(id, { isGenerating: true, error: undefined });
@@ -130,20 +91,17 @@ function VideoAudioNodeComponent({ id, data, selected }: NodeProps<VideoAudioNod
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: videoAudioModel,
           prompt: finalPrompt,
           videoUrl: connectedInputs.videoUrl,
-          audioUrl: connectedInputs.audioUrl,
           duration: data.duration,
           cfgStrength: data.cfgStrength,
           negativePrompt: data.negativePrompt,
-          syncMode: data.syncMode,
         }),
       });
 
       if (!response.ok) {
-        const message = await getApiErrorMessage(response, 'Video audio generation failed');
-        throw new Error(message);
+        const error = await response.json();
+        throw new Error(error.error || 'Video audio generation failed');
       }
 
       const result = await response.json();
@@ -153,34 +111,16 @@ function VideoAudioNodeComponent({ id, data, selected }: NodeProps<VideoAudioNod
         isGenerating: false,
       });
 
-      toast.success(
-        videoAudioModel === 'sync-lipsync-v2-pro'
-          ? 'Lip-synced video generated successfully'
-          : 'Video with audio generated successfully'
-      );
+      toast.success('Video with audio generated successfully');
     } catch (error) {
-      const errorMessage = normalizeApiErrorMessage(error, 'Video audio generation failed');
+      const errorMessage = error instanceof Error ? error.message : 'Video audio generation failed';
       updateNodeData(id, {
         error: errorMessage,
         isGenerating: false,
       });
       toast.error(`Generation failed: ${errorMessage}`);
     }
-  }, [
-    commitNegativePrompt,
-    commitPrompt,
-    data.cfgStrength,
-    data.duration,
-    data.negativePrompt,
-    data.syncMode,
-    getConnectedInputs,
-    id,
-    promptDraft,
-    updateNodeData,
-    videoAudioCapabilities.requiresAudioInput,
-    videoAudioCapabilities.supportsPrompt,
-    videoAudioModel,
-  ]);
+  }, [id, data.prompt, data.duration, data.cfgStrength, data.negativePrompt, updateNodeData, getConnectedInputs]);
 
   const handleDelete = useCallback(() => {
     deleteNode(id);
@@ -210,245 +150,46 @@ function VideoAudioNodeComponent({ id, data, selected }: NodeProps<VideoAudioNod
 
   const connectedInputs = getConnectedInputs(id);
   const hasVideoInput = !!connectedInputs.videoUrl;
-  const hasAudioInput = !!connectedInputs.audioUrl;
-  const isConnected = hasVideoInput || !!connectedInputs.textContent || hasAudioInput;
-  const chromeState = useNodeChromeState({
-    isHovered,
-    focusedWithin,
-    isPromptFocused,
-    selected,
-    displayMode,
-    hasOutput: !!data.outputUrl,
-  });
-  const showHandles = chromeState.showHandles;
-  const showTopToolbar = chromeState.showTopToolbar && (!isReadOnly || !!data.outputUrl);
-  const showFooterRail = chromeState.showFooterRail && (!isReadOnly || !!data.outputUrl);
-  const showTextInputHandle = videoAudioCapabilities.supportsPrompt || !!connectedInputs.textContent;
 
-  // --- Chrome elements ---
-
-  const topToolbar = showTopToolbar ? (
-    <NodeFloatingToolbar>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
-        onClick={handleGenerate}
-        disabled={!hasVideoInput || data.isGenerating}
-        title={data.outputUrl ? 'Regenerate audio' : 'Generate audio'}
-      >
-        {data.outputUrl ? <RefreshCw className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-      </Button>
-      {data.outputUrl ? (
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
-          onClick={handleDownload}
-          title="Download video"
-        >
-          <Download className="h-3.5 w-3.5" />
-        </Button>
-      ) : null}
-      {!isReadOnly ? (
-        <>
+  return (
+    <div className="relative">
+      {/* Floating Toolbar */}
+      {selected && (
+        <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1 backdrop-blur rounded-lg px-2 py-1.5 border node-toolbar-floating shadow-xl z-10">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+            onClick={handleGenerate}
+            disabled={!hasVideoInput || data.isGenerating}
+          >
+            <Play className="h-3.5 w-3.5" />
+          </Button>
+          {data.outputUrl && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              onClick={handleDownload}
+            >
+              <Download className="h-3.5 w-3.5" />
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon-sm"
             className="h-7 w-7 text-muted-foreground hover:text-red-400 hover:bg-muted/50"
             onClick={handleDelete}
-            title="Delete node"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={handleOpenSettings}
-            className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
-            title="Settings"
-          >
-            <Settings className="h-3.5 w-3.5" />
-          </Button>
-        </>
-      ) : null}
-    </NodeFloatingToolbar>
-  ) : null;
-
-  const footerRail = showFooterRail ? (
-    <NodeFooterRail className="node-footer-rail-plain">
-      {!isReadOnly ? (
-        <>
-          <div className="h-8 flex items-center rounded-xl bg-muted/80 px-2.5 text-xs text-foreground">
-            {videoAudioCapabilities.label}
-          </div>
-
-          {videoAudioModel === 'mmaudio-v2' ? (
-            <>
-              <div className="h-8 flex items-center rounded-xl bg-muted/80 px-2.5 text-xs text-foreground">
-                {data.duration}s
-              </div>
-
-              <div className="h-8 flex items-center rounded-xl bg-muted/80 px-2.5 text-xs text-foreground">
-                CFG: {data.cfgStrength}
-              </div>
-            </>
-          ) : (
-            <div className="h-8 flex items-center rounded-xl bg-muted/80 px-2.5 text-xs text-foreground">
-              {SYNC_LIPSYNC_MODE_LABELS[data.syncMode || 'cut_off']}
-            </div>
-          )}
-
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={handleOpenSettings}
-            className="h-8 w-8 rounded-xl nodrag nopan text-muted-foreground hover:bg-muted/70 hover:text-foreground"
-            title="Settings"
-          >
-            <Settings className="h-3.5 w-3.5" />
-          </Button>
-
-          <div className="min-w-0 flex-1" />
-          <Button
-            onClick={handleGenerate}
-            disabled={!hasVideoInput || data.isGenerating}
-            size="icon-sm"
-            className="h-10 w-10 min-w-10 rounded-full nodrag nopan bg-primary text-primary-foreground hover:bg-primary/90"
-          >
-            {data.outputUrl ? <RefreshCw className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5 fill-current" />}
-          </Button>
-        </>
-      ) : null}
-    </NodeFooterRail>
-  ) : null;
-
-  const promptOverlay = displayMode === 'summary' ? null : videoAudioCapabilities.supportsPrompt ? (
-    <NodeStagePrompt
-      teaser={chromeState.showPromptTeaser ? (
-        <p className={`node-prompt-teaser-clamp text-[15px] leading-6 ${promptPreview ? 'text-foreground/82' : 'text-muted-foreground/82'}`}>
-          {promptPreview || promptPlaceholder}
-        </p>
-      ) : null}
-      expanded={chromeState.showPromptEditor}
-      onExpand={
-        isReadOnly
-          ? undefined
-          : () => {
-              setIsPromptExpanded(true);
-              requestAnimationFrame(() => promptTextareaRef.current?.focus());
-            }
-      }
-    >
-      <div
-        className="flex flex-col gap-3 nodrag nopan"
-        onPointerDown={(event) => event.stopPropagation()}
-      >
-        {/* Connection status badge */}
-        <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs ${
-          hasVideoInput
-            ? 'bg-green-500/10 text-green-500 dark:text-green-400'
-            : 'bg-muted/50 text-muted-foreground'
-        }`}>
-          <Video className="h-3.5 w-3.5" />
-          <span>{hasVideoInput ? 'Video connected' : 'Connect a video input'}</span>
         </div>
+      )}
 
-        {videoAudioCapabilities.requiresAudioInput ? (
-          <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs ${
-            hasAudioInput
-              ? 'bg-green-500/10 text-green-500 dark:text-green-400'
-              : 'bg-muted/50 text-muted-foreground'
-          }`}>
-            <Music2 className="h-3.5 w-3.5" />
-            <span>{hasAudioInput ? 'Audio connected' : 'Connect an audio input'}</span>
-          </div>
-        ) : null}
-
-        <textarea
-          ref={promptTextareaRef}
-          value={promptDraft}
-          onChange={handlePromptChange}
-          onFocus={() => {
-            setIsPromptExpanded(true);
-            setIsPromptFocused(true);
-          }}
-          onBlur={async () => {
-            setIsPromptFocused(false);
-            setIsPromptExpanded(false);
-            await handlePromptBlur();
-          }}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') {
-              event.preventDefault();
-              setIsPromptFocused(false);
-              setIsPromptExpanded(false);
-              event.currentTarget.blur();
-            }
-          }}
-          placeholder={isReadOnly ? '' : promptPlaceholder}
-          disabled={isReadOnly}
-          className={`node-stage-input nodrag nopan nowheel select-text w-full resize-none border-0 bg-transparent px-0 py-0 focus:outline-none min-h-[72px] text-[15px] leading-6 ${isReadOnly ? 'cursor-default' : ''}`}
-          style={{
-            colorScheme: 'dark',
-            backgroundColor: 'transparent',
-            backgroundImage: 'none',
-            color: 'var(--text-secondary)',
-            caretColor: 'var(--text-primary)',
-            boxShadow: 'none',
-            borderColor: 'transparent',
-            WebkitAppearance: 'none',
-            appearance: 'none',
-          }}
-        />
-      </div>
-    </NodeStagePrompt>
-  ) : (
-    <NodeStagePrompt
-      teaser={chromeState.showPromptTeaser ? (
-        <p className={`node-prompt-teaser-clamp text-[15px] leading-6 ${promptPreview ? 'text-foreground/82' : 'text-muted-foreground/82'}`}>
-          {promptPreview || promptPlaceholder}
-        </p>
-      ) : null}
-      expanded={chromeState.showPromptEditor}
-    >
-      <div
-        className="flex flex-col gap-3 nodrag nopan"
-        onPointerDown={(event) => event.stopPropagation()}
-      >
-        <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs ${
-          hasVideoInput
-            ? 'bg-green-500/10 text-green-500 dark:text-green-400'
-            : 'bg-muted/50 text-muted-foreground'
-        }`}>
-          <Video className="h-3.5 w-3.5" />
-          <span>{hasVideoInput ? 'Video connected' : 'Connect a video input'}</span>
-        </div>
-
-        <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs ${
-          hasAudioInput
-            ? 'bg-green-500/10 text-green-500 dark:text-green-400'
-            : 'bg-muted/50 text-muted-foreground'
-        }`}>
-          <Music2 className="h-3.5 w-3.5" />
-          <span>{hasAudioInput ? 'Audio connected' : 'Connect an audio input'}</span>
-        </div>
-
-        <div className="rounded-xl border border-border/60 bg-muted/30 p-3 text-sm text-muted-foreground">
-          Sync Lipsync uses the incoming audio track directly and ignores prompt guidance. Choose the sync mode in settings, then run the node.
-        </div>
-      </div>
-    </NodeStagePrompt>
-  );
-
-  const secondaryContent = data.error ? (
-    <p className="px-1 text-xs text-red-400">{data.error}</p>
-  ) : null;
-
-  return (
-    <div className="relative">
-      <CanvasNodeShell
-        title={isEditingName && !isReadOnly ? (
+      {/* Node Title */}
+      <div className="flex items-center gap-2 mb-2 text-sm font-medium text-pink-400">
+        <Film className="h-4 w-4" />
+        {isEditingName ? (
           <input
             ref={nameInputRef}
             type="text"
@@ -462,126 +203,229 @@ function VideoAudioNodeComponent({ id, data, selected }: NodeProps<VideoAudioNod
                 setIsEditingName(false);
               }
             }}
-            className="node-input rounded-none border-0 border-b bg-transparent px-0.5 outline-none"
+            className="bg-transparent border-b outline-none px-0.5 min-w-[100px]"
+            style={{ borderColor: 'var(--input-border)', color: 'var(--text-secondary)' }}
           />
         ) : (
           <span
-            onDoubleClick={() => !isReadOnly && setIsEditingName(true)}
-            className={isReadOnly ? 'cursor-default' : 'cursor-text'}
+            onDoubleClick={() => setIsEditingName(true)}
+            className="cursor-text transition-colors hover:opacity-80"
           >
             {data.name || 'Video Audio'}
           </span>
         )}
-        icon={<Film className="h-4 w-4" />}
-        selected={selected}
-        hovered={isHovered}
-        displayMode={displayMode}
-        hasOutput={!!data.outputUrl}
-        interactiveMode="prompt"
-        stageMinHeight={data.outputUrl ? undefined : 280}
-        topToolbar={topToolbar}
-        footerRail={footerRail}
-        promptOverlay={promptOverlay}
-        shellMode="visual-stage"
-        secondaryContent={secondaryContent}
-        titleClassName="text-[var(--node-title-speech)]"
-        cardClassName={data.isGenerating ? 'animate-subtle-pulse generating-border-subtle' : undefined}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-        focusProps={focusProps}
+      </div>
+
+      {/* Main Node Card */}
+      <div
+        className={`
+          w-[380px] rounded-2xl overflow-hidden
+          transition-[box-shadow,ring-color] duration-150
+          ${data.isGenerating
+            ? 'ring-[2.5px] ring-pink-500 shadow-lg shadow-pink-500/20 animate-pulse-glow'
+            : selected
+              ? 'ring-[2.5px] ring-pink-500 shadow-lg shadow-pink-500/10'
+              : 'ring-1 ring-border hover:ring-muted-foreground/30'
+          }
+        `}
+        style={{ backgroundColor: 'var(--node-card-bg)' }}
       >
-        {data.isGenerating ? (
-          <div className="flex min-h-[240px] flex-1 flex-col items-center justify-center gap-4 px-6 pb-[120px] text-center">
-            <div>
-              <p
-                className="bg-clip-text text-base font-semibold text-transparent"
-                style={{
-                  backgroundImage:
-                    'linear-gradient(90deg, hsl(var(--muted-foreground)/0.45) 0%, hsl(var(--foreground)/0.95) 45%, hsl(var(--muted-foreground)/0.45) 100%)',
-                  backgroundSize: '200% 100%',
-                  animation: 'shimmer-text 2s ease-in-out infinite',
-                }}
-              >
-                {videoAudioModel === 'sync-lipsync-v2-pro' ? 'Syncing lips to audio...' : 'Adding audio to video...'}
-              </p>
-              <p className="text-muted-foreground text-xs mt-1">This may take a few minutes</p>
+        {/* Content Area */}
+        <div className="relative">
+          {/* Loading State */}
+          {data.isGenerating ? (
+            <div className="p-4 min-h-[200px] flex flex-col items-center justify-center gap-4">
+              <div className="relative">
+                <div className="w-16 h-16 rounded-full border-4 border-border border-t-pink-500 animate-spin" />
+                <Loader2 className="absolute inset-0 m-auto h-6 w-6 text-pink-500 animate-pulse" />
+              </div>
+              <div className="text-center">
+                <p className="text-foreground text-sm font-medium">Adding audio to video...</p>
+                <p className="text-muted-foreground text-xs mt-1">This may take a few minutes</p>
+              </div>
+            </div>
+          ) : data.outputUrl ? (
+            /* Video Preview */
+            <div className="relative overflow-hidden">
+              <video
+                ref={videoRef}
+                src={data.outputUrl}
+                controls
+                className="w-full h-auto rounded-t-xl"
+                style={{ maxHeight: '250px' }}
+              />
+              {/* Info overlay */}
+              <div className="absolute top-2 right-2 flex items-center gap-1.5 px-2 py-1 bg-black/60 backdrop-blur-sm rounded text-xs text-zinc-300">
+                <Music2 className="h-3 w-3 text-pink-400" />
+                <span>Audio synced</span>
+              </div>
+              {/* Prompt overlay */}
+              {data.prompt && (
+                <div className="absolute bottom-10 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-3 pt-6 pointer-events-none">
+                  <p className="text-white text-sm line-clamp-2">{data.prompt}</p>
+                </div>
+              )}
+            </div>
+          ) : (
+            /* Input State */
+            <div className="p-4 min-h-[180px]">
+              {/* Connection Status */}
+              <div className={`mb-3 p-2 rounded-lg text-xs ${
+                hasVideoInput
+                  ? 'bg-green-500/10 text-green-400 border border-green-500/20'
+                  : 'bg-muted/50 text-muted-foreground border border-border'
+              }`}>
+                <div className="flex items-center gap-2">
+                  <Video className="h-3.5 w-3.5" />
+                  <span>{hasVideoInput ? 'Video connected' : 'Connect a video input'}</span>
+                </div>
+              </div>
+
+              {/* Audio Description */}
+              <textarea
+                value={data.prompt}
+                onChange={handlePromptChange}
+                placeholder="Describe the audio you want (optional)..."
+                className="w-full h-[80px] bg-transparent border-none text-sm resize-none focus:outline-none node-input"
+                style={{ color: 'var(--text-secondary)' }}
+              />
+            </div>
+          )}
+
+          {/* Error Display */}
+          {data.error && (
+            <p className="text-xs text-red-400 px-4 pb-2">{data.error}</p>
+          )}
+        </div>
+
+        {/* Settings Panel */}
+        {showSettings && (
+          <div className="px-4 py-3 border-t border-border space-y-3">
+            <div className="space-y-2">
+              <label className="text-xs text-muted-foreground">Duration: {data.duration}s</label>
+              <Slider
+                value={[data.duration]}
+                onValueChange={handleDurationChange}
+                min={1}
+                max={30}
+                step={1}
+                className="w-full"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs text-muted-foreground">CFG Strength: {data.cfgStrength.toFixed(1)}</label>
+              <Slider
+                value={[data.cfgStrength]}
+                onValueChange={handleCfgStrengthChange}
+                min={1}
+                max={10}
+                step={0.5}
+                className="w-full"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs text-muted-foreground">Negative Prompt (optional)</label>
+              <input
+                type="text"
+                value={data.negativePrompt || ''}
+                onChange={handleNegativePromptChange}
+                placeholder="Sounds to avoid..."
+                className="w-full px-2 py-1.5 bg-muted border border-border rounded text-xs text-foreground placeholder:text-muted-foreground/60"
+              />
             </div>
           </div>
-        ) : data.outputUrl ? (
-          <div className="relative min-h-[200px] overflow-hidden rounded-[inherit] pb-[120px]">
-            <video
-              ref={videoRef}
-              src={data.outputUrl}
-              controls
-              className="w-full h-auto"
-              style={{ maxHeight: '300px' }}
-            />
-            <div className="absolute top-2 right-2 flex items-center gap-1.5 px-2 py-1 bg-black/60 backdrop-blur-sm rounded text-xs text-zinc-300">
-              <Music2 className="h-3 w-3 text-primary/80" />
-              <span>{videoAudioModel === 'sync-lipsync-v2-pro' ? 'Lip sync ready' : 'Audio synced'}</span>
-            </div>
-          </div>
-        ) : (
-          <div className="min-h-[280px] flex-1" />
         )}
-      </CanvasNodeShell>
+
+        {/* Bottom Toolbar */}
+        <div className="flex items-center flex-wrap gap-1.5 px-3 py-2.5 node-bottom-toolbar">
+          {/* Duration Badge */}
+          <div className="px-2 py-1 bg-muted/80 rounded-md text-xs text-muted-foreground">
+            {data.duration}s
+          </div>
+
+          {/* CFG Badge */}
+          <div className="px-2 py-1 bg-muted/80 rounded-md text-xs text-muted-foreground">
+            CFG: {data.cfgStrength}
+          </div>
+
+          {/* Settings Toggle */}
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => setShowSettings(!showSettings)}
+            className={`h-7 w-7 shrink-0 ${
+              showSettings
+                ? 'text-pink-400 bg-pink-500/20 hover:bg-pink-500/30'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+            }`}
+          >
+            <Settings className="h-3.5 w-3.5" />
+          </Button>
+
+          {/* Spacer */}
+          <div className="flex-1 min-w-0" />
+
+          {/* Generate/Refresh Button */}
+          <Button
+            onClick={handleGenerate}
+            disabled={!hasVideoInput || data.isGenerating}
+            size="icon-sm"
+            className="h-8 w-8 min-w-8 bg-pink-500 hover:bg-pink-400 text-white rounded-full disabled:opacity-40 shrink-0"
+          >
+            {data.isGenerating ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : data.outputUrl ? (
+              <RefreshCw className="h-4 w-4" />
+            ) : (
+              <Play className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
+      </div>
 
       {/* Input Handles - Left side */}
-      <div className={`absolute -left-3 z-10 group transition-opacity duration-200 ${showHandles || isConnected ? 'opacity-100' : 'opacity-0'}`} style={{ top: getPromptHeavyInputHandleTop(0) }}>
+      {/* Video Input - Top Left */}
+      <div className="absolute -left-3 group" style={{ top: '35%', transform: 'translateY(-50%)' }}>
         <div className="relative">
           <Handle
             type="target"
             position={Position.Left}
             id="video"
-            className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
+            className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-purple-500 !border-zinc-900 hover:!border-zinc-700"
           />
-          <Video className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-input-icon)]" />
+          <Video className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
         </div>
         <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
           Video Input
         </span>
       </div>
 
-      <div className={`absolute -left-3 z-10 group transition-opacity duration-200 ${showHandles || hasAudioInput || videoAudioCapabilities.requiresAudioInput ? 'opacity-100' : 'opacity-0'}`} style={{ top: getPromptHeavyInputHandleTop(1) }}>
-        <div className="relative">
-          <Handle
-            type="target"
-            position={Position.Left}
-            id="audio"
-            className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
-          />
-          <Music2 className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-input-icon)]" />
-        </div>
-        <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
-          Audio Input
-        </span>
-      </div>
-
-      <div className={`absolute -left-3 z-10 group transition-opacity duration-200 ${showTextInputHandle && (showHandles || isConnected) ? 'opacity-100' : 'opacity-0'}`} style={{ top: getPromptHeavyInputHandleTop(2) }}>
+      {/* Text Input - Bottom Left */}
+      <div className="absolute -left-3 group" style={{ top: '65%', transform: 'translateY(-50%)' }}>
         <div className="relative">
           <Handle
             type="target"
             position={Position.Left}
             id="text"
-            className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
+            className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-yellow-400 !border-zinc-900 hover:!border-zinc-700"
           />
-          <Type className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-input-icon)]" />
+          <Type className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
         </div>
         <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
-          Prompt Input
+          Audio Description
         </span>
       </div>
 
       {/* Output Handle - Right side */}
-      <div className={`absolute -right-3 z-10 group transition-opacity duration-200 ${showHandles ? 'opacity-100' : 'opacity-0'}`} style={{ top: '50%', transform: 'translateY(-50%)' }}>
+      <div className="absolute -right-3 group" style={{ top: '50%', transform: 'translateY(-50%)' }}>
         <div className="relative">
           <Handle
             type="source"
             position={Position.Right}
             id="output"
-            className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
+            className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-indigo-400 !border-zinc-900 hover:!border-zinc-700"
           />
-          <Film className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-output-icon)]" />
+          <Film className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
         </div>
         <span className="absolute right-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
           Video with Audio

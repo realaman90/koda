@@ -9,7 +9,7 @@
  * Colors, spacing, and typography are pixel-matched to the design.
  */
 
-import { useState, useCallback, useRef, useEffect, useReducer } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { MemoizedMarkdown } from '@/components/common/memoized-markdown';
@@ -20,6 +20,7 @@ import {
   Loader2,
   ChevronUp,
   ChevronDown,
+  ChevronRight,
   ListChecks,
   Check,
   X,
@@ -214,26 +215,25 @@ interface ThinkingBlockProps {
 export function ThinkingBlock({ thinking, reasoning, isStreaming, startedAt, endedAt, maxReasoningHeight = 80 }: ThinkingBlockProps) {
   const [expanded, setExpanded] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [now, setNow] = useState(() => Date.now());
+  const [elapsed, setElapsed] = useState(0);
 
   const displayText = reasoning || thinking;
 
-  // Tick a local clock while streaming. Elapsed seconds are derived from timestamps.
+  // Compute elapsed time: live timer when streaming, static from timestamps when done
   useEffect(() => {
     if (isStreaming && startedAt) {
+      const start = new Date(startedAt).getTime();
+      setElapsed(Math.round((Date.now() - start) / 1000));
       const timer = setInterval(() => {
-        setNow(Date.now());
+        setElapsed(Math.round((Date.now() - start) / 1000));
       }, 1000);
       return () => clearInterval(timer);
+    } else if (startedAt && endedAt) {
+      const start = new Date(startedAt).getTime();
+      const end = new Date(endedAt).getTime();
+      setElapsed(Math.round((end - start) / 1000));
     }
   }, [isStreaming, startedAt, endedAt]);
-
-  const elapsed = (() => {
-    if (!startedAt) return 0;
-    const start = new Date(startedAt).getTime();
-    const end = isStreaming ? now : endedAt ? new Date(endedAt).getTime() : now;
-    return Math.max(0, Math.round((end - start) / 1000));
-  })();
 
   // Auto-scroll while streaming
   useEffect(() => {
@@ -250,9 +250,9 @@ export function ThinkingBlock({ thinking, reasoning, isStreaming, startedAt, end
         <div className="flex items-center gap-1.5 px-2.5 py-1.5">
           <Loader2 className="w-3 h-3 text-[var(--an-text-muted)] animate-spin shrink-0" />
           <span
-            className="text-[11px] font-medium text-[var(--an-text-muted)]"
+            className="text-[11px] font-medium bg-clip-text text-transparent"
             style={{
-              backgroundImage: 'none',
+              backgroundImage: 'linear-gradient(90deg, #A1A1AA 0%, #FAFAFA 40%, #A1A1AA 60%, #71717A 100%)',
               backgroundSize: '200% 100%',
               animation: 'think-shimmer 2s linear infinite',
             }}
@@ -392,7 +392,7 @@ function summarizeToolOutput(toolName: string, output: string | undefined): stri
 // ─── Friendly Error Messages ──────────────────────────────────────────
 // Converts raw technical errors to user-friendly messages
 
-function getFriendlyErrorMessage(toolName: string): string {
+function getFriendlyErrorMessage(toolName: string, rawError: string): string {
   // Map tool names to user-friendly error messages
   const toolErrorMessages: Record<string, string> = {
     sandbox_create: 'Setup taking longer than expected',
@@ -520,7 +520,7 @@ export function ToolCallCard({ item }: { item: ToolCallItem }) {
           <div className="flex items-center gap-1.5">
             <TriangleAlert className="w-3 h-3 text-[#EF4444] shrink-0" />
             <span className="text-[11px] font-medium text-[#FCA5A5]">
-              {getFriendlyErrorMessage(item.toolName)}
+              {getFriendlyErrorMessage(item.toolName, item.error!)}
             </span>
           </div>
         </div>
@@ -739,30 +739,17 @@ export function LivePreviewCard({
   onShowPreview,
 }: LivePreviewCardProps) {
   const [isExpanded, setIsExpanded] = useState(expanded);
-  const [previewStateInternal, dispatchPreviewState] = useReducer(
-    (state: { hasError: boolean; isLoading: boolean }, action: 'reset' | 'loaded' | 'error') => {
-      switch (action) {
-        case 'reset':
-          return { hasError: false, isLoading: true };
-        case 'loaded':
-          return { hasError: false, isLoading: false };
-        case 'error':
-          return { hasError: true, isLoading: false };
-        default:
-          return state;
-      }
-    },
-    { hasError: false, isLoading: true },
-  );
+  const [hasError, setHasError] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const { hasError, isLoading } = previewStateInternal;
 
   // Listen for errors from the iframe via postMessage
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       // Check if message is from our iframe and indicates an error
       if (event.data?.type === 'animation-error' || event.data?.error) {
-        dispatchPreviewState('error');
+        setHasError(true);
+        setIsLoading(false);
       }
     };
     window.addEventListener('message', handleMessage);
@@ -771,21 +758,24 @@ export function LivePreviewCard({
 
   // Reset error state when URL changes
   useEffect(() => {
-    dispatchPreviewState('reset');
+    setHasError(false);
+    setIsLoading(true);
   }, [previewUrl]);
 
   const handleIframeLoad = useCallback(() => {
-    dispatchPreviewState('loaded');
+    setIsLoading(false);
     // Check if iframe content has an error (can't directly access cross-origin)
     // The animation will post a message if it errors
   }, []);
 
   const handleIframeError = useCallback(() => {
-    dispatchPreviewState('error');
+    setHasError(true);
+    setIsLoading(false);
   }, []);
 
   const handleRefresh = useCallback(() => {
-    dispatchPreviewState('reset');
+    setHasError(false);
+    setIsLoading(true);
     if (iframeRef.current) {
       // Force reload by setting src to itself
       const currentSrc = iframeRef.current.src;
@@ -962,10 +952,6 @@ interface VideoCardProps {
   onRegenerate?: () => void;
   /** Whether this is the active preview (show buttons) or just a timeline item */
   isActivePreview?: boolean;
-  /** Suggested semantic motion edits shown as quick chips */
-  semanticEditOptions?: string[];
-  /** Handle quick semantic edit selection */
-  onSemanticEdit?: (phrase: string) => void;
 }
 
 // Check if URL is a sandbox URL (ephemeral, won't work after sandbox destroyed)
@@ -978,8 +964,6 @@ export function VideoCard({
   onAccept,
   onRegenerate,
   isActivePreview = false,
-  semanticEditOptions = [],
-  onSemanticEdit,
 }: VideoCardProps) {
   const [isExpanded, setIsExpanded] = useState(expanded);
   const [loadError, setLoadError] = useState(false);
@@ -1039,36 +1023,21 @@ export function VideoCard({
 
       {/* Action buttons (only for active preview) */}
       {isActivePreview && onAccept && onRegenerate && (
-        <div className="p-2 space-y-2">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onAccept}
-              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md bg-[#14532D] text-[#4ADE80] text-[11px] font-medium hover:bg-[#166534] transition-colors"
-            >
-              <Check className="w-3 h-3" />
-              Accept
-            </button>
-            <button
-              onClick={onRegenerate}
-              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md bg-[var(--an-bg-card)] text-[var(--an-text-muted)] text-[11px] font-medium hover:bg-[var(--an-bg-hover)] transition-colors"
-            >
-              <RotateCcw className="w-3 h-3" />
-              Regenerate
-            </button>
-          </div>
-          {semanticEditOptions.length > 0 && onSemanticEdit && (
-            <div className="flex flex-wrap gap-1">
-              {semanticEditOptions.map((phrase) => (
-                <button
-                  key={phrase}
-                  onClick={() => onSemanticEdit(phrase)}
-                  className="px-2 py-1 rounded-md border border-[var(--an-border-input)] bg-[var(--an-bg-card)] text-[10px] text-[var(--an-text-dim)] hover:border-[var(--an-border-hover)] hover:text-[var(--an-text-muted)] transition-colors"
-                >
-                  {phrase}
-                </button>
-              ))}
-            </div>
-          )}
+        <div className="flex items-center gap-2 p-2">
+          <button
+            onClick={onAccept}
+            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md bg-[#14532D] text-[#4ADE80] text-[11px] font-medium hover:bg-[#166534] transition-colors"
+          >
+            <Check className="w-3 h-3" />
+            Accept
+          </button>
+          <button
+            onClick={onRegenerate}
+            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md bg-[var(--an-bg-card)] text-[var(--an-text-muted)] text-[11px] font-medium hover:bg-[var(--an-bg-hover)] transition-colors"
+          >
+            <RotateCcw className="w-3 h-3" />
+            Regenerate
+          </button>
         </div>
       )}
     </div>
@@ -1162,26 +1131,26 @@ export function StreamingPlaceholder({ activeToolName }: StreamingPlaceholderPro
       {/* Animated flower/bloom loader */}
       <div className="relative w-3 h-3 flex items-center justify-center">
         <span
-          className="absolute w-1.5 h-1.5 rounded-full bg-[#3B82F6]"
+          className="absolute w-1.5 h-1.5 rounded-full bg-[#8B5CF6]"
           style={{ animation: 'bloom-center 1.5s ease-in-out infinite' }}
         />
         <span
-          className="absolute w-1 h-1 rounded-full bg-[#60A5FA]"
+          className="absolute w-1 h-1 rounded-full bg-[#A78BFA]"
           style={{ animation: 'bloom-petal 1.5s ease-in-out infinite', animationDelay: '0s' }}
         />
         <span
-          className="absolute w-1 h-1 rounded-full bg-[#93C5FD]"
+          className="absolute w-1 h-1 rounded-full bg-[#C4B5FD]"
           style={{ animation: 'bloom-petal 1.5s ease-in-out infinite', animationDelay: '0.3s' }}
         />
         <span
-          className="absolute w-1 h-1 rounded-full bg-[#BFDBFE]"
+          className="absolute w-1 h-1 rounded-full bg-[#DDD6FE]"
           style={{ animation: 'bloom-petal 1.5s ease-in-out infinite', animationDelay: '0.6s' }}
         />
       </div>
       <p
-        className="text-[11px] font-medium text-[var(--an-text-muted)]"
+        className="text-[11px] font-medium bg-clip-text text-transparent"
         style={{
-          backgroundImage: 'none',
+          backgroundImage: 'linear-gradient(90deg, #52525B 0%, #A1A1AA 30%, #52525B 50%, #71717A 80%, #52525B 100%)',
           backgroundSize: '200% 100%',
           animation: 'shimmer-text 2s ease-in-out infinite',
         }}

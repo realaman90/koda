@@ -67,13 +67,6 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<GroupNodeType>) {
     deleteNode(id);
   }, [id, deleteNode]);
 
-  const handleResize = useCallback(
-    (_: unknown, params: { width: number; height: number }) => {
-      updateNodeData(id, { width: params.width, height: params.height }, true);
-    },
-    [id, updateNodeData]
-  );
-
   const handleResizeEnd = useCallback(
     (_: unknown, params: { width: number; height: number }) => {
       updateNodeData(id, { width: params.width, height: params.height });
@@ -83,7 +76,7 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<GroupNodeType>) {
 
   return (
     <div
-      className="node-drag-handle node-drag-surface relative rounded-2xl"
+      className="relative rounded-2xl"
       style={containerStyle}
     >
       {/* Node Resizer - invisible handles, resize from edges */}
@@ -93,7 +86,6 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<GroupNodeType>) {
         isVisible={selected}
         lineClassName="!border-transparent"
         handleClassName="!opacity-0 !w-4 !h-4"
-        onResize={handleResize}
         onResizeEnd={handleResizeEnd}
       />
 
@@ -139,7 +131,7 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<GroupNodeType>) {
       )}
 
       {/* Title - Inside top-left of container */}
-      <div className="absolute top-3 left-4 rounded-lg px-2 py-1">
+      <div className="absolute top-3 left-4">
         {isEditingName ? (
           <input
             ref={nameInputRef}
@@ -168,7 +160,7 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<GroupNodeType>) {
       </div>
 
       {/* Content Area - centered placeholder text */}
-      <div className="pointer-events-none flex h-full items-center justify-center text-sm text-zinc-500">
+      <div className="flex items-center justify-center h-full text-zinc-500 text-sm">
         Drag elements here
       </div>
 

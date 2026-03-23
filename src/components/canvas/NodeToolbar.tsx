@@ -36,7 +36,6 @@ import {
   Mic,
   Film,
   Clapperboard,
-  PenTool,
   Search,
   Upload,
   ChevronDown,
@@ -44,17 +43,11 @@ import {
 } from 'lucide-react';
 import { PluginLauncher } from '@/components/plugins/PluginLauncher';
 import { uploadAsset } from '@/lib/assets/upload';
-import { evaluatePluginLaunchById, emitPluginPolicyAuditEvent } from '@/lib/plugins/launch-policy';
-import { toast } from 'sonner';
 // Import official plugins to register them
 import '@/lib/plugins/official/storyboard-generator';
 import '@/lib/plugins/official/product-shot';
 import '@/lib/plugins/official/agents/animation-generator';
 import '@/lib/plugins/official/agents/motion-analyzer';
-import '@/lib/plugins/official/agents/svg-studio';
-import '@/lib/plugins/official/agents/glyph';
-import '@/lib/plugins/official/agents/prompt-studio';
-import '@/lib/plugins/official/image-to-pdf';
 import {
   Tooltip,
   TooltipContent,
@@ -67,6 +60,7 @@ interface NodeToolbarProps {
 }
 
 export function NodeToolbar({ onPluginLaunch }: NodeToolbarProps) {
+  const nodes = useCanvasStore((state) => state.nodes);
   const addNode = useCanvasStore((state) => state.addNode);
   const undo = useCanvasStore((state) => state.undo);
   const redo = useCanvasStore((state) => state.redo);
@@ -82,12 +76,19 @@ export function NodeToolbar({ onPluginLaunch }: NodeToolbarProps) {
   const [showPluginLauncher, setShowPluginLauncher] = useState(false);
   const pluginButtonRef = useRef<HTMLButtonElement>(null);
 
+  // Check if there are any generators with prompts
+  const hasRunnableGenerators = nodes.some((n) => {
+    if (n.type !== 'imageGenerator') return false;
+    const data = n.data as { prompt?: string };
+    return !!data.prompt;
+  });
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [utilitiesExpanded, setUtilitiesExpanded] = useState(false);
   const addMenuRef = useRef<HTMLDivElement>(null);
   const addMenuDropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [addMenuPosition, setAddMenuPosition] = useState({ x: -9999, y: -9999 });
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -101,9 +102,28 @@ export function NodeToolbar({ onPluginLaunch }: NodeToolbarProps) {
       document.addEventListener('mousedown', handleClickOutside);
       // Focus search input when menu opens
       setTimeout(() => searchInputRef.current?.focus(), 50);
+      // Position dropdown clamped to viewport
+      requestAnimationFrame(() => {
+        const btn = addMenuRef.current;
+        const dropdown = addMenuDropdownRef.current;
+        if (btn && dropdown) {
+          const btnRect = btn.getBoundingClientRect();
+          const dropRect = dropdown.getBoundingClientRect();
+          const pad = 8;
+          const x = btnRect.right + 8;
+          let y = btnRect.top;
+          // Clamp bottom
+          if (y + dropRect.height > window.innerHeight - pad) {
+            y = window.innerHeight - dropRect.height - pad;
+          }
+          y = Math.max(pad, y);
+          setAddMenuPosition({ x, y });
+        }
+      });
     } else {
       setSearchQuery('');
       setUtilitiesExpanded(false);
+      setAddMenuPosition({ x: -9999, y: -9999 });
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showAddMenu]);
@@ -114,8 +134,7 @@ export function NodeToolbar({ onPluginLaunch }: NodeToolbarProps) {
   ) => {
     const position = getViewportCenter();
     const nodeType = creator({ x: 0, y: 0 }).type;
-    const currentNodes = useCanvasStore.getState().nodes;
-    const count = currentNodes.filter((n) => n.type === nodeType).length + 1;
+    const count = nodes.filter((n) => n.type === nodeType).length + 1;
     const node = baseName ? creator(position, `${baseName} ${count}`) : creator(position);
     addNode(node);
     setShowAddMenu(false);
@@ -124,7 +143,7 @@ export function NodeToolbar({ onPluginLaunch }: NodeToolbarProps) {
   const handleUpload = () => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'image/*,video/*,audio/*';
+    input.accept = 'image/*,video/*';
     input.multiple = true;
     input.onchange = (e) => {
       const files = (e.target as HTMLInputElement).files;
@@ -132,13 +151,11 @@ export function NodeToolbar({ onPluginLaunch }: NodeToolbarProps) {
         const position = getViewportCenter();
         Array.from(files).forEach(async (file, index) => {
           const isVideo = file.type.startsWith('video/');
-          const isAudio = file.type.startsWith('audio/');
-          const mediaType: 'image' | 'video' | 'audio' = isVideo ? 'video' : isAudio ? 'audio' : 'image';
           const node = createMediaNode({ x: position.x + index * 50, y: position.y + index * 50 });
           try {
             // Upload to server-side asset storage (local disk or R2)
             const asset = await uploadAsset(file, { nodeId: node.id });
-            node.data = { ...node.data, url: asset.url, type: mediaType };
+            node.data = { ...node.data, url: asset.url, type: isVideo ? 'video' : 'image' };
             addNode(node);
           } catch (err) {
             console.error('[NodeToolbar] Upload failed:', err);
@@ -149,20 +166,6 @@ export function NodeToolbar({ onPluginLaunch }: NodeToolbarProps) {
     input.click();
     setShowAddMenu(false);
   };
-
-  const guardPluginLaunch = useCallback((pluginId: string): boolean => {
-    const decision = evaluatePluginLaunchById(pluginId);
-    emitPluginPolicyAuditEvent({
-      source: 'toolbar',
-      decision,
-      metadata: { interaction: 'quick-add' },
-    });
-    if (!decision.allowed) {
-      toast.error(decision.reason);
-      return false;
-    }
-    return true;
-  }, []);
 
   const addMenuSections = useMemo(() => [
     {
@@ -217,53 +220,11 @@ export function NodeToolbar({ onPluginLaunch }: NodeToolbarProps) {
           id: 'animationGenerator',
           icon: <Clapperboard className="h-4 w-4 text-blue-400" />,
           label: 'Animation Generator',
-          action: () => {
-            if (!guardPluginLaunch('animation-generator')) return;
-            handleAddNode(
-              (pos, name) => createPluginNode(pos, 'animation-generator', name),
-              'Animation Generator'
-            );
-          },
+          action: () => handleAddNode(
+            (pos, name) => createPluginNode(pos, 'animation-generator', name),
+            'Animation Generator'
+          ),
           keywords: ['animation', 'animate', 'motion', 'theatre'],
-        },
-        {
-          id: 'svgStudio',
-          icon: <PenTool className="h-4 w-4 text-emerald-400" />,
-          label: 'SVG Studio',
-          action: () => {
-            if (!guardPluginLaunch('svg-studio')) return;
-            handleAddNode(
-              (pos, name) => createPluginNode(pos, 'svg-studio', name),
-              'SVG Studio'
-            );
-          },
-          keywords: ['svg', 'vector', 'icon', 'logo'],
-        },
-        {
-          id: 'glyph',
-          icon: <Type className="h-4 w-4 text-violet-400" />,
-          label: 'Glyph',
-          action: () => {
-            if (!guardPluginLaunch('glyph')) return;
-            handleAddNode(
-              (pos, name) => createPluginNode(pos, 'glyph', name),
-              'Glyph'
-            );
-          },
-          keywords: ['glyph', 'text', 'typography', 'font', 'letter'],
-        },
-        {
-          id: 'promptStudio',
-          icon: <Sparkle className="h-4 w-4 text-amber-400" />,
-          label: 'Prompt Studio',
-          action: () => {
-            if (!guardPluginLaunch('prompt-studio')) return;
-            handleAddNode(
-              (pos, name) => createPluginNode(pos, 'prompt-studio', name),
-              'Prompt Studio'
-            );
-          },
-          keywords: ['prompt', 'creative', 'director', 'enhance', 'image prompt', 'video prompt'],
         },
       ],
     },
@@ -372,7 +333,13 @@ export function NodeToolbar({ onPluginLaunch }: NodeToolbarProps) {
           {showAddMenu && (
             <div
               ref={addMenuDropdownRef}
-              className="absolute left-[calc(100%+8px)] top-0 w-[220px] max-h-[calc(100dvh-16px)] bg-popover border border-border rounded-xl shadow-xl overflow-hidden z-50 animate-in fade-in slide-in-from-left-2 duration-150 flex flex-col"
+              className="fixed w-[220px] bg-popover border border-border rounded-xl shadow-xl overflow-hidden z-50 animate-in fade-in slide-in-from-left-2 duration-150 flex flex-col"
+              style={{
+                left: addMenuPosition.x,
+                top: addMenuPosition.y,
+                maxHeight: addMenuPosition.y > 0 ? `calc(100vh - ${addMenuPosition.y}px - 8px)` : undefined,
+                visibility: addMenuPosition.x === -9999 ? 'hidden' : 'visible',
+              }}
             >
               {/* Search Input */}
               <div className="p-2 border-b border-border">
