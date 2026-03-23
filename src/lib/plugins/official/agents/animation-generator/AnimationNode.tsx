@@ -12,10 +12,9 @@
 import { memo, useCallback, useMemo, useEffect, useState, useRef } from 'react';
 import type { NodeProps, Node } from '@xyflow/react';
 import { Handle, Position, useUpdateNodeInternals } from '@xyflow/react';
-import { Clapperboard, Image, Video, X, Code } from 'lucide-react';
+import { Clapperboard, Plus, Minus, Image, Video, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useCanvasStore } from '@/stores/canvas-store';
-import { useSettingsStore } from '@/stores/settings-store';
 
 // Chat components
 import { ChatInput } from './components';
@@ -49,16 +48,15 @@ import type {
   ThinkingBlockItem,
   MediaEntry,
   FormField,
-  MotionPreset,
-  MotionSpec,
-  MotionIntentChips,
-  MotionVariantId,
 } from './types';
 
 // ─── Constants ──────────────────────────────────────────────────────────
+const MAX_IMAGE_REFS = 8;
+const MAX_VIDEO_REFS = 4;
 const HANDLE_SPACING = 32;
 const IMAGE_HANDLE_START = 70;
-// Visual gap between image and video handle groups for readability
+// Gap between last image +/- button and first video handle
+// Must accommodate: +button(16px) + gap(4px) + -button(16px) + padding(12px) = ~48px
 const VIDEO_HANDLE_START_OFFSET = 48;
 
 /** Tool names that should appear as cards in the chat timeline */
@@ -79,55 +77,6 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
 /** UI tools that update state silently — not shown in the timeline */
 const UI_TOOLS = new Set(['update_todo', 'batch_update_todos', 'set_thinking', 'add_message', 'request_approval', 'analyze_prompt']);
 
-const DEFAULT_SEMANTIC_MOTION_CHIPS = [
-  'Make intro 20% slower',
-  'Reduce bounce',
-  'Hold final frame 1s',
-  'Make transitions smoother',
-] as const;
-
-const GUIDED_MOTION_GROUPS: Array<{
-  key: keyof MotionIntentChips;
-  label: string;
-  options: Array<{ id: MotionIntentChips[keyof MotionIntentChips]; label: string }>;
-}> = [
-  {
-    key: 'energy',
-    label: 'Energy',
-    options: [
-      { id: 'calm', label: 'Calm' },
-      { id: 'medium', label: 'Medium' },
-      { id: 'energetic', label: 'Energetic' },
-    ],
-  },
-  {
-    key: 'feel',
-    label: 'Feel',
-    options: [
-      { id: 'smooth', label: 'Smooth' },
-      { id: 'snappy', label: 'Snappy' },
-      { id: 'bouncy', label: 'Bouncy' },
-    ],
-  },
-  {
-    key: 'camera',
-    label: 'Camera',
-    options: [
-      { id: 'static', label: 'Static' },
-      { id: 'subtle', label: 'Subtle' },
-      { id: 'dynamic', label: 'Dynamic' },
-    ],
-  },
-  {
-    key: 'transitions',
-    label: 'Transitions',
-    options: [
-      { id: 'minimal', label: 'Minimal' },
-      { id: 'cinematic', label: 'Cinematic' },
-    ],
-  },
-];
-
 // ─── Timeline item union ────────────────────────────────────────────────
 // Simplified: only user messages, assistant messages, plan cards, and videos
 // Tool calls and thinking blocks are hidden for cleaner UX
@@ -147,19 +96,6 @@ import {
   resolveMediaCache,
   hydrateMediaCache,
 } from './media-cache';
-import { animationDebugLog } from './debug';
-import {
-  applySemanticMotionEdit,
-  buildMotionVariants,
-  createGuidedMotionSpec,
-  createMotionSpec,
-  deriveGuidedChipsFromPrompt,
-  extractReferenceMotionProfile,
-  isLowConfidenceMotionPrompt,
-  makeMotionPresetName,
-  seedMotionSpecFromReference,
-} from './motion-spec';
-import { useNodeDisplayMode } from '@/components/canvas/nodes/useNodeDisplayMode';
 
 // ─── Global sequence counter for stable chronological ordering ──────────
 // This ensures events are ordered correctly even when timestamps are identical
@@ -190,36 +126,10 @@ interface AnimationNodeProps extends NodeProps<AnimationNodeType> {}
 function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const nodes = useCanvasStore((s) => s.nodes);
-  const isReadOnly = useCanvasStore((s) => s.isReadOnly);
-  const addToHistory = useSettingsStore((s) => s.addToHistory);
   const updateNodeInternals = useUpdateNodeInternals();
-  const { displayMode, focusProps } = useNodeDisplayMode(selected);
+  const [isHovered, setIsHovered] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsPosition, setSettingsPosition] = useState({ x: 0, y: 0 });
-  const [settingsAnchorRect, setSettingsAnchorRect] = useState<{ left: number; right: number; top: number; bottom: number; width: number; height: number } | null>(null);
-  const [guidedPrompt, setGuidedPrompt] = useState<string | null>(null);
-  const [guidedFollowUp, setGuidedFollowUp] = useState('');
-  const [guidedChips, setGuidedChips] = useState<MotionIntentChips>(() => createMotionSpec().chips);
-  const [guidedVariant, setGuidedVariant] = useState<MotionVariantId>('balanced');
-
-  // Rename state
-  const [isEditingName, setIsEditingName] = useState(false);
-  const [nodeName, setNodeName] = useState(data.name || 'Animation Generator');
-  const nameInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (isEditingName && nameInputRef.current) {
-      nameInputRef.current.focus();
-      nameInputRef.current.select();
-    }
-  }, [isEditingName]);
-
-  const handleNameSubmit = useCallback(() => {
-    setIsEditingName(false);
-    if (nodeName.trim() && nodeName !== (data.name || 'Animation Generator')) {
-      updateNodeData(id, { name: nodeName.trim() });
-    }
-  }, [id, nodeName, data.name, updateNodeData]);
 
   // Streaming hook
   const { isStreaming, stream: streamToAgent, abort: abortStream } = useAnimationStream();
@@ -276,8 +186,6 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
   const aspectRatio: AspectRatio = data.aspectRatio || '16:9';
   const duration: number = data.duration || 5;
   const techniques: string[] = data.techniques || [];
-  const motionSpec: MotionSpec = data.motionSpec || createMotionSpec();
-  const motionPresets: MotionPreset[] = data.motionPresets || [];
 
   // Design spec fields for stream context (passed to agent on every call)
   const designSpec = data.designSpec;
@@ -326,18 +234,10 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     const outputs: Array<{ nodeId: string; name: string; type: 'image' | 'video'; url: string }> = [];
     nodes.forEach((node) => {
       if (node.id === id) return;
-      if (node.type === 'imageGenerator') {
+      if (node.type === 'imageGenerator' || node.type === 'media') {
         const d = node.data as Record<string, unknown>;
         const url = (d.outputUrl as string) || (d.imageUrl as string);
         if (url) outputs.push({ nodeId: node.id, name: (d.name as string) || 'Image', type: 'image', url });
-      }
-      if (node.type === 'media') {
-        const d = node.data as Record<string, unknown>;
-        // Media node uploads are stored in `url`; prefer it over any legacy keys.
-        const url = (d.url as string) || (d.outputUrl as string) || (d.imageUrl as string);
-        const mediaType = (d.type as string) === 'video' ? 'video' : 'image';
-        if (url && mediaType !== 'image' && mediaType !== 'video') return;
-        if (url) outputs.push({ nodeId: node.id, name: (d.name as string) || 'Media', type: mediaType, url });
       }
       if (node.type === 'videoGenerator') {
         const d = node.data as Record<string, unknown>;
@@ -391,55 +291,36 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       let mediaUrl: string | undefined;
       let mediaType: 'image' | 'video' = 'image';
       let mediaDescription: string | undefined;
-      let svgCode: string | undefined;
 
-      if (sourceNode.type === 'imageGenerator') {
+      if (sourceNode.type === 'imageGenerator' || sourceNode.type === 'media') {
         mediaUrl = (d.outputUrl as string) || (d.imageUrl as string) || (d.url as string);
         mediaType = 'image';
-        mediaDescription = (d.prompt as string) || (d.name as string) || undefined;
-      } else if (sourceNode.type === 'media') {
-        // Prefer explicit media node url (uploaded asset) over stale generation keys.
-        mediaUrl = (d.url as string) || (d.outputUrl as string) || (d.imageUrl as string);
-        const explicitType = d.type as string | undefined;
-        mediaType = explicitType === 'video' ? 'video' : 'image';
         mediaDescription = (d.prompt as string) || (d.name as string) || undefined;
       } else if (sourceNode.type === 'videoGenerator') {
         mediaUrl = d.outputUrl as string;
         mediaType = 'video';
         mediaDescription = (d.prompt as string) || (d.name as string) || undefined;
-      } else if (sourceNode.type === 'pluginNode' && d.pluginId === 'svg-studio') {
-        mediaUrl = (d.outputUrl as string) || ((d.state as Record<string, unknown> | undefined)?.asset as { url?: string } | undefined)?.url;
-        mediaType = 'image';
-        if (edge.sourceHandle === 'code-output') {
-          svgCode = (d.outputSvgCode as string) || (d.state as Record<string, unknown> | undefined)?.svg as string | undefined;
-          mediaDescription = (d.name as string) || 'SVG code';
-        } else {
-          mediaDescription = (d.name as string) || 'SVG asset';
-        }
       }
 
       // Skip video media for Theatre.js (no video ref support in Puppeteer rendering)
       if (engine === 'theatre' && mediaType === 'video') continue;
 
-      if (mediaUrl || svgCode) {
+      if (mediaUrl) {
         // Build a safe filename with proper extension and source node suffix to prevent collisions.
         // NOTE: edge.id starts with "xy-edge__" so slice(0,6) was always "xy-edg" — use source node ID instead.
         const baseName = ((d.name as string) || sourceNode.type || 'media')
           .replace(/[^a-zA-Z0-9_-]/g, '_')
           .toLowerCase();
-        const urlExt = mediaUrl?.split('?')[0].match(/\.(png|jpg|jpeg|gif|webp|svg|mp4|webm|mov)$/i)?.[1]?.toLowerCase();
-        const ext = svgCode ? 'svg' : (urlExt || (mediaType === 'video' ? 'mp4' : 'png'));
+        const urlExt = mediaUrl.split('?')[0].match(/\.(png|jpg|jpeg|gif|webp|mp4|webm|mov)$/i)?.[1]?.toLowerCase();
+        const ext = urlExt || (mediaType === 'video' ? 'mp4' : 'png');
         const mediaName = `${baseName}_${edge.source.slice(-8)}.${ext}`;
 
         const entryId = `edge_${edge.id}`;
 
         // blob: URLs are browser-only — queue for async conversion to data: URL
-        if (mediaUrl?.startsWith('blob:')) {
+        if (mediaUrl.startsWith('blob:')) {
           blobConversions.push({ entryId, blobUrl: mediaUrl, edgeId: edge.id });
         }
-
-        // For SVG code entries without a URL, use empty string — the code itself is the payload
-        const effectiveUrl = mediaUrl || '';
 
         updatedEdgeMedia.push({
           id: entryId,
@@ -448,9 +329,8 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           sourceNodeId: edge.source,
           name: mediaName,
           type: mediaType,
-          dataUrl: effectiveUrl.startsWith('blob:') ? effectiveUrl : (effectiveUrl ? cacheIfLarge(entryId, effectiveUrl) : ''),
+          dataUrl: mediaUrl.startsWith('blob:') ? mediaUrl : cacheIfLarge(entryId, mediaUrl),
           description: mediaDescription,
-          ...(svgCode ? { svgCode } : {}),
         });
         changed = true;
       }
@@ -461,9 +341,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       const sourceNode = nodes.find((n) => n.id === entry.sourceNodeId);
       if (!sourceNode) continue;
       const d = sourceNode.data as Record<string, unknown>;
-      const currentUrl = sourceNode.type === 'media'
-        ? ((d.url as string) || (d.outputUrl as string) || (d.imageUrl as string) || '')
-        : ((d.outputUrl as string) || (d.imageUrl as string) || (d.url as string) || '');
+      const currentUrl = (d.outputUrl as string) || (d.imageUrl as string) || (d.url as string) || '';
       // Compare against resolved (real) URL, not the cached placeholder
       const resolvedUrl = entry.dataUrl.startsWith('cached:') ? (getCached(entry.id) || '') : entry.dataUrl;
       if (currentUrl && currentUrl !== resolvedUrl) {
@@ -481,14 +359,6 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       if (currentDesc !== entry.description) {
         entry.description = currentDesc;
         changed = true;
-      }
-      // Update SVG code if source node re-generated (code-output edge)
-      if (entry.svgCode !== undefined && sourceNode.type === 'pluginNode' && d.pluginId === 'svg-studio') {
-        const currentSvgCode = (d.outputSvgCode as string) || (d.state as Record<string, unknown> | undefined)?.svg as string | undefined;
-        if (currentSvgCode && currentSvgCode !== entry.svgCode) {
-          entry.svgCode = currentSvgCode;
-          changed = true;
-        }
       }
     }
 
@@ -517,7 +387,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
               const updated = current.map(m => m.id === entryId ? { ...m, dataUrl: cachedUrl } : m);
               updateNodeData(id, { media: updated });
             }
-            animationDebugLog(`[EdgeWatcher] Converted blob: → data: for ${entryId} (${Math.round(dataUrl.length / 1024)}KB)`);
+            console.log(`[EdgeWatcher] Converted blob: → data: for ${entryId} (${Math.round(dataUrl.length / 1024)}KB)`);
           } catch (err) {
             console.warn(`[EdgeWatcher] Failed to convert blob: URL for ${entryId}:`, err);
           }
@@ -689,13 +559,13 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
 
       onComplete: (fullText) => {
         const totalTime = pipelineStartRef.current ? ((Date.now() - pipelineStartRef.current) / 1000).toFixed(1) : '?';
-        animationDebugLog(`%c⏱ [Animation] Stream complete — total: ${totalTime}s`, 'color: #22C55E; font-weight: bold');
+        console.log(`%c⏱ [Animation] Stream complete — total: ${totalTime}s`, 'color: #22C55E; font-weight: bold');
         if (textFlushTimerRef.current) {
           clearTimeout(textFlushTimerRef.current);
           textFlushTimerRef.current = null;
         }
         const ls = getLatestState();
-        animationDebugLog(`[AnimationNode] onComplete: phase=${ls.phase}, versionsCount=${ls.versions?.length ?? 0}, hasPreview=${!!ls.preview?.videoUrl}`);
+        console.log(`[AnimationNode] onComplete: phase=${ls.phase}, versionsCount=${ls.versions?.length ?? 0}, hasPreview=${!!ls.preview?.videoUrl}`);
         // Strip any HTML tags from agent output — the LLM sometimes outputs <div> markup
         // (e.g. video-card divs) that should be handled by tool results, not displayed as text
         const trimmed = fullText.replace(/<[^>]*>/g, '').trim();
@@ -784,7 +654,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
 
         // ⏱ Tool call timing
         const elapsed = pipelineStartRef.current ? ((Date.now() - pipelineStartRef.current) / 1000).toFixed(1) : '?';
-        animationDebugLog(`%c⏱ [Animation] Tool call: ${event.toolName} — started at +${elapsed}s`, 'color: #3B82F6', event.args);
+        console.log(`%c⏱ [Animation] Tool call: ${event.toolName} — started at +${elapsed}s`, 'color: #3B82F6', event.args);
         toolTimersRef.current.set(event.toolCallId, { name: event.toolName, start: Date.now() });
 
         // ── Auto-label thinking based on tool call ──────────────────
@@ -973,7 +843,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           const toolDuration = ((Date.now() - timer.start) / 1000).toFixed(1);
           const pipelineElapsed = pipelineStartRef.current ? ((Date.now() - pipelineStartRef.current) / 1000).toFixed(1) : '?';
           const isFail = event.isError || (typeof event.result === 'object' && event.result !== null && (event.result as Record<string, unknown>).success === false);
-          animationDebugLog(
+          console.log(
             `%c⏱ [Animation] Tool result: ${timer.name} — took ${toolDuration}s (pipeline +${pipelineElapsed}s) ${isFail ? '❌ FAILED' : '✅'}`,
             isFail ? 'color: #EF4444; font-weight: bold' : 'color: #22C55E',
           );
@@ -1076,14 +946,14 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
             // Don't show message to user - agent will handle retry
           } else if (result.files && result.files.length > 0 && result.writtenToSandbox) {
             // Success - files were written to sandbox
-            animationDebugLog(`[AnimationNode] Code generated: ${result.files.length} files written to sandbox`);
+            console.log(`[AnimationNode] Code generated: ${result.files.length} files written to sandbox`);
             autoMarkTodo('setup', 'done');
           }
         }
 
         if (event.toolName === 'render_final') {
-          animationDebugLog(`[AnimationNode] Render tool result:`, JSON.stringify(event.result, null, 2));
-          animationDebugLog(`[AnimationNode] Current state: phase=${ls.phase}, versionsCount=${ls.versions?.length ?? 0}, existingUrls=${(ls.versions || []).map(v => v.videoUrl.split('?')[0].slice(-20)).join(', ')}`);
+          console.log(`[AnimationNode] Render tool result:`, JSON.stringify(event.result, null, 2));
+          console.log(`[AnimationNode] Current state: phase=${ls.phase}, versionsCount=${ls.versions?.length ?? 0}, existingUrls=${(ls.versions || []).map(v => v.videoUrl.split('?')[0].slice(-20)).join(', ')}`);
           const result = event.result as { success?: boolean; videoUrl?: string; duration?: number; versionId?: string; message?: string };
           if (result.success === false || event.isError) {
             // Log technical details, show friendly message
@@ -1095,9 +965,9 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
             const baseUrl = result.videoUrl.split('?')[0];
             const alreadyExists = ls.versions?.some(v => v.videoUrl.split('?')[0] === baseUrl);
             if (alreadyExists) {
-              animationDebugLog(`[AnimationNode] Skipping duplicate video version (URL already exists): ${baseUrl.slice(0, 60)}...`);
+              console.log(`[AnimationNode] Skipping duplicate video version (URL already exists): ${baseUrl.slice(0, 60)}...`);
             } else {
-            animationDebugLog(`[AnimationNode] Creating video version with URL:`, result.videoUrl);
+            console.log(`[AnimationNode] Creating video version with URL:`, result.videoUrl);
             // Add cache-busting timestamp to prevent browser from serving stale video
             const separator = result.videoUrl.includes('?') ? '&' : '?';
             const videoUrlWithCacheBust = `${result.videoUrl}${separator}t=${Date.now()}`;
@@ -1123,7 +993,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
               previewTimestamp: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
             };
-            animationDebugLog(`[AnimationNode] Updating state with video version:`, {
+            console.log(`[AnimationNode] Updating state with video version:`, {
               versionCount: newState.versions.length,
               activeVersionId: newState.activeVersionId,
               phase: newState.phase,
@@ -1135,18 +1005,10 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
             ls = newState;
             autoMarkTodo('render', 'done');
 
-            addToHistory({
-              type: 'video',
-              prompt: data.prompt || '',
-              model: data.engine || 'remotion',
-              status: 'completed',
-              result: { urls: [videoUrlWithCacheBust], duration },
-            });
-
             // Persist video to storage in background (async)
             // Skip if URL is already a permanent storage URL (from video-ready recovery)
             if (isPermanentUrl) {
-              animationDebugLog(`[AnimationNode] Video URL is already permanent — skipping save-video`);
+              console.log(`[AnimationNode] Video URL is already permanent — skipping save-video`);
             } else
             if (ls.sandboxId) {
               // Extract the file path from the sandbox URL
@@ -1155,7 +1017,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
               const filePath = pathMatch ? decodeURIComponent(pathMatch[1]) : 'output/final.mp4';
               const versionId = tempVersion.id; // Capture for async callback
 
-              animationDebugLog(`[AnimationNode] Saving video to permanent storage...`, { sandboxId: ls.sandboxId, filePath, versionId });
+              console.log(`[AnimationNode] Saving video to permanent storage...`, { sandboxId: ls.sandboxId, filePath, versionId });
 
               fetch('/api/plugins/animation/save-video', {
                 method: 'POST',
@@ -1176,7 +1038,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
                   return res.json();
                 })
                 .then((saved) => {
-                  animationDebugLog(`[AnimationNode] save-video response:`, saved);
+                  console.log(`[AnimationNode] save-video response:`, saved);
                   if (saved.success && saved.videoUrl) {
                     // Update the version with the permanent URL
                     const latestState = getLatestState();
@@ -1191,7 +1053,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
                         updatedAt: new Date().toISOString(),
                       },
                     });
-                    animationDebugLog(`[AnimationNode] Video URL updated to permanent storage: ${saved.videoUrl}`);
+                    console.log(`[AnimationNode] Video URL updated to permanent storage: ${saved.videoUrl}`);
                   } else {
                     console.error(`[AnimationNode] save-video failed:`, saved.error || 'Unknown error');
                   }
@@ -1211,11 +1073,9 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         }
 
         if (event.toolName === 'generate_plan' && !event.isError) {
-          const result = event.result as { plan?: AnimationPlan & { motionSpec?: MotionSpec } };
+          const result = event.result as { plan?: AnimationPlan };
           if (result.plan) {
-            const planMotionSpec = result.plan.motionSpec;
             updateNodeData(id, {
-              ...(planMotionSpec ? { motionSpec: createMotionSpec(planMotionSpec) } : {}),
               state: {
                 ...ls,
                 phase: 'plan',
@@ -1242,7 +1102,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           } else {
             // needsClarification=false — agent should call generate_plan next.
             // Just log it; the generate_plan handler will do the phase transition.
-            animationDebugLog('[AnimationNode] analyze_prompt: no clarification needed, expecting generate_plan next');
+            console.log('[AnimationNode] analyze_prompt: no clarification needed, expecting generate_plan next');
           }
         }
       },
@@ -1272,6 +1132,23 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     }),
     [id, getLatestState, updateNodeData, scheduleFlush]
   );
+
+  // ─── Handle count management ────────────────────────────────────────
+  const handleAddImageRef = useCallback(() => {
+    if (imageRefCount < MAX_IMAGE_REFS) updateNodeData(id, { imageRefCount: imageRefCount + 1 });
+  }, [id, imageRefCount, updateNodeData]);
+
+  const handleRemoveImageRef = useCallback(() => {
+    if (imageRefCount > 1) updateNodeData(id, { imageRefCount: imageRefCount - 1 });
+  }, [id, imageRefCount, updateNodeData]);
+
+  const handleAddVideoRef = useCallback(() => {
+    if (videoRefCount < MAX_VIDEO_REFS) updateNodeData(id, { videoRefCount: videoRefCount + 1 });
+  }, [id, videoRefCount, updateNodeData]);
+
+  const handleRemoveVideoRef = useCallback(() => {
+    if (videoRefCount > 1) updateNodeData(id, { videoRefCount: videoRefCount - 1 });
+  }, [id, videoRefCount, updateNodeData]);
 
   const handleAspectRatioChange = useCallback(
     (newAspectRatio: AspectRatio) => updateNodeData(id, { aspectRatio: newAspectRatio }),
@@ -1313,103 +1190,11 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     [id, updateNodeData]
   );
 
-  const handleMotionSpecChange = useCallback(
-    (spec: MotionSpec) => {
-      updateNodeData(id, { motionSpec: createMotionSpec({ ...spec, updatedAt: new Date().toISOString() }) });
-    },
-    [id, updateNodeData]
-  );
-
-  const handleSaveMotionPreset = useCallback(
-    (name: string) => {
-      const current = useCanvasStore.getState().nodes.find((n) => n.id === id)?.data as AnimationNodeData | undefined;
-      const currentSpec = current?.motionSpec || motionSpec;
-      const currentPresets = current?.motionPresets || motionPresets;
-      const presetName = name.trim() || makeMotionPresetName(currentPresets, 'My Motion Preset');
-      const preset: MotionPreset = {
-        id: `motion_preset_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-        name: presetName,
-        createdAt: new Date().toISOString(),
-        source: currentSpec.referenceProfile ? 'reference' : 'manual',
-        spec: createMotionSpec({
-          ...currentSpec,
-          source: 'preset',
-          presetId: undefined,
-          updatedAt: new Date().toISOString(),
-        }),
-      };
-      updateNodeData(id, {
-        motionPresets: [...currentPresets, preset],
-        selectedMotionPresetId: preset.id,
-        motionSpec: createMotionSpec({
-          ...preset.spec,
-          presetId: preset.id,
-          source: 'preset',
-          updatedAt: new Date().toISOString(),
-        }),
-      });
-      toast.success(`Saved motion preset "${presetName}"`);
-    },
-    [id, motionSpec, motionPresets, updateNodeData]
-  );
-
-  const handleApplyMotionPreset = useCallback(
-    (presetId: string) => {
-      const preset = motionPresets.find((item) => item.id === presetId);
-      if (!preset) return;
-      updateNodeData(id, {
-        selectedMotionPresetId: presetId,
-        motionSpec: createMotionSpec({
-          ...preset.spec,
-          source: 'preset',
-          presetId,
-          updatedAt: new Date().toISOString(),
-        }),
-      });
-      toast.success(`Applied "${preset.name}"`);
-    },
-    [id, motionPresets, updateNodeData]
-  );
-
-  const handleDeleteMotionPreset = useCallback(
-    (presetId: string) => {
-      const remaining = motionPresets.filter((preset) => preset.id !== presetId);
-      const isSelected = data.selectedMotionPresetId === presetId;
-      updateNodeData(id, {
-        motionPresets: remaining,
-        selectedMotionPresetId: isSelected ? undefined : data.selectedMotionPresetId,
-      });
-    },
-    [id, motionPresets, data.selectedMotionPresetId, updateNodeData]
-  );
-
-  const lastReferenceMotionIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    const profile = extractReferenceMotionProfile(media);
-    if (!profile) return;
-    if (lastReferenceMotionIdRef.current === profile.sourceMediaId) return;
-    if (motionSpec.referenceProfile?.sourceMediaId === profile.sourceMediaId) return;
-
-    lastReferenceMotionIdRef.current = profile.sourceMediaId;
-    updateNodeData(id, {
-      motionSpec: seedMotionSpecFromReference(profile, motionSpec),
-    });
-    toast.success(`Motion profile inferred from ${profile.sourceName}`);
-  }, [id, media, motionSpec, updateNodeData]);
-
   const handleOpenSettings = useCallback(() => {
     const nodeEl = document.querySelector(`[data-id="${id}"]`);
     if (nodeEl) {
       const rect = nodeEl.getBoundingClientRect();
       setSettingsPosition({ x: rect.right + 10, y: rect.top });
-      setSettingsAnchorRect({
-        left: rect.left,
-        right: rect.right,
-        top: rect.top,
-        bottom: rect.bottom,
-        width: rect.width,
-        height: rect.height,
-      });
       setShowSettings(true);
     }
   }, [id]);
@@ -1418,7 +1203,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
   const startPipelineTimer = useCallback((label: string) => {
     pipelineStartRef.current = Date.now();
     toolTimersRef.current.clear();
-    animationDebugLog(`%c⏱ [Animation] Pipeline started: ${label}`, 'color: #FBBF24; font-weight: bold');
+    console.log(`%c⏱ [Animation] Pipeline started: ${label}`, 'color: #FBBF24; font-weight: bold');
   }, []);
 
   // ─── Stream lifecycle ───────────────────────────────────────────────
@@ -1455,46 +1240,9 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
 
   // ─── Phase handlers ─────────────────────────────────────────────────
 
-  const runAnalyzePrompt = useCallback(
-    async (prompt: string, options?: { skipGuided?: boolean; appendUserMessage?: boolean; promptForAgent?: string }) => {
+  const handleAnalyzePrompt = useCallback(
+    async (prompt: string) => {
       const ls = getLatestState();
-      const appendUserMessage = options?.appendUserMessage !== false;
-      const promptForAgent = options?.promptForAgent || prompt;
-      const shouldOpenGuidedMotion =
-        !options?.skipGuided &&
-        isLowConfidenceMotionPrompt(prompt) &&
-        !data.motionSpec &&
-        ls.phase !== 'question';
-
-      // #93/#94: low-confidence prompts open guided chips + variants first.
-      if (shouldOpenGuidedMotion) {
-        const inferred = deriveGuidedChipsFromPrompt(prompt);
-        setGuidedPrompt(prompt);
-        setGuidedFollowUp('');
-        setGuidedChips(inferred);
-        setGuidedVariant('balanced');
-
-        const userMsg: AnimationMessage = {
-          id: `msg_${Date.now()}`,
-          role: 'user',
-          content: prompt,
-          timestamp: new Date().toISOString(),
-          seq: getNextSeq(),
-        };
-        updateNodeData(id, {
-          prompt,
-          state: {
-            ...ls,
-            phase: 'question',
-            question: undefined,
-            formQuestion: undefined,
-            messages: appendUserMessage ? [...ls.messages, userMsg] : ls.messages,
-            updatedAt: new Date().toISOString(),
-          },
-        });
-        return;
-      }
-
       // Collect edge media IDs already shown in prior messages so we don't repeat them
       const seenEdgeIds = new Set(
         ls.messages.flatMap((m) => m.media?.filter((e) => e.source === 'edge').map((e) => e.id) ?? [])
@@ -1503,11 +1251,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       const newEdge = media.filter((m) => m.source === 'edge' && !seenEdgeIds.has(m.id));
       const msgMedia = [...uploads, ...newEdge];
       const userMsg: AnimationMessage = {
-        id: `msg_${Date.now()}`,
-        role: 'user' as const,
-        content: prompt,
-        timestamp: new Date().toISOString(),
-        seq: getNextSeq(),
+        id: `msg_${Date.now()}`, role: 'user' as const, content: prompt, timestamp: new Date().toISOString(), seq: getNextSeq(),
         media: msgMedia.length > 0 ? msgMedia : undefined,
       };
       const thinkingBlock: ThinkingBlockItem = {
@@ -1519,11 +1263,11 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
 
       updateNodeData(id, {
         prompt,
-        motionSpec: motionSpec,
+        // Keep uploads in data.media so they're available for plan acceptance and execution streams
         state: {
           ...ls,
           phase: 'executing',
-          messages: appendUserMessage ? [...ls.messages, userMsg] : ls.messages,
+          messages: [...ls.messages, userMsg],
           thinkingBlocks: [...ls.thinkingBlocks, thinkingBlock],
           execution: { todos: [], thinking: 'Analyzing your prompt...', files: [] },
           updatedAt: new Date().toISOString(),
@@ -1534,35 +1278,21 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       resetStreamingRefs();
       const callbacks = createStreamCallbacks();
 
-      animationDebugLog(
-        `[AnimationNode] handleAnalyzePrompt — sending ${media.length} media entries`,
-        media.map((m) => ({ name: m.name, type: m.type, source: m.source, urlPrefix: m.dataUrl?.slice(0, 40) }))
-      );
+      // Debug: log media being sent with planning request
+      console.log(`[AnimationNode] handleAnalyzePrompt — sending ${media.length} media entries`,
+        media.map(m => ({ name: m.name, type: m.type, source: m.source, urlPrefix: m.dataUrl?.slice(0, 40) })));
 
       try {
         await streamToAgent(
-          `Analyze this animation request and either ask a clarifying question (if style is unclear) or generate a plan directly:\n\n${promptForAgent}`,
-          {
-            nodeId: id,
-            phase: 'idle',
-            planAccepted: false,
-            media,
-            engine,
-            aspectRatio,
-            duration,
-            techniques,
-            designSpec,
-            motionSpec,
-            logo,
-            fps,
-            resolution,
-          },
+          `Analyze this animation request and either ask a clarifying question (if style is unclear) or generate a plan directly:\n\n${prompt}`,
+          { nodeId: id, phase: 'idle', media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution },
           callbacks
         );
         // Fallback if agent didn't call generate_plan (stayed in 'executing')
         const latest = getLatestState();
         if (latest.phase === 'executing') {
           console.warn('[AnimationNode] handleAnalyzePrompt fallback — agent did not generate a plan, creating default');
+          // Distribute user's selected duration across 3 scenes
           const targetDur = duration || 5;
           const introDur = Math.round(targetDur * 0.2 * 10) / 10;
           const outroDur = Math.round(targetDur * 0.2 * 10) / 10;
@@ -1580,7 +1310,6 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
                 totalDuration: targetDur,
                 style: 'smooth',
                 fps: fps || 30,
-                motionSpec,
               },
               planTimestamp: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
@@ -1589,73 +1318,11 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         }
       } catch (err) {
         console.error('[AnimationNode] handleAnalyzePrompt error:', err);
+        // Error state is set by onError callback in createStreamCallbacks
       }
     },
-    [id, media, engine, aspectRatio, duration, techniques, designSpec, motionSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs, data.motionSpec]
+    [id, media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
   );
-
-  const handleAnalyzePrompt = useCallback(
-    async (prompt: string) => {
-      await runAnalyzePrompt(prompt);
-    },
-    [runAnalyzePrompt]
-  );
-
-  const guidedVariantOptions = useMemo(
-    () => buildMotionVariants(createGuidedMotionSpec(guidedChips, guidedVariant, guidedFollowUp || undefined, motionSpec.referenceProfile)),
-    [guidedChips, guidedVariant, guidedFollowUp, motionSpec.referenceProfile]
-  );
-
-  const handleApplyGuidedMotion = useCallback(
-    async (variantId?: MotionVariantId) => {
-      if (!guidedPrompt) return;
-      const selectedVariant = variantId || guidedVariant;
-      const nextSpec = createGuidedMotionSpec(
-        guidedChips,
-        selectedVariant,
-        guidedFollowUp || undefined,
-        motionSpec.referenceProfile
-      );
-      const normalized = createMotionSpec({
-        ...nextSpec,
-        source: selectedVariant === 'balanced' ? 'guided' : 'variant',
-        updatedAt: new Date().toISOString(),
-      });
-
-      updateNodeData(id, {
-        motionSpec: normalized,
-        selectedMotionPresetId: undefined,
-      });
-
-      const promptForAgent = [
-        guidedPrompt,
-        '',
-        'Structured guided motion profile (authoritative):',
-        JSON.stringify(normalized, null, 2),
-        'Use this profile over ambiguous phrasing when generating the plan.',
-      ].join('\n');
-
-      setGuidedPrompt(null);
-      setGuidedFollowUp('');
-      await runAnalyzePrompt(guidedPrompt, {
-        skipGuided: true,
-        appendUserMessage: false,
-        promptForAgent,
-      });
-    },
-    [guidedPrompt, guidedVariant, guidedChips, guidedFollowUp, motionSpec.referenceProfile, id, updateNodeData, runAnalyzePrompt]
-  );
-
-  const handleSkipGuidedMotion = useCallback(async () => {
-    if (!guidedPrompt) return;
-    const promptToUse = guidedPrompt;
-    setGuidedPrompt(null);
-    setGuidedFollowUp('');
-    await runAnalyzePrompt(promptToUse, {
-      skipGuided: true,
-      appendUserMessage: false,
-    });
-  }, [guidedPrompt, runAnalyzePrompt]);
 
   const handleSelectStyle = useCallback(
     async (styleId: string, customStyle?: string) => {
@@ -1694,7 +1361,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       try {
         await streamToAgent(
           `Generate an animation plan for this request with style "${selectedStyle}":\n\n${data.prompt || 'Animation request'}`,
-          { nodeId: id, phase: 'question', planAccepted: false, media, engine, aspectRatio, duration, techniques, designSpec, motionSpec, logo, fps, resolution },
+          { nodeId: id, phase: 'question', media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution },
           callbacks
         );
         const latest = getLatestState();
@@ -1712,7 +1379,6 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
                 totalDuration: 7,
                 style: selectedStyle,
                 fps: fps || 30,
-                motionSpec,
               },
               planTimestamp: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
@@ -1723,7 +1389,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         // Error handled by callback
       }
     },
-    [id, data.prompt, media, engine, aspectRatio, duration, techniques, designSpec, motionSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
+    [id, data.prompt, media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
   );
 
   const handleFormSubmit = useCallback(
@@ -1778,7 +1444,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         const answersJson = JSON.stringify(answers, null, 2);
         await streamToAgent(
           `User answered the form:\n${answersJson}\n\nProceed with generating a plan based on these answers.\n\nOriginal prompt: ${data.prompt || 'Animation request'}`,
-          { nodeId: id, phase: 'question', planAccepted: false, media, engine, aspectRatio, duration, techniques, designSpec, motionSpec, logo, fps, resolution },
+          { nodeId: id, phase: 'question', media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution },
           callbacks
         );
         const latest = getLatestState();
@@ -1796,7 +1462,6 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
                 totalDuration: 7,
                 style: 'smooth',
                 fps: fps || 30,
-                motionSpec,
               },
               planTimestamp: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
@@ -1807,7 +1472,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         // Error handled by callback
       }
     },
-    [id, data.prompt, media, engine, aspectRatio, duration, techniques, designSpec, motionSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
+    [id, data.prompt, media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]
   );
 
   const handleAcceptPlan = useCallback(async () => {
@@ -1840,7 +1505,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     const callbacks = createStreamCallbacks();
 
     // Debug: log media being sent with execution request
-    animationDebugLog(`[AnimationNode] handleAcceptPlan — sending ${media.length} media entries, sandboxId=${ls.sandboxId || 'NONE'}`,
+    console.log(`[AnimationNode] handleAcceptPlan — sending ${media.length} media entries, sandboxId=${ls.sandboxId || 'NONE'}`,
       media.map(m => ({ name: m.name, type: m.type, source: m.source, urlPrefix: m.dataUrl?.slice(0, 40) })));
 
     try {
@@ -1879,13 +1544,13 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
 
       await streamToAgent(
         conversationMessages,
-        { nodeId: id, phase: 'executing', plan: ls.plan, planAccepted: true, todos: [], sandboxId: ls.sandboxId, media, engine, aspectRatio, duration, techniques, designSpec, motionSpec, logo, fps, resolution },
+        { nodeId: id, phase: 'executing', plan: ls.plan, todos: [], sandboxId: ls.sandboxId, media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution },
         callbacks
       );
     } catch {
       // Error handled by callback
     }
-  }, [id, data.prompt, engine, media, duration, techniques, designSpec, motionSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs, buildConversationHistory]);
+  }, [id, data.prompt, engine, media, duration, techniques, designSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs, buildConversationHistory]);
 
   const handleRejectPlan = useCallback(() => {
     updateState({ phase: 'idle', plan: undefined, question: undefined, planAccepted: undefined });
@@ -1924,7 +1589,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
       try {
         await streamToAgent(
           conversationMessages,
-          { nodeId: id, phase: 'plan', plan: ls.plan, planAccepted: false, sandboxId: ls.sandboxId, media, engine, aspectRatio, duration, techniques, designSpec, motionSpec, logo, fps, resolution },
+          { nodeId: id, phase: 'plan', plan: ls.plan, sandboxId: ls.sandboxId, media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution },
           callbacks
         );
         const latest = getLatestState();
@@ -1938,7 +1603,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         // Error state is set by onError callback in createStreamCallbacks
       }
     },
-    [id, media, engine, aspectRatio, duration, techniques, designSpec, motionSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs, buildConversationHistory]
+    [id, media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs, buildConversationHistory]
   );
 
   const handleSendMessage = useCallback(
@@ -1969,27 +1634,24 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         updatedAt: new Date().toISOString(),
       };
 
-      // #95: deterministic semantic motion edits for post-render feedback.
-      const semanticMotionEdit = applySemanticMotionEdit(content, motionSpec, ls.plan);
-      const shouldApplySemanticPatch =
-        semanticMotionEdit.recognized &&
-        (ls.phase === 'preview' || ls.phase === 'complete' || ls.planAccepted === true);
-      const effectiveMotionSpec = shouldApplySemanticPatch ? semanticMotionEdit.patchedSpec : motionSpec;
-      const effectivePlan = shouldApplySemanticPatch && semanticMotionEdit.patchedPlan
-        ? semanticMotionEdit.patchedPlan
-        : ls.plan;
-      if (shouldApplySemanticPatch && semanticMotionEdit.patchedPlan) {
-        stateUpdate.plan = semanticMotionEdit.patchedPlan;
+      // Auto-accept plan when user sends ANY message during plan phase with a plan present.
+      // The placeholder says "Type 'yes' to accept, or suggest changes..." — any text input implies engagement.
+      // If the user wanted to reject, they'd click the "Reject" button instead.
+      if (ls.phase === 'plan' && ls.plan && !ls.planAccepted) {
+        stateUpdate.planAccepted = true;
       }
 
-      // Always transition to executing — no planning step
-      stateUpdate.planAccepted = true;
-      stateUpdate.phase = 'executing';
-      stateUpdate.execution = {
-        todos: ls.execution?.todos || [],
-        thinking: ls.phase === 'idle' ? 'Building your animation...' : 'Processing your feedback...',
-        files: ls.execution?.files || [],
-      };
+      // Transition to executing when plan is accepted (either previously via button, or auto-accepted above)
+      // This covers: plan phase (text acceptance), plan phase (failed execution retry),
+      // preview phase (edit request), complete phase (follow-up)
+      if (ls.planAccepted || stateUpdate.planAccepted) {
+        stateUpdate.phase = 'executing';
+        stateUpdate.execution = {
+          todos: ls.execution?.todos || [],
+          thinking: 'Processing your feedback...',
+          files: ls.execution?.files || [],
+        };
+      }
 
       // Mark live preview as stale when user sends feedback (Issue #22)
       // This shows a visual indicator that the preview is being updated
@@ -1997,55 +1659,36 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         stateUpdate.previewState = 'stale';
       }
 
-      const nodeUpdatePayload: Record<string, unknown> = {
+      updateNodeData(id, {
+        // Keep uploads in data.media so they persist through execution streams
         state: { ...ls, ...stateUpdate },
-      };
-      if (shouldApplySemanticPatch) {
-        nodeUpdatePayload.motionSpec = effectiveMotionSpec;
-      }
-      updateNodeData(id, nodeUpdatePayload);
+      });
 
       startPipelineTimer('sendMessage');
       resetStreamingRefs();
       const callbacks = createStreamCallbacks();
 
-      // Build a contextual prompt with instructions based on current phase
+      // Build a contextual prompt with instructions
       let userContent = content;
-      const semanticInstruction = shouldApplySemanticPatch ? semanticMotionEdit.instruction : '';
-      if (ls.phase === 'idle' || ls.phase === 'error') {
-        // Fresh generation — go straight to building
+      if (ls.planAccepted && (ls.phase === 'plan' || ls.phase === 'executing')) {
+        // User is giving feedback after failed execution — emphasize retry, not replan
         userContent = [
           content,
           '',
-          'Build this animation now. Go directly: sandbox_create → generate_remotion_code → render_final.',
-          'Make all creative decisions yourself (colors, fonts, timing, style).',
+          'IMPORTANT: The plan has already been approved. Do NOT re-generate the plan.',
+          'Instead, investigate what went wrong with the previous execution,',
+          'fix the issue (check vite logs, file contents, etc.), and retry.',
+          ls.sandboxId ? `Active sandbox: ${ls.sandboxId}` : 'No sandbox — create one first with sandbox_create.',
         ].join('\n');
-      } else if (ls.phase === 'preview' || ls.phase === 'complete') {
-        // User is requesting edits to a working animation
+      } else if (ls.planAccepted && (ls.phase === 'preview' || ls.phase === 'complete')) {
+        // User is requesting edits to a working animation — emphasize modify, not replan
         userContent = [
           content,
-          ...(semanticInstruction ? ['', semanticInstruction] : []),
           '',
-          'IMPORTANT: Modify the existing code to implement the requested changes,',
+          'IMPORTANT: The plan has already been approved and the animation was rendered successfully.',
+          'Do NOT re-generate the plan. Modify the existing code to implement the requested changes,',
           'then call render_final to produce the updated video.',
           ls.sandboxId ? `Active sandbox: ${ls.sandboxId}` : 'No sandbox — create one first with sandbox_create.',
-        ].join('\n');
-      } else if (ls.phase === 'executing' || ls.phase === 'plan') {
-        // Retry after failed execution
-        userContent = [
-          content,
-          ...(semanticInstruction ? ['', semanticInstruction] : []),
-          '',
-          'IMPORTANT: Investigate what went wrong, fix the issue, and retry.',
-          ls.sandboxId ? `Active sandbox: ${ls.sandboxId}` : 'No sandbox — create one first with sandbox_create.',
-        ].join('\n');
-      } else if (semanticInstruction) {
-        userContent = [
-          content,
-          '',
-          semanticInstruction,
-          '',
-          'Apply a targeted patch to existing timing/easing values whenever possible.',
         ].join('\n');
       }
 
@@ -2060,8 +1703,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         await streamToAgent(conversationMessages, {
           nodeId: id,
           phase: effectivePhase,
-          plan: effectivePlan,
-          planAccepted: !!(ls.planAccepted || stateUpdate.planAccepted),
+          plan: ls.plan,
           todos: ls.execution?.todos,
           sandboxId: ls.sandboxId,
           media,
@@ -2070,7 +1712,6 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           duration,
           techniques,
           designSpec,
-          motionSpec: effectiveMotionSpec,
           logo,
           fps,
           resolution,
@@ -2080,7 +1721,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         // Error state is set by onError callback in createStreamCallbacks
       }
     },
-    [id, media, engine, aspectRatio, duration, techniques, designSpec, motionSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs, buildConversationHistory]
+    [id, media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs, buildConversationHistory]
   );
 
   const handleAcceptPreview = useCallback(async () => {
@@ -2124,9 +1765,8 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     const ls = getLatestState();
     if (!ls.plan) return;
 
-    const setupLabel = engine === 'remotion' ? 'Set up Remotion project' : 'Set up Theatre.js project';
     const todos = [
-      { id: 'setup', label: setupLabel, status: 'pending' as const },
+      { id: 'setup', label: 'Set up Theatre.js project', status: 'pending' as const },
       ...ls.plan.scenes.map((s) => ({
         id: `scene-${s.number}`,
         label: `Create Scene ${s.number} (${s.title})`,
@@ -2160,13 +1800,13 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     try {
       await streamToAgent(
         `Regenerate the animation from the plan. Execute all steps again.\n\nPrompt: ${data.prompt || 'Animation request'}`,
-        { nodeId: id, phase: 'executing', plan: ls.plan, planAccepted: true, todos, sandboxId: ls.sandboxId, media, engine, aspectRatio, duration, techniques, designSpec, motionSpec, logo, fps, resolution },
+        { nodeId: id, phase: 'executing', plan: ls.plan, todos, sandboxId: ls.sandboxId, media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution },
         callbacks
       );
     } catch {
       // Error handled by callback
     }
-  }, [id, data.prompt, engine, media, duration, techniques, designSpec, motionSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
+  }, [id, data.prompt, engine, media, duration, techniques, designSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
 
   const handleExportVideo = useCallback(async () => {
     const ls = getLatestState();
@@ -2211,13 +1851,13 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           'Use render_final to create the video.',
           `Active sandbox: ${ls.sandboxId}`,
         ].join('\n'),
-        { nodeId: id, phase: 'executing', plan: ls.plan, planAccepted: true, sandboxId: ls.sandboxId, media, engine, aspectRatio, duration, techniques, designSpec, motionSpec, logo, fps, resolution },
+        { nodeId: id, phase: 'executing', plan: ls.plan, sandboxId: ls.sandboxId, media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution },
         callbacks
       );
     } catch {
       // Error handled by callback
     }
-  }, [id, media, engine, aspectRatio, duration, techniques, designSpec, motionSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
+  }, [id, media, engine, aspectRatio, duration, techniques, designSpec, logo, fps, resolution, getLatestState, updateNodeData, streamToAgent, createStreamCallbacks, resetStreamingRefs]);
 
   const handleRetry = useCallback(() => {
     if (state.plan) {
@@ -2231,31 +1871,47 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
     abortStream();
     reasoningTextRef.current = '';
     streamingTextRef.current = '';
-    setGuidedPrompt(null);
-    setGuidedFollowUp('');
-    setGuidedChips(createMotionSpec().chips);
-    setGuidedVariant('balanced');
     // Delete code snapshot for this node (fire-and-forget)
     fetch(`/api/plugins/animation/snapshot/${id}`, { method: 'DELETE' }).catch(() => {});
     updateNodeData(id, { prompt: '', media: [], state: createDefaultState(id) });
   }, [id, updateNodeData, abortStream]);
 
   // ─── Input routing ──────────────────────────────────────────────────
-  // No planning step — all phases route to handleSendMessage for direct execution.
   const handleInputSubmit = useCallback(
     (message: string) => {
       switch (state.phase) {
+        case 'idle':
+        case 'error':
+          handleAnalyzePrompt(message);
+          break;
+        case 'plan':
+          if (state.planAccepted) {
+            // Plan already accepted — user is giving post-execution feedback.
+            // Route to handleSendMessage which passes full context (sandboxId, plan, etc.)
+            // so the agent can retry / fix rather than re-plan.
+            handleSendMessage(message);
+          } else if (isAffirmative(message)) {
+            // User typed "yes", "ok", "go", etc. → accept the plan
+            handleAcceptPlan();
+          } else {
+            // User gave specific feedback → revise the plan
+            handleRevisePlan(message);
+          }
+          break;
+        case 'executing':
+        case 'preview':
+        case 'question':
+          handleSendMessage(message);
+          break;
         case 'complete':
           // Start a new animation from scratch
           handleReset();
           break;
         default:
-          // All other phases (idle, error, executing, preview, plan, question)
-          // go straight to the agent for direct execution
-          handleSendMessage(message);
+          handleAnalyzePrompt(message);
       }
     },
-    [state.phase, handleSendMessage, handleReset]
+    [state.phase, state.planAccepted, handleAnalyzePrompt, handleAcceptPlan, handleRevisePlan, handleSendMessage, handleReset]
   );
 
   const inputPlaceholder = useMemo(() => {
@@ -2333,9 +1989,9 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
 
     // Include video versions in timeline - each version appears where it was created
     if (state.versions && state.versions.length > 0) {
-      animationDebugLog(`[AnimationNode] Timeline: Adding ${state.versions.length} video(s) to timeline`);
+      console.log(`[AnimationNode] Timeline: Adding ${state.versions.length} video(s) to timeline`);
       state.versions.forEach((version, idx) => {
-        animationDebugLog(`[AnimationNode] Timeline video ${idx}:`, { id: version.id, url: version.videoUrl?.slice(0, 50) });
+        console.log(`[AnimationNode] Timeline video ${idx}:`, { id: version.id, url: version.videoUrl?.slice(0, 50) });
         items.push({
           kind: 'video',
           id: version.id,
@@ -2346,7 +2002,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         });
       });
     } else {
-      animationDebugLog(`[AnimationNode] Timeline: No videos in state.versions`);
+      console.log(`[AnimationNode] Timeline: No videos in state.versions`);
     }
 
     // Include thinking blocks that have meaningful content
@@ -2398,165 +2054,28 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
 
   // ─── Node styling ──────────────────────────────────────────────────
   const nodeClasses = useMemo(() => {
-    const base = 'node-drag-handle node-drag-surface animation-node w-[400px] min-h-[520px] max-h-[720px] rounded-xl overflow-hidden flex flex-col';
+    const base = 'animation-node w-[400px] min-h-[520px] max-h-[720px] rounded-xl overflow-hidden flex flex-col';
     if (selected) return `${base} ring-1 ring-[var(--an-accent)]/70`;
     return base;
   }, [selected]);
-  const summaryContainerClass = useMemo(() => {
-    const base = 'node-drag-handle node-drag-surface animation-node w-[400px] rounded-xl overflow-hidden flex flex-col';
-    return selected ? `${base} ring-1 ring-[var(--an-accent)]/70` : base;
-  }, [selected]);
-  const latestVersion = state.versions?.[state.versions.length - 1];
-  const latestAssistantMessage = [...state.messages]
-    .reverse()
-    .find((message) => message.role === 'assistant' && message.content.trim())?.content;
-  const animationSummary = latestVersion?.videoUrl
-    ? 'Latest animation render is ready to review.'
-    : state.output?.videoUrl
-      ? 'Animation complete.'
-      : latestAssistantMessage
-        || data.prompt
-        || 'Describe an animation and attach media to start building.';
 
   const videoHandleStart = engine !== 'theatre'
     ? IMAGE_HANDLE_START + imageRefCount * HANDLE_SPACING + VIDEO_HANDLE_START_OFFSET
     : 0;
-  // SVG code handle sits after the video handle group
-  const svgCodeHandleTop = engine !== 'theatre'
-    ? videoHandleStart + videoRefCount * HANDLE_SPACING + 48
-    : IMAGE_HANDLE_START + imageRefCount * HANDLE_SPACING + 48;
-  // minHeight must accommodate: all handles + padding
-  const lastVideoHandleBottom = svgCodeHandleTop + HANDLE_SPACING;
+  // minHeight must accommodate: video handles + their +/- buttons + padding
+  const lastVideoHandleBottom = engine !== 'theatre'
+    ? videoHandleStart + videoRefCount * HANDLE_SPACING + 40 // +40 for +/- buttons
+    : IMAGE_HANDLE_START + imageRefCount * HANDLE_SPACING + 40;
   const minHeight = Math.max(200, lastVideoHandleBottom);
 
   // ─── Render ─────────────────────────────────────────────────────────
-  if (displayMode !== 'full') {
-    return (
-      <div className="relative" {...focusProps}>
-        <div className="mb-2 rounded-xl px-3 py-2 text-sm font-medium" style={{ color: 'var(--node-title-animation)' }}>
-          <Clapperboard className="h-4 w-4" />
-          {data.name || 'Animation Generator'}
-        </div>
-
-        <div className={summaryContainerClass} style={{ minHeight }}>
-          <div className={`node-body flex-1 ${displayMode === 'compact' ? 'node-compact' : 'node-summary'}`}>
-            <div className="node-content-area rounded-xl p-3">
-              <p className="text-xs font-medium text-[var(--an-text-muted)]">
-                {headerConfig.statusText}
-              </p>
-              <p className="mt-1 text-sm text-[var(--an-text)]/85 line-clamp-4">
-                {animationSummary}
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--an-text-dim)]">
-              <span>{media.length} asset{media.length === 1 ? '' : 's'}</span>
-              <span>{engine}</span>
-              <span>{duration}s</span>
-              {latestVersion?.videoUrl && <span>Render ready</span>}
-            </div>
-          </div>
-        </div>
-
-        {Array.from({ length: imageRefCount }).map((_, i) => {
-          const top = IMAGE_HANDLE_START + i * HANDLE_SPACING;
-          return (
-            <div key={`img-ref-summary-${i}`} className="absolute -left-3 z-20" style={{ top }}>
-              <div className="relative">
-                <Handle
-                  type="target"
-                  position={Position.Left}
-                  id={`image-ref-${i}`}
-                  className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
-                />
-                <Image className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-white" />
-              </div>
-            </div>
-          );
-        })}
-
-        {engine !== 'theatre' && Array.from({ length: videoRefCount }).map((_, i) => {
-          const top = videoHandleStart + i * HANDLE_SPACING;
-          return (
-            <div key={`vid-ref-summary-${i}`} className="absolute -left-3 z-20" style={{ top }}>
-              <div className="relative">
-                <Handle
-                  type="target"
-                  position={Position.Left}
-                  id={`video-ref-${i}`}
-                  className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
-                />
-                <Video className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-white" />
-              </div>
-            </div>
-          );
-        })}
-
-        <div className="absolute -left-3 z-20" style={{ top: svgCodeHandleTop }}>
-          <div className="relative">
-            <Handle
-              type="target"
-              position={Position.Left}
-              id="svg-code"
-              className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
-            />
-            <Code className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-white" />
-          </div>
-        </div>
-
-        <div className="absolute -right-3 z-20" style={{ top: '50%', transform: 'translateY(-50%)' }}>
-          <div className="relative">
-            <Handle
-              type="source"
-              position={Position.Right}
-              id="video"
-              className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
-            />
-            <Video className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-white" />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div
-      className="relative"
-      {...focusProps}
-    >
-      {/* Node Title */}
-      <div className="mb-2 rounded-xl px-3 py-2 text-sm font-medium" style={{ color: 'var(--node-title-animation)' }}>
-        <Clapperboard className="h-4 w-4" />
-        {isEditingName && !isReadOnly ? (
-          <input
-            ref={nameInputRef}
-            type="text"
-            value={nodeName}
-            onChange={(e) => setNodeName(e.target.value)}
-            onBlur={handleNameSubmit}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleNameSubmit();
-              if (e.key === 'Escape') {
-                setNodeName(data.name || 'Animation Generator');
-                setIsEditingName(false);
-              }
-            }}
-            className="bg-transparent border-b outline-none px-0.5 min-w-[100px]"
-            style={{ borderColor: 'var(--input-border)', color: 'var(--text-secondary)' }}
-          />
-        ) : (
-          <span
-            onDoubleClick={() => !isReadOnly && setIsEditingName(true)}
-            className={`transition-colors hover:opacity-80 ${isReadOnly ? 'cursor-default' : 'cursor-text'}`}
-          >
-            {data.name || 'Animation Generator'}
-          </span>
-        )}
-      </div>
-
-    <div
       ref={nodeContainerRef}
-      className={`${nodeClasses}${isDragOver ? ' ring-1 ring-blue-500/50' : ''}`}
+      className={`${nodeClasses}${isDragOver ? ' ring-1 ring-teal-500/50' : ''}`}
       style={{ minHeight }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       onDragOver={(e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -2573,9 +2092,104 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         if (e.dataTransfer.files.length > 0) handleMediaUpload(e.dataTransfer.files);
       }}
     >
+      {/* ── Left: Image reference handles ─────────────────────────────── */}
+      {Array.from({ length: imageRefCount }).map((_, i) => {
+        const top = IMAGE_HANDLE_START + i * HANDLE_SPACING;
+        return (
+          <div key={`img-ref-${i}`} className="absolute -left-[10px]" style={{ top }}>
+            <div className="w-5 h-5 rounded-full bg-[#14B8A6] flex items-center justify-center">
+              <Image className="h-3 w-3 text-white" />
+            </div>
+            <Handle
+              type="target"
+              position={Position.Left}
+              id={`image-ref-${i}`}
+              className="!absolute !top-1/2 !left-1/2 !-translate-x-1/2 !-translate-y-1/2 !w-5 !h-5 !bg-transparent !border-0"
+            />
+          </div>
+        );
+      })}
+
+      {/* Image handle add/remove */}
+      {(selected || isHovered) && (
+        <div
+          className="absolute -left-[10px] flex flex-col gap-1 transition-opacity duration-200"
+          style={{ top: IMAGE_HANDLE_START + imageRefCount * HANDLE_SPACING + 4 }}
+        >
+          {imageRefCount < MAX_IMAGE_REFS && (
+            <button
+              onClick={handleAddImageRef}
+              className="w-4 h-4 rounded-full flex items-center justify-center bg-[var(--an-bg-card)] border border-[var(--an-border-input)] text-[var(--an-text-muted)] hover:border-teal-500 hover:text-teal-400 transition-colors ml-0.5"
+            >
+              <Plus className="h-2.5 w-2.5" />
+            </button>
+          )}
+          {imageRefCount > 1 && (
+            <button
+              onClick={handleRemoveImageRef}
+              className="w-4 h-4 rounded-full flex items-center justify-center bg-[var(--an-bg-card)] border border-[var(--an-border-input)] text-[var(--an-text-muted)] hover:border-red-500 hover:text-red-400 transition-colors ml-0.5"
+            >
+              <Minus className="h-2.5 w-2.5" />
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ── Left: Video reference handles (hidden for Theatre.js — no video ref support) */}
+      {engine !== 'theatre' && Array.from({ length: videoRefCount }).map((_, i) => {
+        const top = videoHandleStart + i * HANDLE_SPACING;
+        return (
+          <div key={`vid-ref-${i}`} className="absolute -left-[10px]" style={{ top }}>
+            <div className="w-5 h-5 rounded-full bg-[#A855F7] flex items-center justify-center">
+              <Video className="h-3 w-3 text-white" />
+            </div>
+            <Handle
+              type="target"
+              position={Position.Left}
+              id={`video-ref-${i}`}
+              className="!absolute !top-1/2 !left-1/2 !-translate-x-1/2 !-translate-y-1/2 !w-5 !h-5 !bg-transparent !border-0"
+            />
+          </div>
+        );
+      })}
+
+      {/* Video handle add/remove (hidden for Theatre.js) */}
+      {(selected || isHovered) && engine !== 'theatre' && (
+        <div
+          className="absolute -left-[10px] flex flex-col gap-1 transition-opacity duration-200"
+          style={{ top: videoHandleStart + videoRefCount * HANDLE_SPACING + 4 }}
+        >
+          {videoRefCount < MAX_VIDEO_REFS && (
+            <button
+              onClick={handleAddVideoRef}
+              className="w-4 h-4 rounded-full flex items-center justify-center bg-[var(--an-bg-card)] border border-[var(--an-border-input)] text-[var(--an-text-muted)] hover:border-purple-500 hover:text-purple-400 transition-colors ml-0.5"
+            >
+              <Plus className="h-2.5 w-2.5" />
+            </button>
+          )}
+          {videoRefCount > 1 && (
+            <button
+              onClick={handleRemoveVideoRef}
+              className="w-4 h-4 rounded-full flex items-center justify-center bg-[var(--an-bg-card)] border border-[var(--an-border-input)] text-[var(--an-text-muted)] hover:border-red-500 hover:text-red-400 transition-colors ml-0.5"
+            >
+              <Minus className="h-2.5 w-2.5" />
+            </button>
+          )}
+        </div>
+      )}
+
       {/* ── Header ───────────────────────────────────────────────────── */}
-      <div className="flex-shrink-0 flex items-center gap-2 px-3.5 py-2 border-b border-[var(--an-border)]">
+      <div className="flex-shrink-0 flex items-center gap-2 px-3.5 py-2.5 border-b border-[var(--an-border)]">
+        <div
+          className="h-7 w-7 rounded-[7px] flex items-center justify-center"
+          style={{ backgroundColor: headerConfig.iconBg }}
+        >
+          <Clapperboard className="h-3.5 w-3.5" style={{ color: headerConfig.iconColor }} />
+        </div>
         <div className="flex-1 min-w-0">
+          <h3 className="text-[13px] font-semibold text-[var(--an-text-heading)] leading-tight truncate">
+            {data.name || 'Animation Generator'}
+          </h3>
           <p className="text-[10px] leading-tight" style={{ color: headerConfig.statusColor }}>
             {headerConfig.statusText}
           </p>
@@ -2630,8 +2244,6 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
                     isActivePreview={isActivePreview}
                     onAccept={isActivePreview ? handleAcceptPreview : undefined}
                     onRegenerate={isActivePreview ? handleRegenerate : undefined}
-                    semanticEditOptions={isActivePreview ? [...DEFAULT_SEMANTIC_MOTION_CHIPS] : undefined}
-                    onSemanticEdit={isActivePreview ? handleSendMessage : undefined}
                   />
                 );
               }
@@ -2657,96 +2269,11 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
             ) && (
               <div className="py-2">
                 <span
-                  className="text-[11px] font-medium text-[var(--an-text-muted)]"
+                  className="text-[11px] font-medium bg-clip-text text-transparent bg-gradient-to-r from-[#52525B] via-[#D4D4D8] to-[#52525B] bg-[length:200%_100%]"
                   style={{ animation: 'think-shimmer 2.5s ease-in-out infinite' }}
                 >
                   {state.execution?.thinking || 'Working on it...'}
                 </span>
-              </div>
-            )}
-
-            {/* Guided motion intake (#93/#94) */}
-            {state.phase === 'question' && guidedPrompt && (
-              <div className="rounded-lg bg-[var(--an-bg-elevated)] border border-[var(--an-border-input)] p-2.5 space-y-2">
-                <p className="text-[11px] font-medium text-[var(--an-text-muted)]">
-                  Pick a motion direction
-                </p>
-                <p className="text-[10px] text-[var(--an-text-placeholder)]">
-                  Your prompt is broad, so select intent chips and one variant (A/B/C).
-                </p>
-
-                {GUIDED_MOTION_GROUPS.map((group) => (
-                  <div key={group.key} className="space-y-1">
-                    <p className="text-[10px] text-[var(--an-text-dim)]">{group.label}</p>
-                    <div className="flex flex-wrap gap-1">
-                      {group.options.map((option) => {
-                        const selected = guidedChips[group.key] === option.id;
-                        return (
-                          <button
-                            key={`${group.key}-${String(option.id)}`}
-                            onClick={() => setGuidedChips((prev) => ({ ...prev, [group.key]: option.id } as MotionIntentChips))}
-                            className={`px-2 py-1 rounded-md border text-[10px] transition-colors ${
-                              selected
-                                ? 'bg-[var(--an-accent-bg)] border-[var(--an-accent)] text-[var(--an-accent-text)]'
-                                : 'bg-[var(--an-bg-card)] border-[var(--an-border-input)] text-[var(--an-text-dim)] hover:border-[var(--an-border-hover)]'
-                            }`}
-                          >
-                            {option.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-
-                <div className="space-y-1">
-                  <p className="text-[10px] text-[var(--an-text-dim)]">Motion variants</p>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {guidedVariantOptions.map((variant) => {
-                      const selected = guidedVariant === variant.id;
-                      return (
-                        <button
-                          key={variant.id}
-                          onClick={() => setGuidedVariant(variant.id)}
-                          className={`rounded-md border px-2 py-1 text-left transition-colors ${
-                            selected
-                              ? 'bg-[var(--an-accent-bg)] border-[var(--an-accent)]'
-                              : 'bg-[var(--an-bg-card)] border-[var(--an-border-input)]'
-                          }`}
-                        >
-                          <p className="text-[10px] font-medium text-[var(--an-text-muted)]">{variant.label}</p>
-                          <p className="text-[9px] text-[var(--an-text-placeholder)]">{variant.description}</p>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <p className="text-[10px] text-[var(--an-text-dim)]">Optional follow-up</p>
-                  <textarea
-                    value={guidedFollowUp}
-                    onChange={(e) => setGuidedFollowUp(e.target.value)}
-                    rows={2}
-                    placeholder="Example: slower intro, cleaner transitions, stronger camera push in scene 2"
-                    className="w-full rounded-md border border-[var(--an-border-input)] bg-[var(--an-bg-card)] px-2 py-1.5 text-[10px] text-[var(--an-text)] outline-none focus:border-[var(--an-border-hover)] resize-none"
-                  />
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleApplyGuidedMotion()}
-                    className="flex-1 px-2.5 py-1.5 rounded-md bg-[var(--an-accent)] hover:bg-[var(--an-accent-hover)] text-white text-[11px] font-medium transition-colors"
-                  >
-                    Apply & Continue
-                  </button>
-                  <button
-                    onClick={handleSkipGuidedMotion}
-                    className="px-2.5 py-1.5 rounded-md border border-[var(--an-border-input)] bg-[var(--an-bg-card)] text-[10px] text-[var(--an-text-dim)] hover:border-[var(--an-border-hover)]"
-                  >
-                    Skip
-                  </button>
-                </div>
               </div>
             )}
 
@@ -2829,9 +2356,7 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
                 {m.source === 'upload' && (
                   <button
                     onClick={() => handleRemoveMedia(m.id)}
-                    className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500/90 flex items-center justify-center opacity-90 hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/80 transition-opacity"
-                    title={`Remove ${m.name}`}
-                    aria-label={`Remove ${m.name}`}
+                    className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500/90 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                   >
                     <X className="w-2 h-2 text-white" />
                   </button>
@@ -2870,21 +2395,30 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
         />
       </div>
 
+      {/* ── Right: Output handle (video) ─────────────────────────────── */}
+      <div className="absolute -right-[10px]" style={{ top: 30 }}>
+        <div className="w-5 h-5 rounded-full bg-[#A855F7] flex items-center justify-center">
+          <Video className="h-3 w-3 text-white" />
+        </div>
+        <Handle
+          type="source"
+          position={Position.Right}
+          id="video"
+          className="!absolute !top-1/2 !left-1/2 !-translate-x-1/2 !-translate-y-1/2 !w-5 !h-5 !bg-transparent !border-0"
+        />
+      </div>
+
       {/* ── Settings Panel (portal) ──────────────────────────────────── */}
       {showSettings && (
         <AnimationSettingsPanel
           nodeId={id}
           position={settingsPosition}
-          anchorRect={settingsAnchorRect ?? undefined}
           onClose={() => setShowSettings(false)}
           engine={engine}
           aspectRatio={aspectRatio}
           duration={duration}
           techniques={techniques}
           designSpec={data.designSpec}
-          motionSpec={data.motionSpec}
-          motionPresets={data.motionPresets}
-          selectedMotionPresetId={data.selectedMotionPresetId}
           logo={data.logo}
           fps={data.fps}
           resolution={data.resolution}
@@ -2894,81 +2428,11 @@ function AnimationNodeComponent({ id, data, selected }: AnimationNodeProps) {
           onDurationChange={handleDurationChange}
           onTechniquesChange={handleTechniquesChange}
           onDesignSpecChange={handleDesignSpecChange}
-          onMotionSpecChange={handleMotionSpecChange}
-          onSaveMotionPreset={handleSaveMotionPreset}
-          onApplyMotionPreset={handleApplyMotionPreset}
-          onDeleteMotionPreset={handleDeleteMotionPreset}
           onLogoChange={handleLogoChange}
           onFpsChange={handleFpsChange}
           onResolutionChange={handleResolutionChange}
         />
       )}
-    </div>
-
-      {/* ── Handles (outside overflow-hidden card so pointer events aren't clipped) ── */}
-
-      {/* Left: Image reference handles */}
-      {Array.from({ length: imageRefCount }).map((_, i) => {
-        const top = IMAGE_HANDLE_START + i * HANDLE_SPACING;
-        return (
-          <div key={`img-ref-${i}`} className="absolute -left-3 z-20" style={{ top }}>
-            <div className="relative">
-              <Handle
-                type="target"
-                position={Position.Left}
-                id={`image-ref-${i}`}
-                className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
-              />
-              <Image className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-white" />
-            </div>
-          </div>
-        );
-      })}
-
-      {/* Left: Video reference handles (hidden for Theatre.js) */}
-      {engine !== 'theatre' && Array.from({ length: videoRefCount }).map((_, i) => {
-        const top = videoHandleStart + i * HANDLE_SPACING;
-        return (
-          <div key={`vid-ref-${i}`} className="absolute -left-3 z-20" style={{ top }}>
-            <div className="relative">
-              <Handle
-                type="target"
-                position={Position.Left}
-                id={`video-ref-${i}`}
-                className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
-              />
-              <Video className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-white" />
-            </div>
-          </div>
-        );
-      })}
-
-      {/* Left: SVG code handle */}
-      <div className="absolute -left-3 z-20" style={{ top: svgCodeHandleTop }}>
-        <div className="relative">
-          <Handle
-            type="target"
-            position={Position.Left}
-            id="svg-code"
-            className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
-          />
-          <Code className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-white" />
-        </div>
-      </div>
-
-      {/* Right: Output handle (video) */}
-      <div className="absolute -right-3 z-20" style={{ top: '50%', transform: 'translateY(-50%)' }}>
-        <div className="relative">
-          <Handle
-            type="source"
-            position={Position.Right}
-            id="video"
-            className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
-          />
-          <Video className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-white" />
-        </div>
-      </div>
-
     </div>
   );
 }

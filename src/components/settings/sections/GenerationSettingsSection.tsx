@@ -3,28 +3,25 @@
 import { useSettingsStore } from '@/stores/settings-store';
 import { toast } from 'sonner';
 
-import { MODEL_CAPABILITIES, VIDEO_MODEL_CAPABILITIES, ENABLED_IMAGE_MODELS, ENABLED_VIDEO_MODELS, type ImageModelType, type VideoModelType } from '@/lib/types';
-
 const imageModels = [
-  { id: 'auto', name: 'Auto', description: 'Best model for the task' },
-  ...ENABLED_IMAGE_MODELS.map((id) => ({
-    id,
-    name: MODEL_CAPABILITIES[id].label,
-    description: MODEL_CAPABILITIES[id].description,
-  })),
+  { id: 'flux-schnell', name: 'Flux Schnell', description: 'Fast, good quality' },
+  { id: 'flux-pro', name: 'Flux Pro', description: 'High quality, slower' },
+  { id: 'nanobanana-pro', name: 'NanoBanana Pro', description: 'Artistic style' },
+  { id: 'recraft-v3', name: 'Recraft V3', description: 'Design focused' },
+  { id: 'ideogram-v3', name: 'Ideogram V3', description: 'Text rendering' },
+  { id: 'sd-3.5', name: 'Stable Diffusion 3.5', description: 'Versatile' },
 ];
 
 const videoModels = [
-  { id: 'auto', name: 'Auto', description: 'Best model for the task' },
-  ...ENABLED_VIDEO_MODELS.map((id) => ({
-    id,
-    name: VIDEO_MODEL_CAPABILITIES[id].label,
-    description: VIDEO_MODEL_CAPABILITIES[id].description,
-  })),
+  { id: 'kling-2.6-t2v', name: 'Kling 2.6 T2V', description: 'Text to video' },
+  { id: 'kling-2.6-i2v', name: 'Kling 2.6 I2V', description: 'Image to video' },
+  { id: 'veo-3', name: 'Veo 3', description: 'High quality' },
+  { id: 'luma-ray2', name: 'Luma Ray2', description: 'Cinematic' },
+  { id: 'minimax-video', name: 'Minimax Video', description: 'Fast generation' },
+  { id: 'runway-gen3', name: 'Runway Gen3', description: 'Professional' },
 ];
 
 const aspectRatios = [
-  { id: 'auto', name: 'Auto' },
   { id: '1:1', name: 'Square (1:1)' },
   { id: '16:9', name: 'Landscape (16:9)' },
   { id: '9:16', name: 'Portrait (9:16)' },
@@ -49,11 +46,11 @@ export function GenerationSettingsSection() {
     <div className="space-y-6">
       {/* Image Model */}
       <div className="space-y-2">
-        <label className="text-sm font-medium text-foreground">Default Image Model</label>
+        <label className="text-sm font-medium text-zinc-200">Default Image Model</label>
         <select
           value={defaultSettings.imageModel}
           onChange={(e) => handleChange('imageModel', e.target.value)}
-          className="w-full h-10 px-3 bg-muted border border-border rounded-lg text-sm text-foreground outline-none focus:border-primary"
+          className="w-full h-10 px-3 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-200 outline-none focus:border-indigo-500"
         >
           {imageModels.map((model) => (
             <option key={model.id} value={model.id}>
@@ -65,11 +62,11 @@ export function GenerationSettingsSection() {
 
       {/* Video Model */}
       <div className="space-y-2">
-        <label className="text-sm font-medium text-foreground">Default Video Model</label>
+        <label className="text-sm font-medium text-zinc-200">Default Video Model</label>
         <select
           value={defaultSettings.videoModel}
           onChange={(e) => handleChange('videoModel', e.target.value)}
-          className="w-full h-10 px-3 bg-muted border border-border rounded-lg text-sm text-foreground outline-none focus:border-primary"
+          className="w-full h-10 px-3 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-200 outline-none focus:border-indigo-500"
         >
           {videoModels.map((model) => (
             <option key={model.id} value={model.id}>
@@ -81,11 +78,11 @@ export function GenerationSettingsSection() {
 
       {/* Aspect Ratio */}
       <div className="space-y-2">
-        <label className="text-sm font-medium text-foreground">Default Aspect Ratio</label>
+        <label className="text-sm font-medium text-zinc-200">Default Aspect Ratio</label>
         <select
           value={defaultSettings.aspectRatio}
           onChange={(e) => handleChange('aspectRatio', e.target.value)}
-          className="w-full h-10 px-3 bg-muted border border-border rounded-lg text-sm text-foreground outline-none focus:border-primary"
+          className="w-full h-10 px-3 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-200 outline-none focus:border-indigo-500"
         >
           {aspectRatios.map((ratio) => (
             <option key={ratio.id} value={ratio.id}>
@@ -97,7 +94,7 @@ export function GenerationSettingsSection() {
 
       {/* Image Count */}
       <div className="space-y-2">
-        <label className="text-sm font-medium text-foreground">Default Image Count</label>
+        <label className="text-sm font-medium text-zinc-200">Default Image Count</label>
         <div className="flex gap-2">
           {[1, 2, 3, 4].map((count) => (
             <button
@@ -105,8 +102,8 @@ export function GenerationSettingsSection() {
               onClick={() => handleChange('imageCount', count)}
               className={`flex-1 h-10 rounded-lg text-sm font-medium transition-colors ${
                 defaultSettings.imageCount === count
-                  ? 'bg-primary text-foreground'
-                  : 'bg-muted text-muted-foreground hover:text-foreground border border-border'
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-700'
               }`}
             >
               {count}
@@ -116,17 +113,17 @@ export function GenerationSettingsSection() {
       </div>
 
       {/* Magic Prompt */}
-      <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+      <div className="flex items-center justify-between p-4 bg-zinc-800/50 rounded-lg">
         <div>
-          <label className="text-sm font-medium text-foreground">Magic Prompt</label>
-          <p className="text-xs text-muted-foreground mt-1">
+          <label className="text-sm font-medium text-zinc-200">Magic Prompt</label>
+          <p className="text-xs text-zinc-500 mt-1">
             Automatically enhance prompts with AI
           </p>
         </div>
         <button
           onClick={() => handleChange('magicPrompt', !defaultSettings.magicPrompt)}
           className={`relative w-12 h-6 rounded-full transition-colors ${
-            defaultSettings.magicPrompt ? 'bg-primary' : 'bg-muted'
+            defaultSettings.magicPrompt ? 'bg-indigo-600' : 'bg-zinc-700'
           }`}
         >
           <span

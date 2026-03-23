@@ -7,16 +7,9 @@
  * and generates optimal angles/compositions as ImageGenerator nodes.
  */
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useState, useRef, useEffect } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { useCanvasStore } from '@/stores/canvas-store';
 import { useCanvasAPI } from '@/lib/plugins/canvas-api';
 import type {
@@ -30,26 +23,15 @@ import type { CreateNodeInput } from '@/lib/plugins/types';
 import {
   Camera,
   Trash2,
+  Loader2,
   Sparkles,
   Grid3X3,
   ChevronRight,
   Image as ImageIcon,
-  Play,
-  RefreshCw,
-  Settings,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useBufferedNodeField } from './useBufferedNodeField';
-import { useNodeDisplayMode } from './useNodeDisplayMode';
-import { CanvasNodeShell } from '@/components/canvas/nodes/chrome/CanvasNodeShell';
-import { NodeFloatingToolbar } from '@/components/canvas/nodes/chrome/NodeFloatingToolbar';
-import { NodeFooterRail } from '@/components/canvas/nodes/chrome/NodeFooterRail';
-import { NodeStagePrompt } from '@/components/canvas/nodes/chrome/NodeStagePrompt';
-import { useNodeChromeState } from '@/components/canvas/nodes/chrome/useNodeChromeState';
-import { getPromptHeavyInputHandleTop } from '@/components/canvas/nodes/chrome/handleLayout';
 
-const SHOT_COUNTS = [4, 6, 8] as const;
-
+// Background options
 const BACKGROUND_OPTIONS: { value: ProductShotBackground; label: string }[] = [
   { value: 'studio-white', label: 'Studio White' },
   { value: 'gradient', label: 'Gradient' },
@@ -58,6 +40,7 @@ const BACKGROUND_OPTIONS: { value: ProductShotBackground; label: string }[] = [
   { value: 'dark-moody', label: 'Dark & Moody' },
 ];
 
+// Lighting options
 const LIGHTING_OPTIONS: { value: ProductShotLighting; label: string }[] = [
   { value: 'soft', label: 'Soft' },
   { value: 'dramatic', label: 'Dramatic' },
@@ -65,10 +48,12 @@ const LIGHTING_OPTIONS: { value: ProductShotLighting; label: string }[] = [
   { value: 'rim-light', label: 'Rim Light' },
 ];
 
+// Shot count options
+const SHOT_COUNTS = [4, 6, 8] as const;
+
 function ProductShotNodeComponent({ id, data, selected }: NodeProps<ProductShotNodeType>) {
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
   const deleteNode = useCanvasStore((state) => state.deleteNode);
-  const openSettingsPanel = useCanvasStore((state) => state.openSettingsPanel);
   const getConnectedInputs = useCanvasStore((state) => state.getConnectedInputs);
   const isReadOnly = useCanvasStore((state) => state.isReadOnly);
   const canvas = useCanvasAPI();
@@ -79,54 +64,7 @@ function ProductShotNodeComponent({ id, data, selected }: NodeProps<ProductShotN
 
   const [isEditingName, setIsEditingName] = useState(false);
   const [nodeName, setNodeName] = useState(data.name || 'Product Shots');
-  const [isHovered, setIsHovered] = useState(false);
-  const [isPromptExpanded, setIsPromptExpanded] = useState(false);
-  const [isPromptFocused, setIsPromptFocused] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
-  const productNameRef = useRef<HTMLTextAreaElement>(null);
-  const { displayMode, focusedWithin, focusProps } = useNodeDisplayMode(selected);
-  const {
-    draft: productNameDraft,
-    handleChange: handleProductNameChange,
-    handleBlur: handleProductNameBlur,
-    commit: commitProductName,
-  } = useBufferedNodeField({
-    nodeId: id,
-    value: data.productName || '',
-    field: 'productName',
-    preview: 'skip',
-  });
-  const {
-    draft: additionalNotesDraft,
-    handleChange: handleAdditionalNotesChange,
-    handleBlur: handleAdditionalNotesBlur,
-    commit: commitAdditionalNotes,
-  } = useBufferedNodeField({
-    nodeId: id,
-    value: data.additionalNotes || '',
-    field: 'additionalNotes',
-    preview: 'skip',
-  });
-  const productSummary = useMemo(
-    () => productNameDraft.replace(/\s+/g, ' ').trim(),
-    [productNameDraft]
-  );
-  const notesSummary = useMemo(
-    () => additionalNotesDraft.replace(/\s+/g, ' ').trim(),
-    [additionalNotesDraft]
-  );
-  const chromeState = useNodeChromeState({
-    isHovered,
-    focusedWithin,
-    isPromptFocused,
-    selected,
-    displayMode,
-    hasOutput: data.viewState === 'preview',
-    expanded: isPromptExpanded,
-  });
-  const showHandles = chromeState.showHandles;
-  const showTopToolbar = chromeState.showTopToolbar && !isReadOnly;
-  const showFooterRail = chromeState.showFooterRail && !isReadOnly;
 
   useEffect(() => {
     if (isEditingName && nameInputRef.current) {
@@ -144,47 +82,30 @@ function ProductShotNodeComponent({ id, data, selected }: NodeProps<ProductShotN
     deleteNode(id);
   }, [id, deleteNode]);
 
-  const openSettingsFromElement = useCallback((element: HTMLElement) => {
-    const rect = element.closest('.react-flow__node')?.getBoundingClientRect();
-    if (rect) {
-      openSettingsPanel(id, { x: rect.right + 10, y: rect.top });
-    }
-  }, [id, openSettingsPanel]);
-
-  const handleOpenSettings = useCallback((event: React.MouseEvent) => {
-    openSettingsFromElement(event.currentTarget as HTMLElement);
-  }, [openSettingsFromElement]);
+  // Form field handlers
+  const updateField = useCallback(
+    <K extends keyof ProductShotNodeData>(field: K, value: ProductShotNodeData[K]) => {
+      updateNodeData(id, { [field]: value });
+    },
+    [id, updateNodeData]
+  );
 
   // Validation
-  const isValid = productSummary.length > 0 && hasProductImage;
+  const isValid = (data.productName?.trim().length ?? 0) > 0;
 
   // Generate product shots
   const handleGenerate = useCallback(async () => {
-    await Promise.all([
-      commitProductName(productNameDraft, true),
-      commitAdditionalNotes(additionalNotesDraft, true),
-    ]);
     if (!isValid) return;
-
-    const connectedInputs = getConnectedInputs(id);
-    if (!connectedInputs.productImageUrl) {
-      updateNodeData(id, {
-        viewState: 'form',
-        error: 'Connect a product image before generating shots.',
-      });
-      return;
-    }
 
     updateNodeData(id, { viewState: 'loading', error: undefined });
 
     try {
       const input = {
-        productName: productNameDraft.trim(),
-        productImageUrl: connectedInputs.productImageUrl,
+        productName: data.productName.trim(),
         shotCount: data.shotCount,
         background: data.background,
         lighting: data.lighting,
-        additionalNotes: additionalNotesDraft.trim() || undefined,
+        additionalNotes: data.additionalNotes?.trim() || undefined,
       };
 
       const response = await fetch('/api/plugins/product-shot', {
@@ -215,7 +136,7 @@ function ProductShotNodeComponent({ id, data, selected }: NodeProps<ProductShotN
         error: err instanceof Error ? err.message : 'Generation failed',
       });
     }
-  }, [additionalNotesDraft, commitAdditionalNotes, commitProductName, data.background, data.lighting, data.shotCount, getConnectedInputs, id, isValid, productNameDraft, updateNodeData]);
+  }, [id, data.productName, data.shotCount, data.background, data.lighting, data.additionalNotes, isValid, updateNodeData]);
 
   // Toggle a shot's enabled state
   const toggleShot = useCallback((shotNumber: number) => {
@@ -295,20 +216,6 @@ function ProductShotNodeComponent({ id, data, selected }: NodeProps<ProductShotN
         }
       }
 
-      // Wrap everything in a group: source node + product shot node + created nodes
-      const groupNodeIds = [id, ...createdNodeIds];
-      if (sourceMediaNodeId) groupNodeIds.unshift(sourceMediaNodeId);
-
-      await canvas.wrapInGroup({
-        nodeIds: groupNodeIds,
-        name: `${data.productName || 'Product'} Shots`,
-        color: '#d97706',
-        stickyNote: {
-          content: `${enabledShots.length} shots | ${data.background} | ${data.lighting} lighting`,
-          color: 'orange',
-        },
-      });
-
       // Fit view to show all nodes
       canvas.fitView();
 
@@ -319,202 +226,199 @@ function ProductShotNodeComponent({ id, data, selected }: NodeProps<ProductShotN
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create nodes');
     }
-  }, [data.background, data.lighting, data.productName, data.result, canvas, id]);
+  }, [data.result, canvas, id]);
 
-  const promptPlaceholder = 'Product name (e.g., Nike Air Max 90)...';
-
-  // --- Chrome elements ---
-
-  const topToolbar = showTopToolbar ? (
-    <NodeFloatingToolbar>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
-        onClick={handleGenerate}
-        disabled={!isValid || data.viewState === 'loading'}
-        title={data.viewState === 'preview' ? 'Regenerate shots' : 'Generate shots'}
-      >
-        {data.viewState === 'preview' ? <RefreshCw className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        className="h-7 w-7 text-muted-foreground hover:text-red-400 hover:bg-muted/50"
-        onClick={handleDelete}
-        title="Delete node"
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        onClick={handleOpenSettings}
-        className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
-        title="Settings"
-      >
-        <Settings className="h-3.5 w-3.5" />
-      </Button>
-    </NodeFloatingToolbar>
-  ) : null;
-
-  const footerRail = showFooterRail ? (
-    <NodeFooterRail className="node-footer-rail-plain">
-      <Select value={String(data.shotCount)} onValueChange={(v) => updateNodeData(id, { shotCount: Number(v) })}>
-        <SelectTrigger className="h-8 w-auto rounded-xl border-0 bg-muted/80 px-2.5 text-xs nodrag nopan hover:bg-muted">
-          <SelectValue>{data.shotCount} shots</SelectValue>
-        </SelectTrigger>
-        <SelectContent className="bg-popover border-border">
-          {SHOT_COUNTS.map((count) => (
-            <SelectItem key={count} value={String(count)} className="text-xs">{count} shots</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-
-      <Select value={data.background} onValueChange={(v) => updateNodeData(id, { background: v as ProductShotBackground })}>
-        <SelectTrigger className="h-8 w-auto rounded-xl border-0 bg-muted/80 px-2.5 text-xs nodrag nopan hover:bg-muted">
-          <SelectValue>{BACKGROUND_OPTIONS.find((o) => o.value === data.background)?.label ?? data.background}</SelectValue>
-        </SelectTrigger>
-        <SelectContent className="bg-popover border-border">
-          {BACKGROUND_OPTIONS.map((opt) => (
-            <SelectItem key={opt.value} value={opt.value} className="text-xs">{opt.label}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        onClick={handleOpenSettings}
-        className="h-8 w-8 rounded-xl nodrag nopan text-muted-foreground hover:bg-muted/70 hover:text-foreground"
-        title="Settings"
-      >
-        <Settings className="h-3.5 w-3.5" />
-      </Button>
-
-      <div className="min-w-0 flex-1" />
-
-      {data.viewState === 'preview' ? (
-        <Button
-          onClick={handleCreateOnCanvas}
-          disabled={(data.result?.shots.filter((s) => s.enabled).length || 0) === 0}
-          size="sm"
-          className="h-10 rounded-full nodrag nopan bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5 px-4"
-        >
-          <Grid3X3 className="h-3.5 w-3.5" />
-          Create Nodes
-        </Button>
-      ) : (
-        <Button
-          onClick={handleGenerate}
-          disabled={!isValid || data.viewState === 'loading'}
-          size="icon-sm"
-          className="h-10 w-10 min-w-10 rounded-full nodrag nopan bg-primary text-primary-foreground hover:bg-primary/90"
-        >
-          {data.viewState === 'loading' ? (
-            <Sparkles className="h-4 w-4 animate-pulse" />
-          ) : (
-            <Play className="h-4 w-4 ml-0.5 fill-current" />
-          )}
-        </Button>
-      )}
-    </NodeFooterRail>
-  ) : null;
-
-  const promptOverlay = displayMode === 'summary' ? null : (
-    <NodeStagePrompt
-      teaser={chromeState.showPromptTeaser ? (
-        <p className={`node-prompt-teaser-clamp text-[15px] leading-6 ${productSummary ? 'text-foreground/82' : 'text-muted-foreground/82'}`}>
-          {productSummary || promptPlaceholder}
-        </p>
-      ) : null}
-      expanded={chromeState.showPromptEditor}
-      onExpand={
-        isReadOnly
-          ? undefined
-          : () => {
-              setIsPromptExpanded(true);
-              requestAnimationFrame(() => productNameRef.current?.focus());
-            }
-      }
-    >
-      <div
-        className="flex flex-col gap-3 nodrag nopan"
-        onPointerDown={(event) => event.stopPropagation()}
-      >
+  // Render form view
+  const renderForm = () => (
+    <div className="p-4 space-y-3">
+      {/* Product Name */}
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-muted-foreground">
+          Product Name {!isReadOnly && <span className="text-red-400">*</span>}
+        </label>
         <textarea
-          ref={productNameRef}
-          value={productNameDraft}
-          onChange={handleProductNameChange}
-          onFocus={() => {
-            setIsPromptExpanded(true);
-            setIsPromptFocused(true);
-          }}
-          onBlur={async () => {
-            setIsPromptFocused(false);
-            setIsPromptExpanded(false);
-            await handleProductNameBlur();
-          }}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') {
-              event.preventDefault();
-              setIsPromptFocused(false);
-              setIsPromptExpanded(false);
-              event.currentTarget.blur();
-            }
-          }}
-          placeholder={isReadOnly ? '' : promptPlaceholder}
+          value={data.productName || ''}
+          onChange={(e) => updateField('productName', e.target.value)}
+          placeholder={isReadOnly ? '' : 'e.g., Nike Air Max 90, Apple Watch Ultra, Coffee mug...'}
           disabled={isReadOnly}
-          className={`node-stage-input nodrag nopan nowheel select-text w-full resize-none border-0 bg-transparent px-0 py-0 focus:outline-none min-h-[40px] text-[15px] leading-6 ${isReadOnly ? 'cursor-default' : ''}`}
-          style={{
-            colorScheme: 'dark',
-            backgroundColor: 'transparent',
-            backgroundImage: 'none',
-            color: 'var(--text-secondary)',
-            caretColor: 'var(--text-primary)',
-            boxShadow: 'none',
-            borderColor: 'transparent',
-            WebkitAppearance: 'none',
-            appearance: 'none',
-          }}
+          className={`w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-amber-500 nodrag ${isReadOnly ? 'cursor-default' : ''}`}
+          rows={2}
         />
-        {isPromptFocused && (
-          <textarea
-            value={additionalNotesDraft}
-            onChange={handleAdditionalNotesChange}
-            onBlur={() => {
-              void handleAdditionalNotesBlur();
-            }}
-            placeholder="Additional notes (optional)..."
-            disabled={isReadOnly}
-            className={`node-stage-input nodrag nopan nowheel select-text w-full resize-none border-0 bg-transparent px-0 py-0 focus:outline-none min-h-[40px] text-[13px] leading-5 text-muted-foreground ${isReadOnly ? 'cursor-default' : ''}`}
-            style={{
-              colorScheme: 'dark',
-              backgroundColor: 'transparent',
-              backgroundImage: 'none',
-              boxShadow: 'none',
-              borderColor: 'transparent',
-              WebkitAppearance: 'none',
-              appearance: 'none',
-            }}
-          />
-        )}
       </div>
-    </NodeStagePrompt>
+
+      {/* Shot Count & Background */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">Shots</label>
+          <select
+            value={data.shotCount}
+            onChange={(e) => updateField('shotCount', Number(e.target.value) as 4 | 6 | 8)}
+            disabled={isReadOnly}
+            className={`w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 nodrag ${isReadOnly ? 'cursor-default' : ''}`}
+          >
+            {SHOT_COUNTS.map((count) => (
+              <option key={count} value={count}>
+                {count} shots
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">Background</label>
+          <select
+            value={data.background}
+            onChange={(e) => updateField('background', e.target.value as ProductShotBackground)}
+            disabled={isReadOnly}
+            className={`w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 nodrag ${isReadOnly ? 'cursor-default' : ''}`}
+          >
+            {BACKGROUND_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Lighting */}
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-muted-foreground">Lighting</label>
+        <select
+          value={data.lighting}
+          onChange={(e) => updateField('lighting', e.target.value as ProductShotLighting)}
+          disabled={isReadOnly}
+          className={`w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 nodrag ${isReadOnly ? 'cursor-default' : ''}`}
+        >
+          {LIGHTING_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Additional Notes */}
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-muted-foreground">
+          Additional Notes {!isReadOnly && <span className="text-muted-foreground/70">(optional)</span>}
+        </label>
+        <textarea
+          value={data.additionalNotes || ''}
+          onChange={(e) => updateField('additionalNotes', e.target.value)}
+          placeholder={isReadOnly ? '' : 'e.g., Focus on the sole pattern, include a wrist shot...'}
+          disabled={isReadOnly}
+          className={`w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground text-sm placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-amber-500 nodrag ${isReadOnly ? 'cursor-default' : ''}`}
+          rows={2}
+        />
+      </div>
+
+      {/* Error message */}
+      {data.error && (
+        <div className="p-2 bg-red-900/30 border border-red-700 rounded-lg text-red-200 text-xs">
+          {data.error}
+        </div>
+      )}
+
+      {/* Generate button */}
+      {!isReadOnly && (
+        <button
+          onClick={handleGenerate}
+          disabled={!isValid}
+          className="w-full py-2 px-4 bg-amber-600 hover:bg-amber-500 disabled:bg-muted disabled:text-muted-foreground text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2 nodrag"
+        >
+          <Sparkles className="w-4 h-4" />
+          Generate Shots
+        </button>
+      )}
+    </div>
   );
 
-  const secondaryContent = data.error ? (
-    <p className="px-1 text-xs text-red-400">{data.error}</p>
-  ) : !hasProductImage && displayMode === 'full' ? (
-    <p className="px-1 text-[11px] text-muted-foreground">
-      Connect a product image to generate accurate shot prompts.
-    </p>
-  ) : null;
+  // Render loading view
+  const renderLoading = () => (
+    <div className="flex flex-col items-center justify-center p-8 space-y-3">
+      <Loader2 className="w-8 h-8 text-amber-400 animate-spin" />
+      <p className="text-muted-foreground text-sm">Planning your product shots...</p>
+    </div>
+  );
+
+  // Render preview view
+  const renderPreview = () => {
+    if (!data.result) return null;
+
+    const enabledCount = data.result.shots.filter((s) => s.enabled).length;
+
+    return (
+      <div className="p-4 space-y-3">
+        {/* Summary */}
+        <div className="p-2 bg-muted rounded-lg">
+          <h3 className="text-xs font-medium text-muted-foreground mb-1">Summary</h3>
+          <p className="text-xs text-foreground">{data.result.summary}</p>
+        </div>
+
+        {/* Shots preview */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-medium text-muted-foreground">Shots</h3>
+            <span className="text-[10px] text-muted-foreground">
+              {enabledCount} of {data.result.shots.length} enabled
+            </span>
+          </div>
+          <div className="space-y-1 max-h-[240px] overflow-y-auto nowheel" onWheel={(e) => !e.ctrlKey && e.stopPropagation()}>
+            {data.result.shots.map((shot) => (
+              <ShotPreview
+                key={shot.number}
+                shot={shot}
+                onToggle={() => toggleShot(shot.number)}
+                isReadOnly={isReadOnly}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Actions */}
+        {!isReadOnly && (
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={() => updateNodeData(id, { viewState: 'form' })}
+              className="flex-1 py-2 px-3 bg-muted hover:bg-muted/80 text-foreground text-sm font-medium rounded-lg transition-colors nodrag"
+            >
+              Back to Edit
+            </button>
+            <button
+              onClick={handleCreateOnCanvas}
+              disabled={enabledCount === 0}
+              className="flex-1 py-2 px-3 bg-amber-600 hover:bg-amber-500 disabled:bg-muted disabled:text-muted-foreground text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-1.5 nodrag"
+            >
+              <Grid3X3 className="w-3.5 h-3.5" />
+              Create Nodes
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="relative">
-      <CanvasNodeShell
-        title={isEditingName && !isReadOnly ? (
+      {/* Floating Toolbar */}
+      {selected && !isReadOnly && (
+        <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1 backdrop-blur rounded-lg px-2 py-1.5 border node-toolbar-floating shadow-xl z-10">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="h-7 w-7 text-muted-foreground hover:text-red-400 hover:bg-muted/50"
+            onClick={handleDelete}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      )}
+
+      {/* Node Title */}
+      <div className="flex items-center gap-2 mb-2 text-sm font-medium" style={{ color: 'var(--node-title-productShot, #d97706)' }}>
+        <Camera className="h-4 w-4" />
+        {isEditingName ? (
           <input
             ref={nameInputRef}
             type="text"
@@ -528,107 +432,63 @@ function ProductShotNodeComponent({ id, data, selected }: NodeProps<ProductShotN
                 setIsEditingName(false);
               }
             }}
-            className="node-input rounded-none border-0 border-b bg-transparent px-0.5 outline-none"
+            className="bg-transparent border-b outline-none px-0.5 min-w-[60px] nodrag"
+            style={{ borderColor: 'var(--input-border)', color: 'var(--text-secondary)' }}
           />
         ) : (
           <span
             onDoubleClick={() => !isReadOnly && setIsEditingName(true)}
-            className={isReadOnly ? 'cursor-default' : 'cursor-text'}
+            className={`transition-colors hover:opacity-80 ${isReadOnly ? 'cursor-default' : 'cursor-text'}`}
           >
-            {data.name || 'Product Shots'}
+            {nodeName}
           </span>
         )}
-        icon={<Camera className="h-4 w-4" />}
-        selected={selected}
-        hovered={isHovered}
-        displayMode={displayMode}
-        hasOutput={data.viewState === 'preview'}
-        interactiveMode="prompt"
-        stageMinHeight={data.viewState === 'preview' ? undefined : 280}
-        topToolbar={topToolbar}
-        footerRail={footerRail}
-        promptOverlay={promptOverlay}
-        shellMode="visual-stage"
-        secondaryContent={secondaryContent}
-        cardClassName={data.viewState === 'loading' ? 'animate-subtle-pulse generating-border-subtle' : undefined}
-        cardStyle={{ minWidth: 420 }}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-        focusProps={focusProps}
-      >
-        {data.viewState === 'loading' ? (
-          <div className="flex min-h-[240px] flex-1 flex-col items-center justify-center gap-4 px-6 pb-[120px] text-center">
-            <div>
-              <p
-                className="bg-clip-text text-base font-semibold text-transparent"
-                style={{
-                  backgroundImage:
-                    'linear-gradient(90deg, hsl(var(--muted-foreground)/0.45) 0%, hsl(var(--foreground)/0.95) 45%, hsl(var(--muted-foreground)/0.45) 100%)',
-                  backgroundSize: '200% 100%',
-                  animation: 'shimmer-text 2s ease-in-out infinite',
-                }}
-              >
-                Planning your product shots...
-              </p>
-              <p className="text-muted-foreground text-xs mt-1">This may take a moment</p>
-            </div>
-          </div>
-        ) : data.viewState === 'preview' && data.result ? (
-          <div className="flex flex-col gap-3 px-4 pt-3 pb-[120px]">
-            {/* Summary */}
-            <div className="p-2 bg-muted/50 rounded-xl">
-              <p className="text-xs text-foreground">{data.result.summary}</p>
-            </div>
-
-            {/* Shots preview */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-medium text-muted-foreground">Shots</h3>
-                <span className="text-[10px] text-muted-foreground">
-                  {data.result.shots.filter((s) => s.enabled).length} of {data.result.shots.length} enabled
-                </span>
-              </div>
-              <div className="space-y-1 max-h-[240px] overflow-y-auto nowheel" onWheel={(e) => !e.ctrlKey && e.stopPropagation()}>
-                {data.result.shots.map((shot) => (
-                  <ShotPreview
-                    key={shot.number}
-                    shot={shot}
-                    onToggle={() => toggleShot(shot.number)}
-                    isReadOnly={isReadOnly}
-                  />
-                ))}
-              </div>
-            </div>
-
-            {!isReadOnly && (
-              <button
-                onClick={() => updateNodeData(id, { viewState: 'form' })}
-                className="text-xs text-muted-foreground hover:text-foreground transition-colors nodrag"
-              >
-                Back to edit
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="min-h-[280px] flex-1" />
-        )}
-      </CanvasNodeShell>
-
-      {/* Input Handle - Product Image */}
-      <div className={`absolute -left-3 z-10 group transition-opacity duration-200 ${showHandles || hasProductImage ? 'opacity-100' : 'opacity-0'}`} style={{ top: getPromptHeavyInputHandleTop(0) }}>
-        <div className="relative">
-          <Handle
-            type="target"
-            position={Position.Left}
-            id="productImage"
-            className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
-          />
-          <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none" style={{ color: hasProductImage ? '#a1a1aa' : 'var(--text-muted)' }} />
-        </div>
-        <span className="absolute left-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
-          {hasProductImage ? 'Product Image (connected)' : 'Product Image'}
-        </span>
       </div>
+
+      {/* Main Node Card */}
+      <div
+        className={`
+          w-[400px] rounded-2xl overflow-hidden
+          transition-[box-shadow,ring-color] duration-150
+          ${selected
+            ? 'ring-[2.5px] ring-amber-500 shadow-lg shadow-amber-500/10'
+            : 'ring-1 hover:ring-2'
+          }
+        `}
+        style={{
+          backgroundColor: 'var(--node-card-bg)',
+          '--tw-ring-color': selected ? undefined : 'var(--node-ring)'
+        } as React.CSSProperties}
+      >
+        {/* Header */}
+        <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+          <span className="text-sm font-medium text-foreground">Product Shot Plan</span>
+        </div>
+
+        {/* Content */}
+        {data.viewState === 'form' && renderForm()}
+        {data.viewState === 'loading' && renderLoading()}
+        {data.viewState === 'preview' && renderPreview()}
+      </div>
+
+      {/* Input Handle - Product Image (left side, only in form view) */}
+      {data.viewState === 'form' && (
+        <div className="absolute -left-3 group" style={{ top: '95px' }}>
+          <div className="relative">
+            <Handle
+              type="target"
+              position={Position.Left}
+              id="productImage"
+              className={`!relative !transform-none !w-6 !h-6 !rounded-md !border-2 node-handle hover:!border-amber-500 ${hasProductImage ? '!border-green-500' : ''
+                }`}
+            />
+            <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none" style={{ color: hasProductImage ? '#4ade80' : 'var(--text-muted)' }} />
+          </div>
+          <span className="absolute left-8 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
+            {hasProductImage ? 'Product Image (connected)' : 'Product Image'}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -646,7 +506,7 @@ function ShotPreview({ shot, onToggle, isReadOnly }: { shot: ProductShotShotData
             onClick={onToggle}
             className="pl-2 pr-1 py-2 nodrag"
           >
-            <div className={`w-8 h-4.5 rounded-full transition-colors relative ${shot.enabled ? 'bg-primary' : 'bg-zinc-600'}`}>
+            <div className={`w-8 h-4.5 rounded-full transition-colors relative ${shot.enabled ? 'bg-amber-500' : 'bg-zinc-600'}`}>
               <div className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white transition-transform ${shot.enabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
             </div>
           </button>
@@ -658,7 +518,7 @@ function ShotPreview({ shot, onToggle, isReadOnly }: { shot: ProductShotShotData
           className="flex-1 flex items-center justify-between p-2 text-left hover:bg-muted/80 nodrag"
         >
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-medium text-primary bg-primary/20 px-1.5 py-0.5 rounded">
+            <span className="text-[10px] font-medium text-amber-400 bg-amber-500/20 px-1.5 py-0.5 rounded">
               {shot.number}
             </span>
             <span className="text-xs font-medium text-foreground">{shot.angleName}</span>

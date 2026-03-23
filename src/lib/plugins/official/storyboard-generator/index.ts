@@ -26,11 +26,6 @@ export const storyboardGeneratorPlugin: AgentPlugin = {
   },
   version: '1.0.0',
   visibility: 'public',
-  policy: {
-    capabilityDeclarations: ['canvas:create', 'canvas:read'],
-    distributionVisibility: ['oss', 'hosted'],
-    trustTier: 'official',
-  },
   type: 'agent',
   sandbox: {
     component: StoryboardSandbox,

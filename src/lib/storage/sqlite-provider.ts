@@ -8,7 +8,6 @@ import 'server-only';
 
 import { eq, desc } from 'drizzle-orm';
 import type { StorageProvider, StoredCanvas, CanvasMetadata } from './types';
-import { normalizeStoredCanvas, resolveThumbnailStatus } from './types';
 
 // Dynamic import helper for database
 async function getDb() {
@@ -48,24 +47,14 @@ export class SQLiteStorageProvider implements StorageProvider {
         // Invalid JSON, default to 0
       }
       
-      const thumbnailUrl = canvas.thumbnailUrl || canvas.thumbnail || undefined;
-      const thumbnailStatus = resolveThumbnailStatus(canvas.thumbnailStatus || undefined, thumbnailUrl);
-
       return {
         id: canvas.id,
         name: canvas.name,
-        thumbnail: canvas.thumbnail || thumbnailUrl,
-        thumbnailUrl,
-        thumbnailStatus,
-        thumbnailUpdatedAt: canvas.thumbnailUpdatedAt instanceof Date
-          ? canvas.thumbnailUpdatedAt.getTime()
-          : canvas.thumbnailUpdatedAt || undefined,
-        thumbnailVersion: canvas.thumbnailVersion || undefined,
-        thumbnailErrorCode: canvas.thumbnailErrorCode || undefined,
+        thumbnail: canvas.thumbnail || undefined,
         createdAt: canvas.createdAt instanceof Date ? canvas.createdAt.getTime() : canvas.createdAt,
         updatedAt: canvas.updatedAt instanceof Date ? canvas.updatedAt.getTime() : canvas.updatedAt,
         nodeCount,
-      } as CanvasMetadata;
+      };
     });
   }
 
@@ -96,22 +85,15 @@ export class SQLiteStorageProvider implements StorageProvider {
       console.error(`Failed to parse edges for canvas ${id}`);
     }
 
-    return normalizeStoredCanvas({
+    return {
       id: canvas.id,
       name: canvas.name,
       thumbnail: canvas.thumbnail || undefined,
-      thumbnailUrl: canvas.thumbnailUrl || undefined,
-      thumbnailStatus: canvas.thumbnailStatus || undefined,
-      thumbnailUpdatedAt: canvas.thumbnailUpdatedAt instanceof Date
-        ? canvas.thumbnailUpdatedAt.getTime()
-        : canvas.thumbnailUpdatedAt || undefined,
-      thumbnailVersion: canvas.thumbnailVersion || undefined,
-      thumbnailErrorCode: canvas.thumbnailErrorCode || undefined,
       createdAt: canvas.createdAt instanceof Date ? canvas.createdAt.getTime() : canvas.createdAt,
       updatedAt: canvas.updatedAt instanceof Date ? canvas.updatedAt.getTime() : canvas.updatedAt,
       nodes,
       edges,
-    });
+    };
   }
 
   async saveCanvas(canvas: StoredCanvas): Promise<void> {
@@ -119,41 +101,29 @@ export class SQLiteStorageProvider implements StorageProvider {
     const canvases = await getCanvasesTable();
     const now = new Date();
 
-    const normalized = normalizeStoredCanvas(canvas);
-
     // Serialize nodes and edges to JSON
-    const nodesJson = JSON.stringify(normalized.nodes || []);
-    const edgesJson = JSON.stringify(normalized.edges || []);
+    const nodesJson = JSON.stringify(canvas.nodes || []);
+    const edgesJson = JSON.stringify(canvas.edges || []);
 
     // Upsert: insert or update on conflict
     await db
       .insert(canvases)
       .values({
-        id: normalized.id,
-        name: normalized.name,
+        id: canvas.id,
+        name: canvas.name,
         nodes: nodesJson,
         edges: edgesJson,
-        thumbnail: normalized.thumbnail || null,
-        thumbnailUrl: normalized.thumbnailUrl || null,
-        thumbnailStatus: normalized.thumbnailStatus || 'empty',
-        thumbnailUpdatedAt: normalized.thumbnailUpdatedAt ? new Date(normalized.thumbnailUpdatedAt) : null,
-        thumbnailVersion: normalized.thumbnailVersion || null,
-        thumbnailErrorCode: normalized.thumbnailErrorCode || null,
-        createdAt: new Date(normalized.createdAt),
+        thumbnail: canvas.thumbnail || null,
+        createdAt: new Date(canvas.createdAt),
         updatedAt: now,
       })
       .onConflictDoUpdate({
         target: canvases.id,
         set: {
-          name: normalized.name,
+          name: canvas.name,
           nodes: nodesJson,
           edges: edgesJson,
-          thumbnail: normalized.thumbnail || null,
-          thumbnailUrl: normalized.thumbnailUrl || null,
-          thumbnailStatus: normalized.thumbnailStatus || 'empty',
-          thumbnailUpdatedAt: normalized.thumbnailUpdatedAt ? new Date(normalized.thumbnailUpdatedAt) : null,
-          thumbnailVersion: normalized.thumbnailVersion || null,
-          thumbnailErrorCode: normalized.thumbnailErrorCode || null,
+          thumbnail: canvas.thumbnail || null,
           updatedAt: now,
         },
       });

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import {
   Home,
+  FolderOpen,
   LayoutTemplate,
   Settings,
   ChevronLeft,
@@ -26,6 +27,12 @@ const navItems: NavItem[] = [
     href: '/',
   },
   {
+    icon: FolderOpen,
+    label: 'Projects',
+    href: '/?tab=my-spaces',
+    tab: 'my-spaces',
+  },
+  {
     icon: LayoutTemplate,
     label: 'Templates',
     href: '/?tab=templates',
@@ -45,11 +52,7 @@ interface SidebarProps {
 export function Sidebar({ className }: SidebarProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [isExpanded, setIsExpanded] = useState(() => {
-    if (typeof window === 'undefined') return true;
-    const saved = window.localStorage.getItem('koda:sidebar-expanded');
-    return saved === null ? true : saved === 'true';
-  });
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const currentTab = searchParams.get('tab');
 
@@ -77,17 +80,15 @@ export function Sidebar({ className }: SidebarProps) {
   return (
     <aside
       className={cn(
-        'flex flex-col border-r border-border/70 bg-background transition-all duration-250',
-        isExpanded ? 'w-60' : 'w-20',
+        'bg-background border-r border-border flex flex-col transition-all duration-200',
+        isExpanded ? 'w-48' : 'w-16',
         className
       )}
+      onMouseEnter={() => setIsExpanded(true)}
+      onMouseLeave={() => setIsExpanded(false)}
     >
-      <div className={cn('px-3 pt-3 pb-2', isExpanded ? 'opacity-100' : 'opacity-0')}>
-        <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">Workspace</p>
-      </div>
-
-      {/* Navigation */}
-      <nav className="flex-1 flex flex-col gap-1.5 px-2 pb-3">
+      {/* Navigation Items */}
+      <nav className="flex-1 flex flex-col gap-1 p-2 pt-3">
         {navItems.map((item) => {
           const Icon = item.icon;
           const active = isActive(item);
@@ -96,28 +97,19 @@ export function Sidebar({ className }: SidebarProps) {
             <Link
               key={item.label}
               href={item.href}
-              title={!isExpanded ? item.label : undefined}
               className={cn(
-                'group flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-all',
+                'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors',
+                'hover:bg-muted',
                 active
-                  ? 'border-border/80 bg-muted/70 text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]'
-                  : 'border-transparent text-muted-foreground hover:border-border/80 hover:bg-muted/60 hover:text-foreground'
+                  ? 'bg-muted text-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
               )}
             >
+              <Icon className="h-5 w-5 flex-shrink-0" />
               <span
                 className={cn(
-                  'flex h-8 w-8 items-center justify-center rounded-lg border transition-colors',
-                  active
-                    ? 'border-border bg-background text-foreground'
-                    : 'border-border/60 bg-background/80 text-muted-foreground group-hover:text-foreground'
-                )}
-              >
-                <Icon className="h-4 w-4 flex-shrink-0" />
-              </span>
-              <span
-                className={cn(
-                  'text-sm font-medium whitespace-nowrap overflow-hidden transition-all duration-200',
-                  isExpanded ? 'max-w-[140px] opacity-100' : 'max-w-0 opacity-0'
+                  'text-sm font-medium whitespace-nowrap overflow-hidden transition-opacity duration-200',
+                  isExpanded ? 'opacity-100' : 'opacity-0 w-0'
                 )}
               >
                 {item.label}
@@ -127,16 +119,11 @@ export function Sidebar({ className }: SidebarProps) {
         })}
       </nav>
 
-      {/* Expand / Collapse */}
-      <div className="border-t border-border/70 p-2">
+      {/* Expand/Collapse Toggle */}
+      <div className="p-2 border-t border-border">
         <button
-          onClick={() => {
-            const next = !isExpanded;
-            setIsExpanded(next);
-            window.localStorage.setItem('koda:sidebar-expanded', String(next));
-          }}
-          className="flex w-full items-center justify-center rounded-xl border border-transparent p-2.5 text-muted-foreground transition-colors hover:border-border/80 hover:bg-muted/60 hover:text-foreground"
-          aria-label={isExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="flex items-center justify-center w-full p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors cursor-pointer"
         >
           {isExpanded ? (
             <ChevronLeft className="h-4 w-4" />

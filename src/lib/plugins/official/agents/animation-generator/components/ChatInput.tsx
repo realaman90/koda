@@ -250,12 +250,11 @@ export function ChatInput({
 
                   {/* Action buttons */}
                   {editingId !== item.id && (
-                    <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
                         onClick={() => handleStartEdit(item)}
                         className="p-1 text-[var(--an-text-placeholder)] hover:text-[var(--an-text-muted)] transition-colors"
                         title="Edit"
-                        aria-label="Edit queued message"
                       >
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
@@ -263,7 +262,6 @@ export function ChatInput({
                         onClick={() => handleSendQueued(item)}
                         className="p-1 text-[var(--an-text-placeholder)] hover:text-[var(--an-text-muted)] transition-colors"
                         title="Stop current and send this"
-                        aria-label="Send queued message now"
                       >
                         <ArrowUp className="w-3.5 h-3.5" />
                       </button>
@@ -271,7 +269,6 @@ export function ChatInput({
                         onClick={() => handleDeleteQueued(item.id)}
                         className="p-1 text-[var(--an-text-placeholder)] hover:text-[#EF4444] transition-colors"
                         title="Delete"
-                        aria-label="Delete queued message"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -303,27 +300,22 @@ export function ChatInput({
 
         {/* Bottom bar */}
         <div className="flex items-center justify-between px-2 py-1 pb-2">
-          {/* Settings summary — click to open panel (hidden when no callback) */}
-          {onOpenSettings ? (
-            <button
-              onClick={onOpenSettings}
-              className="flex items-center gap-1 px-1.5 py-1 rounded text-[10px] text-[var(--an-text-placeholder)] hover:text-[var(--an-text-muted)] transition-colors"
-              disabled={disabled}
-            >
-              <Settings className="w-3 h-3" />
-              <span>
-                {engine === 'remotion' ? 'Remotion' : 'Theatre'} · {aspectRatio} · {duration}s
-                {techniques.length > 0 ? ` · ${techniques.length} preset${techniques.length > 1 ? 's' : ''}` : ''}
-              </span>
-            </button>
-          ) : (
-            <div />
-          )}
+          {/* Settings summary — click to open panel */}
+          <button
+            onClick={onOpenSettings}
+            className="flex items-center gap-1 px-1.5 py-1 rounded text-[10px] text-[var(--an-text-placeholder)] hover:text-[var(--an-text-muted)] transition-colors"
+            disabled={disabled}
+          >
+            <Settings className="w-3 h-3" />
+            <span>
+              {engine === 'remotion' ? 'Remotion' : 'Theatre'} · {aspectRatio} · {duration}s
+              {techniques.length > 0 ? ` · ${techniques.length} preset${techniques.length > 1 ? 's' : ''}` : ''}
+            </span>
+          </button>
 
           {/* Action buttons */}
           <div className="flex items-center gap-1.5">
-            {/* Paperclip / Attach (hidden when no media callbacks) */}
-            {(onMediaUpload || onNodeReference) && (
+            {/* Paperclip / Attach */}
             <DropdownMenu open={showAttachMenu} onOpenChange={setShowAttachMenu}>
               <DropdownMenuTrigger asChild>
                 <button
@@ -363,7 +355,6 @@ export function ChatInput({
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
-            )}
 
             {/* Stop button (when busy) */}
             {isBusy && (

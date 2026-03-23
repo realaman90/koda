@@ -6,8 +6,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useCanvasStore } from '@/stores/canvas-store';
 import type { MediaNode as MediaNodeType } from '@/lib/types';
-import { getExtensionFromUrl } from '@/lib/assets/types';
-import { Image as ImageIcon, Upload, Trash2, X, Link, Volume2, Film, RefreshCw, Download } from 'lucide-react';
+import { Image as ImageIcon, Upload, Trash2, X, Link } from 'lucide-react';
 import { uploadAsset } from '@/lib/assets/upload';
 
 function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
@@ -50,21 +49,15 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
 
   const handleFileSelect = useCallback(
     async (file: File) => {
-      const isImage = file.type.startsWith('image/');
-      const isVideo = file.type.startsWith('video/');
-      const isAudio = file.type.startsWith('audio/');
-
-      if (!isImage && !isVideo && !isAudio) {
-        toast.error('Please select an image, video, or audio file');
+      if (!file.type.startsWith('image/')) {
+        toast.error('Please select an image file');
         return;
       }
 
-      const mediaType = isVideo ? 'video' : isAudio ? 'audio' : 'image';
-
       try {
         const asset = await uploadAsset(file, { nodeId: id });
-        updateNodeData(id, { url: asset.url, type: mediaType });
-        toast.success(`${mediaType.charAt(0).toUpperCase() + mediaType.slice(1)} uploaded`);
+        updateNodeData(id, { url: asset.url, type: 'image' });
+        toast.success('Image uploaded');
       } catch (err) {
         console.error('[MediaNode] Upload failed:', err);
         toast.error('Upload failed');
@@ -112,43 +105,12 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
 
   const handleUrlSubmit = useCallback(() => {
     if (urlInput.trim()) {
-      const url = urlInput.trim().toLowerCase();
-      let mediaType: 'image' | 'video' | 'audio' = 'image';
-      if (/\.(mp4|webm|mov|avi)(\?|$)/.test(url)) mediaType = 'video';
-      else if (/\.(mp3|wav|ogg|aac|m4a|flac)(\?|$)/.test(url)) mediaType = 'audio';
-      updateNodeData(id, { url: urlInput.trim(), type: mediaType });
+      updateNodeData(id, { url: urlInput.trim(), type: 'image' });
       setUrlInput('');
       setShowUrlInput(false);
-      toast.success('Media URL added');
+      toast.success('Image URL added');
     }
   }, [id, urlInput, updateNodeData]);
-
-  const handleDownload = useCallback(async () => {
-    if (!data.url || data.url.startsWith('cached:')) return;
-
-    try {
-      const urlExtension = getExtensionFromUrl(data.url);
-      const extension = urlExtension !== 'bin'
-        ? urlExtension
-        : data.type === 'video'
-          ? 'mp4'
-          : data.type === 'audio'
-            ? 'mp3'
-            : 'png';
-      const filename = `${data.type || 'media'}-${Date.now()}.${extension}`;
-      const proxyUrl = `/api/download?url=${encodeURIComponent(data.url)}&filename=${encodeURIComponent(filename)}`;
-      const a = document.createElement('a');
-      a.href = proxyUrl;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      toast.success(`${data.type === 'audio' ? 'Audio' : data.type === 'video' ? 'Video' : 'Image'} downloaded`);
-    } catch (error) {
-      console.error('[MediaNode] Download failed:', error);
-      toast.error('Failed to download media');
-    }
-  }, [data.type, data.url]);
 
   return (
     <div
@@ -160,64 +122,37 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*,video/*,audio/*"
+        accept="image/*"
         onChange={handleInputChange}
         className="hidden"
       />
 
-      {/* Floating Toolbar - appears above node when selected */}
-      {selected && (!isReadOnly || !!data.url) && (
+      {/* Floating Toolbar - appears above node when selected (hidden in read-only) */}
+      {selected && !isReadOnly && (
         <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1 rounded-lg px-2 py-1.5 node-toolbar-floating z-10">
           {data.url && (
-            <>
-              {!isReadOnly ? (
-                <>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                    onClick={() => fileInputRef.current?.click()}
-                    title="Replace media"
-                  >
-                    <RefreshCw className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                    onClick={handleClear}
-                    title="Clear media"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
-                </>
-              ) : null}
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                onClick={handleDownload}
-                title="Download media"
-              >
-                <Download className="h-3.5 w-3.5" />
-              </Button>
-            </>
-          )}
-          {!isReadOnly ? (
             <Button
               variant="ghost"
               size="icon-sm"
-              className="h-7 w-7 text-muted-foreground hover:text-red-400 hover:bg-muted/50"
-              onClick={handleDelete}
+              className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              onClick={handleClear}
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <X className="h-3.5 w-3.5" />
             </Button>
-          ) : null}
+          )}
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="h-7 w-7 text-muted-foreground hover:text-red-400 hover:bg-muted/50"
+            onClick={handleDelete}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
         </div>
       )}
 
       {/* Node Title */}
-      <div className="node-drag-handle mb-2 rounded-xl px-3 py-2 text-sm font-medium" style={{ color: 'var(--node-title-media)' }}>
+      <div className="flex items-center gap-2 mb-2 text-sm font-medium" style={{ color: 'var(--node-title-media)' }}>
         <ImageIcon className="h-4 w-4" />
         {isEditingName ? (
           <input
@@ -249,43 +184,23 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
       {/* Main Node Card */}
       <div
         className={`
-          node-drag-handle node-drag-surface w-[280px] rounded-2xl overflow-hidden
+          w-[280px] rounded-2xl overflow-hidden
           transition-all duration-150
-          ${selected ? 'node-card node-card-selected' : 'node-card'}
+          ${selected ? 'node-card-selected' : 'node-card'}
         `}
       >
         {/* Content Area */}
         <div className="relative min-h-[160px]">
           {data.url && !data.url.startsWith('cached:') ? (
-            data.type === 'audio' ? (
-              /* Audio Player */
-              <div className="p-4 flex flex-col items-center justify-center gap-3 min-h-[160px]">
-                <Volume2 className="h-8 w-8 text-muted-foreground" />
-                <audio src={data.url} controls className="w-full max-w-[240px] nodrag nopan" />
-              </div>
-            ) : data.type === 'video' ? (
-              /* Video Preview */
-              <div className="relative">
-                <video
-                  src={data.url}
-                  controls
-                  className="w-full h-auto nodrag nopan"
-                  style={{ maxHeight: '300px' }}
-                  onLoadedData={() => updateNodeInternals(id)}
-                />
-              </div>
-            ) : (
-              /* Image Preview */
-              <div className="relative">
-                <img
-                  src={data.url}
-                  alt="Media"
-                  className="w-full h-auto"
-                  draggable={false}
-                  onLoad={() => updateNodeInternals(id)}
-                />
-              </div>
-            )
+            /* Image Preview */
+            <div className="relative">
+              <img
+                src={data.url}
+                alt="Media"
+                className="w-full h-auto"
+                onLoad={() => updateNodeInternals(id)}
+              />
+            </div>
           ) : (
             /* Upload Zone - disabled in read-only mode */
             <div
@@ -294,7 +209,7 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
               onDragLeave={!isReadOnly ? handleDragLeave : undefined}
               onClick={!isReadOnly ? handleClick : undefined}
               className={`
-                nodrag nopan min-h-[160px] flex flex-col items-center justify-center p-4
+                min-h-[160px] flex flex-col items-center justify-center p-4
                 transition-colors
                 ${isReadOnly ? 'cursor-default' : 'cursor-pointer'}
                 ${isDragging
@@ -305,7 +220,7 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
             >
               <Upload className="h-8 w-8 mb-3" style={{ color: 'var(--text-placeholder)' }} />
               <p className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>
-                {isReadOnly ? 'No media' : 'Drop media here'}
+                {isReadOnly ? 'No image' : 'Drop image here'}
               </p>
               {!isReadOnly && (
                 <p className="text-xs mt-1" style={{ color: 'var(--text-placeholder)' }}>or click to browse</p>
@@ -319,7 +234,7 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
                       e.stopPropagation();
                       setShowUrlInput(true);
                     }}
-                    className="mt-4 flex items-center gap-1.5 text-xs transition-colors hover:opacity-80 nodrag nopan"
+                    className="mt-4 flex items-center gap-1.5 text-xs transition-colors hover:opacity-80"
                     style={{ color: 'var(--text-muted)' }}
                   >
                     <Link className="h-3 w-3" />
@@ -327,7 +242,7 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
                   </button>
                 ) : (
                   <div
-                    className="mt-4 flex items-center gap-2 w-full nodrag nopan"
+                    className="mt-4 flex items-center gap-2 w-full"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <input
@@ -338,8 +253,8 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
                         if (e.key === 'Enter') handleUrlSubmit();
                         if (e.key === 'Escape') setShowUrlInput(false);
                       }}
-                      placeholder="Media URL..."
-                      className="flex-1 rounded px-2 py-1 text-xs outline-none focus:border-blue-500 node-input nodrag nopan"
+                      placeholder="Image URL..."
+                      className="flex-1 rounded px-2 py-1 text-xs outline-none focus:border-blue-500 node-input"
                       style={{ borderWidth: '1px' }}
                       autoFocus
                     />
@@ -347,7 +262,7 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
                       size="icon-sm"
                       variant="ghost"
                       onClick={handleUrlSubmit}
-                      className="h-6 w-6 nodrag nopan"
+                      className="h-6 w-6"
                       style={{ color: 'var(--text-muted)' }}
                     >
                       <Link className="h-3 w-3" />
@@ -362,7 +277,7 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
 
       {/* Output Handle - Right side */}
       <div
-        className={`absolute -right-3 z-10 group transition-opacity duration-200 ${selected || isHovered || data.url ? 'opacity-100' : 'opacity-0'}`}
+        className={`absolute -right-3 group transition-opacity duration-200 ${selected || isHovered || data.url ? 'opacity-100' : 'opacity-0'}`}
         style={{ top: '50%', transform: 'translateY(-50%)' }}
       >
         <div className="relative">
@@ -370,18 +285,12 @@ function MediaNodeComponent({ id, data, selected }: NodeProps<MediaNodeType>) {
             type="source"
             position={Position.Right}
             id="output"
-            className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
+            className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-red-400 !border-zinc-900 hover:!border-zinc-700"
           />
-          {data.type === 'audio' ? (
-            <Volume2 className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-output-icon)]" />
-          ) : data.type === 'video' ? (
-            <Film className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-output-icon)]" />
-          ) : (
-            <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-output-icon)]" />
-          )}
+          <ImageIcon className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
         </div>
         <span className="absolute right-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
-          {data.type === 'audio' ? 'Audio' : data.type === 'video' ? 'Video' : 'Image'} output
+          Image output
         </span>
       </div>
     </div>

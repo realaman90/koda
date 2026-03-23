@@ -249,8 +249,8 @@ export function PresetPopover({
         className={cn(
           'flex flex-col items-center justify-center gap-1.5 p-2 rounded-lg border transition-all cursor-pointer group',
           hasSelection
-            ? 'border-primary/40 bg-primary/10 hover:bg-primary/15'
-            : 'border-border bg-muted/60 hover:bg-muted'
+            ? 'border-teal-500/50 bg-teal-500/10 hover:bg-teal-500/20'
+            : 'border-zinc-700 bg-zinc-800/50 hover:bg-zinc-800 hover:border-zinc-600'
         )}
       >
         {/* Preview thumbnail or icon */}
@@ -285,10 +285,10 @@ export function PresetPopover({
               />
             </>
           ) : (
-            <span className="text-muted-foreground">{icon}</span>
+            <span className="text-zinc-400">{icon}</span>
           )}
         </div>
-        <span className={cn('text-[10px] truncate max-w-full', hasSelection ? 'text-foreground' : 'text-muted-foreground')}>
+        <span className="text-[10px] text-zinc-400 truncate max-w-full">
           {customImage ? 'Custom' : selected?.label || title}
         </span>
       </button>

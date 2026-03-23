@@ -10,7 +10,6 @@
  */
 
 import type { StoredCanvas, CanvasMetadata } from './types';
-import { parseSyncCapabilityProbe } from '@/lib/runtime/sync-capability';
 
 export type SyncStatus = 'idle' | 'syncing' | 'synced' | 'error' | 'offline';
 
@@ -22,7 +21,7 @@ interface SyncState {
 }
 
 // Singleton state
-const syncState: SyncState = {
+let syncState: SyncState = {
   status: 'idle',
   lastSyncedAt: null,
   pendingChanges: new Set(),
@@ -55,16 +54,13 @@ export function getSyncStatus(): SyncState {
 }
 
 /**
- * Check if DB sync is runtime-available (via capability probe)
+ * Check if SQLite backend is enabled (via API)
  */
 export async function isSQLiteEnabled(): Promise<boolean> {
   try {
-    const response = await fetch('/api/runtime/sync-capability', { method: 'GET' });
-    if (!response.ok) return false;
-
+    const response = await fetch('/api/canvases', { method: 'GET' });
     const data = await response.json();
-    const probe = parseSyncCapabilityProbe(data);
-    return probe?.mode === 'db-sync-available';
+    return data.backend === 'sqlite';
   } catch {
     return false;
   }
@@ -236,28 +232,27 @@ export function mergeCanvases(
  */
 export async function performInitialSync(
   getLocalCanvases: () => Promise<StoredCanvas[]>,
-  saveLocalCanvases: (canvases: StoredCanvas[]) => Promise<void>,
-  options?: { skipCapabilityCheck?: boolean }
+  saveLocalCanvases: (canvases: StoredCanvas[]) => Promise<void>
 ): Promise<StoredCanvas[]> {
-  // Check if SQLite is enabled (skip if caller already verified)
-  if (!options?.skipCapabilityCheck) {
-    const sqliteEnabled = await isSQLiteEnabled();
-    if (!sqliteEnabled) {
-      return getLocalCanvases();
-    }
+  // Check if SQLite is enabled
+  const sqliteEnabled = await isSQLiteEnabled();
+  
+  if (!sqliteEnabled) {
+    // No SQLite - just return local canvases
+    return getLocalCanvases();
   }
 
   syncState.status = 'syncing';
   notifyListeners();
 
   try {
-    // Fetch from both sources in parallel
+    // Fetch from both sources
     const [localCanvases, serverCanvasMetadata] = await Promise.all([
       getLocalCanvases(),
       fetchCanvasesFromServer(),
     ]);
 
-    // Fetch full canvas data from server (parallel, not sequential)
+    // Fetch full canvas data from server
     const serverCanvases = await Promise.all(
       serverCanvasMetadata.map((meta) => fetchCanvasFromServer(meta.id))
     );
@@ -272,11 +267,13 @@ export async function performInitialSync(
     // Save merged result to localStorage
     await saveLocalCanvases(merged);
 
-    // Sync any local-only canvases to server (parallel, not sequential)
+    // Sync any local-only canvases to server
     const serverIds = new Set(validServerCanvases.map((c) => c.id));
     const localOnlyCanvases = localCanvases.filter((c) => !serverIds.has(c.id));
-
-    await Promise.all(localOnlyCanvases.map((canvas) => createCanvasOnServer(canvas)));
+    
+    for (const canvas of localOnlyCanvases) {
+      await createCanvasOnServer(canvas);
+    }
 
     syncState.status = 'synced';
     syncState.lastSyncedAt = Date.now();

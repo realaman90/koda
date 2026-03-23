@@ -7,8 +7,9 @@
  * Matches the AnimationNode UI patterns (CSS variables, text sizes, bubbles).
  */
 
-import { memo, useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { memo, useState, useRef, useCallback, useEffect } from 'react';
 import type { NodeProps, Node } from '@xyflow/react';
+import { Handle, Position } from '@xyflow/react';
 import type { PluginNodeData } from '@/lib/types';
 import { useCanvasStore } from '@/stores/canvas-store';
 import {
@@ -21,9 +22,10 @@ import {
   Loader2,
   Video,
   Sparkles,
+  ChevronDown,
   RotateCcw,
   Scissors,
-  Square,
+  Terminal,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -34,20 +36,14 @@ import type {
   ToolCallItem,
   ThinkingBlockItem,
   GeneratedPrompt,
-  MotionAnalysis,
   VideoInput,
 } from './types';
 import { TOOL_DISPLAY_NAMES } from './events';
 import { useMotionAnalyzerStream } from './hooks';
-import { uploadVideoViaPresigned, uploadAsset } from '@/lib/assets/upload';
-import { cacheMediaData, getCached, loadFromDB } from '../animation-generator/media-cache';
-import { useNodeDisplayMode } from '@/components/canvas/nodes/useNodeDisplayMode';
 
 // ─── Constants ──────────────────────────────────────────────────────────
 const MAX_VIDEO_SIZE_MB = 50;
 const MAX_ANALYSIS_DURATION = 20;
-const NEXT_SEGMENT_RE = /\bnext(?:\s+(\d{1,3}))?(?:\s*(?:s|sec|secs|second|seconds))?\b/i;
-const ANALYZE_INTENT_RE = /\b(next|continue|reanaly[sz]e|analy[sz]e|segment|part|timestamp|window)\b/i;
 
 function createDefaultState(nodeId: string): MotionAnalyzerNodeState {
   return {
@@ -59,48 +55,6 @@ function createDefaultState(nodeId: string): MotionAnalyzerNodeState {
     generatedPrompts: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-  };
-}
-
-function resolveSegmentRequest(video: VideoInput | undefined, text: string): {
-  video: VideoInput | undefined;
-  advanced: boolean;
-  atEnd: boolean;
-} {
-  if (!video?.duration || video.duration <= MAX_ANALYSIS_DURATION) {
-    return { video, advanced: false, atEnd: false };
-  }
-
-  const match = text.match(NEXT_SEGMENT_RE);
-  if (!match) {
-    return { video, advanced: false, atEnd: false };
-  }
-
-  const duration = video.duration;
-  const currentStart = video.trimStart ?? 0;
-  const currentEnd = video.trimEnd ?? Math.min(duration, MAX_ANALYSIS_DURATION);
-  const currentSpan = Math.max(1, currentEnd - currentStart);
-  const requestedSpan = match[1] ? Number(match[1]) : currentSpan;
-  const span = Math.max(1, Math.min(MAX_ANALYSIS_DURATION, Number.isFinite(requestedSpan) ? requestedSpan : MAX_ANALYSIS_DURATION));
-
-  const nextStart = Number(currentEnd.toFixed(3));
-  if (nextStart >= duration - 0.05) {
-    return { video, advanced: false, atEnd: true };
-  }
-
-  const nextEnd = Math.min(duration, nextStart + span);
-  if (nextEnd - nextStart < 1) {
-    return { video, advanced: false, atEnd: true };
-  }
-
-  return {
-    video: {
-      ...video,
-      trimStart: nextStart,
-      trimEnd: nextEnd,
-    },
-    advanced: true,
-    atEnd: false,
   };
 }
 
@@ -195,6 +149,136 @@ function StreamingText({ text }: { text: string }) {
   );
 }
 
+/** Thinking block — matches AnimationNode ThinkingBlock */
+function ThinkingBlockUI({
+  label,
+  reasoning,
+  isActive,
+  startedAt,
+  endedAt,
+}: {
+  label: string;
+  reasoning?: string;
+  isActive: boolean;
+  startedAt?: string;
+  endedAt?: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (isActive && startedAt) {
+      const start = new Date(startedAt).getTime();
+      setElapsed(Math.round((Date.now() - start) / 1000));
+      const timer = setInterval(() => {
+        setElapsed(Math.round((Date.now() - start) / 1000));
+      }, 1000);
+      return () => clearInterval(timer);
+    } else if (startedAt && endedAt) {
+      const start = new Date(startedAt).getTime();
+      const end = new Date(endedAt).getTime();
+      setElapsed(Math.round((end - start) / 1000));
+    }
+  }, [isActive, startedAt, endedAt]);
+
+  useEffect(() => {
+    if (isActive && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [reasoning, isActive]);
+
+  if (isActive) {
+    return (
+      <div className="w-full rounded-md bg-[var(--an-bg-elevated)] overflow-hidden">
+        <div className="flex items-center gap-1.5 px-2.5 py-1.5">
+          <Loader2 className="w-3 h-3 text-[var(--an-text-muted)] animate-spin shrink-0" />
+          <span
+            className="text-[11px] font-medium bg-clip-text text-transparent"
+            style={{
+              backgroundImage: 'linear-gradient(90deg, #A1A1AA 0%, #FAFAFA 40%, #A1A1AA 60%, #71717A 100%)',
+              backgroundSize: '200% 100%',
+              animation: 'think-shimmer 2s linear infinite',
+            }}
+          >
+            {label || 'Thinking'}
+          </span>
+          <span className="ml-auto text-[9px] text-[var(--an-border-input)] tabular-nums">{elapsed}s</span>
+        </div>
+        {reasoning && (
+          <div ref={scrollRef} className="px-2.5 pb-2 overflow-y-auto scrollbar-hidden" style={{ maxHeight: '80px' }}>
+            <p className="text-[10px] text-[#52525B] leading-[1.4] break-words">
+              {reasoning}
+              <span className="inline-block w-[3px] h-[11px] bg-[var(--an-accent)] ml-0.5 animate-pulse rounded-sm align-middle" />
+            </p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (!reasoning && !label) return null;
+  const durationLabel = elapsed > 0 ? `${elapsed}s` : '<1s';
+
+  return (
+    <div className="w-full">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center gap-2 rounded-md bg-[var(--an-bg-elevated)] px-2.5 py-1.5 hover:bg-[var(--an-bg-hover)] transition-colors group"
+      >
+        <Sparkles className="w-3 h-3 text-[var(--an-text-placeholder)] shrink-0" />
+        <span className="text-[11px] text-[var(--an-text-placeholder)] group-hover:text-[var(--an-text-dim)] transition-colors">
+          Thought for {durationLabel}
+        </span>
+        <ChevronDown
+          className={`w-3 h-3 text-[var(--an-border-input)] shrink-0 ml-auto transition-transform ${expanded ? 'rotate-180' : ''}`}
+        />
+      </button>
+      {expanded && (reasoning || label) && (
+        <div className="px-2.5 py-2 bg-[var(--an-bg-elevated)] rounded-b-md overflow-y-auto scrollbar-hidden" style={{ maxHeight: '120px' }}>
+          <p className="text-[10px] text-[#52525B] leading-[1.4] break-words">{reasoning || label}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Tool call card — matches AnimationNode ToolCallCard */
+function ToolCallCard({ item }: { item: ToolCallItem }) {
+  const displayName = TOOL_DISPLAY_NAMES[item.toolName] || item.toolName;
+  const iconColor = item.status === 'failed' ? '#EF4444' : 'var(--an-accent)';
+
+  return (
+    <div className="w-full">
+      <div
+        className="flex items-center gap-1.5 px-2 py-1.5 bg-[var(--an-bg-elevated)]"
+        style={{ borderRadius: '6px' }}
+      >
+        <Terminal className="w-3 h-3 shrink-0" style={{ color: iconColor }} />
+        <span className="text-[11px] font-medium text-[var(--an-text-muted)]">{displayName}</span>
+        <div className="ml-auto">
+          {item.status === 'running' ? (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[var(--an-bg-user-bubble)]">
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--an-accent)] animate-pulse" />
+              <span className="text-[9px] font-medium text-[var(--an-accent-text)]">Running</span>
+            </span>
+          ) : item.status === 'done' ? (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#14532D]">
+              <Check className="w-2 h-2 text-[#4ADE80]" />
+              <span className="text-[9px] font-medium text-[#4ADE80]">Done</span>
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#3B1111]">
+              <X className="w-2 h-2 text-[#EF4444]" />
+              <span className="text-[9px] font-medium text-[#EF4444]">Failed</span>
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Generated prompt card with copy button */
 function PromptCard({ prompt, onCopy }: { prompt: GeneratedPrompt; onCopy: (text: string) => void }) {
   const [copied, setCopied] = useState(false);
@@ -228,65 +312,6 @@ function PromptCard({ prompt, onCopy }: { prompt: GeneratedPrompt; onCopy: (text
   );
 }
 
-/** Analysis card — surfaces selected segment breakdown directly in timeline */
-function AnalysisCard({ analysis }: { analysis: MotionAnalysis }) {
-  const scenes = Array.isArray(analysis.scenes) ? analysis.scenes : [];
-  const effects = Array.isArray(analysis.effects) ? analysis.effects : [];
-  const topScenes = scenes.slice(0, 3);
-  const topEffects = effects.slice(0, 4);
-
-  return (
-    <div className="w-full rounded-lg bg-[var(--an-bg-elevated)] border border-[var(--an-border-input)] overflow-hidden">
-      <div className="px-3 py-2 border-b border-[var(--an-border-input)]">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-[10px] font-semibold text-[var(--an-text-muted)]">Analysis Result</p>
-          <span className="text-[10px] text-[var(--an-text-placeholder)]">
-            {analysis.duration > 0 ? `${analysis.duration.toFixed(1)}s video` : 'Video analyzed'}
-          </span>
-        </div>
-        <p className="mt-1 text-[11px] text-[var(--an-text-muted)] leading-[1.45]">{analysis.summary}</p>
-      </div>
-
-      <div className="px-3 py-2.5 space-y-2">
-        {topScenes.length > 0 && (
-          <div className="space-y-1">
-            <p className="text-[10px] font-medium text-[var(--an-text-dim)]">Scenes</p>
-            {topScenes.map((scene) => (
-              <p key={`${scene.number}-${scene.startTime}-${scene.endTime}`} className="text-[10px] text-[var(--an-text-muted)] leading-[1.45]">
-                {scene.startTime.toFixed(1)}s-{scene.endTime.toFixed(1)}s: {scene.description}
-              </p>
-            ))}
-          </div>
-        )}
-
-        {topEffects.length > 0 && (
-          <div className="space-y-1">
-            <p className="text-[10px] font-medium text-[var(--an-text-dim)]">Key Effects</p>
-            {topEffects.map((effect, index) => (
-              <p key={`${effect.name}-${effect.timestamp ?? -1}-${index}`} className="text-[10px] text-[var(--an-text-muted)] leading-[1.45]">
-                {effect.timestamp !== undefined ? `${effect.timestamp.toFixed(1)}s` : 'Timing n/a'}: {effect.name}
-              </p>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function normalizeAnalysisResult(result: Record<string, unknown>): MotionAnalysis {
-  return {
-    summary: typeof result.summary === 'string' ? result.summary : '',
-    duration: typeof result.duration === 'number' ? result.duration : 0,
-    scenes: Array.isArray(result.scenes) ? result.scenes as MotionAnalysis['scenes'] : [],
-    effects: Array.isArray(result.effects) ? result.effects as MotionAnalysis['effects'] : [],
-    cameraMovements: Array.isArray(result.cameraMovements) ? result.cameraMovements as string[] : [],
-    transitions: Array.isArray(result.transitions) ? result.transitions as string[] : [],
-    pacing: typeof result.pacing === 'string' ? result.pacing : '',
-    overallStyle: typeof result.overallStyle === 'string' ? result.overallStyle : '',
-  };
-}
-
 /** Trim range picker for videos > 20s */
 function TrimRangePicker({
   duration,
@@ -300,19 +325,7 @@ function TrimRangePicker({
   onChange: (start: number, end: number) => void;
 }) {
   const selectedDuration = trimEnd - trimStart;
-  const isValid = selectedDuration >= 1 && selectedDuration <= MAX_ANALYSIS_DURATION;
-
-  const clampRange = (start: number, end: number) => {
-    const clampedStart = Math.max(0, Math.min(start, Math.max(0, duration - 1)));
-    const clampedEnd = Math.min(duration, Math.max(end, clampedStart + 1));
-    const span = clampedEnd - clampedStart;
-
-    if (span > MAX_ANALYSIS_DURATION) {
-      return [clampedStart, Math.min(duration, clampedStart + MAX_ANALYSIS_DURATION)] as const;
-    }
-
-    return [clampedStart, clampedEnd] as const;
-  };
+  const isValid = selectedDuration > 0 && selectedDuration <= MAX_ANALYSIS_DURATION;
 
   const formatTime = (s: number) => {
     const mins = Math.floor(s / 60);
@@ -320,25 +333,25 @@ function TrimRangePicker({
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const percentStart = (trimStart / duration) * 100;
-  const percentEnd = (trimEnd / duration) * 100;
-
   return (
     <div className="mx-3.5 mb-2 rounded-md bg-[var(--an-bg-elevated)] border border-[var(--an-border-input)] p-2.5">
       <div className="flex items-center gap-1.5 mb-2">
         <Scissors className="w-3 h-3 text-[#FBBF24]" />
         <span className="text-[10px] font-medium text-[var(--an-text-muted)]">
-          Video is {formatTime(duration)} — select a 1s to {MAX_ANALYSIS_DURATION}s segment
+          Video is {formatTime(duration)} — select a {MAX_ANALYSIS_DURATION}s segment
         </span>
       </div>
 
-      <div className="relative h-6 mb-2">
+      {/* Range slider track */}
+      <div className="relative h-5 mb-2">
         <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-1 rounded-full bg-[var(--an-bg-card)]" />
         <div
           className={`absolute top-1/2 -translate-y-1/2 h-1 rounded-full ${isValid ? 'bg-[var(--an-accent)]/60' : 'bg-[#EF4444]/60'}`}
-          style={{ left: `${percentStart}%`, width: `${Math.max(0, percentEnd - percentStart)}%` }}
+          style={{
+            left: `${(trimStart / duration) * 100}%`,
+            width: `${((trimEnd - trimStart) / duration) * 100}%`,
+          }}
         />
-
         <input
           type="range"
           min={0}
@@ -346,61 +359,46 @@ function TrimRangePicker({
           step={0.5}
           value={trimStart}
           onChange={(e) => {
-            const [start, end] = clampRange(parseFloat(e.target.value), trimEnd);
-            onChange(start, end);
-          }}
-          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-          style={{ zIndex: 3 }}
-          aria-label="Trim start"
-        />
-
-        <input
-          type="range"
-          min={0}
-          max={duration}
-          step={0.5}
-          value={trimEnd}
-          onChange={(e) => {
-            const [start, end] = clampRange(trimStart, parseFloat(e.target.value));
-            onChange(start, end);
+            const v = parseFloat(e.target.value);
+            const newEnd = Math.min(v + MAX_ANALYSIS_DURATION, duration);
+            onChange(v, Math.max(newEnd, v + 1));
           }}
           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
           style={{ zIndex: 2 }}
-          aria-label="Trim end"
         />
       </div>
 
+      {/* Time inputs */}
       <div className="flex items-center gap-2 text-[10px]">
         <div className="flex items-center gap-1">
-          <label className="text-[var(--an-text-placeholder)]" htmlFor="trim-start">Start:</label>
+          <label className="text-[var(--an-text-placeholder)]">Start:</label>
           <input
-            id="trim-start"
             type="number"
             min={0}
             max={Math.max(0, duration - 1)}
             step={0.5}
             value={trimStart}
             onChange={(e) => {
-              const [start, end] = clampRange(parseFloat(e.target.value) || 0, trimEnd);
-              onChange(start, end);
+              const v = Math.max(0, parseFloat(e.target.value) || 0);
+              const newEnd = Math.min(v + MAX_ANALYSIS_DURATION, duration);
+              onChange(v, Math.max(newEnd, v + 1));
             }}
-            className="w-14 px-1 py-0.5 rounded bg-[var(--an-bg-input)] border border-[var(--an-border-input)] text-[var(--an-text)] text-center"
+            className="w-12 px-1 py-0.5 rounded bg-[var(--an-bg-input)] border border-[var(--an-border-input)] text-[var(--an-text)] text-center"
           />
         </div>
         <div className="flex items-center gap-1">
-          <label className="text-[var(--an-text-placeholder)]" htmlFor="trim-end">End:</label>
+          <label className="text-[var(--an-text-placeholder)]">End:</label>
           <input
-            id="trim-end"
             type="number"
             min={trimStart + 1}
-            max={Math.min(duration, trimStart + MAX_ANALYSIS_DURATION)}
+            max={Math.min(trimStart + MAX_ANALYSIS_DURATION, duration)}
             step={0.5}
             value={trimEnd}
             onChange={(e) => {
-              const [start, end] = clampRange(trimStart, parseFloat(e.target.value) || trimEnd);
-              onChange(start, end);
+              const v = Math.min(duration, parseFloat(e.target.value) || trimEnd);
+              onChange(trimStart, Math.max(v, trimStart + 1));
             }}
-            className="w-14 px-1 py-0.5 rounded bg-[var(--an-bg-input)] border border-[var(--an-border-input)] text-[var(--an-text)] text-center"
+            className="w-12 px-1 py-0.5 rounded bg-[var(--an-bg-input)] border border-[var(--an-border-input)] text-[var(--an-text)] text-center"
           />
         </div>
         <span className={`ml-auto ${isValid ? 'text-[var(--an-accent)]' : 'text-[#EF4444]'}`}>
@@ -416,38 +414,15 @@ function TrimRangePicker({
 function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<PluginNodeData, 'pluginNode'>>) {
   const nodeData = data as unknown as MotionAnalyzerNodeData;
   const updateNodeData = useCanvasStore(s => s.updateNodeData);
-  const isReadOnly = useCanvasStore(s => s.isReadOnly);
-  const { displayMode, focusProps } = useNodeDisplayMode(selected);
-
-  // Rename state
-  const [isEditingName, setIsEditingName] = useState(false);
-  const [nodeName, setNodeName] = useState(nodeData.name || 'Motion Analyzer');
-  const nameInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (isEditingName && nameInputRef.current) {
-      nameInputRef.current.focus();
-      nameInputRef.current.select();
-    }
-  }, [isEditingName]);
-
-  const handleNameSubmit = useCallback(() => {
-    setIsEditingName(false);
-    if (nodeName.trim() && nodeName !== (nodeData.name || 'Motion Analyzer')) {
-      updateNodeData(id, { name: nodeName.trim() });
-    }
-  }, [id, nodeName, nodeData.name, updateNodeData]);
 
   // Initialize state — merge with defaults so persisted partial state doesn't crash
-  const defaults = useMemo(() => createDefaultState(id), [id]);
+  const defaults = createDefaultState(id);
   const state: MotionAnalyzerNodeState = nodeData.state
     ? { ...defaults, ...nodeData.state, messages: nodeData.state.messages ?? defaults.messages, toolCalls: nodeData.state.toolCalls ?? defaults.toolCalls, thinkingBlocks: nodeData.state.thinkingBlocks ?? defaults.thinkingBlocks, generatedPrompts: nodeData.state.generatedPrompts ?? defaults.generatedPrompts }
     : defaults;
-  useEffect(() => {
-    if (!nodeData.state) {
-      updateNodeData(id, { state: defaults });
-    }
-  }, [defaults, id, nodeData.state, updateNodeData]);
+  if (!nodeData.state) {
+    updateNodeData(id, { state: defaults });
+  }
 
   // Refs
   const chatScrollRef = useRef<HTMLDivElement>(null);
@@ -458,14 +433,10 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
   const streamingTextRef = useRef('');
   const reasoningTextRef = useRef('');
   const textFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const blobPreviewUrlRef = useRef<string | null>(null);
 
   // Local state
   const [inputValue, setInputValue] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
-  const [streamStartedAt, setStreamStartedAt] = useState<number | null>(null);
-  const [streamElapsed, setStreamElapsed] = useState(0);
-  const [cachedVideoSrc, setCachedVideoSrc] = useState<string | null>(null);
 
   // Stream hook
   const { stream: streamToAgent, abort: abortStream } = useMotionAnalyzerStream();
@@ -508,58 +479,6 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
     }
   }, [inputValue]);
 
-  useEffect(() => {
-    if (!isStreaming || !streamStartedAt) return;
-    setStreamElapsed(Math.max(0, Math.round((Date.now() - streamStartedAt) / 1000)));
-    const timer = setInterval(() => {
-      setStreamElapsed(Math.max(0, Math.round((Date.now() - streamStartedAt) / 1000)));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [isStreaming, streamStartedAt]);
-
-  useEffect(() => () => {
-    if (blobPreviewUrlRef.current) {
-      URL.revokeObjectURL(blobPreviewUrlRef.current);
-      blobPreviewUrlRef.current = null;
-    }
-  }, []);
-
-  // Hydrate cached video payloads after refresh (dataUrl = "cached:<id>").
-  useEffect(() => {
-    const v = nodeData.video;
-    if (!v?.dataUrl?.startsWith('cached:')) {
-      setCachedVideoSrc(null);
-      return;
-    }
-
-    const cached = getCached(v.id);
-    if (cached) {
-      setCachedVideoSrc(cached);
-      return;
-    }
-
-    let cancelled = false;
-    loadFromDB(v.id).then((loaded) => {
-      if (!cancelled) setCachedVideoSrc(loaded || null);
-    }).catch(() => {
-      if (!cancelled) setCachedVideoSrc(null);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [nodeData.video]);
-
-  // Repair persisted videos after refresh:
-  // If dataUrl is transient/missing but remoteUrl exists, use remoteUrl for playback.
-  useEffect(() => {
-    const v = nodeData.video;
-    if (!v?.remoteUrl) return;
-    const dataUrl = typeof v.dataUrl === 'string' ? v.dataUrl : '';
-    const needsRepair = !dataUrl || dataUrl.startsWith('blob:') || dataUrl.startsWith('data:');
-    if (!needsRepair) return;
-    updateNodeData(id, { video: { ...v, dataUrl: v.remoteUrl } });
-  }, [id, nodeData.video, updateNodeData]);
-
   // ── Flush streaming text ──────────────────
 
   const flushStreamingText = useCallback(() => {
@@ -588,9 +507,6 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
 
   // ── Video upload ──────────────────────────
 
-  // Track presigned upload state
-  const [isUploading, setIsUploading] = useState(false);
-
   const handleVideoUpload = useCallback(async (file: File) => {
     if (file.size > MAX_VIDEO_SIZE_MB * 1024 * 1024) {
       updateState({
@@ -600,109 +516,45 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
       return;
     }
 
-    // Create a blob URL for instant local preview (doesn't bloat memory like data URL)
-    if (blobPreviewUrlRef.current) {
-      URL.revokeObjectURL(blobPreviewUrlRef.current);
-      blobPreviewUrlRef.current = null;
-    }
-    const blobUrl = URL.createObjectURL(file);
-    blobPreviewUrlRef.current = blobUrl;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
 
-    // Get video metadata (don't revoke the blob URL here — it's shared with the preview element.
-    // Cleanup happens in handleRemoveVideo or when a new video is uploaded.)
-    const duration = await new Promise<number | undefined>((resolve) => {
       const videoEl = document.createElement('video');
       videoEl.preload = 'metadata';
-      videoEl.onloadedmetadata = () => resolve(videoEl.duration);
-      videoEl.onerror = () => resolve(undefined);
-      videoEl.src = blobUrl;
-    });
+      videoEl.onloadedmetadata = () => {
+        const duration = videoEl.duration;
+        const needsTrim = duration > MAX_ANALYSIS_DURATION;
 
-    const needsTrim = duration !== undefined && duration > MAX_ANALYSIS_DURATION;
-
-    // Set video immediately with blob URL for preview
-    const video: VideoInput = {
-      id: `vid_${Date.now()}`,
-      source: 'upload',
-      name: file.name,
-      dataUrl: blobUrl,
-      mimeType: file.type || 'video/mp4',
-      duration,
-      ...(needsTrim ? { trimStart: 0, trimEnd: MAX_ANALYSIS_DURATION } : {}),
+        const video: VideoInput = {
+          id: `vid_${Date.now()}`,
+          source: 'upload',
+          name: file.name,
+          dataUrl,
+          mimeType: file.type || 'video/mp4',
+          duration,
+          ...(needsTrim ? { trimStart: 0, trimEnd: MAX_ANALYSIS_DURATION } : {}),
+        };
+        updateNodeData(id, { video });
+        URL.revokeObjectURL(videoEl.src);
+      };
+      videoEl.onerror = () => {
+        const video: VideoInput = {
+          id: `vid_${Date.now()}`,
+          source: 'upload',
+          name: file.name,
+          dataUrl,
+          mimeType: file.type || 'video/mp4',
+        };
+        updateNodeData(id, { video });
+      };
+      videoEl.src = URL.createObjectURL(file);
     };
-    updateNodeData(id, { video });
-    setCachedVideoSrc(null);
-    setTimeout(() => textareaRef.current?.focus(), 0);
-
-    // Cache file data in IndexedDB for refresh resilience when durable upload is unavailable.
-    try {
-      const localDataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(file);
-      });
-
-      const cachedRef = cacheMediaData(video.id, localDataUrl);
-      const freshNode = useCanvasStore.getState().nodes.find(n => n.id === id);
-      const freshVideo = (freshNode?.data as unknown as MotionAnalyzerNodeData)?.video;
-      if (freshVideo && !freshVideo.remoteUrl && typeof freshVideo.dataUrl === 'string' && freshVideo.dataUrl.startsWith('blob:')) {
-        updateNodeData(id, { video: { ...freshVideo, dataUrl: cachedRef } });
-      }
-    } catch (cacheErr) {
-      console.warn('[MotionAnalyzerNode] Could not cache video in IndexedDB:', cacheErr);
-    }
-
-    // Attempt durable upload in background so the node survives refresh:
-    // 1) presigned R2/S3 (preferred), 2) /api/assets/upload fallback.
-    setIsUploading(true);
-    try {
-      let durableUrl: string | undefined;
-
-      const presignedResult = await uploadVideoViaPresigned(file);
-      if (presignedResult?.url) {
-        durableUrl = presignedResult.url;
-        console.log('[MotionAnalyzerNode] Video uploaded via presigned URL:', durableUrl);
-      } else {
-        try {
-          const uploaded = await uploadAsset(file, { nodeId: id });
-          durableUrl = uploaded.url;
-          console.log('[MotionAnalyzerNode] Video uploaded via /api/assets/upload:', durableUrl);
-        } catch (fallbackErr) {
-          console.warn('[MotionAnalyzerNode] Fallback asset upload failed:', fallbackErr);
-        }
-      }
-
-      if (durableUrl) {
-        const freshNode = useCanvasStore.getState().nodes.find(n => n.id === id);
-        const freshVideo = (freshNode?.data as unknown as MotionAnalyzerNodeData)?.video;
-        if (freshVideo) {
-          updateNodeData(id, {
-            video: {
-              ...freshVideo,
-              dataUrl: durableUrl,
-              remoteUrl: durableUrl,
-            },
-          });
-        }
-      } else {
-        // Keep blob preview only — analysis still works in-session but won't survive refresh.
-        console.log('[MotionAnalyzerNode] No durable upload available; video is session-only.');
-      }
-    } catch (err) {
-      console.warn('[MotionAnalyzerNode] Durable upload failed, video remains session-only:', err);
-    } finally {
-      setIsUploading(false);
-    }
+    reader.readAsDataURL(file);
   }, [id, updateNodeData, updateState]);
 
   const handleRemoveVideo = useCallback(() => {
-    if (blobPreviewUrlRef.current) {
-      URL.revokeObjectURL(blobPreviewUrlRef.current);
-      blobPreviewUrlRef.current = null;
-    }
     updateNodeData(id, { video: undefined });
-    setCachedVideoSrc(null);
   }, [id, updateNodeData]);
 
   const handleTrimChange = useCallback((start: number, end: number) => {
@@ -724,13 +576,17 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
     const text = inputValue.trim();
     if (!text || isStreaming) return;
 
-    const ls = getLatestState();
-    const currentMessages = Array.isArray(ls.messages) ? ls.messages : [];
-    const segmentRequest = resolveSegmentRequest(nodeData.video, text);
-    const effectiveVideo = segmentRequest.video;
-    const isSegmentAdvanceRequest = NEXT_SEGMENT_RE.test(text);
+    setInputValue('');
+    setIsStreaming(true);
+    abortRef.current = false;
+    streamingTextRef.current = '';
+    reasoningTextRef.current = '';
 
-    const baseUserMsg: MotionAnalyzerMessage = {
+    const ls = getLatestState();
+    // Defensive: ensure arrays exist even if store state is corrupted
+    const currentMessages = Array.isArray(ls.messages) ? ls.messages : [];
+
+    const userMsg: MotionAnalyzerMessage = {
       id: `msg_${Date.now()}`,
       role: 'user',
       content: text,
@@ -739,41 +595,10 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
       videoName: nodeData.video?.name,
     };
 
-    if (segmentRequest.atEnd && isSegmentAdvanceRequest) {
-      const assistantMsg: MotionAnalyzerMessage = {
-        id: `msg_${Date.now()}_end`,
-        role: 'assistant',
-        content: 'Reached the end of the video. Move the trim range above, then run analysis again.',
-        timestamp: new Date().toISOString(),
-        seq: nextSeq(),
-      };
-
-      updateNodeData(id, {
-        state: {
-          ...ls,
-          messages: [...currentMessages, baseUserMsg, assistantMsg],
-          phase: 'chatting',
-          updatedAt: new Date().toISOString(),
-        },
-      });
-      setInputValue('');
-      return;
-    }
-
-    setInputValue('');
-    setIsStreaming(true);
-    setStreamStartedAt(Date.now());
-    setStreamElapsed(0);
-    abortRef.current = false;
-    streamingTextRef.current = '';
-    reasoningTextRef.current = '';
-
-    const newMessages = [...currentMessages, baseUserMsg];
-    const shouldAnalyze = ls.phase === 'idle' || segmentRequest.advanced || ANALYZE_INTENT_RE.test(text);
-    const newPhase = shouldAnalyze ? 'analyzing' : ls.phase;
+    const newMessages = [...currentMessages, userMsg];
+    const newPhase = ls.phase === 'idle' ? 'analyzing' : ls.phase;
 
     updateNodeData(id, {
-      ...(segmentRequest.advanced && effectiveVideo ? { video: effectiveVideo } : {}),
       state: {
         ...ls,
         messages: newMessages,
@@ -794,7 +619,7 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
       await streamToAgent(conversationMessages, {
         nodeId: id,
         phase: newPhase,
-        video: effectiveVideo,
+        video: nodeData.video,
       }, {
         onTextDelta: (delta) => {
           streamingTextRef.current += delta;
@@ -871,21 +696,15 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
           };
 
           if (event.toolName === 'analyze_video_motion' && !event.isError) {
-            const analysisResult = normalizeAnalysisResult(event.result);
-            stateUpdate.analysis = analysisResult;
-            // Only add analysis card when we actually have analysis payload.
-            if (analysisResult.summary || analysisResult.scenes.length > 0 || analysisResult.effects.length > 0) {
-              stateUpdate.analysisSeq = nextSeq();
-            }
+            stateUpdate.analysis = event.result as any;
             stateUpdate.phase = 'chatting';
           }
 
           if (event.toolName === 'generate_animation_prompt' && !event.isError) {
-            const promptResult = event.result as { prompt?: string; focusArea?: string };
             const newPrompt: GeneratedPrompt = {
               id: `prompt_${Date.now()}`,
-              prompt: promptResult.prompt || '',
-              focusArea: promptResult.focusArea,
+              prompt: (event.result as any).prompt || '',
+              focusArea: (event.result as any).focusArea,
               createdAt: new Date().toISOString(),
             };
             stateUpdate.generatedPrompts = [...ls2.generatedPrompts, newPrompt];
@@ -922,7 +741,6 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
           streamingTextRef.current = '';
           reasoningTextRef.current = '';
           setIsStreaming(false);
-          setStreamStartedAt(null);
         },
 
         onError: (error) => {
@@ -937,45 +755,21 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
             },
           });
           setIsStreaming(false);
-          setStreamStartedAt(null);
         },
       });
     } catch (err) {
       console.error('[MotionAnalyzerNode] handleSend error:', err);
       setIsStreaming(false);
-      setStreamStartedAt(null);
     }
   }, [id, inputValue, isStreaming, nodeData.video, getLatestState, updateNodeData, streamToAgent, nextSeq, scheduleFlush, flushStreamingText]);
-
-  const handleStopStream = useCallback(() => {
-    flushStreamingText();
-    abortRef.current = true;
-    abortStream();
-    setIsStreaming(false);
-    setStreamStartedAt(null);
-
-    const ls = getLatestState();
-    updateNodeData(id, {
-      state: {
-        ...ls,
-        phase: ls.phase === 'analyzing' ? 'chatting' : ls.phase,
-        updatedAt: new Date().toISOString(),
-      },
-    });
-  }, [abortStream, flushStreamingText, getLatestState, id, updateNodeData]);
 
   // ── Reset ─────────────────────────────────
 
   const handleReset = useCallback(() => {
     abortStream();
     setIsStreaming(false);
-    setStreamStartedAt(null);
     streamingTextRef.current = '';
     reasoningTextRef.current = '';
-    if (blobPreviewUrlRef.current) {
-      URL.revokeObjectURL(blobPreviewUrlRef.current);
-      blobPreviewUrlRef.current = null;
-    }
     updateNodeData(id, {
       state: createDefaultState(id),
       video: undefined,
@@ -987,7 +781,8 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
   type TimelineItem =
     | { kind: 'user'; id: string; content: string; seq: number; videoName?: string }
     | { kind: 'assistant'; id: string; content: string; seq: number }
-    | { kind: 'analysis'; id: string; seq: number; item: MotionAnalysis }
+    | { kind: 'tool'; id: string; seq: number; item: ToolCallItem }
+    | { kind: 'thinking'; id: string; seq: number; item: ThinkingBlockItem }
     | { kind: 'prompt'; id: string; seq: number; item: GeneratedPrompt };
 
   const timeline: TimelineItem[] = [];
@@ -999,109 +794,39 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
       timeline.push({ kind: 'assistant', id: m.id, content: m.content, seq: m.seq || 0 });
     }
   });
-  if (state.analysis && typeof state.analysisSeq === 'number') {
-    timeline.push({ kind: 'analysis', id: 'analysis_result', seq: state.analysisSeq, item: state.analysis });
-  }
+  // Only show non-UI tool calls
+  state.toolCalls.filter(tc => !UI_TOOLS.has(tc.toolName)).forEach(tc => {
+    timeline.push({ kind: 'tool', id: tc.id, seq: tc.seq || 0, item: tc });
+  });
+  state.thinkingBlocks.forEach(tb => {
+    timeline.push({ kind: 'thinking', id: tb.id, seq: tb.seq || 0, item: tb });
+  });
   state.generatedPrompts.forEach(p => {
     timeline.push({ kind: 'prompt', id: p.id, seq: Date.parse(p.createdAt), item: p });
   });
 
   timeline.sort((a, b) => a.seq - b.seq);
 
-  const resolvedCachedVideoUrl = nodeData.video?.dataUrl?.startsWith('cached:')
-    ? (cachedVideoSrc || getCached(nodeData.video.id))
-    : undefined;
-  const videoPreviewUrl = resolvedCachedVideoUrl || nodeData.video?.dataUrl || nodeData.video?.remoteUrl;
-  const hasLocalCachedVideo = !!nodeData.video?.dataUrl?.startsWith('cached:');
-  const hasVideo = !!nodeData.video;
+  const hasVideo = !!nodeData.video?.dataUrl;
   const isIdle = state.phase === 'idle';
   const hasTimelineContent = timeline.length > 0 || isStreaming;
-  const canSend = inputValue.trim().length > 0 && !isStreaming && (hasVideo || state.phase !== 'idle');
-  const liveStatus = isStreaming
-    ? `Analyzing in progress. Elapsed ${streamElapsed} seconds.`
-    : state.error
-      ? `Analysis error: ${state.error.message}`
-      : hasVideo
-        ? 'Video ready. You can analyze or ask follow-up questions.'
-        : 'Upload a video to begin analysis.';
-  const latestGeneratedPrompt = state.generatedPrompts[state.generatedPrompts.length - 1]?.prompt;
-  const latestAssistantMessage = [...state.messages]
-    .reverse()
-    .find((message) => message.role === 'assistant' && message.content.trim())?.content;
-  const motionSummary = state.analysis?.summary
-    || latestGeneratedPrompt
-    || latestAssistantMessage
-    || 'Upload a video to analyze motion, timing, and prompt opportunities.';
+  const canSend = inputValue.trim().length > 0 && !isStreaming;
 
   // ── Container class ───────────────────────
-  const base = 'node-drag-handle node-drag-surface animation-node w-[400px] rounded-xl overflow-hidden flex flex-col';
+  const base = 'animation-node w-[400px] rounded-xl overflow-hidden flex flex-col';
   const containerClass = selected ? `${base} ring-1 ring-[var(--an-accent)]/70` : base;
 
-  if (displayMode !== 'full') {
-    return (
-      <div {...focusProps}>
-        <div className="mb-2 rounded-xl px-3 py-2 text-sm font-medium" style={{ color: 'var(--node-title-motion)' }}>
-          <Eye className="h-4 w-4" />
-          {nodeData.name || 'Motion Analyzer'}
-        </div>
-
-        <div className={containerClass} style={{ minHeight: '200px' }}>
-          <div className={`node-body flex-1 ${displayMode === 'compact' ? 'node-compact' : 'node-summary'}`}>
-            <div className="node-content-area rounded-xl p-3">
-              <p className="text-xs font-medium text-[var(--an-text-muted)]">
-                {state.phase === 'idle' ? 'Ready' : liveStatus}
-              </p>
-              <p className="mt-1 text-sm text-[var(--an-text)]/85 line-clamp-4">
-                {motionSummary}
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--an-text-dim)]">
-              <span>{hasVideo ? 'Video loaded' : 'No video'}</span>
-              <span>{state.generatedPrompts.length} prompt{state.generatedPrompts.length === 1 ? '' : 's'}</span>
-              {state.analysis && <span>Analysis ready</span>}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div {...focusProps}>
-      {/* Node Title */}
-      <div className="mb-2 rounded-xl px-3 py-2 text-sm font-medium" style={{ color: 'var(--node-title-motion)' }}>
-        <Eye className="h-4 w-4" />
-        {isEditingName && !isReadOnly ? (
-          <input
-            ref={nameInputRef}
-            type="text"
-            value={nodeName}
-            onChange={(e) => setNodeName(e.target.value)}
-            onBlur={handleNameSubmit}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleNameSubmit();
-              if (e.key === 'Escape') {
-                setNodeName(nodeData.name || 'Motion Analyzer');
-                setIsEditingName(false);
-              }
-            }}
-            className="bg-transparent border-b outline-none px-0.5 min-w-[100px]"
-            style={{ borderColor: 'var(--input-border)', color: 'var(--text-secondary)' }}
-          />
-        ) : (
-          <span
-            onDoubleClick={() => !isReadOnly && setIsEditingName(true)}
-            className={`transition-colors hover:opacity-80 ${isReadOnly ? 'cursor-default' : 'cursor-text'}`}
-          >
-            {nodeData.name || 'Motion Analyzer'}
-          </span>
-        )}
-      </div>
-
     <div className={containerClass} style={{ minHeight: '200px', maxHeight: '720px' }}>
       {/* ── Header ── */}
       <div className="drag-handle cursor-grab active:cursor-grabbing flex-shrink-0 flex items-center gap-2 px-3.5 py-2.5 border-b border-[var(--an-border)]">
+        <div className="h-7 w-7 rounded-[7px] bg-[var(--an-accent-bg)] flex items-center justify-center">
+          <Eye className="w-3.5 h-3.5" style={{ color: 'var(--an-accent)' }} />
+        </div>
         <div className="flex-1 min-w-0">
+          <h3 className="text-[13px] font-semibold text-[var(--an-text-heading)] leading-tight truncate">
+            {nodeData.name || 'Motion Analyzer'}
+          </h3>
           <p className="text-[10px] leading-tight" style={{ color: 'var(--an-text-placeholder)' }}>
             {state.phase === 'idle' && 'Upload a video to analyze'}
             {state.phase === 'analyzing' && 'Analyzing motion...'}
@@ -1113,7 +838,6 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
         {(state.phase !== 'idle' || hasVideo) && (
           <button
             onClick={handleReset}
-            aria-label="Reset analysis"
             className="w-6 h-6 rounded-md flex items-center justify-center text-[var(--an-text-dim)] hover:text-[var(--an-text-muted)] hover:bg-[var(--an-bg-hover)] transition-colors"
             title="Reset"
           >
@@ -1130,7 +854,6 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
             type="file"
             accept="video/mp4,video/webm,video/quicktime,video/mov"
             className="hidden"
-            aria-label="Upload video for motion analysis"
             onChange={(e) => {
               const file = e.target.files?.[0];
               if (file) handleVideoUpload(file);
@@ -1139,7 +862,6 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
           />
           <button
             onClick={() => fileInputRef.current?.click()}
-            aria-label="Upload video"
             className="w-full h-28 rounded-lg border-2 border-dashed border-[var(--an-border-input)] hover:border-[var(--an-accent)]/50 bg-[var(--an-bg-elevated)] hover:bg-[var(--an-accent-bg)]/30 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group"
             onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
             onDrop={(e) => {
@@ -1165,7 +887,7 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
         <div className="px-3.5 pt-2.5 pb-1">
           <div className="relative rounded-lg overflow-hidden bg-[var(--an-bg-elevated)] border border-[var(--an-border-input)]">
             <video
-              src={videoPreviewUrl}
+              src={nodeData.video!.dataUrl}
               className="w-full"
               style={{ maxHeight: '140px' }}
               controls
@@ -1173,23 +895,12 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
             />
             <button
               onClick={handleRemoveVideo}
-              aria-label="Remove uploaded video"
               className="absolute top-1.5 right-1.5 p-1 rounded-full bg-black/60 hover:bg-black/80 text-zinc-400 hover:text-white transition-colors"
             >
               <X className="w-3 h-3" />
             </button>
-            <div className="absolute bottom-1.5 left-1.5 flex items-center gap-1.5 px-1.5 py-0.5 rounded bg-black/60 text-[9px] text-zinc-300">
-              {isUploading && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
+            <div className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/60 text-[9px] text-zinc-300">
               {nodeData.video!.name}
-              {nodeData.video!.remoteUrl && !isUploading && (
-                <span className="text-[#4ADE80]" title="Uploaded to cloud">&#x2713;</span>
-              )}
-              {!nodeData.video!.remoteUrl && hasLocalCachedVideo && !isUploading && (
-                <span className="text-[#22D3EE]" title="Persisted locally">Local</span>
-              )}
-              {!nodeData.video!.remoteUrl && !hasLocalCachedVideo && !isUploading && (
-                <span className="text-[#FBBF24]" title="Session only, re-upload needed after refresh">Session only</span>
-              )}
             </div>
           </div>
         </div>
@@ -1197,27 +908,12 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
 
       {/* ── Trim Range Picker ── */}
       {hasVideo && nodeData.video!.duration && nodeData.video!.duration > MAX_ANALYSIS_DURATION && (
-        <>
-          <TrimRangePicker
-            duration={nodeData.video!.duration}
-            trimStart={nodeData.video!.trimStart ?? 0}
-            trimEnd={nodeData.video!.trimEnd ?? MAX_ANALYSIS_DURATION}
-            onChange={handleTrimChange}
-          />
-          <p className="px-3.5 pb-1 text-[10px] text-[var(--an-text-placeholder)]">
-            Tip: type <code>next 20</code> to continue with the next segment.
-          </p>
-        </>
-      )}
-
-      {hasVideo && isIdle && !hasTimelineContent && (
-        <div className="px-3.5 pb-2">
-          <div className="rounded-md border border-[var(--an-border-input)] bg-[var(--an-bg-elevated)] p-2.5">
-            <p className="text-[11px] text-[var(--an-text-muted)]">
-              Ready to analyze. Describe what to inspect (or type <strong>next 20</strong>), then click <strong>Analyze video</strong>.
-            </p>
-          </div>
-        </div>
+        <TrimRangePicker
+          duration={nodeData.video!.duration}
+          trimStart={nodeData.video!.trimStart ?? 0}
+          trimEnd={nodeData.video!.trimEnd ?? MAX_ANALYSIS_DURATION}
+          onChange={handleTrimChange}
+        />
       )}
 
       {/* ── Chat Timeline ── */}
@@ -1234,10 +930,21 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
                   return <UserBubble key={entry.id} content={entry.content} videoName={entry.videoName} />;
                 case 'assistant':
                   return <AssistantText key={entry.id} content={entry.content} />;
+                case 'tool':
+                  return <ToolCallCard key={entry.id} item={entry.item} />;
+                case 'thinking':
+                  return (
+                    <ThinkingBlockUI
+                      key={entry.id}
+                      label={entry.item.label}
+                      reasoning={entry.item.reasoning}
+                      isActive={!entry.item.endedAt && isStreaming}
+                      startedAt={entry.item.startedAt}
+                      endedAt={entry.item.endedAt}
+                    />
+                  );
                 case 'prompt':
                   return <PromptCard key={entry.id} prompt={entry.item} onCopy={handleCopyPrompt} />;
-                case 'analysis':
-                  return <AnalysisCard key={entry.id} analysis={entry.item} />;
                 default:
                   return null;
               }
@@ -1274,7 +981,6 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
             <textarea
               ref={textareaRef}
               value={inputValue}
-              aria-label="Motion analyzer prompt"
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
@@ -1286,53 +992,42 @@ function MotionAnalyzerNodeComponent({ id, data, selected }: NodeProps<Node<Plug
                 !hasVideo
                   ? 'Upload a video first...'
                   : state.phase === 'idle'
-                  ? 'Analyze video (e.g. break down camera motion and transitions)...'
-                  : 'Follow-up (e.g. "next 20", "focus on transitions", "generate prompt")...'
+                  ? 'Describe what you want to analyze...'
+                  : 'Ask about effects, or request a prompt...'
               }
               rows={1}
               className="w-full resize-none text-[13px] text-[var(--an-text)] outline-none leading-[1.4]"
               style={{ minHeight: '20px', maxHeight: '100px', backgroundColor: 'transparent' }}
             />
           </div>
-          <div className="flex items-center justify-between px-2 py-1 pb-2 gap-2">
-            <div className="text-[10px] text-[var(--an-text-placeholder)]" role="status" aria-live="polite">
-              {isStreaming ? `Analyzing… ${streamElapsed}s` : hasVideo ? 'Video ready' : 'No video uploaded'}
-            </div>
-
-            <div className="flex items-center gap-1.5">
-              {isStreaming && (
-                <button
-                  onClick={handleStopStream}
-                  aria-label="Stop analysis"
-                  className="h-7 px-2 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-100 text-[10px] inline-flex items-center gap-1"
-                >
-                  <Square className="w-3 h-3" /> Stop
-                </button>
+          <div className="flex items-center justify-end px-2 py-1 pb-2">
+            <button
+              onClick={handleSend}
+              disabled={!canSend}
+              className={`flex items-center justify-center w-7 h-7 rounded-full transition-colors ${
+                canSend
+                  ? 'bg-[var(--an-accent)] hover:bg-[var(--an-accent-hover)]'
+                  : 'bg-[var(--an-accent)] opacity-40 cursor-not-allowed'
+              }`}
+            >
+              {isStreaming ? (
+                <Loader2 className="w-3.5 h-3.5 text-white animate-spin" />
+              ) : (
+                <ArrowUp className="w-3.5 h-3.5 text-white" />
               )}
-              <button
-                onClick={handleSend}
-                disabled={!canSend}
-                aria-label={isStreaming ? 'Analyzing video' : state.phase === 'idle' ? 'Analyze video' : 'Send follow-up prompt'}
-                className={`flex items-center justify-center w-7 h-7 rounded-full transition-colors ${
-                  canSend
-                    ? 'bg-[var(--an-accent)] hover:bg-[var(--an-accent-hover)]'
-                    : 'bg-[var(--an-accent)] opacity-40 cursor-not-allowed'
-                }`}
-                title={state.phase === 'idle' ? 'Analyze video' : 'Send'}
-              >
-                {isStreaming ? (
-                  <Loader2 className="w-3.5 h-3.5 text-white animate-spin" />
-                ) : (
-                  <ArrowUp className="w-3.5 h-3.5 text-white" />
-                )}
-              </button>
-            </div>
+            </button>
           </div>
-          <div className="sr-only" aria-live="polite">{liveStatus}</div>
         </div>
       </div>
 
-    </div>
+      {/* ── Output Handle ── */}
+      <Handle
+        type="source"
+        position={Position.Right}
+        id="prompt-output"
+        className="!w-3 !h-3 !bg-[var(--an-accent)] !border-2 !border-[var(--an-bg)]"
+        style={{ top: '50%' }}
+      />
     </div>
   );
 }

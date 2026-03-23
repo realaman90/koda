@@ -2,7 +2,6 @@
 
 import { useCallback, useRef, useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { SearchableMultiSelect } from '@/components/ui/searchable-multi-select';
 import {
   Select,
   SelectContent,
@@ -11,53 +10,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useCanvasStore } from '@/stores/canvas-store';
-import type {
-  ImageGeneratorNodeData,
-  ImageReference,
-  FluxImageSize,
-  NanoBananaResolution,
-  RecraftStyle,
-  IdeogramStyle,
-  CharacterPreset,
-  StylePreset,
-  CameraAnglePreset,
-  CameraLensPreset,
-  PresetOption,
-  MusicGeneratorNodeData,
-  SpeechNodeData,
-  VideoAudioNodeData,
-  ProductShotNodeData,
-  ProductShotBackground,
-  ProductShotLighting,
-  SpeechModelType,
-  TadaLanguage,
-  VideoAudioModelType,
-  SyncLipsyncMode,
-} from '@/lib/types';
-import { MAX_COMPARE_MODELS } from '@/lib/types';
-import {
-  MODEL_CAPABILITIES,
-  ENABLED_IMAGE_MODELS,
-  FLUX_IMAGE_SIZES,
-  NANO_BANANA_RESOLUTIONS,
-  RECRAFT_STYLE_LABELS,
-  IDEOGRAM_STYLE_LABELS,
-  SPEECH_MODEL_CAPABILITIES,
-  SPEECH_MODEL_OPTIONS,
-  TADA_LANGUAGE_LABELS,
-  VIDEO_AUDIO_MODEL_CAPABILITIES,
-  VIDEO_AUDIO_MODEL_OPTIONS,
-  SYNC_LIPSYNC_MODE_LABELS,
-  getApproxDimensions,
-  getAspectRatioLabel,
-  type ImageModelType,
-} from '@/lib/types';
-import { getApiErrorMessage, normalizeApiErrorMessage } from '@/lib/client/api-error';
-import { useSettingsStore } from '@/stores/settings-store';
-import { fetchImageCompareEstimate } from '@/lib/compare/run';
-import { buildInitialCompareSelection, fillCompareSelection } from '@/lib/compare/utils';
-import { startImageCompare } from '@/lib/compare/controller';
-import { buildImageGenerationRequest, buildImagePrompt, getCompatibleImageCompareModels, hasValidImagePromptInput } from '@/lib/generation/client';
+import type { ImageGeneratorNodeData, ImageReference, FluxImageSize, NanoBananaResolution, RecraftStyle, IdeogramStyle, CharacterPreset, StylePreset, CameraAnglePreset, CameraLensPreset, PresetOption, CharacterSelection } from '@/lib/types';
+import { MODEL_CAPABILITIES, ENABLED_IMAGE_MODELS, FLUX_IMAGE_SIZES, NANO_BANANA_RESOLUTIONS, RECRAFT_STYLE_LABELS, IDEOGRAM_STYLE_LABELS, getApproxDimensions } from '@/lib/types';
 import { CHARACTER_PRESETS, STYLE_PRESETS, CAMERA_ANGLE_PRESETS, CAMERA_LENS_PRESETS } from '@/lib/presets';
 import { PresetPopover } from './PresetPopover';
 import { Slider } from '@/components/ui/slider';
@@ -75,11 +29,6 @@ import {
   Palette,
   Aperture,
   Camera,
-  Images,
-  AlertCircle,
-  Music,
-  Mic,
-  Film,
 } from 'lucide-react';
 
 export function SettingsPanel() {
@@ -89,30 +38,13 @@ export function SettingsPanel() {
   const getNode = useCanvasStore((state) => state.getNode);
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
   const getConnectedInputs = useCanvasStore((state) => state.getConnectedInputs);
-  const addToHistory = useSettingsStore((state) => state.addToHistory);
-  const updateHistoryItem = useSettingsStore((state) => state.updateHistoryItem);
-  const enabledImageModels = useSettingsStore((s) => s.defaultSettings.enabledImageModels) || [...ENABLED_IMAGE_MODELS];
-  const visibleImageModels: ImageModelType[] = ['auto' as ImageModelType, ...ENABLED_IMAGE_MODELS.filter((m) => enabledImageModels.includes(m))];
 
   const node = settingsPanelNodeId ? getNode(settingsPanelNodeId) : null;
-  const nodeType = node?.type as string | undefined;
-  const data = node?.type === 'imageGenerator' ? node.data as ImageGeneratorNodeData : undefined;
-  const musicData = node?.type === 'musicGenerator' ? node.data as MusicGeneratorNodeData : undefined;
-  const speechData = node?.type === 'speech' ? node.data as SpeechNodeData : undefined;
-  const videoAudioData = node?.type === 'videoAudio' ? node.data as VideoAudioNodeData : undefined;
-  const productShotData = node?.type === 'productShot' ? node.data as ProductShotNodeData : undefined;
-  const anyData = data || musicData || speechData || videoAudioData || productShotData;
+  const data = node?.data as ImageGeneratorNodeData | undefined;
 
   const panelRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingUploadType, setPendingUploadType] = useState<'style' | 'character' | 'upload'>('upload');
-  const [compareEstimateError, setCompareEstimateError] = useState<string | null>(null);
-  const [compareEstimate, setCompareEstimate] = useState<{
-    items: Array<{ model: ImageModelType; estimatedCredits: number }>;
-    totalCredits: number;
-    balance: number | null;
-    hasSufficientCredits: boolean | null;
-  } | null>(null);
 
   // Close on outside click
   useEffect(() => {
@@ -128,9 +60,8 @@ export function SettingsPanel() {
         return;
       }
       // Don't close if clicking inside a Radix UI Select dropdown (portaled to body)
-      // Check both popper mode wrapper and item-aligned mode content (data-slot set in our Select component)
-      const radixSelect = (target as Element).closest?.('[data-radix-popper-content-wrapper], [data-slot="select-content"]');
-      if (radixSelect || (target as Element).closest?.('[data-searchable-multi-select="true"]')) {
+      const radixSelect = (target as Element).closest?.('[data-radix-popper-content-wrapper]');
+      if (radixSelect) {
         return;
       }
       closeSettingsPanel();
@@ -367,12 +298,45 @@ export function SettingsPanel() {
   const handleGenerate = useCallback(async () => {
     if (!settingsPanelNodeId || !data) return;
 
+    // Get connected inputs
     const connectedInputs = getConnectedInputs(settingsPanelNodeId);
-    const finalPrompt = buildImagePrompt(data, connectedInputs);
+
+    // Build final prompt with preset modifiers
+    const promptParts: string[] = [];
+
+    // Add character modifier
+    if (data.selectedCharacter?.type === 'preset') {
+      promptParts.push(data.selectedCharacter.promptModifier);
+    }
+
+    // Add style preset modifier
+    if (data.selectedStyle) {
+      promptParts.push(data.selectedStyle.promptModifier);
+    }
+
+    // Add camera angle modifier
+    if (data.selectedCameraAngle) {
+      promptParts.push(data.selectedCameraAngle.promptModifier);
+    }
+
+    // Add camera lens modifier
+    if (data.selectedCameraLens) {
+      promptParts.push(data.selectedCameraLens.promptModifier);
+    }
+
+    // Add connected text content
+    if (connectedInputs.textContent) {
+      promptParts.push(connectedInputs.textContent);
+    }
+
+    // Add user prompt
+    if (data.prompt) {
+      promptParts.push(data.prompt);
+    }
+
+    const finalPrompt = promptParts.join(', ');
 
     if (!finalPrompt) return;
-
-    const requestBody = buildImageGenerationRequest(data, connectedInputs);
 
     updateNodeData(settingsPanelNodeId, { isGenerating: true, error: undefined });
 
@@ -380,12 +344,25 @@ export function SettingsPanel() {
       const response = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody),
+        body: JSON.stringify({
+          prompt: finalPrompt,
+          model: data.model,
+          aspectRatio: data.aspectRatio,
+          imageSize: data.imageSize || 'square_hd',
+          resolution: data.resolution || '1K',
+          imageCount: data.imageCount || 1,
+          referenceUrl: connectedInputs.referenceUrl,
+          // Model-specific params
+          style: data.style,
+          magicPrompt: data.magicPrompt,
+          cfgScale: data.cfgScale,
+          steps: data.steps,
+          strength: data.strength,
+        }),
       });
 
       if (!response.ok) {
-        const message = await getApiErrorMessage(response, 'Generation failed');
-        throw new Error(message);
+        throw new Error('Generation failed');
       }
 
       const result = await response.json();
@@ -396,206 +373,25 @@ export function SettingsPanel() {
         outputUrls: imageUrls,
         isGenerating: false,
       });
-
-      addToHistory({
-        type: 'image',
-        mode: 'single',
-        prompt: finalPrompt,
-        model: data.model,
-        status: 'completed',
-        result: { urls: imageUrls },
-        settings: {
-          aspectRatio: data.aspectRatio,
-          imageCount: data.imageCount || 1,
-          ...(data.style && { style: data.style }),
-          ...(data.resolution && { resolution: data.resolution }),
-          ...(data.imageSize && { imageSize: data.imageSize }),
-        },
-      });
     } catch (error) {
-      const errorMessage = normalizeApiErrorMessage(error, 'Generation failed');
       updateNodeData(settingsPanelNodeId, {
-        error: errorMessage,
+        error: error instanceof Error ? error.message : 'Generation failed',
         isGenerating: false,
       });
-
-      addToHistory({
-        type: 'image',
-        mode: 'single',
-        prompt: finalPrompt || data.prompt || '(no prompt)',
-        model: data.model,
-        status: 'failed',
-        error: errorMessage,
-        settings: {
-          aspectRatio: data.aspectRatio,
-          imageCount: data.imageCount || 1,
-        },
-      });
     }
-  }, [settingsPanelNodeId, data, updateNodeData, getConnectedInputs, addToHistory]);
+  }, [settingsPanelNodeId, data, updateNodeData, getConnectedInputs]);
 
-  const handleCompareToggle = useCallback(() => {
-    if (!settingsPanelNodeId || !data) return;
-
-    const compatibleModels = getCompatibleImageCompareModels(enabledImageModels, data, getConnectedInputs(settingsPanelNodeId));
-    const nextEnabled = !data.compareEnabled;
-    updateNodeData(settingsPanelNodeId, {
-      compareEnabled: nextEnabled,
-      compareModels: nextEnabled
-        ? ((data.compareModels?.length ? data.compareModels : buildInitialCompareSelection(data.model, compatibleModels)))
-        : data.compareModels,
-      compareRunStatus: nextEnabled ? (data.compareRunStatus || 'idle') : 'idle',
-    }, true);
-  }, [settingsPanelNodeId, data, enabledImageModels, getConnectedInputs, updateNodeData]);
-
-  const handleCompareModelsChange = useCallback((models: string[]) => {
-    if (!settingsPanelNodeId) return;
-    setCompareEstimateError(null);
-    setCompareEstimate(null);
-    updateNodeData(settingsPanelNodeId, {
-      compareModels: models as ImageModelType[],
-      compareEstimateCredits: undefined,
-    }, true);
-  }, [settingsPanelNodeId, updateNodeData]);
-
-  const handleCompareFill = useCallback(() => {
-    if (!settingsPanelNodeId || !data) return;
-    const compatibleModels = getCompatibleImageCompareModels(enabledImageModels, data, getConnectedInputs(settingsPanelNodeId));
-    handleCompareModelsChange(fillCompareSelection(compatibleModels));
-  }, [settingsPanelNodeId, data, enabledImageModels, getConnectedInputs, handleCompareModelsChange]);
-
-  const handleClearCompare = useCallback(() => {
-    if (!settingsPanelNodeId) return;
-    setCompareEstimate(null);
-    setCompareEstimateError(null);
-    updateNodeData(settingsPanelNodeId, {
-      compareRunStatus: 'idle',
-      compareEstimateCredits: undefined,
-      compareResults: undefined,
-      promotedCompareResultId: undefined,
-      compareHistoryId: undefined,
-      error: undefined,
-    }, true);
-  }, [settingsPanelNodeId, updateNodeData]);
-
-  const handleCompareRun = useCallback(async () => {
-    if (!settingsPanelNodeId || !data) return;
-
-    const connectedInputs = getConnectedInputs(settingsPanelNodeId);
-    try {
-      const result = await startImageCompare({
-        nodeId: settingsPanelNodeId,
-        data,
-        connectedInputs,
-        updateNodeData,
-        history: {
-          addToHistory,
-          updateHistoryItem,
-        },
-        confirmImpl: () => true,
-      });
-
-      if (!result.cancelled) {
-        setCompareEstimateError(null);
-      }
-    } catch (error) {
-      const errorMessage = normalizeApiErrorMessage(error, 'Compare failed');
-      updateNodeData(settingsPanelNodeId, {
-        error: errorMessage,
-        compareRunStatus: 'failed',
-      }, true);
-      setCompareEstimateError(errorMessage);
-    }
-  }, [settingsPanelNodeId, data, getConnectedInputs, updateNodeData, addToHistory, updateHistoryItem]);
-
-  useEffect(() => {
-    if (!settingsPanelNodeId || !data?.compareEnabled) {
-      setCompareEstimate(null);
-      setCompareEstimateError(null);
-      return;
-    }
-
-    const connectedInputs = getConnectedInputs(settingsPanelNodeId);
-    const compatibleModels = getCompatibleImageCompareModels(enabledImageModels, data, connectedInputs);
-    const selectedModels = (data.compareModels || []).filter((model): model is ImageModelType => compatibleModels.includes(model));
-    if (selectedModels.length < 2) {
-      setCompareEstimate(null);
-      setCompareEstimateError(null);
-      if (typeof data.compareEstimateCredits !== 'undefined') {
-        updateNodeData(settingsPanelNodeId, { compareEstimateCredits: undefined }, true);
-      }
-      return;
-    }
-
-    let cancelled = false;
-    setCompareEstimateError(null);
-
-    fetchImageCompareEstimate(selectedModels)
-      .then((estimate) => {
-        if (cancelled) return;
-        setCompareEstimate(estimate);
-        if (data.compareEstimateCredits !== estimate.totalCredits) {
-          updateNodeData(settingsPanelNodeId, { compareEstimateCredits: estimate.totalCredits }, true);
-        }
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        setCompareEstimate(null);
-        setCompareEstimateError(normalizeApiErrorMessage(error, 'Compare estimate failed'));
-        if (typeof data.compareEstimateCredits !== 'undefined') {
-          updateNodeData(settingsPanelNodeId, { compareEstimateCredits: undefined }, true);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    settingsPanelNodeId,
-    data?.compareEnabled,
-    data?.compareModels,
-    data?.compareEstimateCredits,
-    data?.prompt,
-    data?.selectedCharacter,
-    data?.selectedStyle,
-    data?.selectedCameraAngle,
-    data?.selectedCameraLens,
-    data?.aspectRatio,
-    enabledImageModels,
-    getConnectedInputs,
-    updateNodeData,
-  ]);
-
-  if (!settingsPanelNodeId || !anyData) return null;
-
-  // Non-image node types get their own simpler panel
-  if (nodeType && nodeType !== 'imageGenerator') {
-    return (
-      <GenericSettingsPanel
-        nodeId={settingsPanelNodeId}
-        nodeType={nodeType}
-        position={settingsPanelPosition}
-        musicData={musicData}
-        speechData={speechData}
-        videoAudioData={videoAudioData}
-        productShotData={productShotData}
-        updateNodeData={updateNodeData}
-        closeSettingsPanel={closeSettingsPanel}
-      />
-    );
-  }
-
-  if (!data) return null;
+  if (!settingsPanelNodeId || !data) return null;
 
   // Check if we have a valid prompt (direct, connected, or from presets)
   const connectedInputs = getConnectedInputs(settingsPanelNodeId);
-  const hasValidPrompt = hasValidImagePromptInput(data, connectedInputs);
-  const compatibleCompareModels = getCompatibleImageCompareModels(enabledImageModels, data, connectedInputs);
-  const compareModelOptions = compatibleCompareModels.map((model) => ({
-    value: model,
-    label: MODEL_CAPABILITIES[model].label,
-    description: MODEL_CAPABILITIES[model].description,
-  }));
+  const hasPresetSelected = !!(
+    data.selectedCharacter ||
+    data.selectedStyle ||
+    data.selectedCameraAngle ||
+    data.selectedCameraLens
+  );
+  const hasValidPrompt = !!(data.prompt || connectedInputs.textContent || hasPresetSelected);
 
   // Get model capabilities
   const modelCapabilities = MODEL_CAPABILITIES[data.model];
@@ -605,7 +401,7 @@ export function SettingsPanel() {
     if (!settingsPanelPosition) return { left: 0, top: 0 };
 
     const panelWidth = 280;
-    const panelHeight = 560;
+    const panelHeight = 500;
     const padding = 20;
 
     let left = settingsPanelPosition.x;
@@ -629,7 +425,7 @@ export function SettingsPanel() {
   return (
     <div
       ref={panelRef}
-      className="fixed w-[360px] max-h-[560px] bg-popover border border-border rounded-xl z-50 flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+      className="fixed w-[280px] max-h-[500px] bg-popover border border-border rounded-xl z-50 flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-150"
       style={{ left: position.left, top: position.top }}
     >
       {/* Header */}
@@ -645,7 +441,7 @@ export function SettingsPanel() {
               size="icon-sm"
               onClick={handleGenerate}
               disabled={!hasValidPrompt || data.isGenerating}
-              className="h-8 w-8 bg-primary hover:bg-primary/90 text-primary-foreground rounded-full disabled:opacity-40"
+              className="h-8 w-8 bg-teal-500 hover:bg-teal-400 text-white rounded-full disabled:opacity-40"
             >
               {data.isGenerating ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -676,7 +472,7 @@ export function SettingsPanel() {
                 <SelectValue>{modelCapabilities.label}</SelectValue>
               </SelectTrigger>
               <SelectContent className="bg-popover border-border">
-                {visibleImageModels.map(key => (
+                {ENABLED_IMAGE_MODELS.map(key => (
                   <SelectItem key={key} value={key} className="flex flex-col items-start">
                     <span>{MODEL_CAPABILITIES[key].label}</span>
                   </SelectItem>
@@ -749,7 +545,7 @@ export function SettingsPanel() {
                     onClick={handleMagicPromptToggle}
                     className={`h-7 px-2 gap-1.5 ${
                       data.magicPrompt
-                        ? 'text-primary bg-primary/15 hover:bg-primary/25'
+                        ? 'text-purple-400 bg-purple-500/20 hover:bg-purple-500/30'
                         : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                     }`}
                   >
@@ -824,7 +620,7 @@ export function SettingsPanel() {
               </div>
 
               {/* Strength - only shown when reference is connected */}
-              {connectedInputs.referenceUrl && modelCapabilities.supportsStrength && (
+              {connectedInputs.referenceUrl && (
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs text-muted-foreground">Strength</span>
@@ -868,7 +664,7 @@ export function SettingsPanel() {
                         alt={ref.type}
                         className="w-full aspect-square object-cover rounded-lg border border-border"
                       />
-                      <div className="absolute inset-0 bg-black/35 dark:bg-black/55 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
+                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
                         <button
                           onClick={() => handleDeleteReference(ref.id)}
                           className="p-1 bg-red-500 rounded-full hover:bg-red-400 transition-colors"
@@ -876,7 +672,7 @@ export function SettingsPanel() {
                           <X className="h-3 w-3 text-white" />
                         </button>
                       </div>
-                      <span className="absolute bottom-1 left-1 text-[10px] px-1 py-0.5 rounded capitalize border border-border/70 bg-white/85 text-foreground/80 backdrop-blur-sm dark:border-white/10 dark:bg-black/60 dark:text-white/80">
+                      <span className="absolute bottom-1 left-1 text-[10px] px-1 py-0.5 bg-black/60 text-white/80 rounded capitalize">
                         {ref.type}
                       </span>
                     </div>
@@ -926,127 +722,9 @@ export function SettingsPanel() {
             <textarea
               value={data.prompt}
               onChange={handlePromptChange}
-              onPointerDown={(e) => e.stopPropagation()}
-              onMouseDown={(e) => e.stopPropagation()}
               placeholder="Describe the image you want to generate..."
-              className="w-full min-h-[140px] max-h-[260px] bg-muted border border-border rounded-lg p-3 text-foreground text-sm placeholder:text-muted-foreground/60 resize-y overflow-y-auto nodrag nopan nowheel select-text focus:outline-none focus:border-primary"
+              className="w-full h-[120px] bg-muted border border-border rounded-lg p-3 text-foreground text-sm placeholder:text-muted-foreground/60 resize-none focus:outline-none focus:border-muted-foreground/50"
             />
-          </div>
-
-          <div className="space-y-3 rounded-xl border border-border/60 bg-muted/20 p-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Images className="h-4 w-4 text-muted-foreground" />
-                <label className="text-xs text-muted-foreground uppercase tracking-wider">
-                  Compare
-                </label>
-              </div>
-              <Button
-                variant={data.compareEnabled ? 'default' : 'outline'}
-                size="sm"
-                onClick={handleCompareToggle}
-                className="h-7 text-xs"
-              >
-                {data.compareEnabled ? 'Enabled' : 'Off'}
-              </Button>
-            </div>
-
-            {data.compareEnabled && (
-              <div className="space-y-3">
-                <SearchableMultiSelect
-                  value={data.compareModels || []}
-                  onValueChange={handleCompareModelsChange}
-                  options={compareModelOptions}
-                  maxSelected={MAX_COMPARE_MODELS}
-                  placeholder="Select compare models"
-                  searchPlaceholder="Search compare models..."
-                  emptyMessage={hasValidPrompt ? 'No compatible enabled models' : 'Add a prompt or text input first'}
-                  triggerClassName="h-9 w-full border border-border bg-background px-3 text-sm"
-                />
-
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-[11px] text-muted-foreground">
-                    Compatible enabled models only. Select 2-{MAX_COMPARE_MODELS}.
-                  </p>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleCompareFill}
-                    disabled={compatibleCompareModels.length === 0}
-                    className="h-7 px-2 text-[11px]"
-                  >
-                    Fill top {MAX_COMPARE_MODELS}
-                  </Button>
-                </div>
-
-                {compareEstimate?.items?.length ? (
-                  <div className="flex flex-wrap gap-1.5">
-                    {compareEstimate.items.map((item) => (
-                      <span
-                        key={item.model}
-                        className="rounded-full bg-background px-2 py-0.5 text-[10px] text-muted-foreground"
-                      >
-                        {MODEL_CAPABILITIES[item.model].label}: {item.estimatedCredits} cr
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
-
-                {(compareEstimateError || data.compareRunStatus === 'failed') && (
-                  <div className="flex items-start gap-2 rounded-lg bg-red-500/10 p-2 text-[11px] text-red-300">
-                    <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    <span>{compareEstimateError || data.error}</span>
-                  </div>
-                )}
-
-                {compareEstimate && (
-                  <div className="rounded-lg border border-border/60 bg-background p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-xs text-muted-foreground">Estimated total</span>
-                      <span className="text-sm font-medium text-foreground">{compareEstimate.totalCredits} credits</span>
-                    </div>
-                    {compareEstimate.balance !== null && (
-                      <div className="mt-1 flex items-center justify-between gap-3">
-                        <span className="text-xs text-muted-foreground">Balance</span>
-                        <span className="text-xs text-foreground">{compareEstimate.balance} credits</span>
-                      </div>
-                    )}
-                    {compareEstimate.hasSufficientCredits === false && (
-                      <p className="mt-2 text-[11px] text-amber-300">
-                        Not enough credits for this compare run.
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                <div className="flex items-center gap-2">
-                  <Button
-                    onClick={handleCompareRun}
-                    disabled={!hasValidPrompt || (data.compareModels?.length || 0) < 2 || data.compareRunStatus === 'running'}
-                    className="flex-1"
-                  >
-                    {data.compareRunStatus === 'running' ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Comparing...
-                      </>
-                    ) : (
-                      <>
-                        <Images className="h-4 w-4" />
-                        Run Compare
-                      </>
-                    )}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={handleClearCompare}
-                    disabled={!data.compareResults?.length && !data.compareHistoryId && !data.promotedCompareResultId}
-                  >
-                    Clear Compare
-                  </Button>
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Error */}
@@ -1086,7 +764,7 @@ export function SettingsPanel() {
               </SelectTrigger>
               <SelectContent className="bg-popover border-border">
                 {modelCapabilities.aspectRatios.map((ratio) => (
-                  <SelectItem key={ratio} value={ratio}>{getAspectRatioLabel(ratio)}</SelectItem>
+                  <SelectItem key={ratio} value={ratio}>{ratio}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -1138,442 +816,5 @@ export function SettingsPanel() {
           })()}
         </div>
       </div>
-  );
-}
-
-// Background options for ProductShot
-const BACKGROUND_OPTIONS: { value: ProductShotBackground; label: string }[] = [
-  { value: 'studio-white', label: 'Studio White' },
-  { value: 'gradient', label: 'Gradient' },
-  { value: 'lifestyle', label: 'Lifestyle' },
-  { value: 'outdoor', label: 'Outdoor' },
-  { value: 'dark-moody', label: 'Dark & Moody' },
-];
-
-const LIGHTING_OPTIONS: { value: ProductShotLighting; label: string }[] = [
-  { value: 'soft', label: 'Soft' },
-  { value: 'dramatic', label: 'Dramatic' },
-  { value: 'natural', label: 'Natural' },
-  { value: 'rim-light', label: 'Rim Light' },
-];
-
-const SHOT_COUNTS = [4, 6, 8] as const;
-
-// --- Generic Settings Panel for non-image node types ---
-
-function GenericSettingsPanel({
-  nodeId,
-  nodeType,
-  position,
-  musicData,
-  speechData,
-  videoAudioData,
-  productShotData,
-  updateNodeData,
-  closeSettingsPanel,
-}: {
-  nodeId: string;
-  nodeType: string;
-  position: { x: number; y: number } | null;
-  musicData?: MusicGeneratorNodeData;
-  speechData?: SpeechNodeData;
-  videoAudioData?: VideoAudioNodeData;
-  productShotData?: ProductShotNodeData;
-  updateNodeData: (nodeId: string, data: Record<string, unknown>, silent?: boolean) => void;
-  closeSettingsPanel: () => void;
-}) {
-  const panelRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (panelRef.current && panelRef.current.contains(target)) return;
-      if ((target as Element).closest?.('[data-radix-popper-content-wrapper], [data-slot="select-content"]')) return;
-      closeSettingsPanel();
-    };
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeSettingsPanel();
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleEscape);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleEscape);
-    };
-  }, [closeSettingsPanel]);
-
-  const getPosition = () => {
-    if (!position) return { left: 0, top: 0 };
-    const panelWidth = 280;
-    const panelHeight = 400;
-    const padding = 20;
-    let left = position.x;
-    let top = position.y;
-    if (left + panelWidth > window.innerWidth - padding) {
-      left = position.x - panelWidth - 360;
-    }
-    if (top + panelHeight > window.innerHeight - padding) {
-      top = window.innerHeight - panelHeight - padding;
-    }
-    return { left: Math.max(padding, left), top: Math.max(padding, top) };
-  };
-
-  const pos = getPosition();
-
-  const panelTitle = nodeType === 'musicGenerator' ? 'Music Settings'
-    : nodeType === 'speech' ? 'Speech Settings'
-    : nodeType === 'videoAudio' ? 'Video Audio Settings'
-    : nodeType === 'productShot' ? 'Product Shot Settings'
-    : 'Settings';
-
-  const panelIcon = nodeType === 'musicGenerator' ? <Music className="h-4 w-4 text-muted-foreground" />
-    : nodeType === 'speech' ? <Mic className="h-4 w-4 text-muted-foreground" />
-    : nodeType === 'videoAudio' ? <Film className="h-4 w-4 text-muted-foreground" />
-    : nodeType === 'productShot' ? <Camera className="h-4 w-4 text-muted-foreground" />
-    : null;
-
-  return (
-    <div
-      ref={panelRef}
-      className="fixed w-[300px] max-h-[480px] bg-popover border border-border rounded-xl z-50 flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-150"
-      style={{ left: pos.left, top: pos.top }}
-    >
-      {/* Header */}
-      <div className="flex items-center justify-between p-3 border-b border-border">
-        <div className="flex items-center gap-2">
-          {panelIcon}
-          <span className="text-foreground font-medium text-sm">{panelTitle}</span>
-        </div>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={closeSettingsPanel}
-          className="h-8 w-8 text-muted-foreground hover:text-foreground"
-        >
-          <X className="h-4 w-4" />
-        </Button>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {nodeType === 'musicGenerator' && musicData && (
-          <MusicSettingsContent nodeId={nodeId} data={musicData} updateNodeData={updateNodeData} />
-        )}
-        {nodeType === 'speech' && speechData && (
-          <SpeechSettingsContent nodeId={nodeId} data={speechData} updateNodeData={updateNodeData} />
-        )}
-        {nodeType === 'videoAudio' && videoAudioData && (
-          <VideoAudioSettingsContent nodeId={nodeId} data={videoAudioData} updateNodeData={updateNodeData} />
-        )}
-        {nodeType === 'productShot' && productShotData && (
-          <ProductShotSettingsContent nodeId={nodeId} data={productShotData} updateNodeData={updateNodeData} />
-        )}
-      </div>
-    </div>
-  );
-}
-
-// --- Music Settings ---
-function MusicSettingsContent({ nodeId, data, updateNodeData }: {
-  nodeId: string;
-  data: MusicGeneratorNodeData;
-  updateNodeData: (nodeId: string, data: Record<string, unknown>, silent?: boolean) => void;
-}) {
-  return (
-    <>
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-muted-foreground">Guidance Scale</span>
-          <span className="text-xs text-muted-foreground/70">{data.guidanceScale ?? 7}</span>
-        </div>
-        <Slider
-          value={[data.guidanceScale ?? 7]}
-          onValueChange={(v) => updateNodeData(nodeId, { guidanceScale: v[0] })}
-          min={1}
-          max={15}
-          step={0.5}
-          className="w-full"
-        />
-        <p className="text-[11px] text-muted-foreground mt-1.5">Higher values follow the prompt more closely</p>
-      </div>
-    </>
-  );
-}
-
-// --- Speech Settings ---
-function SpeechSettingsContent({ nodeId, data, updateNodeData }: {
-  nodeId: string;
-  data: SpeechNodeData;
-  updateNodeData: (nodeId: string, data: Record<string, unknown>, silent?: boolean) => void;
-}) {
-  const model = (data.model || 'elevenlabs-tts') as SpeechModelType;
-  const capabilities = SPEECH_MODEL_CAPABILITIES[model];
-
-  return (
-    <>
-      <div>
-        <label className="text-xs text-muted-foreground mb-1.5 block">Model</label>
-        <Select
-          value={model}
-          onValueChange={(value) =>
-            updateNodeData(nodeId, {
-              model: value as SpeechModelType,
-              ...(value === 'elevenlabs-tts' ? {} : { mode: 'single' }),
-            })
-          }
-        >
-          <SelectTrigger className="w-full bg-muted border-border text-foreground">
-            <SelectValue>{capabilities.label}</SelectValue>
-          </SelectTrigger>
-          <SelectContent className="bg-popover border-border">
-            {SPEECH_MODEL_OPTIONS.map((option) => (
-              <SelectItem key={option} value={option}>
-                {SPEECH_MODEL_CAPABILITIES[option].label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <p className="text-[11px] text-muted-foreground mt-1.5">{capabilities.description}</p>
-      </div>
-
-      {model === 'tada-3b-tts' && (
-        <div>
-          <label className="text-xs text-muted-foreground mb-1.5 block">Language</label>
-          <Select
-            value={data.language || 'en'}
-            onValueChange={(value) => updateNodeData(nodeId, { language: value as TadaLanguage })}
-          >
-            <SelectTrigger className="w-full bg-muted border-border text-foreground">
-              <SelectValue>{TADA_LANGUAGE_LABELS[(data.language || 'en') as TadaLanguage]}</SelectValue>
-            </SelectTrigger>
-            <SelectContent className="bg-popover border-border">
-              {Object.entries(TADA_LANGUAGE_LABELS).map(([value, label]) => (
-                <SelectItem key={value} value={value}>{label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
-
-      {capabilities.requiresAudioReference && (
-        <div>
-          <label className="text-xs text-muted-foreground mb-1.5 block">Reference Transcript</label>
-          <textarea
-            value={data.referenceTranscript || ''}
-            onChange={(e) => updateNodeData(nodeId, { referenceTranscript: e.target.value })}
-            onPointerDown={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-            placeholder={model === 'tada-3b-tts' ? 'Optional. Useful for non-English reference audio.' : 'Optional transcript for the reference audio clip.'}
-            className="w-full min-h-[72px] bg-muted border border-border rounded-lg p-3 text-foreground text-sm placeholder:text-muted-foreground/60 resize-y overflow-y-auto nodrag nopan nowheel select-text focus:outline-none focus:border-primary"
-          />
-          <p className="text-[11px] text-muted-foreground mt-1.5">Connect an audio node or uploaded audio clip to the Speech node to use voice cloning.</p>
-        </div>
-      )}
-
-      {model !== 'lux-tts' && (
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-muted-foreground">Speed</span>
-            <span className="text-xs text-muted-foreground/70">{(data.speed ?? 1).toFixed(1)}x</span>
-          </div>
-          <Slider
-            value={[data.speed ?? 1]}
-            onValueChange={(v) => updateNodeData(nodeId, { speed: v[0] })}
-            min={model === 'tada-3b-tts' ? 0.5 : 0.7}
-            max={model === 'tada-3b-tts' ? 2 : 1.2}
-            step={0.05}
-            className="w-full"
-          />
-          <p className="text-[11px] text-muted-foreground mt-1.5">
-            {model === 'tada-3b-tts'
-              ? 'Controls the output speaking rate.'
-              : 'Higher values read the text faster.'}
-          </p>
-        </div>
-      )}
-
-      {model === 'elevenlabs-tts' && (
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-muted-foreground">Stability</span>
-            <span className="text-xs text-muted-foreground/70">{Math.round((data.stability ?? 0.5) * 100)}%</span>
-          </div>
-          <Slider
-            value={[data.stability ?? 0.5]}
-            onValueChange={(v) => updateNodeData(nodeId, { stability: v[0] })}
-            min={0}
-            max={1}
-            step={0.05}
-            className="w-full"
-          />
-          <p className="text-[11px] text-muted-foreground mt-1.5">Higher = more consistent, lower = more expressive</p>
-        </div>
-      )}
-    </>
-  );
-}
-
-// --- Video Audio Settings ---
-function VideoAudioSettingsContent({ nodeId, data, updateNodeData }: {
-  nodeId: string;
-  data: VideoAudioNodeData;
-  updateNodeData: (nodeId: string, data: Record<string, unknown>, silent?: boolean) => void;
-}) {
-  const model = (data.model || 'mmaudio-v2') as VideoAudioModelType;
-  const capabilities = VIDEO_AUDIO_MODEL_CAPABILITIES[model];
-
-  return (
-    <>
-      <div>
-        <label className="text-xs text-muted-foreground mb-1.5 block">Model</label>
-        <Select
-          value={model}
-          onValueChange={(value) => updateNodeData(nodeId, { model: value as VideoAudioModelType })}
-        >
-          <SelectTrigger className="w-full bg-muted border-border text-foreground">
-            <SelectValue>{capabilities.label}</SelectValue>
-          </SelectTrigger>
-          <SelectContent className="bg-popover border-border">
-            {VIDEO_AUDIO_MODEL_OPTIONS.map((option) => (
-              <SelectItem key={option} value={option}>
-                {VIDEO_AUDIO_MODEL_CAPABILITIES[option].label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <p className="text-[11px] text-muted-foreground mt-1.5">{capabilities.description}</p>
-      </div>
-
-      {model === 'mmaudio-v2' ? (
-        <>
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-muted-foreground">Duration</span>
-              <span className="text-xs text-muted-foreground/70">{data.duration ?? 8}s</span>
-            </div>
-            <Slider
-              value={[data.duration ?? 8]}
-              onValueChange={(v) => updateNodeData(nodeId, { duration: v[0] })}
-              min={1}
-              max={30}
-              step={1}
-              className="w-full"
-            />
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-muted-foreground">CFG Strength</span>
-              <span className="text-xs text-muted-foreground/70">{data.cfgStrength ?? 4.5}</span>
-            </div>
-            <Slider
-              value={[data.cfgStrength ?? 4.5]}
-              onValueChange={(v) => updateNodeData(nodeId, { cfgStrength: v[0] })}
-              min={1}
-              max={10}
-              step={0.5}
-              className="w-full"
-            />
-            <p className="text-[11px] text-muted-foreground mt-1.5">Higher values follow the prompt more closely</p>
-          </div>
-
-          <div>
-            <label className="text-xs text-muted-foreground mb-1.5 block">Negative Prompt</label>
-            <textarea
-              value={data.negativePrompt || ''}
-              onChange={(e) => updateNodeData(nodeId, { negativePrompt: e.target.value })}
-              onPointerDown={(e) => e.stopPropagation()}
-              onMouseDown={(e) => e.stopPropagation()}
-              placeholder="Sounds to avoid..."
-              className="w-full min-h-[80px] bg-muted border border-border rounded-lg p-3 text-foreground text-sm placeholder:text-muted-foreground/60 resize-y overflow-y-auto nodrag nopan nowheel select-text focus:outline-none focus:border-primary"
-            />
-          </div>
-        </>
-      ) : (
-        <>
-          <div>
-            <label className="text-xs text-muted-foreground mb-1.5 block">Sync Mode</label>
-            <Select
-              value={data.syncMode || 'cut_off'}
-              onValueChange={(value) => updateNodeData(nodeId, { syncMode: value as SyncLipsyncMode })}
-            >
-              <SelectTrigger className="w-full bg-muted border-border text-foreground">
-                <SelectValue>{SYNC_LIPSYNC_MODE_LABELS[(data.syncMode || 'cut_off') as SyncLipsyncMode]}</SelectValue>
-              </SelectTrigger>
-              <SelectContent className="bg-popover border-border">
-                {Object.entries(SYNC_LIPSYNC_MODE_LABELS).map(([value, label]) => (
-                  <SelectItem key={value} value={value}>{label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <p className="text-[11px] text-muted-foreground">
-            Connect a video node and an audio node. Sync Lipsync uses the incoming audio directly and ignores prompt tuning.
-          </p>
-        </>
-      )}
-    </>
-  );
-}
-
-// --- Product Shot Settings ---
-function ProductShotSettingsContent({ nodeId, data, updateNodeData }: {
-  nodeId: string;
-  data: ProductShotNodeData;
-  updateNodeData: (nodeId: string, data: Record<string, unknown>, silent?: boolean) => void;
-}) {
-  return (
-    <>
-      <div>
-        <label className="text-xs text-muted-foreground mb-1.5 block">Shot Count</label>
-        <Select
-          value={String(data.shotCount)}
-          onValueChange={(v) => updateNodeData(nodeId, { shotCount: Number(v) })}
-        >
-          <SelectTrigger className="w-full bg-muted border-border text-foreground">
-            <SelectValue>{data.shotCount} shots</SelectValue>
-          </SelectTrigger>
-          <SelectContent className="bg-popover border-border">
-            {SHOT_COUNTS.map((count) => (
-              <SelectItem key={count} value={String(count)}>{count} shots</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div>
-        <label className="text-xs text-muted-foreground mb-1.5 block">Background</label>
-        <Select
-          value={data.background}
-          onValueChange={(v) => updateNodeData(nodeId, { background: v as ProductShotBackground })}
-        >
-          <SelectTrigger className="w-full bg-muted border-border text-foreground">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="bg-popover border-border">
-            {BACKGROUND_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div>
-        <label className="text-xs text-muted-foreground mb-1.5 block">Lighting</label>
-        <Select
-          value={data.lighting}
-          onValueChange={(v) => updateNodeData(nodeId, { lighting: v as ProductShotLighting })}
-        >
-          <SelectTrigger className="w-full bg-muted border-border text-foreground">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="bg-popover border-border">
-            {LIGHTING_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-    </>
   );
 }

@@ -16,7 +16,6 @@ import { GLITCH_DISTORTION_RECIPE } from './glitch-distortion';
 import { CAMERA_MOVEMENTS_RECIPE } from './camera-movements';
 import { LOGO_REVEALS_RECIPE } from './logo-reveals';
 import { COMPOSITING_RECIPE } from './compositing';
-export { loadRemotionBestPractices } from './remotion-best-practices';
 
 /** Metadata for each technique preset (for UI display) */
 export interface TechniquePreset {

@@ -26,7 +26,7 @@ const videoGeneratorNode: AppNode = {
   position: { x: 450, y: 150 },
   data: {
     prompt: '',
-    model: 'veo-3.1-fast-i2v',
+    model: 'veo-3',
     aspectRatio: '16:9',
     duration: 8,
     resolution: '720p',

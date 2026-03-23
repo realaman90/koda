@@ -6,7 +6,7 @@
  * own schemas and prompts, while the AIService handles execution.
  */
 
-import type { ComponentType } from 'react';
+import type { ComponentType, SVGProps } from 'react';
 import type { z } from 'zod';
 import type { AppNode, AppEdge } from '@/lib/types';
 
@@ -45,19 +45,6 @@ export interface PluginAuthor {
 /**
  * Base plugin interface - shared by all plugin types
  */
-export type PluginDistribution = 'oss' | 'hosted';
-
-export type PluginTrustTier =
-  | 'official'   // First-party plugin maintained by Koda
-  | 'verified'   // Third-party plugin reviewed by Koda team
-  | 'community'; // Community plugin with no explicit review
-
-export interface PluginPolicy {
-  capabilityDeclarations: AgentCapability[];
-  distributionVisibility: PluginDistribution[];
-  trustTier: PluginTrustTier;
-}
-
 export interface PluginBase {
   id: string;
   name: string;
@@ -67,7 +54,6 @@ export interface PluginBase {
   author: PluginAuthor;
   version: string;
   visibility: 'private' | 'team' | 'public';
-  policy: PluginPolicy;
 }
 
 // ============================================
@@ -187,12 +173,6 @@ export interface PluginRendering {
 export interface AgentPlugin extends PluginBase {
   type: 'agent';
 
-  // Optional launcher metadata for UX hints
-  launcherHints?: {
-    input?: string;
-    output?: string;
-  };
-
   // Rendering mode (NEW) - determines how the plugin appears
   rendering?: PluginRendering;
 
@@ -223,7 +203,7 @@ export interface AgentPlugin extends PluginBase {
 /**
  * Node type identifiers for creation
  */
-export type CreateNodeType = 'text' | 'media' | 'imageGenerator' | 'videoGenerator' | 'group' | 'stickyNote';
+export type CreateNodeType = 'text' | 'media' | 'imageGenerator' | 'videoGenerator';
 
 /**
  * Input for creating a new node
@@ -267,15 +247,6 @@ export interface CanvasAPI {
   // View controls
   focusNode(nodeId: string): void;
   fitView(nodeIds?: string[]): void;
-
-  // Grouping
-  wrapInGroup(options: {
-    nodeIds: string[];
-    name: string;
-    color?: string;
-    stickyNote?: { content: string; color?: string };
-    padding?: number;
-  }): Promise<{ groupId: string; stickyNoteId?: string }>;
 }
 
 // ============================================
