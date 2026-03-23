@@ -1,7 +1,7 @@
 /**
  * Animation Generator Plugin
  *
- * Creates Theatre.js animations from natural language descriptions.
+ * Creates Remotion or Theatre.js animations from natural language descriptions.
  * Uses a multi-phase workflow: Idle -> Question -> Plan -> Executing -> Preview -> Complete
  * 
  * Architecture: Node-based Agent Plugin (renders directly on canvas)
@@ -19,7 +19,7 @@ import type { AgentPlugin } from '@/lib/plugins/types';
 export const animationGeneratorPlugin: AgentPlugin = {
   id: 'animation-generator',
   name: 'Animation Generator',
-  description: 'Create Theatre.js animations from text descriptions',
+  description: 'Create Remotion or Theatre.js animations from text descriptions',
   icon: Film,
   category: 'planning',
   type: 'agent',
@@ -30,6 +30,11 @@ export const animationGeneratorPlugin: AgentPlugin = {
     verified: true,
   },
   visibility: 'public',
+  policy: {
+    capabilityDeclarations: ['canvas:read', 'storage:upload', 'sandbox:persistent'],
+    distributionVisibility: ['oss', 'hosted'],
+    trustTier: 'official',
+  },
 
   // ─────────────────────────────────────────────────────────────
   // RENDERING: Node-based (renders directly on canvas)

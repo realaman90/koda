@@ -6,3 +6,4 @@ export { CanvasPreferencesSection } from './CanvasPreferencesSection';
 export { ThemeSection } from './ThemeSection';
 export { KeyboardShortcutsSection } from './KeyboardShortcutsSection';
 export { ProfileSection } from './ProfileSection';
+export { ModelSettingsSection } from './ModelSettingsSection';

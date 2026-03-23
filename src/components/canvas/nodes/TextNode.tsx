@@ -1,12 +1,14 @@
 'use client';
 
-import { memo, useCallback, useState, useRef, useEffect } from 'react';
-import { Handle, Position, NodeResizer, type NodeProps, useEdges } from '@xyflow/react';
+import { memo, useCallback, useMemo, useState, useRef, useEffect } from 'react';
+import { Handle, Position, NodeResizer, type NodeProps, useNodeConnections } from '@xyflow/react';
 import { useCanvasStore } from '@/stores/canvas-store';
 import type { TextNode as TextNodeType } from '@/lib/types';
 import { Type } from 'lucide-react';
 import { RichTextEditor, EditorToolbar, type RichTextEditorRef } from './RichTextEditor';
 import { ResizeHandle } from './ResizeHandle';
+import { useBufferedNodeField } from './useBufferedNodeField';
+import { useNodeDisplayMode } from './useNodeDisplayMode';
 
 const DEFAULT_HEIGHT = 120;
 const EXPANDED_HEIGHT = 300;
@@ -14,20 +16,31 @@ const EXPANDED_HEIGHT = 300;
 function TextNodeComponent({ id, data, selected }: NodeProps<TextNodeType>) {
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
   const isReadOnly = useCanvasStore((state) => state.isReadOnly);
-  const edges = useEdges();
   const [isEditingName, setIsEditingName] = useState(false);
   const [nodeName, setNodeName] = useState(data.name || 'Text');
   const [isHovered, setIsHovered] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<RichTextEditorRef>(null);
+  const connections = useNodeConnections({ id });
+  const { displayMode, focusProps } = useNodeDisplayMode(selected);
+  const contentField = useBufferedNodeField({
+    nodeId: id,
+    value: data.content,
+    field: 'content',
+    preview: 'skip',
+  });
 
   // Use yellow/beige as default for text nodes (Freepik style), or custom bgColor if set
   const bgColor = data.bgColor || 'var(--node-bg-text)';
   const isExpanded = data.isExpanded || false;
   const isTransparent = bgColor === 'transparent';
+  const plainTextExcerpt = useMemo(
+    () => data.content.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim(),
+    [data.content]
+  );
 
   // Check if this node has any connections
-  const isConnected = edges.some(edge => edge.source === id || edge.target === id);
+  const isConnected = connections.length > 0;
   const showHandle = selected || isHovered || isConnected;
 
   useEffect(() => {
@@ -44,21 +57,25 @@ function TextNodeComponent({ id, data, selected }: NodeProps<TextNodeType>) {
 
   const handleContentChange = useCallback(
     (content: string) => {
-      updateNodeData(id, { content });
+      contentField.updateDraft(content);
     },
-    [id, updateNodeData]
+    [contentField]
   );
 
   const handleResizeEnd = useCallback(
     (_: unknown, params: { width: number; height: number }) => {
-      updateNodeData(id, { width: params.width, height: params.height });
+      updateNodeData(id, { width: params.width, height: params.height }, { kind: 'layout' });
     },
     [id, updateNodeData]
   );
 
   const handleResize = useCallback(
     (width: number, height: number) => {
-      updateNodeData(id, { width, height, isExpanded: height > DEFAULT_HEIGHT + 50 });
+      updateNodeData(
+        id,
+        { width, height, isExpanded: height > DEFAULT_HEIGHT + 50 },
+        { history: 'skip', save: 'skip', preview: 'skip', kind: 'layout' }
+      );
     },
     [id, updateNodeData]
   );
@@ -68,7 +85,7 @@ function TextNodeComponent({ id, data, selected }: NodeProps<TextNodeType>) {
     updateNodeData(id, {
       isExpanded: newExpanded,
       height: newExpanded ? EXPANDED_HEIGHT : DEFAULT_HEIGHT
-    });
+    }, { kind: 'layout' });
   }, [id, isExpanded, updateNodeData]);
 
   const handleBgColorChange = useCallback(
@@ -91,6 +108,7 @@ function TextNodeComponent({ id, data, selected }: NodeProps<TextNodeType>) {
       className="relative"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      {...focusProps}
     >
       {/* Node Resizer - invisible handles, resize from edges (hidden in read-only) */}
       {!isReadOnly && (
@@ -118,8 +136,10 @@ function TextNodeComponent({ id, data, selected }: NodeProps<TextNodeType>) {
         </div>
       )}
 
-      {/* Node Title */}
-      <div className="flex items-center gap-2 mb-2 text-sm font-medium" style={{ color: 'var(--node-title-text)' }}>
+      <div
+        className="mb-2 rounded-xl px-3 py-2 text-sm font-medium"
+        style={{ color: 'var(--node-title-text)' }}
+      >
         <Type className="h-4 w-4" />
         {isEditingName && !isReadOnly ? (
           <input
@@ -148,11 +168,10 @@ function TextNodeComponent({ id, data, selected }: NodeProps<TextNodeType>) {
         )}
       </div>
 
-      {/* Main Node Card - wrapped for handle positioning */}
       <div className="relative">
         <div
           className={`
-            min-w-[280px] rounded-2xl overflow-hidden
+            node-drag-handle node-drag-surface min-w-[280px] rounded-2xl overflow-hidden
             transition-all duration-150
             ${isTransparent
               ? (selected ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-transparent' : '')
@@ -169,17 +188,25 @@ function TextNodeComponent({ id, data, selected }: NodeProps<TextNodeType>) {
             }),
           }}
         >
-          {/* Content Area */}
-          <div className="p-4 h-full">
-            <RichTextEditor
-              ref={editorRef}
-              content={data.content}
-              onChange={handleContentChange}
-              placeholder="Enter your text..."
-              minHeight={80}
-              isExpanded={isExpanded}
-              editable={!isReadOnly}
-            />
+          <div className={`node-body h-full ${displayMode === 'compact' ? 'node-compact' : displayMode === 'summary' ? 'node-summary' : ''}`}>
+            {displayMode === 'full' ? (
+              <RichTextEditor
+                ref={editorRef}
+                content={contentField.draft}
+                onChange={handleContentChange}
+                onBlur={() => {
+                  void contentField.commit(contentField.draft, true);
+                }}
+                placeholder="Enter your text..."
+                minHeight={80}
+                isExpanded={isExpanded}
+                editable={!isReadOnly}
+              />
+            ) : (
+              <div className="node-content-area min-h-[88px] p-3 text-sm leading-6 text-foreground/80 select-text">
+                {plainTextExcerpt || 'Text node'}
+              </div>
+            )}
           </div>
         </div>
 
@@ -201,16 +228,16 @@ function TextNodeComponent({ id, data, selected }: NodeProps<TextNodeType>) {
 
         {/* Output Handle - Right side, centered on card */}
         <div
-          className={`absolute -right-3 top-1/2 -translate-y-1/2 group transition-opacity duration-200 ${showHandle ? 'opacity-100' : 'opacity-0'}`}
+          className={`absolute -right-3 top-1/2 -translate-y-1/2 z-10 group transition-opacity duration-200 ${showHandle ? 'opacity-100' : 'opacity-0'}`}
         >
           <div className="relative">
             <Handle
               type="source"
               position={Position.Right}
               id="output"
-              className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full !bg-yellow-400 !border-zinc-900 hover:!border-zinc-700"
+              className="!relative !transform-none !w-7 !h-7 !border-2 !rounded-full node-handle"
             />
-            <Type className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-zinc-900" />
+            <Type className="absolute inset-0 m-auto h-3.5 w-3.5 pointer-events-none text-[var(--handle-output-icon)]" />
           </div>
           <span className="absolute right-9 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border node-tooltip">
             Text output

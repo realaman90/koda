@@ -19,6 +19,8 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions = {}) 
   const duplicateSelected = useCanvasStore((state) => state.duplicateSelected);
   const selectAll = useCanvasStore((state) => state.selectAll);
   const selectedNodeIds = useCanvasStore((state) => state.selectedNodeIds);
+  const selectedEdgeIds = useCanvasStore((state) => state.selectedEdgeIds);
+  const clearSelection = useCanvasStore((state) => state.clearSelection);
   const setActiveTool = useCanvasStore((state) => state.setActiveTool);
   const groupSelected = useCanvasStore((state) => state.groupSelected);
 
@@ -55,15 +57,19 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions = {}) 
         return;
       }
 
-      // Copy: Cmd/Ctrl + C
+      // Copy: Cmd/Ctrl + C — let browser handle if user has text selected
       if (cmdOrCtrl && event.key === 'c') {
+        const sel = window.getSelection();
+        if (sel && sel.toString().length > 0) return; // native text copy
         event.preventDefault();
         copySelected();
         return;
       }
 
-      // Cut: Cmd/Ctrl + X
+      // Cut: Cmd/Ctrl + X — let browser handle if user has text selected
       if (cmdOrCtrl && event.key === 'x') {
+        const sel = window.getSelection();
+        if (sel && sel.toString().length > 0) return; // native text cut
         event.preventDefault();
         cutSelected();
         return;
@@ -111,6 +117,12 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions = {}) 
       if (event.key === 'Escape') {
         if (isInputField) {
           (target as HTMLInputElement).blur();
+          return;
+        }
+
+        if (selectedNodeIds.length > 0 || selectedEdgeIds.length > 0) {
+          event.preventDefault();
+          clearSelection();
         }
         return;
       }
@@ -137,7 +149,7 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions = {}) 
         }
       }
     },
-    [undo, redo, copySelected, cutSelected, paste, deleteSelected, duplicateSelected, selectAll, groupSelected, selectedNodeIds, setActiveTool]
+    [undo, redo, copySelected, cutSelected, paste, deleteSelected, duplicateSelected, selectAll, groupSelected, selectedNodeIds, selectedEdgeIds, clearSelection, setActiveTool]
   );
 
   useEffect(() => {

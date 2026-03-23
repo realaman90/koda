@@ -50,14 +50,14 @@ export function ThemeSection() {
               className={cn(
                 'flex flex-col items-center gap-3 p-4 rounded-xl border transition-all',
                 isActive
-                  ? 'bg-indigo-500/10 border-indigo-500 text-indigo-400'
+                  ? 'bg-primary/10 border-primary text-primary'
                   : 'bg-muted/50 border-border text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground'
               )}
             >
               <div
                 className={cn(
                   'w-12 h-12 rounded-lg flex items-center justify-center',
-                  isActive ? 'bg-indigo-500/20' : 'bg-muted'
+                  isActive ? 'bg-primary/15' : 'bg-muted'
                 )}
               >
                 <Icon className="h-6 w-6" />
@@ -79,7 +79,7 @@ export function ThemeSection() {
           >
             <div className="w-full h-3 rounded mb-2" style={{ backgroundColor: '#27272a' }} />
             <div className="w-3/4 h-3 rounded mb-2" style={{ backgroundColor: '#27272a' }} />
-            <div className="w-1/2 h-3 bg-indigo-600 rounded" />
+            <div className="w-1/2 h-3 bg-primary rounded" />
             <p className="text-xs mt-3" style={{ color: '#a1a1aa' }}>Dark Theme</p>
           </div>
           {/* Light preview - using inline styles */}
@@ -89,7 +89,7 @@ export function ThemeSection() {
           >
             <div className="w-full h-3 rounded mb-2" style={{ backgroundColor: '#e4e4e7' }} />
             <div className="w-3/4 h-3 rounded mb-2" style={{ backgroundColor: '#e4e4e7' }} />
-            <div className="w-1/2 h-3 bg-indigo-600 rounded" />
+            <div className="w-1/2 h-3 bg-primary rounded" />
             <p className="text-xs mt-3" style={{ color: '#71717a' }}>Light Theme</p>
           </div>
         </div>
@@ -99,7 +99,7 @@ export function ThemeSection() {
       <div className="flex items-center gap-2 p-3 bg-muted/30 rounded-lg">
         <div className={cn(
           'w-3 h-3 rounded-full',
-          theme === 'dark' ? 'bg-indigo-500' : theme === 'light' ? 'bg-amber-500' : 'bg-green-500'
+          'bg-primary'
         )} />
         <span className="text-sm text-muted-foreground">
           Current theme: <span className="text-foreground font-medium capitalize">{theme}</span>

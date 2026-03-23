@@ -9,6 +9,8 @@ import { useState, useCallback, useRef } from 'react';
 import type { VideoInput } from '../types';
 import type { MotionAnalyzerStreamEvent, MotionAnalyzerAppEvent } from '../events';
 import { toolCallToAppEvent, toolResultToAppEvent } from '../events';
+import { getCached, loadFromDB } from '../../animation-generator/media-cache';
+import { handleInsufficientCreditsPayload, normalizeApiErrorMessage } from '@/lib/client/api-error';
 
 // ============================================
 // Types
@@ -53,6 +55,61 @@ interface UseMotionAnalyzerStreamReturn {
   abort: () => void;
 }
 
+const SERVERLESS_BODY_LIMIT_BYTES = 4.5 * 1024 * 1024;
+const BODY_LIMIT_WARNING_THRESHOLD_BYTES = 4 * 1024 * 1024;
+
+function createTraceId(): string {
+  return `ma_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function estimateDataUrlBytes(dataUrl: string): number {
+  if (!dataUrl.startsWith('data:')) return 0;
+  const commaIndex = dataUrl.indexOf(',');
+  const base64Payload = commaIndex >= 0 ? dataUrl.slice(commaIndex + 1) : dataUrl;
+  return Math.floor((base64Payload.length * 3) / 4);
+}
+
+function toMb(bytes: number): string {
+  return (bytes / (1024 * 1024)).toFixed(2);
+}
+
+async function buildHttpError(response: Response, traceId: string): Promise<Error> {
+  const contentType = response.headers.get('content-type') || '';
+  const responseTraceId = response.headers.get('x-koda-trace-id') || traceId;
+  const vercelRequestId = response.headers.get('x-vercel-id');
+
+  let serverError = '';
+  let details = '';
+
+  if (contentType.includes('application/json')) {
+    const payload = await response.json().catch(() => null) as
+      | { error?: unknown; message?: unknown; required?: unknown; balance?: unknown; details?: unknown; reason?: unknown }
+      | null;
+    if (payload) {
+      if (response.status === 402 || payload.error === 'INSUFFICIENT_CREDITS') {
+        return new Error(handleInsufficientCreditsPayload(payload));
+      }
+      if (typeof payload.error === 'string') serverError = payload.error;
+      if (typeof payload.details === 'string') details = payload.details;
+      if (!details && typeof payload.reason === 'string') details = payload.reason;
+    }
+  } else {
+    const text = await response.text().catch(() => '');
+    if (text) details = text.slice(0, 200).replace(/\s+/g, ' ').trim();
+  }
+
+  const prefix = serverError || `Stream request failed (${response.status})`;
+  const suffixes: string[] = [];
+  if (response.status === 413) {
+    suffixes.push('Request payload is too large (serverless body limit).');
+  }
+  suffixes.push(`trace=${responseTraceId}`);
+  if (vercelRequestId) suffixes.push(`vercel=${vercelRequestId}`);
+  if (details) suffixes.push(details);
+
+  return new Error(`${prefix} ${suffixes.join(' ')}`.trim());
+}
+
 // ============================================
 // Hook
 // ============================================
@@ -63,19 +120,22 @@ export function useMotionAnalyzerStream(): UseMotionAnalyzerStreamReturn {
   const [error, setError] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const completeFiredRef = useRef(false);
+  const abortedRef = useRef(false);
 
   const abort = useCallback(() => {
+    abortedRef.current = true;
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
-      setIsStreaming(false);
     }
+    setIsStreaming(false);
   }, []);
 
   const stream = useCallback(
     async (input: StreamInput, context?: StreamContext, callbacks?: MotionAnalyzerStreamCallbacks): Promise<string> => {
       abort();
       abortControllerRef.current = new AbortController();
+      abortedRef.current = false;
       setIsStreaming(true);
       setStreamedText('');
       setError(null);
@@ -84,24 +144,55 @@ export function useMotionAnalyzerStream(): UseMotionAnalyzerStreamReturn {
       let fullText = '';
 
       try {
-        // Convert blob: URLs to data: URLs for the video
+        const traceId = createTraceId();
+
+        // If video has a remoteUrl (presigned upload to R2), send that instead of the data URL.
+        // This keeps the request body tiny and avoids the Vercel 4.5MB limit.
+        // Fall back to data URL conversion for local dev (no R2).
         let processedContext = context;
-        if (context?.video?.dataUrl?.startsWith('blob:')) {
-          try {
-            const response = await fetch(context.video.dataUrl);
-            const blob = await response.blob();
-            const dataUrl = await new Promise<string>((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onloadend = () => resolve(reader.result as string);
-              reader.onerror = () => reject(reader.error);
-              reader.readAsDataURL(blob);
-            });
+        let localVideoPayloadBytes = 0;
+        if (context?.video) {
+          if (context.video.remoteUrl) {
+            // Remote URL available — strip the heavy dataUrl from the request
             processedContext = {
               ...context,
-              video: { ...context.video, dataUrl },
+              video: { ...context.video, dataUrl: context.video.remoteUrl },
             };
-          } catch (err) {
-            console.warn('[useMotionAnalyzerStream] Failed to convert blob: URL:', err);
+          } else if (context.video.dataUrl?.startsWith('cached:')) {
+            // Resolve IndexedDB-cached payload (survives refresh in local mode)
+            let cached = getCached(context.video.id);
+            if (!cached) {
+              cached = await loadFromDB(context.video.id);
+            }
+            if (!cached) {
+              throw new Error('Uploaded video data is unavailable after refresh. Please re-upload.');
+            }
+            processedContext = {
+              ...context,
+              video: { ...context.video, dataUrl: cached },
+            };
+            localVideoPayloadBytes = estimateDataUrlBytes(cached);
+          } else if (context.video.dataUrl?.startsWith('blob:')) {
+            // No remote URL — convert blob to data URL (local dev fallback)
+            try {
+              const response = await fetch(context.video.dataUrl);
+              const blob = await response.blob();
+              const dataUrl = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.onerror = () => reject(reader.error);
+                reader.readAsDataURL(blob);
+              });
+              processedContext = {
+                ...context,
+                video: { ...context.video, dataUrl },
+              };
+              localVideoPayloadBytes = estimateDataUrlBytes(dataUrl);
+            } catch (err) {
+              console.warn('[useMotionAnalyzerStream] Failed to convert blob: URL:', err);
+            }
+          } else if (context.video.dataUrl?.startsWith('data:')) {
+            localVideoPayloadBytes = estimateDataUrlBytes(context.video.dataUrl);
           }
         }
 
@@ -109,16 +200,25 @@ export function useMotionAnalyzerStream(): UseMotionAnalyzerStreamReturn {
           ? { prompt: input, context: processedContext }
           : { messages: input, context: processedContext };
 
+        if (localVideoPayloadBytes >= BODY_LIMIT_WARNING_THRESHOLD_BYTES) {
+          console.warn(
+            `[useMotionAnalyzerStream] Large local video payload (~${toMb(localVideoPayloadBytes)}MB). ` +
+            'If this deployment is serverless, the request may be rejected before route code runs.'
+          );
+        }
+
         const response = await fetch('/api/plugins/motion-analyzer/stream', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-koda-trace-id': traceId,
+          },
           body: JSON.stringify(requestBody),
           signal: abortControllerRef.current.signal,
         });
 
         if (!response.ok) {
-          const errorData = await response.json().catch(() => ({ error: 'Stream request failed' }));
-          throw new Error(errorData.error || `Stream request failed (${response.status})`);
+          throw await buildHttpError(response, traceId);
         }
 
         if (!response.body) throw new Error('No response body');
@@ -189,7 +289,9 @@ export function useMotionAnalyzerStream(): UseMotionAnalyzerStreamReturn {
                   fullText = data.text || fullText;
                   setStreamedText(fullText);
                   completeFiredRef.current = true;
-                  callbacks?.onComplete?.(fullText);
+                  if (!abortedRef.current) {
+                    callbacks?.onComplete?.(fullText);
+                  }
                   break;
 
                 case 'error':
@@ -206,19 +308,40 @@ export function useMotionAnalyzerStream(): UseMotionAnalyzerStreamReturn {
           }
         }
 
-        if (!completeFiredRef.current) {
+        if (!completeFiredRef.current && !abortedRef.current) {
           completeFiredRef.current = true;
           callbacks?.onComplete?.(fullText);
         }
 
+        abortControllerRef.current = null;
         setIsStreaming(false);
         return fullText;
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') {
+          abortControllerRef.current = null;
           setIsStreaming(false);
           return fullText;
         }
-        const errorMessage = err instanceof Error ? err.message : 'Stream failed';
+        let errorMessage = normalizeApiErrorMessage(err, 'Stream failed');
+
+        const video = context?.video;
+        if (video && !video.remoteUrl) {
+          const sizeFromDataUrl = video.dataUrl?.startsWith('data:')
+            ? estimateDataUrlBytes(video.dataUrl)
+            : 0;
+          if (
+            sizeFromDataUrl >= SERVERLESS_BODY_LIMIT_BYTES &&
+            /fetch failed|network|failed to fetch|stream request failed/i.test(errorMessage)
+          ) {
+            errorMessage =
+              `Request likely exceeded serverless body limits (~4.5MB) before reaching API code, so no server logs were emitted. ` +
+              `Local payload size ~${toMb(sizeFromDataUrl)}MB. Configure presigned cloud uploads (R2/S3) or use a smaller clip.`;
+          }
+        }
+        if (abortedRef.current) {
+          setIsStreaming(false);
+          return fullText;
+        }
         console.error('[useMotionAnalyzerStream] Stream error:', errorMessage);
         setError(errorMessage);
         setIsStreaming(false);

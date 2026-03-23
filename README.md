@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="public/logos/koda_main.png" alt="Koda" width="280">
+<img src="public/logos/koda_main_dark.png" alt="Koda" width="280">
 
 **A node-based visual workflow editor for AI-powered image, video, and animation generation.**
 
@@ -218,6 +218,11 @@ Koda supports **mix-and-match deployment** — use local storage with cloud sand
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Yes | — | Clerk publishable key (client auth) |
+| `CLERK_SECRET_KEY` | Yes | — | Clerk secret key (server auth + middleware) |
+| `CLERK_WEBHOOK_SIGNING_SECRET` | Yes | — | Verify `/api/webhooks/clerk` signatures |
+| `DEV_AUTH_BYPASS` | Dev-only | `false` | Local auth bypass switch (only active when `NODE_ENV=development`) |
+| `DEV_AUTH_BYPASS_TOKEN` | Optional | — | Optional token required in header `x-dev-auth-bypass-token` for protected API calls when bypass is on |
 | `ANTHROPIC_API_KEY` | Yes* | — | Anthropic API key (agent fallback) |
 | `FAL_KEY` | Yes* | — | Fal.ai key (image/video generation) |
 | `GOOGLE_GENERATIVE_AI_API_KEY` | Recommended | — | Google AI key (Gemini models) |
@@ -228,6 +233,14 @@ Koda supports **mix-and-match deployment** — use local storage with cloud sand
 | `SNAPSHOT_STORAGE` | No | `local` | `local` or `r2` |
 
 *At minimum you need one AI provider key and `FAL_KEY` for image/video gen.
+
+⚠️ **Dev bypass safety:** `DEV_AUTH_BYPASS` is fail-closed outside development. In production/hosted (`NODE_ENV` not `development`) the bypass is ignored and normal Clerk auth remains required.
+
+When `DEV_AUTH_BYPASS_TOKEN` is set, protected API requests must include:
+
+```http
+x-dev-auth-bypass-token: <your-token>
+```
 
 See [`.env.example`](.env.example) for the full list with comments.
 
@@ -445,6 +458,14 @@ Detailed documentation lives in the [`docs/`](docs/) directory:
 | [`DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Cloud and self-hosted deployment guide |
 | [`SELF_HOSTING.md`](docs/SELF_HOSTING.md) | Local hosting setup and configuration |
 | [`SANDBOX_CONFIGURATION.md`](docs/SANDBOX_CONFIGURATION.md) | Docker sandbox resource tuning |
+| [`oss/QUICKSTART.md`](docs/oss/QUICKSTART.md) | OSS clean install quickstart |
+| [`oss/UPGRADE.md`](docs/oss/UPGRADE.md) | OSS upgrade + rollback guidance |
+| [`oss/TROUBLESHOOTING.md`](docs/oss/TROUBLESHOOTING.md) | Common self-host issues and fixes |
+| [`oss/KNOWN_LIMITS.md`](docs/oss/KNOWN_LIMITS.md) | OSS support boundaries and known limits |
+| [`roadmap/phase-3-plugin-governance-playbook.md`](docs/roadmap/phase-3-plugin-governance-playbook.md) | Plugin governance review, escalation, and operator override/rollback playbook |
+| [`roadmap/phase-4-oss-release-readiness.md`](docs/roadmap/phase-4-oss-release-readiness.md) | OSS release smoke automation + evidence checklist |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Issue/PR conventions and plugin policy contribution rules |
+| [`SECURITY.md`](SECURITY.md) | Private vulnerability reporting path |
 
 ---
 
@@ -481,7 +502,12 @@ npm run db:studio    # Open Drizzle Studio (DB browser)
 
 ## Contributing
 
-Contributions are welcome. Here's how to get started:
+Contributions are welcome.
+
+- Full workflow, issue/PR conventions, and plugin policy requirements: [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- Security disclosures: [`SECURITY.md`](SECURITY.md)
+
+Quick start:
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feat/my-feature`)
@@ -489,6 +515,28 @@ Contributions are welcome. Here's how to get started:
 4. Run `npm run lint` and `npm run build` to verify
 5. Commit and push
 6. Open a pull request
+
+### Plugin policy metadata requirements
+
+When contributing plugin changes, declare policy metadata on every `AgentPlugin`:
+
+```ts
+policy: {
+  capabilityDeclarations: AgentCapability[];
+  distributionVisibility: ('oss' | 'hosted')[];
+  trustTier: 'official' | 'verified' | 'community';
+}
+```
+
+Checklist:
+- Keep `capabilityDeclarations` in sync with runtime `capabilities`
+- Set explicit `distributionVisibility` (`oss`, `hosted`, or both)
+- Set correct `trustTier` based on review status
+- Run `npm run build` before opening a PR
+
+For governance and operator response flow, see:
+- [`docs/roadmap/phase-3-plugin-policy-schema.md`](docs/roadmap/phase-3-plugin-policy-schema.md)
+- [`docs/roadmap/phase-3-plugin-governance-playbook.md`](docs/roadmap/phase-3-plugin-governance-playbook.md)
 
 ### Adding a new node type
 

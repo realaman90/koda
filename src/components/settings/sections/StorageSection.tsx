@@ -75,24 +75,24 @@ export function StorageSection() {
   return (
     <div className="space-y-6">
       {/* Storage Info */}
-      <div className="p-4 bg-zinc-800/50 rounded-lg">
+      <div className="p-4 bg-muted/50 rounded-lg">
         <div className="flex items-center gap-3 mb-3">
-          <HardDrive className="h-5 w-5 text-zinc-400" />
-          <span className="text-sm font-medium text-zinc-200">Local Storage</span>
+          <HardDrive className="h-5 w-5 text-muted-foreground" />
+          <span className="text-sm font-medium text-foreground">Local Storage</span>
         </div>
         {storageInfo && (
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="text-zinc-400">Used</span>
-              <span className="text-zinc-200">{storageInfo.used}</span>
+              <span className="text-muted-foreground">Used</span>
+              <span className="text-foreground">{storageInfo.used}</span>
             </div>
-            <div className="w-full h-2 bg-zinc-700 rounded-full overflow-hidden">
+            <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
               <div
-                className="h-full bg-indigo-500 rounded-full"
+                className="h-full bg-primary rounded-full"
                 style={{ width: `${Math.min(parseFloat(storageInfo.used) / 5 * 100, 100)}%` }}
               />
             </div>
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-muted-foreground">
               Browser localStorage limit is typically 5-10 MB
             </p>
           </div>
@@ -101,12 +101,12 @@ export function StorageSection() {
 
       {/* Export/Import */}
       <div className="space-y-4">
-        <h3 className="text-sm font-medium text-zinc-200">Backup & Restore</h3>
+        <h3 className="text-sm font-medium text-foreground">Backup & Restore</h3>
 
         <div className="grid grid-cols-2 gap-3">
           <button
             onClick={handleExport}
-            className="flex items-center justify-center gap-2 h-12 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg transition-colors"
+            className="flex items-center justify-center gap-2 h-12 bg-muted hover:bg-muted text-foreground rounded-lg transition-colors"
           >
             <Download className="h-4 w-4" />
             <span className="text-sm font-medium">Export Settings</span>
@@ -114,7 +114,7 @@ export function StorageSection() {
 
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center justify-center gap-2 h-12 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg transition-colors"
+            className="flex items-center justify-center gap-2 h-12 bg-muted hover:bg-muted text-foreground rounded-lg transition-colors"
           >
             <Upload className="h-4 w-4" />
             <span className="text-sm font-medium">Import Settings</span>
@@ -129,14 +129,14 @@ export function StorageSection() {
           className="hidden"
         />
 
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-muted-foreground">
           Export your settings, API keys, and generation history to a JSON file.
           Import to restore on another device or after clearing data.
         </p>
       </div>
 
       {/* Danger Zone */}
-      <div className="pt-4 border-t border-zinc-800">
+      <div className="pt-4 border-t border-border">
         <div className="flex items-center gap-2 mb-4">
           <AlertTriangle className="h-4 w-4 text-red-400" />
           <h3 className="text-sm font-medium text-red-400">Danger Zone</h3>

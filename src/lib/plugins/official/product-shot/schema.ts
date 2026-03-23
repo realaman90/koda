@@ -17,6 +17,8 @@ import { z } from 'zod';
 export const ProductShotInputSchema = z.object({
   /** Product name/description */
   productName: z.string().min(1, 'Product name is required'),
+  /** Connected reference image for the product */
+  productImageUrl: z.string().min(1).optional(),
   /** Number of shots to generate (4, 6, or 8) */
   shotCount: z.union([z.literal(4), z.literal(6), z.literal(8)]).default(4),
   /** Background preset */
@@ -108,6 +110,10 @@ Guidelines:
 7. Prompts should be rich with professional photography terminology
 8. Maintain consistent product appearance across all shots
 9. Consider the product type when choosing angles (e.g., shoes need side profiles, watches need wrist shots)
+10. If a reference image is attached, it is the source of truth for the exact product category and design details
+11. Never substitute the product with a different category (e.g. watch -> bottle, shoe -> bag)
+12. When a reference image is attached, preserve the exact visible product identity: shape, proportions, materials, finishes, colors, strap/band/cap/lid details, branding placement, and silhouette
+13. If the text description conflicts with the image, follow the image
 
 Background presets:
 - studio-white: Clean white seamless backdrop, professional studio setup
@@ -133,12 +139,17 @@ export function buildProductShotPrompt(input: ProductShotInput): string {
   const notesLine = input.additionalNotes
     ? `\nAdditional Notes: ${input.additionalNotes}`
     : '';
+  const imageLine = input.productImageUrl
+    ? '\nReference Image: attached product image (source of truth for exact product identity)'
+    : '';
 
   return `Create a ${input.shotCount}-shot product photography plan for:
 
 Product: ${input.productName}
+${imageLine}
 Background: ${input.background}
 Lighting: ${input.lighting}${notesLine}
 
-Generate exactly ${input.shotCount} shots with diverse angles that best showcase this product for e-commerce and marketing use.`;
+Generate exactly ${input.shotCount} shots with diverse angles that best showcase this product for e-commerce and marketing use.
+Do not change the product category. If a reference image is attached, every shot must depict that exact product.`;
 }

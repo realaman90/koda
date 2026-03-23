@@ -1,27 +1,25 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useReactFlow } from '@xyflow/react';
+import { useOnViewportChange, useReactFlow } from '@xyflow/react';
 import { ChevronUp, ZoomIn, ZoomOut, Maximize, Focus } from 'lucide-react';
 import { useCanvasStore } from '@/stores/canvas-store';
 
 export function ZoomControls() {
-  const { zoomIn, zoomOut, fitView, getZoom, setViewport, getViewport } = useReactFlow();
+  const { zoomIn, zoomOut, fitView, getZoom, setViewport, getViewport, getNodes } = useReactFlow();
   const [zoom, setZoom] = useState(100);
   const [isOpen, setIsOpen] = useState(false);
   const selectedNodeIds = useCanvasStore((state) => state.selectedNodeIds);
-  const nodes = useCanvasStore((state) => state.nodes);
 
-  // Update zoom display
+  // Update zoom display without polling (viewport events)
+  useOnViewportChange({
+    onChange: (viewport) => {
+      setZoom(Math.round(viewport.zoom * 100));
+    },
+  });
+
   useEffect(() => {
-    const updateZoom = () => {
-      const currentZoom = getZoom();
-      setZoom(Math.round(currentZoom * 100));
-    };
-
-    updateZoom();
-    const interval = setInterval(updateZoom, 100);
-    return () => clearInterval(interval);
+    setZoom(Math.round(getZoom() * 100));
   }, [getZoom]);
 
   // Close dropdown when clicking outside
@@ -76,7 +74,7 @@ export function ZoomControls() {
       if (event.key === 'f' && !cmdOrCtrl) {
         event.preventDefault();
         if (selectedNodeIds.length > 0) {
-          const selectedNodes = nodes.filter((n) => selectedNodeIds.includes(n.id));
+          const selectedNodes = getNodes().filter((n) => selectedNodeIds.includes(n.id));
           fitView({ nodes: selectedNodes, padding: 0.3, duration: 200 });
         }
         return;
@@ -85,7 +83,7 @@ export function ZoomControls() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [zoomIn, zoomOut, fitView, selectedNodeIds, nodes]);
+  }, [fitView, getNodes, selectedNodeIds, zoomIn, zoomOut]);
 
   const handleZoomIn = useCallback(() => {
     zoomIn({ duration: 200 });
@@ -105,7 +103,7 @@ export function ZoomControls() {
   const handleZoomToSelection = useCallback(() => {
     if (selectedNodeIds.length === 0) return;
 
-    const selectedNodes = nodes.filter((n) => selectedNodeIds.includes(n.id));
+    const selectedNodes = getNodes().filter((n) => selectedNodeIds.includes(n.id));
     if (selectedNodes.length === 0) return;
 
     // Calculate bounding box
@@ -123,7 +121,7 @@ export function ZoomControls() {
       duration: 200,
     });
     setIsOpen(false);
-  }, [selectedNodeIds, nodes, fitView]);
+  }, [fitView, getNodes, selectedNodeIds]);
 
   const handleSetZoom = useCallback((newZoom: number) => {
     const viewport = getViewport();
@@ -219,7 +217,7 @@ export function ZoomControls() {
                   className={`
                     px-2 py-1 text-xs rounded
                     ${Math.abs(zoom - preset) < 5
-                      ? 'bg-indigo-600 text-white'
+                      ? 'bg-primary text-white'
                       : 'bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground'
                     }
                     transition-colors

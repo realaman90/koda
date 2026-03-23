@@ -67,6 +67,7 @@ export interface AnimationPlan {
   style: string;
   fps: number;
   designSpec?: string;
+  motionSpec?: MotionSpec;
 }
 
 // ============================================
@@ -225,6 +226,78 @@ export interface AnimationNodeState {
 }
 
 // ============================================
+// MOTION UX TYPES (#93-#98)
+// ============================================
+
+export type MotionEnergy = 'calm' | 'medium' | 'energetic';
+export type MotionFeel = 'smooth' | 'snappy' | 'bouncy';
+export type MotionCamera = 'static' | 'subtle' | 'dynamic';
+export type MotionTransitions = 'minimal' | 'cinematic';
+export type MotionVariantId = 'safe' | 'balanced' | 'dramatic';
+export type MotionSpecSource =
+  | 'guided'
+  | 'variant'
+  | 'slider'
+  | 'semantic-edit'
+  | 'reference-profile'
+  | 'preset'
+  | 'manual';
+
+export interface MotionIntentChips {
+  energy: MotionEnergy;
+  feel: MotionFeel;
+  camera: MotionCamera;
+  transitions: MotionTransitions;
+}
+
+export interface MotionSliders {
+  speed: number;
+  intensity: number;
+  smoothness: number;
+  cameraActivity: number;
+  transitionAggressiveness: number;
+}
+
+export interface MotionReferenceProfile {
+  sourceMediaId: string;
+  sourceName: string;
+  sourceType: 'video' | 'gif';
+  pacing: number; // 0..1
+  cutRhythm: number; // 0..1
+  cameraEnergy: number; // 0..1
+  easingTendency: MotionFeel;
+  summary: string;
+}
+
+export interface MotionSemanticEditLog {
+  id: string;
+  phrase: string;
+  appliedAt: string;
+  patchSummary: string;
+}
+
+export interface MotionSpec {
+  chips: MotionIntentChips;
+  sliders: MotionSliders;
+  variant: MotionVariantId;
+  source: MotionSpecSource;
+  updatedAt: string;
+  followUp?: string;
+  holdFinalFrameSeconds?: number;
+  referenceProfile?: MotionReferenceProfile;
+  semanticEdits?: MotionSemanticEditLog[];
+  presetId?: string;
+}
+
+export interface MotionPreset {
+  id: string;
+  name: string;
+  createdAt: string;
+  source: 'manual' | 'reference';
+  spec: MotionSpec;
+}
+
+// ============================================
 // REFERENCE HANDLE TYPES
 // ============================================
 
@@ -253,6 +326,7 @@ export interface MediaEntry {
   duration?: number;          // Video only, in seconds
   thumbnailUrl?: string;      // For video previews (first frame)
   mimeType?: string;          // e.g. 'image/png', 'video/mp4'
+  svgCode?: string;           // Raw SVG markup (from SVG Studio code-output handle)
 }
 
 // ============================================
@@ -293,6 +367,15 @@ export interface AnimationNodeData extends Record<string, unknown> {
     colors?: { primary: string; secondary: string; accent?: string };
     fonts?: { title: string; body: string };
   };
+
+  // Structured motion controls (guided chips + sliders + variants)
+  motionSpec?: MotionSpec;
+
+  // Saved reusable motion presets (per-node)
+  motionPresets?: MotionPreset[];
+
+  // Active preset selection in this node/session
+  selectedMotionPresetId?: string;
 
   // Logo image (URL or data URL) — featured in generated animations
   logo?: { url: string; name?: string };

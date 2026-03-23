@@ -32,6 +32,8 @@ export { generateRemotionCodeTool } from './generate-remotion-code-tool';
 
 // Documentation Tool (self-healing)
 export { fetchDocsTool } from './fetch-docs-tool';
+// Web Search Tool (for factual/current external references)
+export { webSearchTool } from '../prompt-studio/web-search-tool';
 
 // Prompt Enhancement Tool
 export { enhanceAnimationPromptTool } from './enhance-prompt-tool';
@@ -56,3 +58,9 @@ export {
   sandboxScreenshotTool,
   renderFinalTool,
 } from './sandbox-tools';
+
+// Skill Adapter Tools
+export {
+  skillRecoverTool,
+  skillMediaPrepareTool,
+} from './skill-tools';

@@ -114,6 +114,7 @@ export interface MotionAnalyzerNodeState {
 
   // Analysis results
   analysis?: MotionAnalysis;
+  analysisSeq?: number;
 
   // Generated prompts (can accumulate through conversation)
   generatedPrompts: GeneratedPrompt[];
@@ -138,11 +139,13 @@ export interface VideoInput {
   id: string;
   source: 'upload' | 'youtube';
   name: string;
-  dataUrl: string; // base64 data URL for uploads
+  dataUrl: string; // base64 data URL for uploads, or blob URL for local preview
   youtubeUrl?: string; // original YouTube URL
   mimeType?: string;
   duration?: number;
   thumbnailUrl?: string;
+  /** R2/S3 URL from presigned upload — used for server requests to avoid Vercel body limit */
+  remoteUrl?: string;
   /** User-selected trim range (for videos > 20s) */
   trimStart?: number;
   trimEnd?: number;

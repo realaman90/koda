@@ -103,7 +103,7 @@ function DeletableEdgeComponent({
         markerEnd={markerEnd}
         style={{
           ...style,
-          stroke: isSelected ? '#f472b6' : isHovered ? edgeColor : edgeColor,
+          stroke: isSelected ? 'var(--accent-primary)' : edgeColor,
           strokeWidth: isSelected ? 3 : isHovered ? 2.5 : 2,
           opacity: isHovered ? 1 : 0.85,
           transition: 'stroke 0.15s, stroke-width 0.15s, opacity 0.15s',

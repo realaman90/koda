@@ -16,16 +16,13 @@ import {
   setThinkingTool,
   addMessageTool,
   requestApprovalTool,
-  // Planning Tools
-  analyzePromptTool,
-  generatePlanTool,
   // Code Generation (subagent-as-tool)
   generateCodeTool,
   generateRemotionCodeTool,
   // Documentation (self-healing)
   fetchDocsTool,
-  // Prompt Enhancement
-  enhanceAnimationPromptTool,
+  // Optional web research
+  webSearchTool,
   // Media Analysis
   analyzeMediaTool,
   // Video Verification (subagent-as-tool)
@@ -42,17 +39,17 @@ import {
   extractVideoFramesTool,
   sandboxScreenshotTool,
   renderFinalTool,
+  skillRecoverTool,
+  skillMediaPrepareTool,
 } from '../tools/animation';
 
 /**
  * Animation Orchestrator Agent
  *
- * Multi-phase agent for animation generation:
- * 1. Enhance → transform vague prompt into design spec
- * 2. Plan → create scene breakdown for user approval
- * 3. Execute → create sandbox, generate code via subagents
- * 4. Verify → screenshot to check visual output
- * 5. Render → generate preview/final video
+ * Direct-execution agent for animation generation:
+ * 1. Execute → create sandbox, generate code via subagents
+ * 2. Render → generate final video
+ * No planning step — agent makes all creative decisions itself.
  */
 export const animationAgent = new Agent({
   id: 'animation-orchestrator',
@@ -66,16 +63,13 @@ export const animationAgent = new Agent({
     set_thinking: setThinkingTool,
     add_message: addMessageTool,
     request_approval: requestApprovalTool,
-    // Planning Tools
-    analyze_prompt: analyzePromptTool,
-    generate_plan: generatePlanTool,
     // Code Generation (subagent-as-tool)
     generate_code: generateCodeTool,              // Theatre.js (3D)
     generate_remotion_code: generateRemotionCodeTool,  // Remotion (2D)
     // Documentation (self-healing)
     fetch_docs: fetchDocsTool,
-    // Prompt Enhancement
-    enhance_animation_prompt: enhanceAnimationPromptTool,
+    // Optional web research for factual/current external info
+    search_web: webSearchTool,
     // Media Analysis
     analyze_media: analyzeMediaTool,
     // Sandbox Lifecycle
@@ -96,5 +90,8 @@ export const animationAgent = new Agent({
     verify_animation: verifyAnimationTool,
     // Rendering
     render_final: renderFinalTool,
+    // Skill adapters
+    skill_recover: skillRecoverTool,
+    skill_media_prepare: skillMediaPrepareTool,
   },
 });

@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1771735954401,
+      "tag": "0000_overrated_catseye",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1771736229314,
+      "tag": "0001_yummy_angel",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1771736631658,
+      "tag": "0002_thick_maria_hill",
+      "breakpoints": true
+    }
+  ]
+}

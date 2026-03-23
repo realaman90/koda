@@ -1,0 +1,61 @@
+{
+  "generatedAt": "2026-02-22T09:30:00.000Z",
+  "summary": [
+    {
+      "deployment": "oss",
+      "window": {
+        "start": "2026-02-22T08:55:00.000Z",
+        "end": "2026-02-22T09:05:00.000Z"
+      },
+      "kpis": {
+        "signup_completion": {
+          "attempts": 8,
+          "successes": 8,
+          "errors": 0,
+          "successRate": 100
+        },
+        "workspace_bootstrap": {
+          "attempts": 10,
+          "successes": 10,
+          "errors": 0,
+          "successRate": 100
+        },
+        "plugin_execution": {
+          "attempts": 20,
+          "successes": 18,
+          "errors": 2,
+          "successRate": 90
+        }
+      },
+      "errorRate": 7.89
+    },
+    {
+      "deployment": "hosted",
+      "window": {
+        "start": "2026-02-22T08:55:00.000Z",
+        "end": "2026-02-22T09:05:00.000Z"
+      },
+      "kpis": {
+        "signup_completion": {
+          "attempts": 8,
+          "successes": 8,
+          "errors": 0,
+          "successRate": 100
+        },
+        "workspace_bootstrap": {
+          "attempts": 10,
+          "successes": 9,
+          "errors": 1,
+          "successRate": 90
+        },
+        "plugin_execution": {
+          "attempts": 20,
+          "successes": 19,
+          "errors": 1,
+          "successRate": 95
+        }
+      },
+      "errorRate": 6.32
+    }
+  ]
+}

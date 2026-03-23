@@ -8,36 +8,149 @@
 import { NextResponse } from 'next/server';
 import { motionAnalyzerAgent } from '@/mastra/agents/motion-analyzer-agent';
 import { RequestContext } from '@mastra/core/di';
+import { emitLaunchMetric } from '@/lib/observability/launch-metrics';
+import { evaluatePluginLaunchById, emitPluginPolicyAuditEvent } from '@/lib/plugins/launch-policy';
+import { z } from 'zod';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
 export const bodySizeLimit = '50mb';
 
-interface StreamRequestBody {
-  prompt?: string;
-  messages?: Array<{ role: 'user' | 'assistant'; content: string }>;
-  context?: {
-    nodeId?: string;
-    phase?: string;
-    video?: {
-      id: string;
-      source: 'upload' | 'youtube';
-      name: string;
-      dataUrl: string;
-      youtubeUrl?: string;
-      mimeType?: string;
-      duration?: number;
-      trimStart?: number;
-      trimEnd?: number;
-    };
-  };
+function createTraceId(): string {
+  return `ma_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function jsonWithTrace(
+  traceId: string,
+  body: unknown,
+  init?: ResponseInit
+): NextResponse {
+  const headers = new Headers(init?.headers);
+  headers.set('x-koda-trace-id', traceId);
+  return NextResponse.json(body, { ...init, headers });
+}
+
+const VideoContextSchema = z.object({
+  id: z.string().min(1),
+  source: z.enum(['upload', 'youtube']),
+  name: z.string().min(1).max(256),
+  dataUrl: z.string().min(1),
+  remoteUrl: z.string().url().optional(),
+  youtubeUrl: z.string().url().optional(),
+  mimeType: z.string().max(128).optional(),
+  duration: z.number().positive().max(60 * 60).optional(),
+  trimStart: z.number().min(0).max(60 * 60).optional(),
+  trimEnd: z.number().min(0).max(60 * 60).optional(),
+});
+
+const MotionStreamRequestSchema = z.object({
+  prompt: z.string().min(1).max(4000).optional(),
+  messages: z.array(z.object({
+    role: z.enum(['user', 'assistant']),
+    content: z.string().min(1).max(4000),
+  })).max(50).optional(),
+  context: z.object({
+    nodeId: z.string().max(128).optional(),
+    phase: z.string().max(64).optional(),
+    video: VideoContextSchema.optional(),
+  }).optional(),
+}).superRefine((value, ctx) => {
+  if ((!value.prompt || value.prompt.trim().length === 0) && (!value.messages || value.messages.length === 0)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Either prompt or messages is required',
+      path: ['prompt'],
+    });
+  }
+
+  const trimStart = value.context?.video?.trimStart;
+  const trimEnd = value.context?.video?.trimEnd;
+
+  if ((trimStart !== undefined || trimEnd !== undefined) && (trimStart === undefined || trimEnd === undefined)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'trimStart and trimEnd must be provided together',
+      path: ['context', 'video', 'trimStart'],
+    });
+  }
+
+  if (trimStart !== undefined && trimEnd !== undefined) {
+    const span = trimEnd - trimStart;
+    if (span < 1 || span > 20) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Trim range must be between 1 and 20 seconds',
+        path: ['context', 'video', 'trimEnd'],
+      });
+    }
+  }
+});
+
 export async function POST(request: Request) {
+  const traceId = request.headers.get('x-koda-trace-id') || createTraceId();
+  const contentLength = request.headers.get('content-length') || 'unknown';
+  console.info(`[Motion Analyzer API][${traceId}] POST /stream content-length=${contentLength}`);
+
   try {
-    const body: StreamRequestBody = await request.json();
-    const { prompt, messages, context } = body;
+    const policyDecision = evaluatePluginLaunchById('motion-analyzer');
+    emitPluginPolicyAuditEvent({
+      source: 'api',
+      decision: policyDecision,
+      metadata: { method: 'POST', path: '/api/plugins/motion-analyzer/stream' },
+    });
+
+    if (!policyDecision.allowed) {
+      console.warn(
+        `[Motion Analyzer API][${traceId}] blocked by policy code=${policyDecision.code} reason=${policyDecision.reason}`
+      );
+      emitLaunchMetric({
+        metric: 'plugin_execution',
+        status: 'error',
+        source: 'api',
+        pluginId: 'motion-analyzer',
+        errorCode: policyDecision.code,
+      });
+
+      return jsonWithTrace(
+        traceId,
+        {
+          error: 'Plugin launch blocked by policy.',
+          code: policyDecision.code,
+          reason: policyDecision.reason,
+        },
+        { status: policyDecision.code === 'PLUGIN_NOT_FOUND' ? 404 : 403 }
+      );
+    }
+
+    let rawBody: unknown;
+    try {
+      rawBody = await request.json();
+    } catch (parseError) {
+      console.error(`[Motion Analyzer API][${traceId}] invalid JSON payload:`, parseError);
+      return jsonWithTrace(
+        traceId,
+        { error: 'Invalid JSON payload' },
+        { status: 400 }
+      );
+    }
+
+    const parsedBody = MotionStreamRequestSchema.safeParse(rawBody);
+    if (!parsedBody.success) {
+      console.warn(
+        `[Motion Analyzer API][${traceId}] schema validation failed (${parsedBody.error.issues.length} issues)`
+      );
+      return jsonWithTrace(
+        traceId,
+        {
+          error: 'Invalid request payload',
+          issues: parsedBody.error.issues,
+        },
+        { status: 400 }
+      );
+    }
+
+    const { prompt, messages, context } = parsedBody.data;
 
     // Normalize input
     let agentMessages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
@@ -47,7 +160,15 @@ export async function POST(request: Request) {
     } else if (prompt) {
       agentMessages = [{ role: 'user', content: prompt }];
     } else {
-      return NextResponse.json(
+      emitLaunchMetric({
+        metric: 'plugin_execution',
+        status: 'error',
+        source: 'api',
+        pluginId: 'motion-analyzer',
+        errorCode: 'missing_prompt_or_messages',
+      });
+      return jsonWithTrace(
+        traceId,
         { error: 'Either prompt or messages is required' },
         { status: 400 }
       );
@@ -87,21 +208,40 @@ export async function POST(request: Request) {
           ? `\nIMPORTANT: The user selected a trim range of ${context.video.trimStart}s to ${context.video.trimEnd}s (${(context.video.trimEnd! - context.video.trimStart!).toFixed(1)}s segment). Focus your analysis ONLY on this time window. Timestamps in your response should be relative to the start of the full video.`
           : '';
 
-        console.log(`[Motion Analyzer API] Video loaded: ${context.video.name} (${mimeType}, ${Math.round(base64.length * 0.75 / 1024)}KB)${hasTrim ? ` [trim: ${context.video.trimStart}s-${context.video.trimEnd}s]` : ''}`);
+        console.log(`[Motion Analyzer API][${traceId}] Video loaded: ${context.video.name} (${mimeType}, ${Math.round(base64.length * 0.75 / 1024)}KB)${hasTrim ? ` [trim: ${context.video.trimStart}s-${context.video.trimEnd}s]` : ''}`);
 
         agentMessages.unshift({
           role: 'system',
           content: `[VIDEO UPLOADED: "${context.video.name}" (${mimeType}${context.video.duration ? `, ${context.video.duration}s total` : ''})]
 The video data is available. Use the analyze_video_motion tool with the video data to perform motion analysis.${trimInfo}`,
         });
-      } else if (dataUrl.startsWith('http')) {
-        requestContext.set('videoUrl' as never, dataUrl as never);
+      } else if (dataUrl.startsWith('http') || dataUrl.startsWith('/')) {
+        const resolvedUrl = dataUrl.startsWith('/')
+          ? new URL(dataUrl, request.url).toString()
+          : dataUrl;
+
+        requestContext.set('videoUrl' as never, resolvedUrl as never);
+        requestContext.set('videoMimeType' as never, (context.video.mimeType || 'video/mp4') as never);
         requestContext.set('videoName' as never, context.video.name as never);
+
+        if (context.video.trimStart !== undefined) {
+          requestContext.set('trimStart' as never, context.video.trimStart as never);
+        }
+        if (context.video.trimEnd !== undefined) {
+          requestContext.set('trimEnd' as never, context.video.trimEnd as never);
+        }
+
+        const hasTrim = context.video.trimStart !== undefined && context.video.trimEnd !== undefined;
+        const trimInfo = hasTrim
+          ? `\nIMPORTANT: The user selected a trim range of ${context.video.trimStart}s to ${context.video.trimEnd}s (${(context.video.trimEnd! - context.video.trimStart!).toFixed(1)}s segment). Focus your analysis ONLY on this time window.`
+          : '';
+
+        console.log(`[Motion Analyzer API][${traceId}] Video URL: ${context.video.name} → ${resolvedUrl.slice(0, 80)}${hasTrim ? ` [trim: ${context.video.trimStart}s-${context.video.trimEnd}s]` : ''}`);
 
         agentMessages.unshift({
           role: 'system',
-          content: `[VIDEO URL: "${context.video.name}" at ${dataUrl}]
-Use the analyze_video_motion tool with this URL to perform motion analysis.`,
+          content: `[VIDEO URL: "${context.video.name}" (${context.video.mimeType || 'video/mp4'}${context.video.duration ? `, ${context.video.duration}s total` : ''})]
+The video is available at a URL. Use the analyze_video_motion tool with videoUrl to perform motion analysis.${trimInfo}`,
         });
       }
     }
@@ -116,7 +256,9 @@ Note: YouTube URL provided. Analyze the video content using the URL.`,
       });
     }
 
-    console.log(`[Motion Analyzer API] Starting stream: nodeId=${context?.nodeId}, hasVideo=${!!context?.video}, messageCount=${agentMessages.length}`);
+    console.log(
+      `[Motion Analyzer API][${traceId}] Starting stream: nodeId=${context?.nodeId}, hasVideo=${!!context?.video}, messageCount=${agentMessages.length}`
+    );
 
     // Stream the agent response
     const result = await motionAnalyzerAgent.stream(
@@ -246,6 +388,12 @@ Note: YouTube URL provided. Analyze the video content using the URL.`,
           if (!closed) {
             const text = await result.text;
             const usage = await result.usage;
+            emitLaunchMetric({
+              metric: 'plugin_execution',
+              status: 'success',
+              source: 'api',
+              pluginId: 'motion-analyzer',
+            });
             safeEnqueue(encoder.encode(`data: ${JSON.stringify({
               type: 'complete',
               text,
@@ -255,7 +403,15 @@ Note: YouTube URL provided. Analyze the video content using the URL.`,
 
           safeClose();
         } catch (error) {
-          console.error('[Motion Analyzer API] Stream error:', error);
+          console.error(`[Motion Analyzer API][${traceId}] Stream error:`, error);
+          emitLaunchMetric({
+            metric: 'plugin_execution',
+            status: 'error',
+            source: 'api',
+            pluginId: 'motion-analyzer',
+            errorCode: 'stream_error',
+            metadata: { message: error instanceof Error ? error.message : String(error) },
+          });
           if (!closed) {
             const errMsg = error instanceof Error ? error.message : String(error);
             safeEnqueue(encoder.encode(`data: ${JSON.stringify({ type: 'error', error: errMsg })}\n\n`));
@@ -270,11 +426,21 @@ Note: YouTube URL provided. Analyze the video content using the URL.`,
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
+        'x-koda-trace-id': traceId,
       },
     });
   } catch (error) {
-    console.error('[Motion Analyzer API] Error:', error);
-    return NextResponse.json(
+    console.error(`[Motion Analyzer API][${traceId}] Error:`, error);
+    emitLaunchMetric({
+      metric: 'plugin_execution',
+      status: 'error',
+      source: 'api',
+      pluginId: 'motion-analyzer',
+      errorCode: 'execution_failed',
+      metadata: { message: error instanceof Error ? error.message : String(error) },
+    });
+    return jsonWithTrace(
+      traceId,
       { error: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 }
     );

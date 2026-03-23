@@ -9,9 +9,111 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { remotionCodeGeneratorAgent } from '../../agents/remotion-code-generator-agent';
 import { getSandboxProvider } from '@/lib/sandbox/sandbox-factory';
-import { loadRecipes } from '../../recipes';
+import { loadRecipes, loadRemotionBestPractices } from '../../recipes';
+import {
+  CODEGEN_ATTEMPT_TIMEOUT_MS,
+  CODEGEN_MAX_GENERATE_ATTEMPTS,
+  buildTransportErrorSummary,
+  isUpstreamTransportError,
+  runAnimationSkill,
+  withUpstreamRetry,
+} from '@/mastra/skills/animation';
+import {
+  buildMultiFileContext,
+  compressModifyContentForPrompt,
+  getPromptBudgetResult,
+  pickTargetFiles,
+  summarizeFileForChange,
+  truncateMiddle,
+} from './codegen-context';
 
-type ToolContext = { requestContext?: { get: (key: string) => any; set: (key: string, value: any) => void } };
+type ToolContext = { requestContext?: { get: (key: string) => unknown; set: (key: string, value: unknown) => void } };
+type GeneratedFile = { path: string; content: string };
+const CODEGEN_MOCK_MODE = process.env.KODA_ANIMATION_CODEGEN_MOCK === '1';
+const MAX_AUTO_CONTEXT_FILES = 4;
+const MAX_DIRECT_FILE_CONTEXT_CHARS = 20_000;
+const REMOTION_PREFERRED_FILES = [
+  'src/Video.tsx',
+  'src/Root.tsx',
+  'src/index.ts',
+  'src/sequences/MainSequence.tsx',
+];
+
+function buildMockRemotionFiles(durationSeconds: number, fps: number): GeneratedFile[] {
+  const clampedDuration = Number.isFinite(durationSeconds) ? Math.max(3, Math.min(30, durationSeconds)) : 8;
+  const clampedFps = Number.isFinite(fps) ? Math.max(24, Math.min(60, fps)) : 30;
+  const durationInFrames = Math.round(clampedDuration * clampedFps);
+
+  return [
+    {
+      path: 'src/index.ts',
+      content: `import { registerRoot } from 'remotion';
+import { RemotionRoot } from './Root';
+
+registerRoot(RemotionRoot);
+`,
+    },
+    {
+      path: 'src/Root.tsx',
+      content: `import { Composition } from 'remotion';
+import { MainVideo } from './Video';
+
+export const RemotionRoot = () => {
+  return (
+    <Composition
+      id="MainVideo"
+      component={MainVideo}
+      durationInFrames={${durationInFrames}}
+      fps={${clampedFps}}
+      width={1920}
+      height={1080}
+    />
+  );
+};
+`,
+    },
+    {
+      path: 'src/Video.tsx',
+      content: `import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
+
+export const MainVideo = () => {
+  const frame = useCurrentFrame();
+  const { durationInFrames, fps } = useVideoConfig();
+  const enter = spring({ frame, fps, config: { damping: 16, stiffness: 120 } });
+  const opacity = interpolate(frame, [0, 20, durationInFrames - 20, durationInFrames], [0, 1, 1, 0], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  });
+
+  return (
+    <AbsoluteFill
+      style={{
+        background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #334155 100%)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        opacity,
+        transform: \`scale(\${0.92 + 0.08 * enter})\`,
+      }}
+    >
+      <div
+        style={{
+          color: 'white',
+          fontFamily: 'Inter, sans-serif',
+          fontSize: 82,
+          fontWeight: 700,
+          letterSpacing: -1.5,
+          textShadow: '0 12px 40px rgba(0,0,0,0.45)',
+        }}
+      >
+        Animation Smoke Test
+      </div>
+    </AbsoluteFill>
+  );
+};
+`,
+    },
+  ];
+}
 
 /** Resolve sandboxId: prefer requestContext (server-set, correct), fallback to input (may be hallucinated by LLM).
  *  If requestContext has no sandboxId and input looks hallucinated (not matching koda-sandbox-* pattern),
@@ -45,6 +147,35 @@ async function resolveSandboxId(input: string | undefined, context?: ToolContext
   }
 
   return input || undefined;
+}
+
+async function generateWithRetry(
+  prompt: string,
+  ctx: ToolContext | undefined,
+): Promise<Awaited<ReturnType<typeof remotionCodeGeneratorAgent.generate>>> {
+  const abortSignal = ctx?.requestContext?.get('streamAbortSignal') as AbortSignal | undefined;
+  return withUpstreamRetry(
+    ctx?.requestContext,
+    async () => remotionCodeGeneratorAgent.generate(
+      [{ role: 'user', content: prompt }],
+      {
+        abortSignal,
+        providerOptions: {
+          google: { thinkingConfig: { thinkingBudget: 4096, includeThoughts: true } },
+          anthropic: { thinking: { type: 'enabled', budgetTokens: 4000 } },
+        },
+      }
+    ),
+    (attempt, maxAttempts, backoffMs, errorMsg) => {
+      console.warn(
+        `[generate_remotion_code] Upstream model transport error (attempt ${attempt}/${maxAttempts}): ${errorMsg}. Retrying in ${backoffMs}ms...`
+      );
+    },
+    {
+      maxAttempts: CODEGEN_MAX_GENERATE_ATTEMPTS,
+      attemptTimeoutMs: CODEGEN_ATTEMPT_TIMEOUT_MS,
+    },
+  );
 }
 
 const GenerateRemotionCodeInputSchema = z.object({
@@ -141,6 +272,31 @@ This injects recipe patterns (tested code snippets) directly into the code gener
 
   execute: async (inputData, context) => {
     const ctx = context as ToolContext;
+    const preflight = await runAnimationSkill('codegen', {
+      action: 'preflight',
+      engine: 'remotion',
+      phase: (ctx?.requestContext?.get('phase') as
+        | 'idle'
+        | 'question'
+        | 'plan'
+        | 'executing'
+        | 'preview'
+        | 'complete'
+        | 'error'
+        | undefined),
+      planAccepted: (ctx?.requestContext?.get('planAccepted') as boolean | undefined),
+      sandboxId: (ctx?.requestContext?.get('sandboxId') as string | undefined) || inputData.sandboxId,
+      requestContext: ctx?.requestContext,
+      metadata: { toolName: 'generate_remotion_code' },
+    });
+
+    if (!preflight.ok) {
+      return {
+        files: [],
+        summary: preflight.summary || 'ERROR: Code generation preflight failed.',
+        writtenToSandbox: false,
+      };
+    }
 
     // Serialize code generation — wait if another code gen is already in progress.
     // Models often call multiple generate_*_code tools in parallel, causing conflicting
@@ -183,46 +339,71 @@ This injects recipe patterns (tested code snippets) directly into the code gener
       };
     }
 
+    if (CODEGEN_MOCK_MODE) {
+      const fps = inputData.plan?.fps || ((ctx?.requestContext?.get('fps') as number | undefined) ?? 30);
+      const duration = inputData.plan?.duration || ((ctx?.requestContext?.get('duration') as number | undefined) ?? 8);
+      const files = buildMockRemotionFiles(duration, fps);
+      const writeResults: Array<{ path: string; size: number }> = [];
+      for (const file of files) {
+        await getSandboxProvider().writeFile(sandboxId, file.path, file.content);
+        writeResults.push({ path: file.path, size: file.content.length });
+      }
+      await runAnimationSkill('codegen', { action: 'success', requestContext: ctx?.requestContext });
+      return {
+        files: writeResults,
+        summary: `MOCK: Deterministic Remotion code generated (${duration}s @ ${fps}fps).`,
+        writtenToSandbox: true,
+        reasoning: 'mock_codegen',
+      };
+    }
+
     // For modify_existing: auto-read current file content if not provided
     if (inputData.task === 'modify_existing' && !inputData.currentContent && inputData.file) {
       try {
-        const filePath = inputData.file.startsWith('/') ? inputData.file : `/app/${inputData.file}`;
+        const normalizedPath = inputData.file.replace(/^\/app\//, '').replace(/^\/+/, '');
+        const filePath = `/app/${normalizedPath}`;
         const fileContent = await getSandboxProvider().readFile(sandboxId, filePath);
         if (fileContent) {
-          inputData = { ...inputData, currentContent: fileContent };
-          console.log(`[generate_remotion_code] Auto-read ${inputData.file} (${fileContent.length} chars) for modify_existing`);
+          const contextualContent = fileContent.length <= MAX_DIRECT_FILE_CONTEXT_CHARS
+            ? truncateMiddle(fileContent, MAX_DIRECT_FILE_CONTEXT_CHARS)
+            : summarizeFileForChange(normalizedPath, fileContent, inputData.change || '', MAX_DIRECT_FILE_CONTEXT_CHARS);
+          inputData = { ...inputData, file: normalizedPath, currentContent: contextualContent };
+          console.log(`[generate_remotion_code] Auto-read ${normalizedPath} (${fileContent.length} chars) for modify_existing`);
         }
       } catch (err) {
         console.warn(`[generate_remotion_code] Could not auto-read ${inputData.file}:`, err);
       }
     }
 
-    // For modify_existing without a specific file: read ALL src files so the subagent has full context
+    // For modify_existing without a specific file: read only targeted files to control token usage.
     if (inputData.task === 'modify_existing' && !inputData.file) {
       try {
         const listResult = await getSandboxProvider().runCommand(
           sandboxId,
-          `find /app/src -name '*.tsx' -o -name '*.ts' | head -20`,
+          `find /app/src -type f \\( -name '*.tsx' -o -name '*.ts' \\) | head -200`,
           { timeout: 5_000 }
         );
         const srcFiles = listResult.stdout.trim().split('\n').filter(Boolean);
-        const fileContents: string[] = [];
-        for (const f of srcFiles) {
+        const targets = pickTargetFiles(srcFiles, inputData.change || '', REMOTION_PREFERRED_FILES, MAX_AUTO_CONTEXT_FILES);
+        const fileContents: Array<{ path: string; content: string }> = [];
+        for (const filePath of targets) {
           try {
-            const content = await getSandboxProvider().readFile(sandboxId, f);
+            const content = await getSandboxProvider().readFile(sandboxId, filePath);
             if (content) {
-              const relativePath = f.replace('/app/', '');
-              fileContents.push(`--- ${relativePath} ---\n${content}`);
+              const relativePath = filePath.replace('/app/', '');
+              fileContents.push({ path: relativePath, content });
             }
           } catch { /* skip unreadable files */ }
         }
         if (fileContents.length > 0) {
           inputData = {
             ...inputData,
-            currentContent: fileContents.join('\n\n'),
-            file: 'multiple files (see currentContent)',
+            currentContent: buildMultiFileContext(fileContents, inputData.change || ''),
+            file: fileContents.length === 1 ? fileContents[0].path : 'multiple targeted files (see currentContent)',
           };
-          console.log(`[generate_remotion_code] Auto-read ${srcFiles.length} source files for modify_existing`);
+          console.log(
+            `[generate_remotion_code] Auto-read ${fileContents.length} targeted file(s) for modify_existing: ${fileContents.map((f) => f.path).join(', ')}`
+          );
         }
       } catch (err) {
         console.warn(`[generate_remotion_code] Could not auto-read source files:`, err);
@@ -255,19 +436,51 @@ This injects recipe patterns (tested code snippets) directly into the code gener
     console.log(`[generate_remotion_code] task=${inputData.task}, sandboxId=${sandboxId}, designSpec=${designSpec ? `YES (${designSpec.length} chars)` : 'NO — output will be GENERIC'}, mediaFiles=${mediaFiles?.length || 0}, techniques=${inputData.techniques?.length || 0}`);
 
     // Format the request for the code generator subagent (use resolved designSpec + mediaFiles)
-    const prompt = formatRemotionCodeGenerationPrompt({ ...inputData, designSpec, mediaFiles });
+    let codegenInput: z.infer<typeof GenerateRemotionCodeInputSchema> = {
+      ...inputData,
+      designSpec,
+      mediaFiles,
+    };
+    let prompt = formatRemotionCodeGenerationPrompt(codegenInput);
+    let budget = getPromptBudgetResult(prompt);
+
+    if (budget.shouldCompress) {
+      console.warn(
+        `[generate_remotion_code] Prompt near token limit (${budget.estimatedTokens}/${budget.modelTokenLimit}, threshold=${budget.compressionThresholdTokens}). Applying compression.`
+      );
+
+      if (codegenInput.task === 'modify_existing' && codegenInput.currentContent) {
+        codegenInput = {
+          ...codegenInput,
+          currentContent: compressModifyContentForPrompt(
+            codegenInput.currentContent,
+            codegenInput.change || '',
+            MAX_AUTO_CONTEXT_FILES,
+          ),
+        };
+      }
+
+      prompt = formatRemotionCodeGenerationPrompt(codegenInput);
+      budget = getPromptBudgetResult(prompt);
+
+      if (budget.shouldCompress && codegenInput.designSpec) {
+        codegenInput = {
+          ...codegenInput,
+          designSpec: `AUTO-COMPRESSED DESIGN SPEC (token budget safeguard)\n${truncateMiddle(codegenInput.designSpec, 16_000)}`,
+        };
+        prompt = formatRemotionCodeGenerationPrompt(codegenInput);
+        budget = getPromptBudgetResult(prompt);
+      }
+
+      console.warn(
+        `[generate_remotion_code] Prompt size after compression: ${budget.estimatedTokens}/${budget.modelTokenLimit}`
+      );
+    }
 
     try {
       // Call the subagent (non-streaming for tool result)
       // Enable thinking/reasoning — each provider ignores keys meant for others
-      const result = await remotionCodeGeneratorAgent.generate([
-        { role: 'user', content: prompt },
-      ], {
-        providerOptions: {
-          google: { thinkingConfig: { thinkingBudget: 24576, includeThoughts: true } },
-          anthropic: { thinking: { type: 'enabled', budgetTokens: 10000 } },
-        },
-      });
+      const result = await generateWithRetry(prompt, ctx);
 
       const fullResponse = result.text;
       const reasoning = (result as Record<string, unknown>).reasoningText as string | undefined;
@@ -313,16 +526,25 @@ This injects recipe patterns (tested code snippets) directly into the code gener
         while ((match = localhostPattern.exec(file.content)) !== null) {
           const fullMatch = match[0];
           const mediaPath = match[1]; // e.g. "media/logo.png"
-          const quote = fullMatch[0]; // the opening quote character
           // Replace with {staticFile("media/...")} — the JSX expression form
           const replacement = `{staticFile("${mediaPath}")}`;
           fixedContent = fixedContent.replace(fullMatch, replacement);
           fixCount++;
         }
-        if (fixCount > 0) {
-          console.warn(`[generate_remotion_code] ⚠️ Auto-fixed ${fixCount} localhost URL(s) → staticFile() in ${file.path}`);
+        // Normalize media paths for Remotion static assets.
+        // Some generations still emit /public/media/* paths or localhost URLs.
+        const normalized = fixedContent
+          .replace(/https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?\/public\/media\//g, '/media/')
+          .replace(/staticFile\((['"])\/public\/media\//g, 'staticFile($1media/')
+          .replace(/staticFile\((['"])public\/media\//g, 'staticFile($1media/')
+          .replace(/(['"`])\/public\/media\//g, '$1/media/');
+
+        if (normalized !== file.content) {
+          fixedContent = normalized;
+          const totalFixes = fixCount > 0 ? ` (${fixCount} localhost URL replacement(s))` : '';
+          console.warn(`[generate_remotion_code] ⚠️ Normalized Remotion media paths${totalFixes} in ${file.path}`);
           // Also ensure staticFile is imported if not already
-          if (!fixedContent.includes('staticFile') || !fixedContent.match(/import\s*{[^}]*staticFile[^}]*}\s*from\s*['"]remotion['"]/)) {
+          if (fixedContent.includes('staticFile') && !fixedContent.match(/import\s*{[^}]*staticFile[^}]*}\s*from\s*['"]remotion['"]/)) {
             // Try to add staticFile to existing remotion import
             const remotionImportRegex = /import\s*{([^}]*)}\s*from\s*['"]remotion['"]/;
             const importMatch = fixedContent.match(remotionImportRegex);
@@ -393,6 +615,7 @@ This injects recipe patterns (tested code snippets) directly into the code gener
           await getSandboxProvider().writeFile(sandboxId, file.path, file.content);
           writeResults.push({ path: file.path, size: file.content.length });
         }
+        await runAnimationSkill('codegen', { action: 'success', requestContext: ctx?.requestContext });
         return {
           files: writeResults,
           summary: typeof parsed.summary === 'string' ? parsed.summary : 'Remotion code generated and written to sandbox',
@@ -402,6 +625,7 @@ This injects recipe patterns (tested code snippets) directly into the code gener
       }
 
       // No sandboxId — return paths and sizes only
+      await runAnimationSkill('codegen', { action: 'success', requestContext: ctx?.requestContext });
       return {
         files: files.map(f => ({ path: f.path, size: f.content.length })),
         summary: typeof parsed.summary === 'string' ? parsed.summary : 'Remotion code generated (no sandbox — files not written)',
@@ -410,10 +634,21 @@ This injects recipe patterns (tested code snippets) directly into the code gener
       };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
+      const isTransportDrop = isUpstreamTransportError(errorMsg);
+      const skillTransport = isTransportDrop
+        ? await runAnimationSkill('codegen', {
+          action: 'transport_error',
+          requestContext: ctx?.requestContext,
+          payload: { errorMessage: errorMsg },
+          metadata: { toolName: 'generate_remotion_code' },
+        })
+        : null;
       console.error(`[generate_remotion_code] Error:`, errorMsg);
       return {
         files: [],
-        summary: `ERROR: Code generation failed: ${errorMsg}. Check that sandboxId is valid and the sandbox is running.`,
+        summary: isTransportDrop
+          ? (skillTransport?.summary || buildTransportErrorSummary(errorMsg, 1))
+          : `ERROR: Code generation failed: ${errorMsg}.`,
         writtenToSandbox: false,
       };
     }
@@ -493,7 +728,7 @@ function extractJSON(text: string): Record<string, unknown> | null {
 /**
  * Format the code generation prompt for the Remotion subagent
  */
-function formatRemotionCodeGenerationPrompt(params: z.infer<typeof GenerateRemotionCodeInputSchema>): string {
+export function formatRemotionCodeGenerationPrompt(params: z.infer<typeof GenerateRemotionCodeInputSchema>): string {
   const parts: string[] = [];
 
   // ── Header ──
@@ -510,6 +745,10 @@ function formatRemotionCodeGenerationPrompt(params: z.infer<typeof GenerateRemot
     parts.push(params.designSpec);
     parts.push(``);
   }
+
+  parts.push(`## REMOTION BEST PRACTICES — FOLLOW THESE RUNTIME RULES`);
+  parts.push(loadRemotionBestPractices());
+  parts.push(``);
 
   // ── Task-specific details ──
   switch (params.task) {

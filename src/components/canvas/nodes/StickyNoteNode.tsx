@@ -18,6 +18,8 @@ import {
   ChevronDown,
   Type,
 } from 'lucide-react';
+import { useBufferedNodeField } from './useBufferedNodeField';
+import { useNodeDisplayMode } from './useNodeDisplayMode';
 
 const COLORS: Record<StickyNoteColor, { bg: string; border: string; text: string; hex: string }> = {
   yellow: { bg: 'bg-yellow-200', border: 'border-yellow-300', text: 'text-yellow-900', hex: '#fef08a' },
@@ -54,6 +56,19 @@ function StickyNoteNodeComponent({ id, data, selected }: NodeProps<StickyNoteNod
   const [showSizeMenu, setShowSizeMenu] = useState(false);
   const [showFontSizeMenu, setShowFontSizeMenu] = useState(false);
   const [showOpacitySlider, setShowOpacitySlider] = useState(false);
+  const { displayMode, focusProps } = useNodeDisplayMode(selected);
+  const contentField = useBufferedNodeField({
+    nodeId: id,
+    value: data.content,
+    field: 'content',
+    preview: 'skip',
+  });
+  const authorField = useBufferedNodeField({
+    nodeId: id,
+    value: data.author || '',
+    field: 'author',
+    preview: 'skip',
+  });
 
   const colorConfig = COLORS[data.color || 'yellow'];
   const noteSize = SIZE_DIMENSIONS[data.size || 'md'];
@@ -70,7 +85,7 @@ function StickyNoteNodeComponent({ id, data, selected }: NodeProps<StickyNoteNod
       textareaRef.current.style.height = 'auto';
       textareaRef.current.style.height = `${Math.max(60, textareaRef.current.scrollHeight)}px`;
     }
-  }, [data.content, fontSize]);
+  }, [contentField.draft, fontSize]);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -91,16 +106,16 @@ function StickyNoteNodeComponent({ id, data, selected }: NodeProps<StickyNoteNod
 
   const handleContentChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      updateNodeData(id, { content: e.target.value });
+      contentField.handleChange(e);
     },
-    [id, updateNodeData]
+    [contentField]
   );
 
   const handleAuthorChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      updateNodeData(id, { author: e.target.value });
+      authorField.handleChange(e);
     },
-    [id, updateNodeData]
+    [authorField]
   );
 
   const handleColorChange = useCallback(
@@ -162,7 +177,7 @@ function StickyNoteNodeComponent({ id, data, selected }: NodeProps<StickyNoteNod
   }, [id, deleteNode]);
 
   return (
-    <div className="relative">
+    <div className="relative" {...focusProps}>
       {/* Rich Toolbar - appears above node when selected */}
       {selected && (
         <div
@@ -262,7 +277,7 @@ function StickyNoteNodeComponent({ id, data, selected }: NodeProps<StickyNoteNod
           <Button
             variant="ghost"
             size="icon-sm"
-            className={`h-7 w-7 hover:bg-zinc-700/50 ${bold ? 'text-indigo-400' : 'text-zinc-400 hover:text-zinc-200'}`}
+            className={`h-7 w-7 hover:bg-zinc-700/50 ${bold ? 'text-blue-400' : 'text-zinc-400 hover:text-zinc-200'}`}
             onClick={handleBoldToggle}
             title="Bold"
           >
@@ -271,7 +286,7 @@ function StickyNoteNodeComponent({ id, data, selected }: NodeProps<StickyNoteNod
           <Button
             variant="ghost"
             size="icon-sm"
-            className={`h-7 w-7 hover:bg-zinc-700/50 ${italic ? 'text-indigo-400' : 'text-zinc-400 hover:text-zinc-200'}`}
+            className={`h-7 w-7 hover:bg-zinc-700/50 ${italic ? 'text-blue-400' : 'text-zinc-400 hover:text-zinc-200'}`}
             onClick={handleItalicToggle}
             title="Italic"
           >
@@ -284,7 +299,7 @@ function StickyNoteNodeComponent({ id, data, selected }: NodeProps<StickyNoteNod
           <Button
             variant="ghost"
             size="icon-sm"
-            className={`h-7 w-7 hover:bg-zinc-700/50 ${textAlign === 'left' ? 'text-indigo-400' : 'text-zinc-400 hover:text-zinc-200'}`}
+            className={`h-7 w-7 hover:bg-zinc-700/50 ${textAlign === 'left' ? 'text-blue-400' : 'text-zinc-400 hover:text-zinc-200'}`}
             onClick={() => handleTextAlignChange('left')}
             title="Align left"
           >
@@ -293,7 +308,7 @@ function StickyNoteNodeComponent({ id, data, selected }: NodeProps<StickyNoteNod
           <Button
             variant="ghost"
             size="icon-sm"
-            className={`h-7 w-7 hover:bg-zinc-700/50 ${textAlign === 'center' ? 'text-indigo-400' : 'text-zinc-400 hover:text-zinc-200'}`}
+            className={`h-7 w-7 hover:bg-zinc-700/50 ${textAlign === 'center' ? 'text-blue-400' : 'text-zinc-400 hover:text-zinc-200'}`}
             onClick={() => handleTextAlignChange('center')}
             title="Align center"
           >
@@ -302,7 +317,7 @@ function StickyNoteNodeComponent({ id, data, selected }: NodeProps<StickyNoteNod
           <Button
             variant="ghost"
             size="icon-sm"
-            className={`h-7 w-7 hover:bg-zinc-700/50 ${textAlign === 'right' ? 'text-indigo-400' : 'text-zinc-400 hover:text-zinc-200'}`}
+            className={`h-7 w-7 hover:bg-zinc-700/50 ${textAlign === 'right' ? 'text-blue-400' : 'text-zinc-400 hover:text-zinc-200'}`}
             onClick={() => handleTextAlignChange('right')}
             title="Align right"
           >
@@ -352,7 +367,7 @@ function StickyNoteNodeComponent({ id, data, selected }: NodeProps<StickyNoteNod
                   max="100"
                   value={opacity}
                   onChange={handleOpacityChange}
-                  className="w-24 h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                  className="w-24 h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
                 />
               </div>
             )}
@@ -376,7 +391,7 @@ function StickyNoteNodeComponent({ id, data, selected }: NodeProps<StickyNoteNod
       {/* Main Sticky Note Card */}
       <div
         className={`
-          rounded-lg overflow-hidden shadow-lg
+          node-drag-handle node-drag-surface rounded-lg overflow-hidden shadow-lg
           ${colorConfig.bg} ${colorConfig.border} border-2
           transition-[box-shadow,ring-color] duration-150
           ${selected ? 'ring-2 ring-blue-500 shadow-xl' : ''}
@@ -391,41 +406,72 @@ function StickyNoteNodeComponent({ id, data, selected }: NodeProps<StickyNoteNod
             : '0 4px 15px rgba(0,0,0,0.15), 0 2px 5px rgba(0,0,0,0.1)',
         }}
       >
-        {/* Content Area */}
-        <div className="p-3 flex flex-col h-full">
-          <textarea
-            ref={textareaRef}
-            value={data.content}
-            onChange={handleContentChange}
-            placeholder="Write a note..."
-            className={`
-              w-full bg-transparent border-none resize-none focus:outline-none
-              min-h-[60px] leading-relaxed
-              ${colorConfig.text} placeholder:opacity-50
-            `}
-            style={{
-              fontFamily: 'inherit',
-              fontSize: `${fontSize}px`,
-              fontWeight: bold ? 'bold' : 'normal',
-              fontStyle: italic ? 'italic' : 'normal',
-              textAlign: textAlign,
-            }}
-          />
+        <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] opacity-55">
+          Sticky Note
+        </div>
 
-          {/* Author section */}
-          <div className="mt-auto pt-2 border-t border-current opacity-30">
-            <input
-              type="text"
-              value={data.author || ''}
-              onChange={handleAuthorChange}
-              placeholder="- Author"
-              className={`
-                w-full bg-transparent border-none text-xs italic focus:outline-none
-                ${colorConfig.text} placeholder:opacity-50
-              `}
-              style={{ textAlign: textAlign }}
-            />
-          </div>
+        <div className={`node-body pt-0 ${displayMode === 'compact' ? 'node-compact' : displayMode === 'summary' ? 'node-summary' : ''}`}>
+          {displayMode === 'full' ? (
+            <>
+              <textarea
+                ref={textareaRef}
+                value={contentField.draft}
+                onChange={handleContentChange}
+                onBlur={() => {
+                  void contentField.handleBlur();
+                }}
+                placeholder="Write a note..."
+                className={`
+                  w-full bg-transparent border-none resize-none focus:outline-none
+                  min-h-[60px] leading-relaxed nodrag nowheel
+                  ${colorConfig.text} placeholder:opacity-50
+                `}
+                style={{
+                  fontFamily: 'inherit',
+                  fontSize: `${fontSize}px`,
+                  fontWeight: bold ? 'bold' : 'normal',
+                  fontStyle: italic ? 'italic' : 'normal',
+                  textAlign: textAlign,
+                }}
+              />
+
+              <div className="mt-auto pt-2 border-t border-current opacity-30">
+                <input
+                  type="text"
+                  value={authorField.draft}
+                  onChange={handleAuthorChange}
+                  onBlur={() => {
+                    void authorField.handleBlur();
+                  }}
+                  placeholder="- Author"
+                  className={`
+                    w-full bg-transparent border-none text-xs italic focus:outline-none nodrag
+                    ${colorConfig.text} placeholder:opacity-50
+                  `}
+                  style={{ textAlign: textAlign }}
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <div
+                className={`${colorConfig.text} min-h-[60px] whitespace-pre-wrap break-words`}
+                style={{
+                  fontSize: `${fontSize}px`,
+                  fontWeight: bold ? 'bold' : 'normal',
+                  fontStyle: italic ? 'italic' : 'normal',
+                  textAlign,
+                }}
+              >
+                {data.content || 'Sticky note'}
+              </div>
+              {data.author ? (
+                <div className={`mt-auto border-t border-current pt-2 text-xs italic ${colorConfig.text} opacity-50`} style={{ textAlign }}>
+                  {data.author}
+                </div>
+              ) : null}
+            </>
+          )}
         </div>
       </div>
     </div>

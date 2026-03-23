@@ -12,6 +12,11 @@ export {
 } from './types';
 
 export {
+  IndexedDbStorageProvider,
+  getIndexedDbStorageProvider,
+} from './indexeddb-provider';
+
+export {
   LocalStorageProvider,
   getLocalStorageProvider,
 } from './local-storage-provider';
@@ -28,11 +33,12 @@ export {
 // import { getSQLiteStorageProvider } from '@/lib/storage/sqlite-provider'
 
 import type { StorageProvider, StorageProviderType } from './types';
+import { getIndexedDbStorageProvider } from './indexeddb-provider';
 import { getLocalStorageProvider } from './local-storage-provider';
 
 /**
  * Get the configured storage backend from environment
- * Defaults to 'localStorage' for browser-only mode
+ * Defaults to 'indexeddb' for browser-only mode
  */
 function getConfiguredBackend(): StorageProviderType {
   // Check environment variable
@@ -42,8 +48,7 @@ function getConfiguredBackend(): StorageProviderType {
     return 'sqlite';
   }
   
-  // Default to localStorage
-  return 'localStorage';
+  return 'indexeddb';
 }
 
 /**
@@ -55,16 +60,15 @@ let currentProviderType: StorageProviderType | null = null;
 /**
  * Get the current storage provider (CLIENT-SIDE ONLY)
  * 
- * Always returns localStorage provider for use in React components.
+ * Returns IndexedDB storage by default for use in React components.
+ * Falls back to localStorage when IndexedDB is unavailable.
  * This ensures the app works offline and has fast UI updates.
  * 
  * For server-side SQLite storage in API routes, import sqlite-provider directly:
  * import { getSQLiteStorageProvider } from '@/lib/storage/sqlite-provider'
  */
 export function getStorageProvider(): StorageProvider {
-  // Always use localStorage on client
-  // SQLite operations happen via API routes
-  return getLocalStorageProvider();
+  return getIndexedDbStorageProvider();
 }
 
 /**

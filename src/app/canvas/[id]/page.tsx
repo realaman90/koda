@@ -8,7 +8,7 @@ import { AppShell } from '@/components/layout';
 import { useAppStore } from '@/stores/app-store';
 import { useCanvasStore } from '@/stores/canvas-store';
 import { Loader2 } from 'lucide-react';
-import { exportAsJSON, exportAsPNG } from '@/lib/export-utils';
+import { exportAsJSON, exportAsPNG, exportNodeAssets } from '@/lib/export-utils';
 import { toast } from 'sonner';
 
 interface CanvasPageProps {
@@ -19,6 +19,7 @@ export default function CanvasPage({ params }: CanvasPageProps) {
   const { id } = use(params);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [accessRole, setAccessRole] = useState<'owner' | 'admin' | 'editor' | 'viewer'>('owner');
 
   const loadCanvas = useAppStore((state) => state.loadCanvas);
   const currentCanvasName = useAppStore((state) => state.currentCanvasName);
@@ -29,6 +30,13 @@ export default function CanvasPage({ params }: CanvasPageProps) {
 
   const nodes = useCanvasStore((state) => state.nodes);
   const edges = useCanvasStore((state) => state.edges);
+  const selectedNodeIds = useCanvasStore((state) => state.selectedNodeIds);
+  const setReadOnly = useCanvasStore((state) => state.setReadOnly);
+
+  useEffect(() => {
+    setReadOnly(accessRole === 'viewer');
+    return () => setReadOnly(false);
+  }, [accessRole, setReadOnly]);
 
   useEffect(() => {
     async function load() {
@@ -39,6 +47,13 @@ export default function CanvasPage({ params }: CanvasPageProps) {
         const success = await loadCanvas(id);
         if (!success) {
           setError('Canvas not found');
+          return;
+        }
+
+        const response = await fetch(`/api/canvases/${id}`);
+        if (response.ok) {
+          const payload = await response.json();
+          setAccessRole(payload.canvas?.accessRole || 'owner');
         }
       } catch (err) {
         console.error('Failed to load canvas:', err);
@@ -72,6 +87,45 @@ export default function CanvasPage({ params }: CanvasPageProps) {
     }
   }, [currentCanvasName]);
 
+  const handleExportAllAssets = useCallback(async () => {
+    try {
+      const count = await exportNodeAssets(nodes, currentCanvasName);
+      if (count === 0) {
+        toast.error('No downloadable assets found on this canvas');
+        return;
+      }
+
+      if (count > 1) {
+        toast.info('Your browser may ask for permission to download multiple files');
+      }
+      toast.success(`Started downloading ${count} asset${count === 1 ? '' : 's'}`);
+    } catch {
+      toast.error('Failed to export canvas assets');
+    }
+  }, [nodes, currentCanvasName]);
+
+  const handleExportSelectedAssets = useCallback(async () => {
+    if (selectedNodeIds.length === 0) {
+      toast.error('Select one or more nodes with assets first');
+      return;
+    }
+
+    try {
+      const count = await exportNodeAssets(nodes, currentCanvasName, { selectedNodeIds });
+      if (count === 0) {
+        toast.error('No downloadable assets found in the current selection');
+        return;
+      }
+
+      if (count > 1) {
+        toast.info('Your browser may ask for permission to download multiple files');
+      }
+      toast.success(`Started downloading ${count} selected asset${count === 1 ? '' : 's'}`);
+    } catch {
+      toast.error('Failed to export selected assets');
+    }
+  }, [nodes, currentCanvasName, selectedNodeIds]);
+
   if (isLoading) {
     return (
       <div className="flex flex-col h-screen bg-background">
@@ -91,13 +145,13 @@ export default function CanvasPage({ params }: CanvasPageProps) {
         <div className="flex-1 flex items-center justify-center">
           <div className="flex flex-col items-center gap-4">
             <div className="text-6xl">🖼️</div>
-            <h1 className="text-xl font-semibold text-foreground">{error}</h1>
+            <h1 className="font-serif text-xl font-normal text-foreground">{error}</h1>
             <p className="text-muted-foreground">
               The canvas you&apos;re looking for doesn&apos;t exist or has been deleted.
             </p>
             <Link
               href="/"
-              className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors"
+              className="mt-4 px-4 py-2 bg-[#3b82f6] hover:bg-[#2563eb] text-white rounded-lg transition-colors"
             >
               Go to Dashboard
             </Link>
@@ -118,10 +172,20 @@ export default function CanvasPage({ params }: CanvasPageProps) {
         lastSavedAt={lastSavedAt}
         onExportJSON={handleExportJSON}
         onExportPNG={handleExportPNG}
+        onExportAllAssets={handleExportAllAssets}
+        onExportSelectedAssets={handleExportSelectedAssets}
         showSidebar={false}
       >
-        <Canvas />
+        {accessRole === 'viewer' && (
+          <div className="mx-4 mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+            Read-only access: you can view this canvas but cannot edit it.
+          </div>
+        )}
+        <div className={accessRole === 'viewer' ? 'h-full opacity-90' : 'h-full'}>
+          <Canvas />
+        </div>
       </AppShell>
+      {/* FAB removed - AI slop */}
     </ReactFlowProvider>
   );
 }

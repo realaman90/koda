@@ -42,7 +42,7 @@ function getDatabaseConfig() {
 export interface StorageConfig {
   // Canvas/Project Storage
   canvas: {
-    type: 'localStorage' | 'sqlite';
+    type: 'indexeddb' | 'localStorage' | 'sqlite';
     backend: 'browser' | 'local-file' | 'turso';
     location: string;
     isCloud: boolean;
@@ -63,7 +63,7 @@ export function getStorageConfig(): StorageConfig {
   // Canvas storage config
   const canvasType = getStorageProviderType();
   let canvasBackend: StorageConfig['canvas']['backend'] = 'browser';
-  let canvasLocation = 'Browser localStorage';
+  let canvasLocation = 'Browser IndexedDB';
   let canvasIsCloud = false;
 
   if (canvasType === 'sqlite') {
@@ -77,6 +77,9 @@ export function getStorageConfig(): StorageConfig {
       canvasLocation = dbConfig.url.replace('file:', '');
       canvasIsCloud = false;
     }
+  } else if (canvasType === 'localStorage') {
+    canvasLocation = 'Browser localStorage';
+    canvasIsCloud = false;
   }
 
   // Asset storage config

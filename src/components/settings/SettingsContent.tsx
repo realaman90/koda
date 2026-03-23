@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useEffect } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   Key,
   Sliders,
@@ -10,6 +11,9 @@ import {
   Palette,
   Keyboard,
   User,
+  UserPlus,
+  CreditCard,
+  Cpu,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ApiKeysSection } from './sections/ApiKeysSection';
@@ -20,16 +24,22 @@ import { CanvasPreferencesSection } from './sections/CanvasPreferencesSection';
 import { ThemeSection } from './sections/ThemeSection';
 import { KeyboardShortcutsSection } from './sections/KeyboardShortcutsSection';
 import { ProfileSection } from './sections/ProfileSection';
+import { InviteStatusSection } from './sections/InviteStatusSection';
+import { BillingSection } from './sections/BillingSection';
+import { ModelSettingsSection } from './sections/ModelSettingsSection';
 
 type SettingsTab =
   | 'api-keys'
   | 'generation'
+  | 'models'
   | 'storage'
   | 'history'
   | 'canvas'
   | 'theme'
   | 'shortcuts'
-  | 'profile';
+  | 'profile'
+  | 'invites'
+  | 'billing';
 
 interface TabItem {
   id: SettingsTab;
@@ -50,6 +60,12 @@ const tabs: TabItem[] = [
     label: 'Generation Defaults',
     icon: Sliders,
     description: 'Default settings for image and video generation',
+  },
+  {
+    id: 'models',
+    label: 'Models',
+    icon: Cpu,
+    description: 'Enable and configure generation models',
   },
   {
     id: 'history',
@@ -87,10 +103,65 @@ const tabs: TabItem[] = [
     icon: User,
     description: 'Your account information',
   },
+  {
+    id: 'invites',
+    label: 'Invites',
+    icon: UserPlus,
+    description: 'Track pending, accepted, declined, revoked, and expired invites',
+  },
+  {
+    id: 'billing',
+    label: 'Billing & Plan',
+    icon: CreditCard,
+    description: 'View your plan, credit usage, and upgrade options',
+  },
 ];
 
+const defaultTab: SettingsTab = 'generation';
+
+function parseTab(tabParam: string | null, allowedTabs: TabItem[]): SettingsTab {
+  const allowedTabSet = new Set<SettingsTab>(allowedTabs.map((t) => t.id));
+  if (tabParam && allowedTabSet.has(tabParam as SettingsTab)) {
+    return tabParam as SettingsTab;
+  }
+  return defaultTab;
+}
+
 export function SettingsContent() {
-  const [activeTab, setActiveTab] = useState<SettingsTab>('api-keys');
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  const invitesEnabled =
+    process.env.NEXT_PUBLIC_WORKSPACES_V1 !== 'false' &&
+    process.env.NEXT_PUBLIC_COLLAB_SHARING_V1 !== 'false';
+
+  // Hide API keys tab when keys are configured server-side (env vars)
+  const apiKeysServerConfigured = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
+
+  const visibleTabs = useMemo(
+    () => tabs.filter((tab) => {
+      if (tab.id === 'invites' && !invitesEnabled) return false;
+      if (tab.id === 'api-keys' && apiKeysServerConfigured) return false;
+      if (tab.id === 'storage' && apiKeysServerConfigured) return false;
+      if (tab.id === 'billing' && !apiKeysServerConfigured) return false;
+      return true;
+    }),
+    [invitesEnabled, apiKeysServerConfigured]
+  );
+
+  const tabParam = searchParams.get('tab');
+  const activeTab = parseTab(tabParam, visibleTabs);
+
+  useEffect(() => {
+    if (tabParam === activeTab) {
+      return;
+    }
+
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('tab', activeTab);
+    router.replace(`${pathname}?${params.toString()}`);
+  }, [activeTab, pathname, router, searchParams, tabParam]);
 
   const renderContent = () => {
     switch (activeTab) {
@@ -98,6 +169,8 @@ export function SettingsContent() {
         return <ApiKeysSection />;
       case 'generation':
         return <GenerationSettingsSection />;
+      case 'models':
+        return <ModelSettingsSection />;
       case 'storage':
         return <StorageSection />;
       case 'history':
@@ -110,22 +183,34 @@ export function SettingsContent() {
         return <KeyboardShortcutsSection />;
       case 'profile':
         return <ProfileSection />;
+      case 'invites':
+        return <InviteStatusSection />;
+      case 'billing':
+        return <BillingSection />;
       default:
-        return null;
+        return <ApiKeysSection />;
     }
   };
 
-  const activeTabInfo = tabs.find((t) => t.id === activeTab);
+  const setActiveTab = (tab: SettingsTab) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('tab', tab);
+    router.push(`${pathname}?${params.toString()}`);
+  };
+
+  const activeTabInfo = useMemo(
+    () => visibleTabs.find((t) => t.id === activeTab),
+    [activeTab, visibleTabs]
+  );
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-8">
-      <h1 className="text-2xl font-bold text-foreground mb-8">Settings</h1>
+    <div className="mx-auto flex h-full max-w-6xl min-h-0 flex-col overflow-hidden px-6 py-8">
+      <h1 className="mb-8 text-2xl font-bold text-foreground">Settings</h1>
 
-      <div className="flex gap-8">
-        {/* Sidebar Navigation */}
+      <div className="flex min-h-0 flex-1 gap-8">
         <nav className="w-64 flex-shrink-0">
           <ul className="space-y-1">
-            {tabs.map((tab) => {
+            {visibleTabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
 
@@ -134,10 +219,11 @@ export function SettingsContent() {
                   <button
                     onClick={() => setActiveTab(tab.id)}
                     className={cn(
-                      'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors cursor-pointer',
+                      'w-full cursor-pointer rounded-lg px-3 py-2.5 text-left transition-colors',
+                      'flex items-center gap-3',
                       isActive
                         ? 'bg-muted text-foreground'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                        : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
                     )}
                   >
                     <Icon className="h-5 w-5 flex-shrink-0" />
@@ -149,17 +235,12 @@ export function SettingsContent() {
           </ul>
         </nav>
 
-        {/* Content Area */}
-        <div className="flex-1 min-w-0">
-          <div className="bg-card/50 rounded-xl border border-border p-6">
+        <div className="min-w-0 flex-1 overflow-y-auto pr-1">
+          <div className="rounded-xl border border-border bg-card/50 p-6">
             {activeTabInfo && (
               <div className="mb-6">
-                <h2 className="text-lg font-semibold text-foreground">
-                  {activeTabInfo.label}
-                </h2>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {activeTabInfo.description}
-                </p>
+                <h2 className="text-lg font-semibold text-foreground">{activeTabInfo.label}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">{activeTabInfo.description}</p>
               </div>
             )}
             {renderContent()}

@@ -8,6 +8,7 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { getSandboxProvider, readSandboxFileRaw } from '@/lib/sandbox/sandbox-factory';
+import { runAnimationSkill } from '@/mastra/skills/animation';
 
 // ── Permanent video save helper ─────────────────────────────────────
 // After render, copy the video out of the sandbox into permanent storage
@@ -78,6 +79,93 @@ function resolveEngine(input: string | undefined, context?: ToolContext): 'remot
   return (input || context?.requestContext?.get('engine') || 'remotion') as 'remotion' | 'theatre';
 }
 
+async function ensureTheatrePreviewRunning(sandboxId: string): Promise<{ ok: boolean; message?: string }> {
+  const checkPort = async (): Promise<string> => {
+    const check = await getSandboxProvider().runCommand(
+      sandboxId,
+      '(curl -s -o /dev/null -w "%{http_code}" http://localhost:5173/ 2>/dev/null || wget -q -O /dev/null --server-response http://localhost:5173/ 2>&1 | grep "HTTP/" | tail -1 | awk "{print \\$2}" || echo "000")',
+      { timeout: 5_000 }
+    );
+    return (check.stdout || '').trim();
+  };
+
+  const initialStatus = await checkPort();
+  if (initialStatus.startsWith('200') || initialStatus.startsWith('304')) {
+    return { ok: true };
+  }
+
+  // Ensure prerequisites exist
+  const pkgCheck = await getSandboxProvider().runCommand(
+    sandboxId,
+    'test -f /app/package.json && echo "OK" || echo "MISSING"',
+    { timeout: 5_000 }
+  );
+  if ((pkgCheck.stdout || '').trim() !== 'OK') {
+    return {
+      ok: false,
+      message: 'Cannot start Theatre preview: /app/package.json is missing. Generate/write project files first.',
+    };
+  }
+
+  const nodeModulesCheck = await getSandboxProvider().runCommand(
+    sandboxId,
+    'test -d /app/node_modules && echo "OK" || echo "MISSING"',
+    { timeout: 5_000 }
+  );
+  if ((nodeModulesCheck.stdout || '').trim() === 'MISSING') {
+    const installResult = await getSandboxProvider().runCommand(
+      sandboxId,
+      'cd /app && bun install 2>&1',
+      { timeout: 60_000 }
+    );
+    if (!installResult.success) {
+      return {
+        ok: false,
+        message: `Cannot start Theatre preview: dependency install failed: ${(installResult.stderr || installResult.stdout || '').slice(0, 400)}`,
+      };
+    }
+  }
+
+  // Restart vite cleanly for Theatre mode
+  await getSandboxProvider().runCommand(sandboxId, 'pkill -f "vite" || true', { timeout: 5_000 });
+  await new Promise((r) => setTimeout(r, 500));
+  await getSandboxProvider().runCommand(
+    sandboxId,
+    'cd /app && nohup bunx vite > /tmp/vite.log 2>&1 &',
+    { background: true }
+  );
+
+  let lastStatus = '000';
+  for (let i = 0; i < 40; i++) {
+    await new Promise((r) => setTimeout(r, 500));
+    lastStatus = await checkPort();
+    if (lastStatus.startsWith('200') || lastStatus.startsWith('304')) {
+      return { ok: true };
+    }
+  }
+
+  const viteLog = await getSandboxProvider().runCommand(
+    sandboxId,
+    'tail -40 /tmp/vite.log 2>/dev/null || echo "No log available"',
+    { timeout: 5_000 }
+  );
+  const portInfo = await getSandboxProvider().runCommand(
+    sandboxId,
+    'ss -tlnp 2>/dev/null | grep 5173 || netstat -tlnp 2>/dev/null | grep 5173 || echo "No listener on 5173"',
+    { timeout: 5_000 }
+  );
+
+  return {
+    ok: false,
+    message: [
+      'Theatre.js preview server is not available on port 5173.',
+      `Last HTTP status: ${lastStatus}`,
+      `Port 5173: ${(portInfo.stdout || '').trim()}`,
+      `Vite log: ${(viteLog.stdout || '').trim().slice(0, 500)}`,
+    ].join('\n'),
+  };
+}
+
 /**
  * sandbox_create - Create a new sandbox container
  */
@@ -98,147 +186,60 @@ The engine/template is auto-resolved from server context. Call this before writi
     message: z.string(),
   }),
   execute: async (inputData, context) => {
-    try {
-      const ctx = context as ToolContext;
-
-      // ── Guard: if stream was already closed (plan gate), skip execution ──
-      // The AbortController should prevent this, but as belt-and-suspenders
-      // we check the flag to avoid creating orphan containers.
-      if (ctx?.requestContext?.get('streamClosed')) {
-        console.log(`[sandbox_create] Stream already closed (plan gate) — skipping to prevent orphan container`);
-        return {
-          success: false,
-          sandboxId: '',
-          status: 'skipped',
-          previewUrl: '',
-          template: 'remotion',
-          message: 'Stream closed — sandbox creation skipped.',
-        };
-      }
-
-      const template = resolveEngine(inputData.template, ctx);
-
-      // ── Guard: if a live sandbox already exists, reuse it ──────────
-      // Gemini sometimes calls sandbox_create even when one is active.
-      // Creating a duplicate wastes resources and causes sandboxId mismatch.
-      const existingSandboxId = resolveSandboxId(undefined, ctx);
-      if (existingSandboxId) {
-        try {
-          const status = await getSandboxProvider().getStatus(existingSandboxId);
-          if (status) {
-            console.log(`[sandbox_create] Reusing existing live sandbox ${existingSandboxId} (skipping duplicate creation)`);
-            return {
-              success: true,
-              sandboxId: existingSandboxId,
-              status: status.status,
-              previewUrl: `/api/plugins/animation/sandbox/${existingSandboxId}/proxy`,
-              template,
-              message: `Sandbox already active: ${existingSandboxId}. Reusing existing sandbox.`,
-            };
-          }
-          console.log(`[sandbox_create] Existing sandbox ${existingSandboxId} is dead — creating new one`);
-        } catch {
-          console.log(`[sandbox_create] Could not check existing sandbox ${existingSandboxId} — creating new one`);
-        }
-      }
-
-      const instance = await getSandboxProvider().create(inputData.projectId, template);
-      console.log(`[sandbox_create] Created new sandbox ${instance.id} (template=${template})`);
-
-      // Store sandboxId in requestContext so all subsequent tools auto-resolve it
-      ctx?.requestContext?.set('sandboxId', instance.id);
-
-      // Auto-upload any pending media stored in requestContext by route.ts.
-      // This handles base64 media that arrived before the sandbox existed —
-      // the data never touches the LLM context, preventing context window blowup.
-      const uploadedFiles: string[] = [];
-      const pendingMedia = ctx?.requestContext?.get('pendingMedia') as
-        Array<{ id: string; name: string; data: Buffer; destPath: string }> | undefined;
-      console.log(`[sandbox_create] pendingMedia from requestContext: ${pendingMedia ? `${pendingMedia.length} entries` : 'NULL/UNDEFINED'}`);
-      if (pendingMedia && Array.isArray(pendingMedia) && pendingMedia.length > 0) {
-        for (const media of pendingMedia) {
-          const bufferSize = media.data?.length ?? 0;
-          console.log(`[sandbox_create] Uploading: ${media.name} → ${media.destPath} (buffer=${bufferSize} bytes)`);
-          if (bufferSize === 0) {
-            console.error(`[sandbox_create] SKIPPING ${media.name} — buffer is empty!`);
-            continue;
-          }
-          try {
-            await getSandboxProvider().writeBinary(instance.id, media.destPath, media.data);
-            uploadedFiles.push(media.destPath);
-            console.log(`[sandbox_create] ✓ Auto-uploaded: ${media.name} → ${media.destPath} (${Math.round(bufferSize / 1024)}KB)`);
-          } catch (err) {
-            console.error(`[sandbox_create] ✗ FAILED to auto-upload ${media.name}:`, err);
-          }
-        }
-        // Verify files actually exist in the container
-        if (uploadedFiles.length > 0) {
-          try {
-            const verifyResult = await getSandboxProvider().runCommand(instance.id, 'ls -la /app/public/media/ 2>/dev/null || echo "DIR_NOT_FOUND"');
-            console.log(`[sandbox_create] Media verification:\n${verifyResult.stdout}`);
-          } catch (verifyErr) {
-            console.warn(`[sandbox_create] Could not verify media files:`, verifyErr);
-          }
-        }
-      } else {
-        console.log(`[sandbox_create] No pending media to auto-upload`);
-      }
-
-      // Check for code snapshot to restore (edit/revision flow after container died)
-      let snapshotRestored = false;
-      const nodeId = ctx?.requestContext?.get('nodeId');
-      const phase = ctx?.requestContext?.get('phase');
-      const hasPlan = !!ctx?.requestContext?.get('plan');
-      const restoreVersionId = ctx?.requestContext?.get('restoreVersionId') as string | undefined;
-
-      console.log(`[sandbox_create] Snapshot check: nodeId=${nodeId}, phase=${phase}, hasPlan=${hasPlan}, restoreVersionId=${restoreVersionId || 'latest'}`);
-
-      if (nodeId && (phase !== 'idle' || hasPlan || restoreVersionId)) {
-        console.log(`[sandbox_create] Attempting snapshot restore for node ${nodeId}${restoreVersionId ? `/${restoreVersionId}` : ''} into sandbox ${instance.id}...`);
-        try {
-          const { getSnapshotProvider } = await import('@/lib/sandbox/snapshot');
-          // If restoreVersionId is set, load that specific version; otherwise load latest
-          const exists = await getSnapshotProvider().exists(nodeId, restoreVersionId);
-          console.log(`[sandbox_create] Snapshot exists: ${exists}`);
-          if (exists) {
-            const buffer = await getSnapshotProvider().load(nodeId, restoreVersionId);
-            if (buffer) {
-              snapshotRestored = await getSandboxProvider().importSnapshot(instance.id, buffer);
-            }
-            console.log(`[sandbox_create] Snapshot restore result: ${snapshotRestored}`);
-          }
-        } catch (err) {
-          console.warn(`[sandbox_create] Snapshot restore failed (starting fresh):`, err);
-        }
-      } else {
-        console.log(`[sandbox_create] Skipping snapshot restore (fresh generation or no nodeId)`);
-      }
-
-      const mediaMsg = uploadedFiles.length > 0
-        ? ` Media auto-uploaded: ${uploadedFiles.join(', ')}`
-        : '';
-      const restoreMsg = snapshotRestored
-        ? ' Previous code restored from snapshot.'
-        : '';
-
-      return {
-        success: true,
-        sandboxId: instance.id,
-        status: instance.status,
-        previewUrl: `/api/plugins/animation/sandbox/${instance.id}/proxy`,
+    const ctx = context as ToolContext;
+    const template = resolveEngine(inputData.template, ctx);
+    const result = await runAnimationSkill('sandbox', {
+      action: 'create_or_reuse',
+      phase: (ctx?.requestContext?.get('phase') as
+        | 'idle'
+        | 'question'
+        | 'plan'
+        | 'executing'
+        | 'preview'
+        | 'complete'
+        | 'error'
+        | undefined),
+      planAccepted: (ctx?.requestContext?.get('planAccepted') as boolean | undefined),
+      sandboxId: (ctx?.requestContext?.get('sandboxId') as string | undefined),
+      engine: template,
+      requestContext: ctx?.requestContext,
+      payload: {
+        projectId: inputData.projectId,
         template,
-        message: `Sandbox created with ${template} template: ${instance.id}.${mediaMsg}${restoreMsg}`,
-      };
-    } catch (error) {
+      },
+      metadata: { toolName: 'sandbox_create' },
+    });
+
+    const artifact = result.artifacts?.sandbox as
+      | {
+        success?: boolean;
+        sandboxId?: string;
+        status?: string;
+        previewUrl?: string;
+        template?: string;
+        message?: string;
+      }
+      | undefined;
+
+    if (artifact) {
       return {
-        success: false,
-        sandboxId: '',
-        status: 'error',
-        previewUrl: '',
-        template: resolveEngine(inputData.template, context as ToolContext),
-        message: error instanceof Error ? error.message : 'Failed to create sandbox',
+        success: !!artifact.success,
+        sandboxId: artifact.sandboxId || '',
+        status: artifact.status || (artifact.success ? 'running' : 'error'),
+        previewUrl: artifact.previewUrl || '',
+        template: artifact.template || template,
+        message: artifact.message || result.summary || 'Sandbox operation completed',
       };
     }
+
+    return {
+      success: result.ok,
+      sandboxId: (result.updates?.sandboxId as string | undefined) || '',
+      status: result.ok ? 'running' : 'blocked',
+      previewUrl: '',
+      template,
+      message: result.summary || (result.ok ? 'Sandbox ready' : 'Failed to create sandbox'),
+    };
   },
 });
 
@@ -1100,19 +1101,15 @@ export const renderPreviewTool = createTool({
 
       if (engine === 'theatre') {
         // ── Theatre.js: Puppeteer + FFmpeg via export-video.cjs ──
-        // Verify Vite dev server is running on port 5173
-        const portCheck = await getSandboxProvider().runCommand(
-          sandboxId,
-          '(curl -s -o /dev/null -w "%{http_code}" http://localhost:5173/ 2>/dev/null || echo "000")',
-          { timeout: 10_000 }
-        );
-        if (!portCheck.stdout.trim().startsWith('200') && !portCheck.stdout.trim().startsWith('304')) {
+        // Auto-start/recover Vite dev server if needed.
+        const previewReady = await ensureTheatrePreviewRunning(sandboxId);
+        if (!previewReady.ok) {
           return {
             success: false,
             videoUrl: '',
             thumbnailUrl: '',
             duration: inputData.duration,
-            message: 'Theatre.js render requires the Vite dev server running on port 5173. Call sandbox_start_preview first.',
+            message: `Theatre.js preview server unavailable.\n${previewReady.message || 'Call sandbox_start_preview first.'}`,
           };
         }
 
@@ -1326,29 +1323,36 @@ export const renderFinalTool = createTool({
       return { success: false, videoUrl: '', thumbnailUrl: '', duration: inputData.duration, resolution: inputData.resolution || '1080p', message: 'No active sandbox. Create one first with sandbox_create.' };
     }
 
-    // Wait for any in-flight code generation to finish before rendering.
-    // Models often call generate_*_code + render_final in parallel — rendering stale code
-    // causes failures and retry loops. Same polling pattern as resolveSandboxId.
     const ctx = context as ToolContext;
-    const codeGenActive = (ctx?.requestContext?.get('codeGenActive') as number) || 0;
-    if (codeGenActive > 0 && ctx?.requestContext) {
-      console.log(`[render_final] Code generation in progress (codeGenActive=${codeGenActive}) — waiting...`);
-      for (let i = 0; i < 120; i++) { // 120 × 500ms = 60s max wait
-        await new Promise(r => setTimeout(r, 500));
-        const current = (ctx.requestContext.get('codeGenActive') as number) || 0;
-        if (current === 0) {
-          console.log(`[render_final] Code generation finished after ${(i + 1) * 0.5}s — proceeding with render`);
-          break;
-        }
-        const closed = ctx.requestContext.get('streamClosed') as boolean | undefined;
-        if (closed) {
-          console.log(`[render_final] Stream closed while waiting for code gen — aborting`);
-          return { success: false, videoUrl: '', thumbnailUrl: '', duration: inputData.duration, resolution: inputData.resolution || '1080p', message: 'Stream closed during code generation wait.' };
-        }
-        if (i === 119) {
-          console.warn(`[render_final] Timed out waiting for code gen after 60s — proceeding anyway`);
-        }
-      }
+    const renderPrepare = await runAnimationSkill('render', {
+      action: 'prepare_render',
+      phase: (ctx?.requestContext?.get('phase') as
+        | 'idle'
+        | 'question'
+        | 'plan'
+        | 'executing'
+        | 'preview'
+        | 'complete'
+        | 'error'
+        | undefined),
+      planAccepted: (ctx?.requestContext?.get('planAccepted') as boolean | undefined),
+      sandboxId,
+      engine: resolveEngine(inputData.engine, context as ToolContext),
+      duration: inputData.duration,
+      resolution: inputData.resolution,
+      requestContext: ctx?.requestContext,
+      metadata: { toolName: 'render_final' },
+    });
+
+    if (!renderPrepare.ok) {
+      return {
+        success: false,
+        videoUrl: '',
+        thumbnailUrl: '',
+        duration: inputData.duration,
+        resolution: inputData.resolution || '1080p',
+        message: renderPrepare.summary || 'Render preparation failed',
+      };
     }
 
     const resolution = inputData.resolution || '1080p';
@@ -1361,20 +1365,16 @@ export const renderFinalTool = createTool({
 
       if (engine === 'theatre') {
         // ── Theatre.js: Puppeteer + FFmpeg via export-video.cjs ──
-        // Verify Vite dev server is running on port 5173
-        const portCheck = await getSandboxProvider().runCommand(
-          sandboxId,
-          '(curl -s -o /dev/null -w "%{http_code}" http://localhost:5173/ 2>/dev/null || echo "000")',
-          { timeout: 10_000 }
-        );
-        if (!portCheck.stdout.trim().startsWith('200') && !portCheck.stdout.trim().startsWith('304')) {
+        // Auto-start/recover Vite dev server if needed.
+        const previewReady = await ensureTheatrePreviewRunning(sandboxId);
+        if (!previewReady.ok) {
           return {
             success: false,
             videoUrl: '',
             thumbnailUrl: '',
             duration: inputData.duration,
             resolution,
-            message: 'Theatre.js render requires the Vite dev server running on port 5173. Call sandbox_start_preview first.',
+            message: `Theatre.js preview server unavailable.\n${previewReady.message || 'Call sandbox_start_preview first.'}`,
           };
         }
 
@@ -1457,7 +1457,8 @@ export const renderFinalTool = createTool({
         const permanentUrl_tf = await saveVideoToPermanentStorage(sandboxId, 'output/final.mp4', nodeId_tf);
         const videoUrl_tf = permanentUrl_tf || `/api/plugins/animation/sandbox/${sandboxId}/file?path=output/final.mp4`;
 
-        if (permanentUrl_tf && (context as ToolContext)?.requestContext) {
+        // Always set lastVideoUrl so recovery SSE works even if permanent storage failed
+        if ((context as ToolContext)?.requestContext) {
           (context as ToolContext).requestContext!.set('lastVideoUrl', videoUrl_tf);
         }
 
@@ -1604,7 +1605,8 @@ export const renderFinalTool = createTool({
       const permanentUrl_rf = await saveVideoToPermanentStorage(sandboxId, 'output/final.mp4', nodeId_rf);
       const videoUrl_rf = permanentUrl_rf || `/api/plugins/animation/sandbox/${sandboxId}/file?path=output/final.mp4`;
 
-      if (permanentUrl_rf && (context as ToolContext)?.requestContext) {
+      // Always set lastVideoUrl so recovery SSE works even if permanent storage failed
+      if ((context as ToolContext)?.requestContext) {
         (context as ToolContext).requestContext!.set('lastVideoUrl', videoUrl_rf);
       }
 

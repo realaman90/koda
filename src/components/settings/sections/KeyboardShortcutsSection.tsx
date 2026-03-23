@@ -53,7 +53,7 @@ const shortcuts = [
 
 function KeyBadge({ children }: { children: React.ReactNode }) {
   return (
-    <kbd className="px-2 py-1 text-xs font-medium bg-zinc-700 text-zinc-200 rounded border border-zinc-600 shadow-sm">
+    <kbd className="px-2 py-1 text-xs font-medium bg-muted text-foreground rounded border border-border shadow-sm">
       {children}
     </kbd>
   );
@@ -64,22 +64,22 @@ export function KeyboardShortcutsSection() {
     <div className="space-y-6">
       {shortcuts.map((section) => (
         <div key={section.category}>
-          <h3 className="text-sm font-medium text-zinc-300 mb-3">
+          <h3 className="text-sm font-medium text-foreground mb-3">
             {section.category}
           </h3>
           <div className="space-y-2">
             {section.items.map((shortcut, index) => (
               <div
                 key={index}
-                className="flex items-center justify-between p-3 bg-zinc-800/50 rounded-lg"
+                className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
               >
-                <span className="text-sm text-zinc-400">{shortcut.description}</span>
+                <span className="text-sm text-muted-foreground">{shortcut.description}</span>
                 <div className="flex items-center gap-1">
                   {shortcut.keys.map((key, keyIndex) => (
                     <span key={keyIndex} className="flex items-center gap-1">
                       <KeyBadge>{key}</KeyBadge>
                       {keyIndex < shortcut.keys.length - 1 && (
-                        <span className="text-zinc-600 text-xs">+</span>
+                        <span className="text-muted-foreground/50 text-xs">+</span>
                       )}
                     </span>
                   ))}
@@ -90,7 +90,7 @@ export function KeyboardShortcutsSection() {
         </div>
       ))}
 
-      <p className="text-xs text-zinc-500 mt-4">
+      <p className="text-xs text-muted-foreground mt-4">
         Tip: On macOS, use Cmd instead of Ctrl for most shortcuts.
       </p>
     </div>

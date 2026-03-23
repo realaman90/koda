@@ -6,6 +6,7 @@
  */
 
 import type { AgentPlugin, PluginCategory, PluginRegistry as IPluginRegistry } from './types';
+import { validatePluginPolicy } from './policy';
 
 class PluginRegistryImpl implements IPluginRegistry {
   private plugins: Map<string, AgentPlugin> = new Map();
@@ -16,6 +17,8 @@ class PluginRegistryImpl implements IPluginRegistry {
    * @throws Error if a plugin with the same ID already exists
    */
   register(plugin: AgentPlugin): void {
+    validatePluginPolicy(plugin);
+
     if (this.plugins.has(plugin.id)) {
       console.warn(`Plugin with ID "${plugin.id}" is already registered. Skipping.`);
       return;

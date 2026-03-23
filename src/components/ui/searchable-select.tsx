@@ -9,6 +9,7 @@ interface Option {
   value: string;
   label: string;
   description?: string;
+  group?: string;
 }
 
 interface SearchableSelectProps {
@@ -32,7 +33,7 @@ export function SearchableSelect({
 }: SearchableSelectProps) {
   const [open, setOpen] = React.useState(false);
   const [search, setSearch] = React.useState('');
-  const [position, setPosition] = React.useState({ top: 0, left: 0 });
+  const [position, setPosition] = React.useState<{ top?: number; bottom?: number; left: number }>({ top: 0, left: 0 });
   const triggerRef = React.useRef<HTMLButtonElement>(null);
   const dropdownRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
@@ -45,18 +46,54 @@ export function SearchableSelect({
     return options.filter(
       (opt) =>
         opt.label.toLowerCase().includes(query) ||
-        opt.description?.toLowerCase().includes(query)
+        opt.description?.toLowerCase().includes(query) ||
+        opt.group?.toLowerCase().includes(query)
     );
   }, [options, search]);
 
-  // Update position when opening
+  // Group options by their group field
+  const groupedOptions = React.useMemo(() => {
+    const groups: { label: string | null; options: Option[] }[] = [];
+    let currentGroup: string | null | undefined = undefined;
+
+    for (const opt of filteredOptions) {
+      const group = opt.group ?? null;
+      if (group !== currentGroup) {
+        groups.push({ label: group, options: [opt] });
+        currentGroup = group;
+      } else {
+        groups[groups.length - 1].options.push(opt);
+      }
+    }
+    return groups;
+  }, [filteredOptions]);
+
+  const hasGroups = options.some((opt) => opt.group);
+
+  // Update position when opening — flip upward if not enough space below
   React.useEffect(() => {
     if (open && triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect();
-      setPosition({
-        top: rect.bottom + 4,
-        left: rect.left,
-      });
+      const dropdownMaxHeight = 340; // search input (~40px) + max-h-[300px]
+      const spaceBelow = window.innerHeight - rect.bottom - 8;
+      const spaceAbove = rect.top - 8;
+
+      const bottomFromViewport = window.innerHeight - rect.top + 4;
+
+      if (spaceBelow >= dropdownMaxHeight) {
+        // Enough space below — anchor top
+        setPosition({ top: rect.bottom + 4, bottom: undefined, left: rect.left });
+      } else if (spaceAbove >= dropdownMaxHeight) {
+        // Flip upward — anchor bottom edge to just above trigger
+        setPosition({ top: undefined, bottom: bottomFromViewport, left: rect.left });
+      } else {
+        // Neither fits fully — pick the side with more space
+        if (spaceBelow >= spaceAbove) {
+          setPosition({ top: rect.bottom + 4, bottom: undefined, left: rect.left });
+        } else {
+          setPosition({ top: undefined, bottom: bottomFromViewport, left: rect.left });
+        }
+      }
     }
   }, [open]);
 
@@ -104,11 +141,37 @@ export function SearchableSelect({
     setSearch('');
   };
 
+  const renderOption = (option: Option) => (
+    <button
+      key={option.value}
+      type="button"
+      onClick={() => handleSelect(option.value)}
+      className={cn(
+        'w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors cursor-pointer',
+        option.value === value
+          ? 'bg-accent text-accent-foreground'
+          : 'text-foreground hover:bg-muted/50'
+      )}
+    >
+      <span className="flex-1">{option.label}</span>
+      {option.value === value && (
+        <Check className="h-3 w-3 text-emerald-400" />
+      )}
+    </button>
+  );
+
   const dropdown = open ? (
     <div
       ref={dropdownRef}
-      className="fixed z-[200] min-w-[180px] bg-popover border border-border rounded-lg shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-100"
-      style={{ top: position.top, left: position.left }}
+      className="fixed z-[200] min-w-[180px] bg-popover border border-border rounded-lg shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-100 flex flex-col"
+      style={{
+        top: position.top,
+        bottom: position.bottom,
+        left: position.left,
+        maxHeight: position.top != null
+          ? `calc(100dvh - ${position.top}px - 8px)`
+          : `calc(100dvh - ${position.bottom}px - 8px)`,
+      }}
       onWheel={(e) => e.stopPropagation()}
     >
       {/* Search Input */}
@@ -127,30 +190,24 @@ export function SearchableSelect({
       </div>
 
       {/* Options List */}
-      <div className="max-h-[250px] overflow-y-auto py-1">
+      <div className="max-h-[300px] min-h-0 flex-1 overflow-y-auto py-1">
         {filteredOptions.length === 0 ? (
           <div className="px-3 py-2 text-xs text-muted-foreground text-center">
             No results found
           </div>
-        ) : (
-          filteredOptions.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              onClick={() => handleSelect(option.value)}
-              className={cn(
-                'w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors cursor-pointer',
-                option.value === value
-                  ? 'bg-accent text-accent-foreground'
-                  : 'text-foreground hover:bg-muted/50'
+        ) : hasGroups ? (
+          groupedOptions.map((group) => (
+            <div key={group.label ?? '__ungrouped'}>
+              {group.label && (
+                <div className="px-3 pt-2 pb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  {group.label}
+                </div>
               )}
-            >
-              <span className="flex-1">{option.label}</span>
-              {option.value === value && (
-                <Check className="h-3 w-3 text-emerald-400" />
-              )}
-            </button>
+              {group.options.map(renderOption)}
+            </div>
           ))
+        ) : (
+          filteredOptions.map(renderOption)
         )}
       </div>
     </div>
@@ -163,7 +220,7 @@ export function SearchableSelect({
         type="button"
         onClick={() => setOpen(!open)}
         className={cn(
-          'flex items-center justify-between gap-1 h-7 px-2 rounded-md text-xs',
+          'flex items-center justify-between gap-1 h-8 px-2.5 rounded-xl text-xs',
           'bg-muted/80 text-foreground hover:bg-muted transition-colors',
           triggerClassName
         )}

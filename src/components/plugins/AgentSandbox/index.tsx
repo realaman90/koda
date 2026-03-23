@@ -57,7 +57,7 @@ function AgentSandboxContent({ plugin, onClose }: AgentSandboxModalProps) {
   if (!plugin.sandbox) {
     return (
       <div className="p-6 text-center">
-        <p className="text-zinc-400">
+        <p className="text-muted-foreground">
           This plugin renders as a canvas node. Add it from the toolbar or context menu.
         </p>
       </div>
@@ -129,22 +129,22 @@ export function AgentSandbox({ plugin, onClose }: AgentSandboxModalProps) {
       <div
         ref={modalRef}
         className={cn(
-          'bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col',
+          'bg-popover border border-border rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col',
           sizeClasses[sandboxSize]
         )}
         onWheel={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 shrink-0">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
           <div className="flex items-center gap-2">
-            <plugin.icon className="w-5 h-5 text-zinc-400" />
-            <span className="text-base font-medium text-zinc-200">
+            <plugin.icon className="w-5 h-5 text-muted-foreground" />
+            <span className="text-base font-medium text-foreground">
               {sandboxTitle}
             </span>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-zinc-500 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
+            className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
             aria-label="Close"
           >
             <X className="w-5 h-5" />

@@ -116,7 +116,7 @@ function StickerNodeComponent({ id, data, selected }: NodeProps<StickerNodeType>
     .join(' ');
 
   return (
-    <div className="relative" ref={pickerRef}>
+    <div className="node-drag-handle node-drag-surface relative" ref={pickerRef}>
       {/* Rich Toolbar - appears above node when selected */}
       {selected && (
         <div
@@ -192,7 +192,7 @@ function StickerNodeComponent({ id, data, selected }: NodeProps<StickerNodeType>
           <Button
             variant="ghost"
             size="icon-sm"
-            className={`h-7 w-7 hover:bg-zinc-700/50 ${flipX ? 'text-indigo-400' : 'text-zinc-400 hover:text-zinc-200'}`}
+            className={`h-7 w-7 hover:bg-zinc-700/50 ${flipX ? 'text-blue-400' : 'text-zinc-400 hover:text-zinc-200'}`}
             onClick={handleFlipX}
             title="Flip horizontal"
           >
@@ -201,7 +201,7 @@ function StickerNodeComponent({ id, data, selected }: NodeProps<StickerNodeType>
           <Button
             variant="ghost"
             size="icon-sm"
-            className={`h-7 w-7 hover:bg-zinc-700/50 ${flipY ? 'text-indigo-400' : 'text-zinc-400 hover:text-zinc-200'}`}
+            className={`h-7 w-7 hover:bg-zinc-700/50 ${flipY ? 'text-blue-400' : 'text-zinc-400 hover:text-zinc-200'}`}
             onClick={handleFlipY}
             title="Flip vertical"
           >
@@ -229,7 +229,7 @@ function StickerNodeComponent({ id, data, selected }: NodeProps<StickerNodeType>
                   max="100"
                   value={opacity}
                   onChange={handleOpacityChange}
-                  className="w-24 h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                  className="w-24 h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
                 />
               </div>
             )}
@@ -253,7 +253,7 @@ function StickerNodeComponent({ id, data, selected }: NodeProps<StickerNodeType>
       {/* Sticker Display */}
       <div
         className={`
-          cursor-pointer select-none
+          cursor-grab select-none active:cursor-grabbing
           transition-[filter] duration-150
           ${selected ? 'drop-shadow-lg' : 'drop-shadow-md'}
         `}

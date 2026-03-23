@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { useCanvasStore, createImageGeneratorNode, createVideoGeneratorNode, createTextNode, createMediaNode, createStickyNoteNode, createStickerNode, createGroupNode, createMusicGeneratorNode, createSpeechNode, createVideoAudioNode, createPluginNode } from '@/stores/canvas-store';
 import { useReactFlow } from '@xyflow/react';
 import {
@@ -26,14 +26,21 @@ import {
   Mic,
   Film,
   Clapperboard,
+  PenTool,
 } from 'lucide-react';
 import { pluginRegistry } from '@/lib/plugins/registry';
+import { evaluatePluginLaunchById, evaluatePluginLaunchPolicy, emitPluginPolicyAuditEvent } from '@/lib/plugins/launch-policy';
 import { uploadAsset } from '@/lib/assets/upload';
+import { toast } from 'sonner';
 // Import official plugins to register them
 import '@/lib/plugins/official/storyboard-generator';
 import '@/lib/plugins/official/product-shot';
 import '@/lib/plugins/official/agents/animation-generator';
 import '@/lib/plugins/official/agents/motion-analyzer';
+import '@/lib/plugins/official/agents/svg-studio';
+import '@/lib/plugins/official/agents/glyph';
+import '@/lib/plugins/official/agents/prompt-studio';
+import '@/lib/plugins/official/image-to-pdf';
 
 interface MenuItem {
   id: string;
@@ -41,6 +48,8 @@ interface MenuItem {
   label: string;
   action: () => void;
   keywords?: string[];
+  disabled?: boolean;
+  subtitle?: string;
 }
 
 interface MenuSection {
@@ -62,11 +71,19 @@ export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
   const deleteSelected = useCanvasStore((state) => state.deleteSelected);
   const duplicateSelected = useCanvasStore((state) => state.duplicateSelected);
   const openSettingsPanel = useCanvasStore((state) => state.openSettingsPanel);
+  const openVideoSettingsPanel = useCanvasStore((state) => state.openVideoSettingsPanel);
   const selectedNodeIds = useCanvasStore((state) => state.selectedNodeIds);
   const addNode = useCanvasStore((state) => state.addNode);
   const groupSelected = useCanvasStore((state) => state.groupSelected);
   const clipboard = useCanvasStore((state) => state.clipboard);
-  const nodes = useCanvasStore((state) => state.nodes);
+  const selectedNodeId = useCanvasStore((state) => state.selectedNodeIds.length === 1 ? state.selectedNodeIds[0] : null);
+  const selectedNodeType = useCanvasStore((state) => {
+    if (state.selectedNodeIds.length !== 1) return null;
+    return state.nodes.find((node) => node.id === state.selectedNodeIds[0])?.type ?? null;
+  });
+  const selectedNonGroupNodeCount = useCanvasStore((state) =>
+    state.nodes.filter((node) => state.selectedNodeIds.includes(node.id) && node.type !== 'group').length
+  );
 
   const { screenToFlowPosition } = useReactFlow();
   const menuRef = useRef<HTMLDivElement>(null);
@@ -135,7 +152,8 @@ export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
 
   const handleAddNode = (creator: (pos: { x: number; y: number }, name?: string) => ReturnType<typeof createImageGeneratorNode>, baseName: string) => {
     const position = getNodePosition();
-    const count = nodes.filter((n) => n.type === creator({x:0,y:0}).type).length + 1;
+    const currentNodes = useCanvasStore.getState().nodes;
+    const count = currentNodes.filter((n) => n.type === creator({x:0,y:0}).type).length + 1;
     const node = creator(position, `${baseName} ${count}`);
     addNode(node);
     hideContextMenu();
@@ -144,7 +162,7 @@ export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
   const handleUpload = () => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'image/*,video/*';
+    input.accept = 'image/*,video/*,audio/*';
     input.multiple = true;
     input.onchange = (e) => {
       const files = (e.target as HTMLInputElement).files;
@@ -152,10 +170,12 @@ export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
         const position = getNodePosition();
         Array.from(files).forEach(async (file, index) => {
           const isVideo = file.type.startsWith('video/');
+          const isAudio = file.type.startsWith('audio/');
+          const mediaType: 'image' | 'video' | 'audio' = isVideo ? 'video' : isAudio ? 'audio' : 'image';
           const node = createMediaNode({ x: position.x + index * 50, y: position.y + index * 50 });
           try {
             const asset = await uploadAsset(file, { nodeId: node.id });
-            node.data = { ...node.data, url: asset.url, type: isVideo ? 'video' : 'image' };
+            node.data = { ...node.data, url: asset.url, type: mediaType };
             addNode(node);
           } catch (err) {
             console.error('[ContextMenu] Upload failed:', err);
@@ -167,17 +187,48 @@ export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
     hideContextMenu();
   };
 
+  const guardPluginLaunch = useCallback((pluginId: string): boolean => {
+    const decision = evaluatePluginLaunchById(pluginId);
+    emitPluginPolicyAuditEvent({
+      source: 'context-menu',
+      decision,
+      metadata: { interaction: 'quick-add' },
+    });
+    if (!decision.allowed) {
+      toast.error(decision.reason);
+      return false;
+    }
+    return true;
+  }, []);
+
   // Node menu items
   const nodeMenuItems = useMemo(() => contextMenu?.type === 'node' ? [
     { id: 'copy', icon: <Copy className="h-4 w-4" />, label: 'Copy', shortcut: '⌘C', action: copySelected, disabled: selectedNodeIds.length === 0 },
     { id: 'cut', icon: <Scissors className="h-4 w-4" />, label: 'Cut', shortcut: '⌘X', action: cutSelected, disabled: selectedNodeIds.length === 0 },
     { id: 'duplicate', icon: <Duplicate className="h-4 w-4" />, label: 'Duplicate', shortcut: '⌘D', action: duplicateSelected, disabled: selectedNodeIds.length === 0 },
-    { id: 'group', icon: <Group className="h-4 w-4" />, label: 'Group Selected', shortcut: '⌘G', action: () => { groupSelected(); hideContextMenu(); }, disabled: selectedNodeIds.length < 2 },
+    { id: 'group', icon: <Group className="h-4 w-4" />, label: 'Group Selected', shortcut: '⌘G', action: () => { groupSelected(); hideContextMenu(); }, disabled: selectedNonGroupNodeCount < 2 },
     { id: 'divider1', divider: true },
-    { id: 'settings', icon: <Settings className="h-4 w-4" />, label: 'Settings', action: () => selectedNodeIds[0] && openSettingsPanel(selectedNodeIds[0], { x: contextMenu.x + 10, y: contextMenu.y }), disabled: selectedNodeIds.length !== 1 },
+    {
+      id: 'settings',
+      icon: <Settings className="h-4 w-4" />,
+      label: 'Settings',
+      action: () => {
+        const panelPosition = { x: contextMenu.x + 10, y: contextMenu.y };
+        if (selectedNodeType === 'imageGenerator' && selectedNodeId) {
+          openSettingsPanel(selectedNodeId, panelPosition);
+          hideContextMenu();
+          return;
+        }
+        if (selectedNodeType === 'videoGenerator' && selectedNodeId) {
+          openVideoSettingsPanel(selectedNodeId, panelPosition);
+          hideContextMenu();
+        }
+      },
+      disabled: selectedNodeIds.length !== 1 || !selectedNodeType || (selectedNodeType !== 'imageGenerator' && selectedNodeType !== 'videoGenerator'),
+    },
     { id: 'divider2', divider: true },
     { id: 'delete', icon: <Trash2 className="h-4 w-4" />, label: 'Delete', shortcut: '⌫', action: deleteSelected, disabled: selectedNodeIds.length === 0, danger: true },
-  ] : [], [contextMenu, copySelected, cutSelected, duplicateSelected, groupSelected, deleteSelected, hideContextMenu, openSettingsPanel, selectedNodeIds]);
+  ] : [], [contextMenu, copySelected, cutSelected, deleteSelected, duplicateSelected, groupSelected, hideContextMenu, openSettingsPanel, openVideoSettingsPanel, selectedNodeId, selectedNodeIds, selectedNodeType, selectedNonGroupNodeCount]);
 
   // Canvas menu sections
   const canvasMenuSections: MenuSection[] = useMemo(() => [
@@ -237,11 +288,53 @@ export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
           id: 'animationGenerator',
           icon: <Clapperboard className="h-4 w-4 text-blue-500" />,
           label: 'Animation Generator',
-          action: () => handleAddNode(
-            (pos, name) => createPluginNode(pos, 'animation-generator', name),
-            'Animation Generator'
-          ),
+          action: () => {
+            if (!guardPluginLaunch('animation-generator')) return;
+            handleAddNode(
+              (pos, name) => createPluginNode(pos, 'animation-generator', name),
+              'Animation Generator'
+            );
+          },
           keywords: ['animation', 'animate', 'motion', 'theatre', 'theater'],
+        },
+        {
+          id: 'svgStudio',
+          icon: <PenTool className="h-4 w-4 text-emerald-400" />,
+          label: 'SVG Studio',
+          action: () => {
+            if (!guardPluginLaunch('svg-studio')) return;
+            handleAddNode(
+              (pos, name) => createPluginNode(pos, 'svg-studio', name),
+              'SVG Studio'
+            );
+          },
+          keywords: ['svg', 'vector', 'icon', 'logo'],
+        },
+        {
+          id: 'glyph',
+          icon: <Type className="h-4 w-4 text-violet-400" />,
+          label: 'Glyph',
+          action: () => {
+            if (!guardPluginLaunch('glyph')) return;
+            handleAddNode(
+              (pos, name) => createPluginNode(pos, 'glyph', name),
+              'Glyph'
+            );
+          },
+          keywords: ['glyph', 'text', 'typography', 'font', 'letter'],
+        },
+        {
+          id: 'promptStudio',
+          icon: <Sparkle className="h-4 w-4 text-amber-400" />,
+          label: 'Prompt Studio',
+          action: () => {
+            if (!guardPluginLaunch('prompt-studio')) return;
+            handleAddNode(
+              (pos, name) => createPluginNode(pos, 'prompt-studio', name),
+              'Prompt Studio'
+            );
+          },
+          keywords: ['prompt', 'creative', 'director', 'enhance', 'image prompt', 'video prompt'],
         },
       ],
     },
@@ -303,7 +396,7 @@ export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
           label: 'Group',
           action: () => {
             const position = getNodePosition();
-            const count = nodes.filter((n) => n.type === 'group').length + 1;
+            const count = useCanvasStore.getState().nodes.filter((n) => n.type === 'group').length + 1;
             addNode(createGroupNode(position, `Group ${count}`));
             hideContextMenu();
           },
@@ -314,20 +407,34 @@ export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
     {
       title: 'PLUGINS',
       collapsible: true,
-      items: pluginRegistry.getAll().map((plugin) => ({
-        id: plugin.id,
-        icon: <plugin.icon className="w-4 h-4" />,
-        label: plugin.name,
-        action: () => {
-          if (onPluginLaunch) {
-            onPluginLaunch(plugin.id);
-          }
-          hideContextMenu();
-        },
-        keywords: [plugin.name.toLowerCase(), plugin.category, 'plugin'],
-      })),
+      items: pluginRegistry.getAll().map((plugin) => {
+        const decision = evaluatePluginLaunchPolicy(plugin);
+        return {
+          id: plugin.id,
+          icon: <plugin.icon className="w-4 h-4" />,
+          label: plugin.name,
+          subtitle: !decision.allowed ? decision.reason : undefined,
+          disabled: !decision.allowed,
+          action: () => {
+            emitPluginPolicyAuditEvent({
+              source: 'context-menu',
+              decision,
+              metadata: { interaction: 'plugin-list' },
+            });
+            if (!decision.allowed) {
+              toast.error(decision.reason);
+              return;
+            }
+            if (onPluginLaunch) {
+              onPluginLaunch(plugin.id);
+            }
+            hideContextMenu();
+          },
+          keywords: [plugin.name.toLowerCase(), plugin.category, 'plugin'],
+        };
+      }),
     },
-  ], [addNode, hideContextMenu, handleUpload, nodes, onPluginLaunch]);
+  ], [addNode, guardPluginLaunch, hideContextMenu, handleUpload, onPluginLaunch]);
 
   // Filter sections based on search query
   const filteredSections = useMemo(() => {
@@ -477,10 +584,21 @@ export function ContextMenu({ onPluginLaunch }: ContextMenuProps) {
                 <button
                   key={item.id}
                   onClick={item.action}
-                  className="w-full flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-muted cursor-pointer transition-colors"
+                  disabled={item.disabled}
+                  className={[
+                    'w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors',
+                    item.disabled
+                      ? 'text-muted-foreground/60 cursor-not-allowed'
+                      : 'text-foreground hover:bg-muted cursor-pointer',
+                  ].join(' ')}
                 >
                   {item.icon}
-                  <span>{item.label}</span>
+                  <span className="flex-1 text-left">
+                    <span className="block truncate">{item.label}</span>
+                    {item.subtitle && (
+                      <span className="block truncate text-[10px] text-muted-foreground/80">{item.subtitle}</span>
+                    )}
+                  </span>
                 </button>
               ))}
             </div>

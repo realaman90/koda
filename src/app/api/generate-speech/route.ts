@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { fal } from '@fal-ai/client';
-import { FAL_AUDIO_MODELS, type ElevenLabsVoice } from '@/lib/types';
+import { FAL_AUDIO_MODELS, type SpeechModelType, type TadaLanguage } from '@/lib/types';
 import { getAssetStorageType, getExtensionFromUrl, type AssetStorageProvider } from '@/lib/assets';
+import { withCredits } from '@/lib/credits/with-credits';
 
 export const maxDuration = 300;
 
@@ -9,6 +10,105 @@ export const maxDuration = 300;
 fal.config({
   credentials: process.env.FAL_KEY,
 });
+
+type FalLikeError = {
+  message?: string;
+  status?: number;
+  body?: {
+    message?: string;
+    detail?: string | Array<{ msg?: string; loc?: Array<string | number> }>;
+  };
+};
+
+const ELEVEN_V3_VOICE_MAP: Record<string, string> = {
+  alloy: 'Rachel',
+  echo: 'George',
+  fable: 'Thomas',
+  onyx: 'Antoni',
+  nova: 'Emily',
+  shimmer: 'Elli',
+  rachel: 'Rachel',
+  drew: 'Drew',
+  clyde: 'Clyde',
+  paul: 'Paul',
+  domi: 'Domi',
+  dave: 'Dave',
+  fin: 'Fin',
+  sarah: 'Sarah',
+  antoni: 'Antoni',
+  thomas: 'Thomas',
+  charlie: 'Charlie',
+  george: 'George',
+  emily: 'Emily',
+  elli: 'Elli',
+};
+const ELEVEN_DIALOGUE_MODEL = 'fal-ai/elevenlabs/text-to-dialogue/eleven-v3';
+const DIALOGUE_STABILITY_VALUES = [0, 0.5, 1] as const;
+const TADA_LANGUAGES = new Set<TadaLanguage>(['en', 'ar', 'ch', 'de', 'es', 'fr', 'it', 'ja', 'pl', 'pt']);
+
+function clamp(value: unknown, min: number, max: number, fallback: number): number {
+  if (typeof value !== 'number' || Number.isNaN(value)) return fallback;
+  return Math.min(max, Math.max(min, value));
+}
+
+function snapDialogueStability(value: unknown): 0 | 0.5 | 1 {
+  const clamped = clamp(value, 0, 1, 0.5);
+  return DIALOGUE_STABILITY_VALUES.reduce((closest, candidate) =>
+    Math.abs(candidate - clamped) < Math.abs(closest - clamped) ? candidate : closest
+  );
+}
+
+function normalizeVoice(value: unknown, fallback = 'Rachel'): string {
+  if (typeof value !== 'string') return fallback;
+  const trimmed = value.trim();
+  if (!trimmed) return fallback;
+  return ELEVEN_V3_VOICE_MAP[trimmed.toLowerCase()] || trimmed;
+}
+
+function normalizeDialogueLines(value: unknown): Array<{ text: string; voice: string }> {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((line) => {
+      if (!line || typeof line !== 'object') return null;
+      const candidate = line as { text?: unknown; voice?: unknown };
+      const text = typeof candidate.text === 'string' ? candidate.text.trim() : '';
+      if (!text) return null;
+      const voice = normalizeVoice(candidate.voice);
+      return { text, voice };
+    })
+    .filter((line): line is { text: string; voice: string } => !!line);
+}
+
+function normalizeSpeechModel(value: unknown): SpeechModelType {
+  return value === 'lux-tts' || value === 'tada-3b-tts' ? value : 'elevenlabs-tts';
+}
+
+function normalizeLanguage(value: unknown): TadaLanguage {
+  return typeof value === 'string' && TADA_LANGUAGES.has(value as TadaLanguage)
+    ? (value as TadaLanguage)
+    : 'en';
+}
+
+function parseFalError(error: unknown): { message: string; status: number } {
+  const falErr = error as FalLikeError;
+  const status = typeof falErr?.status === 'number' ? falErr.status : 500;
+
+  const detail = Array.isArray(falErr?.body?.detail)
+    ? falErr.body!.detail
+        .map((item) => `${item.loc?.join('.') || 'input'}: ${item.msg || 'invalid value'}`)
+        .join('; ')
+    : typeof falErr?.body?.detail === 'string'
+      ? falErr.body.detail
+      : undefined;
+
+  const message =
+    detail ||
+    falErr?.body?.message ||
+    falErr?.message ||
+    'Speech generation failed';
+
+  return { message, status };
+}
 
 /**
  * Get the asset storage provider (server-side only)
@@ -60,75 +160,189 @@ async function saveGeneratedAudio(
   }
 }
 
-export async function POST(request: Request) {
-  try {
-    const body = await request.json();
-    const {
-      text,
-      voice,
-      speed,
-      stability,
-    } = body;
+export const POST = withCredits(
+  {
+    type: 'audio',
+    getCostParams: (body) => ({ model: normalizeSpeechModel(body.model) }),
+  },
+  async (request) => {
+    try {
+      const body = await request.json();
+      const {
+        model,
+        mode,
+        text,
+        voice,
+        speed,
+        stability,
+        dialogueLines,
+        audioUrl,
+        language,
+        referenceTranscript,
+      } = body;
+      const selectedModel = normalizeSpeechModel(model);
+      const selectedMode = mode === 'dialogue' ? 'dialogue' : 'single';
 
-    const modelId = FAL_AUDIO_MODELS['elevenlabs-tts'];
+      const runSpeech = async (speechModelId: string, input: Record<string, unknown>) => {
+        const result = await fal.subscribe(speechModelId, {
+          input,
+          logs: true,
+          onQueueUpdate: (update) => {
+            console.log('Speech queue update:', update.status);
+          },
+        });
 
-    // Validate input
-    if (!text) {
+        console.log('Speech generation result:', result);
+
+        const data = result.data as
+          | {
+              audio?: { url?: string };
+              output?: { audio?: { url?: string } };
+              result?: { audio?: { url?: string } };
+            }
+          | undefined;
+
+        const audioUrl = data?.audio?.url || data?.output?.audio?.url || data?.result?.audio?.url;
+        if (!audioUrl) {
+          throw new Error('No audio generated');
+        }
+        return audioUrl;
+      };
+
+      let modelId: string;
+      let input: Record<string, unknown>;
+      let metadataText: string;
+      let mappedVoice: string | undefined;
+
+      if (selectedMode === 'dialogue' && selectedModel !== 'elevenlabs-tts') {
+        return NextResponse.json(
+          { error: 'Dialogue mode is only available for ElevenLabs TTS' },
+          { status: 400 }
+        );
+      }
+
+      if (selectedMode === 'dialogue') {
+        const lines = normalizeDialogueLines(dialogueLines);
+        if (lines.length < 2) {
+          return NextResponse.json(
+            { error: 'Dialogue mode requires at least 2 non-empty lines' },
+            { status: 400 }
+          );
+        }
+
+        const mappedInputs = lines.map((line) => ({
+          text: line.text,
+          voice: normalizeVoice(line.voice),
+        }));
+
+        modelId = ELEVEN_DIALOGUE_MODEL;
+        input = {
+          inputs: mappedInputs,
+          stability: snapDialogueStability(stability),
+        };
+        metadataText = lines.map((line) => `${line.voice}: ${line.text}`).join('\n');
+      } else {
+        const finalText = typeof text === 'string' ? text.trim() : '';
+        if (!finalText) {
+          return NextResponse.json(
+            { error: 'Text is required' },
+            { status: 400 }
+          );
+        }
+
+        if (selectedModel === 'elevenlabs-tts') {
+          mappedVoice = normalizeVoice(voice);
+          modelId = FAL_AUDIO_MODELS['elevenlabs-tts'];
+          input = {
+            text: finalText,
+            voice: mappedVoice,
+            speed: clamp(speed, 0.7, 1.2, 1.0),
+            stability: clamp(stability, 0, 1, 0.5),
+            apply_text_normalization: 'auto' as const,
+          };
+        } else {
+          const normalizedAudioUrl = typeof audioUrl === 'string' ? audioUrl.trim() : '';
+          if (!normalizedAudioUrl) {
+            return NextResponse.json(
+              { error: 'A reference audio input is required for voice cloning models' },
+              { status: 400 }
+            );
+          }
+
+          modelId = FAL_AUDIO_MODELS[selectedModel];
+          if (selectedModel === 'lux-tts') {
+            input = {
+              prompt: finalText,
+              audio_url: normalizedAudioUrl,
+            };
+          } else {
+            input = {
+              prompt: finalText,
+              audio_url: normalizedAudioUrl,
+              language: normalizeLanguage(language),
+              speed_up_factor: clamp(speed, 0.5, 2, 1),
+              output_format: 'mp3',
+              ...(typeof referenceTranscript === 'string' && referenceTranscript.trim()
+                ? { transcript: referenceTranscript.trim() }
+                : {}),
+            };
+          }
+        }
+        metadataText = finalText;
+      }
+
+      console.log('Speech generation request:', { mode: selectedMode, modelId, input });
+
+      let generatedAudioUrl: string;
+      try {
+        generatedAudioUrl = await runSpeech(modelId, input);
+      } catch (error) {
+        const parsed = parseFalError(error);
+        if (
+          parsed.status === 422
+          && selectedMode === 'single'
+          && selectedModel === 'elevenlabs-tts'
+          && mappedVoice
+          && mappedVoice !== 'Rachel'
+        ) {
+          console.warn('Speech generation 422, retrying with Rachel voice:', parsed.message);
+          generatedAudioUrl = await runSpeech(modelId, { ...input, voice: 'Rachel' });
+        } else if (parsed.status === 422 && selectedMode === 'dialogue' && selectedModel === 'elevenlabs-tts') {
+          console.warn('Dialogue generation 422, retrying with Rachel voices:', parsed.message);
+          const dialogueInput = input as { inputs?: Array<{ text: string; voice: string }>; stability?: number };
+          generatedAudioUrl = await runSpeech(modelId, {
+            inputs: (dialogueInput.inputs || []).map((entry) => ({ ...entry, voice: 'Rachel' })),
+            stability: dialogueInput.stability ?? 0.5,
+          });
+        } else {
+          throw error;
+        }
+      }
+
+      // Save audio to configured asset storage
+      const { canvasId, nodeId } = body;
+      const savedUrl = await saveGeneratedAudio(generatedAudioUrl, {
+        text: metadataText,
+        model: modelId,
+        canvasId,
+        nodeId,
+      });
+
+      return NextResponse.json({
+        success: true,
+        audioUrl: savedUrl,
+        originalUrl: generatedAudioUrl,
+        model: modelId,
+        mode: selectedMode,
+        ...(mappedVoice ? { voice: mappedVoice } : {}),
+      });
+    } catch (error) {
+      console.error('Speech generation error:', error);
+      const parsed = parseFalError(error);
       return NextResponse.json(
-        { error: 'Text is required' },
-        { status: 400 }
+        { error: parsed.message },
+        { status: parsed.status }
       );
     }
-
-    // Build input for ElevenLabs TTS
-    const input = {
-      text,
-      voice: (voice as ElevenLabsVoice) || 'rachel',
-      speed: speed || 1.0,
-      stability: stability ?? 0.5,
-    };
-
-    console.log('Speech generation request:', { modelId, input });
-
-    // Call Fal API
-    const result = await fal.subscribe(modelId, {
-      input,
-      logs: true,
-      onQueueUpdate: (update) => {
-        console.log('Speech queue update:', update.status);
-      },
-    });
-
-    console.log('Speech generation result:', result);
-
-    // Extract audio URL
-    const data = result.data as { audio?: { url: string } } | undefined;
-    const audioUrl = data?.audio?.url;
-
-    if (!audioUrl) {
-      throw new Error('No audio generated');
-    }
-
-    // Save audio to configured asset storage
-    const { canvasId, nodeId } = body;
-    const savedUrl = await saveGeneratedAudio(audioUrl, {
-      text,
-      model: modelId,
-      canvasId,
-      nodeId,
-    });
-
-    return NextResponse.json({
-      success: true,
-      audioUrl: savedUrl,
-      originalUrl: audioUrl,
-      model: modelId,
-    });
-  } catch (error) {
-    console.error('Speech generation error:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Speech generation failed' },
-      { status: 500 }
-    );
   }
-}
+);

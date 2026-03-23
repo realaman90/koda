@@ -1,62 +1,65 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import Image from 'next/image';
-import { useSettingsStore } from '@/stores/settings-store';
 import { cn } from '@/lib/utils';
 
 interface KodaLogoProps {
   variant?: 'icon' | 'full';
   className?: string;
   size?: 'sm' | 'md' | 'lg';
+  priority?: boolean;
 }
 
 const sizes = {
   icon: {
-    sm: { width: 24, height: 24 },
-    md: { width: 32, height: 32 },
-    lg: { width: 40, height: 40 },
+    sm: { width: 20, height: 20 },
+    md: { width: 24, height: 24 },
+    lg: { width: 28, height: 28 },
   },
   full: {
-    sm: { width: 100, height: 30 },
-    md: { width: 120, height: 36 },
-    lg: { width: 160, height: 48 },
+    sm: { width: 112, height: 28 },
+    md: { width: 136, height: 34 },
+    lg: { width: 160, height: 40 },
   },
 };
 
-export function KodaLogo({ variant = 'icon', className, size = 'md' }: KodaLogoProps) {
-  const theme = useSettingsStore((state) => state.theme);
-  const [resolvedTheme, setResolvedTheme] = useState<'dark' | 'light'>('dark');
+const sizeClasses = {
+  icon: {
+    sm: 'h-5 w-5',
+    md: 'h-6 w-6',
+    lg: 'h-7 w-7',
+  },
+  full: {
+    sm: 'h-6 w-auto',
+    md: 'h-7 w-auto',
+    lg: 'h-8 w-auto',
+  },
+} as const;
 
-  useEffect(() => {
-    if (theme === 'system') {
-      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-      setResolvedTheme(mediaQuery.matches ? 'dark' : 'light');
-
-      const listener = (e: MediaQueryListEvent) => {
-        setResolvedTheme(e.matches ? 'dark' : 'light');
-      };
-      mediaQuery.addEventListener('change', listener);
-      return () => mediaQuery.removeEventListener('change', listener);
-    } else {
-      setResolvedTheme(theme);
-    }
-  }, [theme]);
-
-  const logoSrc = variant === 'icon'
-    ? `/logos/koda-icon-${resolvedTheme}.svg`
-    : `/logos/koda-logo-${resolvedTheme}.svg`;
-
+export function KodaLogo({ variant = 'icon', className, size = 'md', priority = false }: KodaLogoProps) {
   const dimensions = sizes[variant][size];
+  const lightSrc = variant === 'icon' ? '/logos/koda_small_light.png' : '/logos/koda_main_light.svg';
+  const darkSrc = variant === 'icon' ? '/logos/koda_small_dark.png' : '/logos/koda_main_dark.png';
+  const renderedSizeClass = sizeClasses[variant][size];
 
   return (
-    <Image
-      src={"/logos/koda_main.png"}
-      alt="Koda.video"
-      width={dimensions.width}
-      height={dimensions.height}
-      className={cn('flex-shrink-0 w-14', className)}
-      priority
-    />
+    <span className={cn('inline-flex flex-shrink-0', className)}>
+      <Image
+        src={lightSrc}
+        alt="Koda.video"
+        width={dimensions.width}
+        height={dimensions.height}
+        className={cn('dark:hidden', renderedSizeClass)}
+        priority={priority}
+      />
+      <Image
+        src={darkSrc}
+        alt="Koda.video"
+        width={dimensions.width}
+        height={dimensions.height}
+        className={cn('hidden dark:block', renderedSizeClass)}
+        priority={priority}
+      />
+    </span>
   );
 }
