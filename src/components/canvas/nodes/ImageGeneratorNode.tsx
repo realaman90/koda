@@ -266,7 +266,7 @@ function ImageGeneratorNodeComponent({ id, data, selected, positionAbsoluteX, po
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `spaces-${Date.now()}.png`;
+      a.download = `koda-${Date.now()}.png`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
